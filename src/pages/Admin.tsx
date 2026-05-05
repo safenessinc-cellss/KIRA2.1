@@ -402,9 +402,18 @@ function StudentManagementView() {
 
   useEffect(() => {
     const q = query(collection(db, 'users'), where('role', '==', 'alumno'));
-    const unsubStudents = onSnapshot(q, (snap) => { setStudents(snap.docs.map(d => ({id: d.id, ...d.data()}))); }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
-    const unsubEnrollments = onSnapshot(collection(db, 'enrollments'), (snap) => { setEnrollments(snap.docs.map(d => d.data())); });
-    return () => { unsubStudents(); unsubEnrollments(); };
+    const unsubStudents = onSnapshot(q, (snap) => {
+      setStudents(snap.docs.map(d => ({id: d.id, ...d.data()})));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
+
+    const unsubEnrollments = onSnapshot(collection(db, 'enrollments'), (snap) => {
+      setEnrollments(snap.docs.map(d => d.data()));
+    });
+
+    return () => {
+      unsubStudents();
+      unsubEnrollments();
+    };
   }, []);
 
   const getTrafficLight = (student: any) => {
@@ -412,108 +421,146 @@ function StudentManagementView() {
     if (!lastActivityAt) return { color: 'bg-slate-300', text: 'Sin Actividad', icon: <Clock size={12} />, isRisk: false };
     const date = lastActivityAt.toDate ? lastActivityAt.toDate() : new Date(lastActivityAt);
     const diffDays = Math.floor((new Date().getTime() - date.getTime()) / (1000 * 3600 * 24));
-    if (diffDays >= 7 && student.displayName?.length % 2 === 0) { return { color: 'bg-purple-500', text: 'Riesgo de Abandono', icon: <AlertCircle size={12} className="text-purple-500" />, isRisk: true }; }
+    if (diffDays >= 7 && student.displayName?.length % 2 === 0) {
+      return { color: 'bg-purple-500', text: 'Riesgo de Abandono', icon: <AlertCircle size={12} className="text-purple-500" />, isRisk: true };
+    }
     if (diffDays < 3) return { color: 'bg-emerald-500', text: 'Activo', icon: <CheckCircle2 size={12} className="text-emerald-500" />, isRisk: false };
     if (diffDays < 7) return { color: 'bg-amber-500', text: 'Inactivo', icon: <AlertTriangle size={12} className="text-amber-500" />, isRisk: false };
     return { color: 'bg-rose-500', text: 'Crítico', icon: <XCircle size={12} className="text-rose-500" />, isRisk: false };
   };
 
-  const handleNotifyCoach = (studentName: string) => { alert(`Notificación enviada al Coach asignado sobre ${studentName}. Pipeline de Retención Activado.`); };
+  const handleNotifyCoach = (studentName: string) => {
+    alert(`Notificación enviada al Coach asignado sobre ${studentName}. Pipeline de Retención Activado.`);
+  };
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden animate-in fade-in">
       <div className="px-6 py-5 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50/50 gap-4">
-        <div><h3 className="font-semibold text-slate-800 flex items-center gap-2"><Activity size={18} className="text-rose-500" /> Estado de Salud Predictivo (Directorio)</h3><p className="text-[11px] text-slate-500 mt-1 max-w-xl">El algoritmo cruza datos de actividad en el CMS + estado financiero. Detecta automáticamente alumnos con inactividad e impagos para retención temprana.</p></div>
+        <div>
+          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+            <Activity size={18} className="text-rose-500" /> Estado de Salud Predictivo (Directorio)
+          </h3>
+          <p className="text-[11px] text-slate-500 mt-1 max-w-xl">
+            El algoritmo cruza datos de actividad en el CMS + estado financiero. Detecta automáticamente alumnos con inactividad e impagos para retención temprana.
+          </p>
+        </div>
       </div>
+      
       <table className="w-full text-left">
-        <thead><tr className="border-b border-slate-100 italic"><th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">Alumno</th><th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">Progreso Promedio</th><th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest text-center">Energy Pts</th><th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest text-right">Estatus Actividad</th></tr></thead>
+        <thead>
+          <tr className="border-b border-slate-100 italic">
+            <th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">Alumno</th>
+            <th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">Progreso Promedio</th>
+            <th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest text-center">Energy Pts</th>
+            <th className="px-6 py-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest text-right">Estatus Actividad</th>
+           </tr>
+        </thead>
         <tbody className="divide-y divide-slate-50">
           {students.map(s => {
             const status = getTrafficLight(s);
             const myEnrollments = enrollments.filter(e => e.userId === s.id);
-            const avgProg = myEnrollments.length > 0 ? Math.round(myEnrollments.reduce((acc, curr) => acc + (curr.progress || 0), 0) / myEnrollments.length) : 0;
+            const avgProg = myEnrollments.length > 0 
+              ? Math.round(myEnrollments.reduce((acc, curr) => acc + (curr.progress || 0), 0) / myEnrollments.length)
+              : 0;
+
             return (
-              <tr key={s.id} className={cn("hover:bg-slate-50 transition-colors group", s.approvalStatus === 'suspended' ? "opacity-75" : "")}>
-                <td className="px-6 py-4 text-[13px] cursor-pointer" onClick={() => setSelectedStudent(s)}><div className="font-medium text-slate-900 group-hover:text-teal-600 transition-colors flex items-center gap-2">{s.displayName || 'No Registrado'}{s.approvalStatus === 'suspended' && <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest">Suspendido</span>}</div><div className="text-slate-400 text-[11px]">{s.email}</div></td>
-                <td className="px-6 py-4 cursor-pointer" onClick={() => setSelectedStudent(s)}><div className="w-32 h-2 bg-slate-100 rounded-full overflow-hidden"><div className={cn("h-full transition-all duration-700", avgProg < 30 ? "bg-rose-500" : avgProg < 70 ? "bg-amber-500" : "bg-teal-500")} style={{ width: `${avgProg}%` }} /></div><span className="text-[10px] text-slate-500 mt-1 block font-medium">{avgProg}% completado</span></td>
-                <td className="px-6 py-4 text-center cursor-pointer" onClick={() => setSelectedStudent(s)}><span className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-[10px] font-black bg-indigo-50 text-indigo-700 border border-indigo-100/50"><Zap size={10} fill="currentColor" /> {s.points?.toLocaleString() || 0}</span></td>
-                <td className="px-6 py-4"><div className="flex items-center justify-end gap-3"><div className="flex flex-col items-end cursor-pointer" onClick={() => setSelectedStudent(s)}><span className="text-[11px] font-bold text-slate-700">{status.text}</span><span className="text-[9px] text-slate-400 italic">{s.lastActivityAt ? 'Hace poco' : 'Nunca'}</span></div><div className={cn("w-3 h-3 rounded-full shadow-sm ring-4 ring-offset-2", status.color.replace('bg-', 'ring-').replace('500', '100'), status.color)} /><div className="ml-4 border-l border-slate-200 pl-4 flex flex-col gap-2 items-end">{status.isRisk && (<button onClick={(e) => { e.stopPropagation(); handleNotifyCoach(s.displayName); }} className="px-2 py-1 bg-purple-50 text-purple-600 rounded text-[10px] font-bold hover:bg-purple-100 transition-colors uppercase flex items-center gap-1"><Send size={10} /> Intervenir</button>)}{s.approvalStatus === 'suspended' ? (<button onClick={async (e) => { e.stopPropagation(); await updateDoc(doc(db, 'users', s.id), { approvalStatus: 'approved' }); }} className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold hover:bg-emerald-100 transition-colors uppercase">Modificar / Activar</button>) : (<button onClick={async (e) => { e.stopPropagation(); if (window.confirm('¿Suspender Alumno por Falta de Pago? Esto bloqueará su acceso a cursos.')) { await updateDoc(doc(db, 'users', s.id), { approvalStatus: 'suspended' }); } }} className="px-2 py-1 bg-red-50 text-red-600 rounded text-[10px] font-bold hover:bg-red-100 transition-colors">Suspender</button>)}</div></div></div></td>
+              <tr 
+                key={s.id}
+                className={cn("hover:bg-slate-50 transition-colors group", s.approvalStatus === 'suspended' ? "opacity-75" : "")}
+              >
+                <td 
+                  className="px-6 py-4 text-[13px] cursor-pointer"
+                  onClick={() => setSelectedStudent(s)}
+                >
+                  <div className="font-medium text-slate-900 group-hover:text-teal-600 transition-colors flex items-center gap-2">
+                    {s.displayName || 'No Registrado'}
+                    {s.approvalStatus === 'suspended' && (
+                      <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest">Suspendido</span>
+                    )}
+                  </div>
+                  <div className="text-slate-400 text-[11px]">{s.email}</div>
+                </td>
+                
+                <td className="px-6 py-4 cursor-pointer" onClick={() => setSelectedStudent(s)}>
+                  <div className="w-32 h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div 
+                      className={cn(
+                        "h-full transition-all duration-700",
+                        avgProg < 30 ? "bg-rose-500" : avgProg < 70 ? "bg-amber-500" : "bg-teal-500"
+                      )} 
+                      style={{ width: `${avgProg}%` }} 
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-1 block font-medium">{avgProg}% completado</span>
+                </td>
+                
+                <td className="px-6 py-4 text-center cursor-pointer" onClick={() => setSelectedStudent(s)}>
+                  <span className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-full text-[10px] font-black bg-indigo-50 text-indigo-700 border border-indigo-100/50">
+                    <Zap size={10} fill="currentColor" /> {s.points?.toLocaleString() || 0}
+                  </span>
+                </td>
+                
+                <td className="px-6 py-4">
+                  <div className="flex items-center justify-end gap-3">
+                    <div className="flex flex-col items-end cursor-pointer" onClick={() => setSelectedStudent(s)}>
+                      <span className="text-[11px] font-bold text-slate-700">{status.text}</span>
+                      <span className="text-[9px] text-slate-400 italic">
+                        {s.lastActivityAt ? 'Hace poco' : 'Nunca'}
+                      </span>
+                    </div>
+                    <div className={cn("w-3 h-3 rounded-full shadow-sm ring-4 ring-offset-2", status.color.replace('bg-', 'ring-').replace('500', '100'), status.color)} />
+                    
+                    <div className="ml-4 border-l border-slate-200 pl-4 flex flex-col gap-2 items-end">
+                      {status.isRisk && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleNotifyCoach(s.displayName); }} 
+                          className="px-2 py-1 bg-purple-50 text-purple-600 rounded text-[10px] font-bold hover:bg-purple-100 transition-colors uppercase flex items-center gap-1"
+                        >
+                          <Send size={10} /> Intervenir
+                        </button>
+                      )}
+                      {s.approvalStatus === 'suspended' ? (
+                        <button 
+                          onClick={async (e) => { 
+                            e.stopPropagation(); 
+                            await updateDoc(doc(db, 'users', s.id), { approvalStatus: 'approved' }); 
+                          }} 
+                          className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded text-[10px] font-bold hover:bg-emerald-100 transition-colors uppercase"
+                        >
+                          Modificar / Activar
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={async (e) => { 
+                            e.stopPropagation(); 
+                            if (window.confirm('¿Suspender Alumno por Falta de Pago? Esto bloqueará su acceso a cursos.')) {
+                              await updateDoc(doc(db, 'users', s.id), { approvalStatus: 'suspended' }); 
+                            }
+                          }} 
+                          className="px-2 py-1 bg-red-50 text-red-600 rounded text-[10px] font-bold hover:bg-red-100 transition-colors"
+                        >
+                          Suspender
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </td>
               </tr>
             );
           })}
         </tbody>
       </table>
-      {selectedStudent && (<StudentActivityDashboard student={selectedStudent} enrollments={enrollments.filter(e => e.userId === selectedStudent.id)} onClose={() => setSelectedStudent(null)} />)}
+
+      {selectedStudent && (
+        <StudentActivityDashboard 
+          student={selectedStudent} 
+          enrollments={enrollments.filter(e => e.userId === selectedStudent.id)}
+          onClose={() => setSelectedStudent(null)} 
+        />
+      )}
     </div>
   );
 }
-
-function StudentActivityDashboard({ student, enrollments, onClose }: any) {
-  const [activity, setActivity] = useState<any[]>([]);
-  const [journals, setJournals] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const actQ = query(collection(db, 'course_activity'), where('userId', '==', student.id), orderBy('createdAt', 'desc'), limit(10));
-        const actSnap = await getDocs(actQ);
-        setActivity(actSnap.docs.map(d => d.data()));
-        const journalQ = query(collection(db, 'journals'), where('userId', '==', student.id), orderBy('createdAt', 'desc'), limit(5));
-        const journalSnap = await getDocs(journalQ);
-        setJournals(journalSnap.docs.map(d => d.data()));
-      } catch (e) { console.error(e); } finally { setLoading(false); }
-    };
-    fetchData();
-  }, [student.id]);
-
-  return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl animate-in zoom-in-95 duration-300">
-        <div className="p-8 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
-          <div className="flex items-center gap-4"><div className="w-12 h-12 rounded-2xl bg-teal-100 flex items-center justify-center text-teal-600 font-bold text-xl">{student.displayName?.[0]}</div><div><h2 className="text-xl font-bold text-slate-900">{student.displayName}</h2><p className="text-sm text-slate-500">{student.email}</p></div></div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400"><XCircle size={24}/></button>
-        </div>
-        <div className="p-8">
-          {loading ? (<div className="py-20 flex flex-col items-center justify-center gap-4 text-slate-400"><Loader2 className="animate-spin" size={32} /><p className="text-sm font-medium">Cargando métricas de compromiso...</p></div>) : (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 flex flex-col gap-8">
-                <section><h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">Métricas de Compromiso</h3><div className="grid grid-cols-3 gap-4"><div className="bg-slate-50 p-4 rounded-2xl text-center"><p className="text-2xl font-bold text-slate-900">{activity.reduce((acc, c) => acc + (c.timeSpentMinutes || 0), 0)}</p><p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Min. Totales (Reciente)</p></div><div className="bg-slate-50 p-4 rounded-2xl text-center"><p className="text-2xl font-bold text-slate-900">{activity.length}</p><p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Sesiones Activas</p></div><div className="bg-slate-50 p-4 rounded-2xl text-center"><p className="text-2xl font-bold text-slate-900">{Math.round(activity.reduce((acc, c) => acc + (c.quizScore || 0), 0) / (activity.reduce((acc, c) => acc + (c.quizTotal || 1), 0) || 1) * 100)}%</p><p className="text-[10px] text-slate-500 font-bold uppercase mt-1">Éxito en Quizzes</p></div></div></section>
-                <section><h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">Actividad en Cursos</h3><div className="bg-white border border-slate-100 rounded-2xl overflow-hidden"><table className="w-full text-left text-[12px]"><thead className="bg-slate-50"><tr><th className="px-4 py-3 font-bold text-slate-500">Módulo</th><th className="px-4 py-3 font-bold text-slate-500">Tiempo</th><th className="px-4 py-3 font-bold text-slate-500">Puntaje</th><th className="px-4 py-3 font-bold text-slate-500">Fecha</th></tr></thead><tbody className="divide-y divide-slate-50">{activity.map((a, i) => (<tr key={i}><td className="px-4 py-3 font-medium text-slate-700">{a.moduleId}</td><td className="px-4 py-3 text-slate-500">{a.timeSpentMinutes} min</td><td className="px-4 py-3"><span className={cn("font-bold", a.quizScore > (a.quizTotal/2) ? "text-emerald-500" : "text-rose-500")}>{a.quizScore}/{a.quizTotal}</span></td><td className="px-4 py-3 text-slate-400">{a.createdAt?.toDate?.().toLocaleDateString()}</td></tr>))}</tbody></table></div></section>
-              </div>
-              <div className="flex flex-col gap-8 border-l border-slate-100 pl-8">
-                <section><h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">Insight Emocional (Reciente)</h3><div className="flex flex-col gap-3">{journals.map((j, i) => (<div key={i} className="p-3 bg-slate-50 rounded-xl border border-slate-100"><p className="text-[12px] text-slate-700 line-clamp-3 leading-relaxed">"{j.content}"</p><p className="text-[9px] text-slate-400 mt-2 font-bold uppercase">{j.createdAt?.toDate?.().toLocaleDateString()}</p></div>))}{journals.length === 0 && <p className="text-[11px] italic text-slate-400">Sin entradas en el diario.</p>}</div></section>
-                <section className="mt-auto pt-6 border-t border-slate-100"><div className="flex justify-between items-center mb-2"><span className="text-[11px] font-bold text-slate-400">PROGRESO GLOBAL</span><span className="text-xl font-black text-primary">{Math.round(enrollments.reduce((acc, c) => acc + (c.progress || 0), 0) / (enrollments.length || 1))}%</span></div><div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-primary" style={{ width: `${Math.round(enrollments.reduce((acc, c) => acc + (c.progress || 0), 0) / (enrollments.length || 1))}%` }} /></div></section>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ title, value, subtitle, icon, color = 'teal' }: any) {
-  const badgeClasses = color === 'rose' ? 'bg-rose-50 text-rose-600' : 'bg-teal-50 text-teal-600';
-  return (
-    <div className="bg-white rounded-2xl p-6 border border-slate-200 transition-all hover:shadow-lg hover:shadow-slate-100 group">
-      <div className="flex justify-between items-start mb-4"><div className="p-2.5 rounded-xl bg-slate-50 group-hover:bg-slate-100 transition-colors">{icon}</div><span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${badgeClasses}`}>Hoy</span></div>
-      <div className="text-3xl font-bold text-slate-900 mb-1">{value}</div><div className="text-slate-500 text-[13px] font-medium">{title}</div><div className="text-slate-400 text-[11px] mt-2 italic">{subtitle}</div>
-    </div>
-  );
-}
-
-function ActivityItem({ user, action, time }: { user: string, action: string, time: string }) {
-  return (
-    <div className="flex items-center gap-4 py-2 text-[13px]">
-      <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-400 text-[10px]">{user.substring(0, 2).toUpperCase()}</div>
-      <div className="flex-1"><span className="font-semibold text-slate-800">{user}</span><span className="text-slate-500 mx-1">{action}</span></div>
-      <div className="text-slate-400 text-[11px] font-mono">{time}</div>
-    </div>
-  );
-}
-
 // --- MODULO: GESTIÓN DE PROMOCIONES ---
 function PromotionsManagerView() {
   const [promotions, setPromotions] = useState<any[]>([]);
