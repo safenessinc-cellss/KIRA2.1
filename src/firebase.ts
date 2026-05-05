@@ -1,14 +1,13 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, connectFirestoreEmulator } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging } from 'firebase/messaging';
-import firebaseConfig from '../firebase-applet-config.json';import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
 
+// Configuración CORRECTA de Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyAZ3rzWYvaXYv0Wbc061Hahz6yir-L8rw8",
-  authDomain: "kira2-a6a20.firebaseapp.com", // ← USA ESTE DOMINIO
+  authDomain: "kira2-a6a20.firebaseapp.com",
   projectId: "kira2-a6a20",
   storageBucket: "kira2-a6a20.firebasestorage.app",
   messagingSenderId: "981129066179",
@@ -16,22 +15,17 @@ const firebaseConfig = {
   measurementId: "G-HDF2RLJGHB"
 };
 
+// Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 
+// Inicializar servicios
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
 export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
-// Enable offline persistence
-enableIndexedDbPersistence(db).catch((err) => {
-  if (err.code == 'failed-precondition') {
-    console.warn("Multiple tabs open, persistence can only be enabled in one tab at a a time.");
-  } else if (err.code == 'unimplemented') {
-    console.warn("The current browser does not support all of the features required to enable persistence");
-  }
-});
-
-export const storage = getStorage(app);
+// Nota: enableIndexedDbPersistence está deprecado, no lo uses por ahora
+// Si necesitas offline, usa: import { initializeFirestore, persistentLocalCache } from 'firebase/firestore';
 
 export enum OperationType {
   CREATE = 'create',
@@ -87,15 +81,12 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // Connection test
 async function testConnection() {
   try {
-    // Only attempt if not running on server
     if (typeof window !== 'undefined') {
-      await getDocFromServer(doc(db, 'test', 'connection'));
-      console.log("Firebase connection established successfully.");
+      await getDoc(doc(db, 'test', 'connection'));
+      console.log("✅ Firebase connection established successfully.");
     }
   } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. The client is offline.");
-    }
+    console.error("❌ Firebase connection error:", error);
   }
 }
 testConnection();
