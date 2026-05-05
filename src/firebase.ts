@@ -3,7 +3,18 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging } from 'firebase/messaging';
-import firebaseConfig from '../firebase-applet-config.json';
+import firebaseConfig from '../firebase-applet-config.json';import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAZ3rzWYvaXYv0Wbc061Hahz6yir-L8rw8",
+  authDomain: "kira2-a6a20.firebaseapp.com", // ← USA ESTE DOMINIO
+  projectId: "kira2-a6a20",
+  storageBucket: "kira2-a6a20.firebasestorage.app",
+  messagingSenderId: "981129066179",
+  appId: "1:981129066179:web:568a570bb67402cfa01476",
+  measurementId: "G-HDF2RLJGHB"
+};
 
 const app = initializeApp(firebaseConfig);
 
