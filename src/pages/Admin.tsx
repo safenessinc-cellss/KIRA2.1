@@ -6,6 +6,10 @@ import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, Sh
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
 import { cn } from '../lib/utils';
+import AdminApprovals from './AdminApprovals';
+
+// Dentro de las rutas o tabs del admin
+<Route path="/admin/approvals" element={<AdminApprovals />} />
 
 type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions';
 
@@ -1822,6 +1826,12 @@ function RetentionBar({ label, percent, color = 'teal' }: any) {
 function SecurityView() {
   const [logs, setLogs] = useState<any[]>([]);
   const [staff, setStaff] = useState<any[]>([]);
+  const tabs = [
+  { name: 'Dashboard', href: '/admin' },
+  { name: 'Aprobaciones', href: '/admin/approvals' },
+  { name: 'Usuarios', href: '/admin/users' },
+  // ... otros tabs
+];
 
   useEffect(() => {
     const qL = query(collection(db, 'logs'), orderBy('createdAt', 'desc'), limit(10));
