@@ -6,6 +6,7 @@ import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { Dashboard, Journal } from './pages/Dashboard';
 import { EliteLibrary } from './pages/EliteLibrary';
+import AdminApprovals from './pages/AdminApprovals';
 import { AdminMonitor } from './pages/Admin';
 import { CoachDashboard, CoachCourses } from './pages/Coach';
 import SessionIntelligence from './pages/SessionIntelligence';
@@ -57,6 +58,7 @@ export default function App() {
               
               {/* Alumnos */}
               <Route element={<ProtectedRoute allowedRoles={['alumno']} />}>
+                <Route path="/admin/approvals" element={<AdminApprovals />} />
                 <Route element={<DashboardLayout title="Mi Aprendizaje" />}>
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/dashboard/journal" element={<Journal />} />
