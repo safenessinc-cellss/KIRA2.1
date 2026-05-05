@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=JetBrains+Mono:wght@400;700&display=swap');
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-kirateal: #14B8A6;
+  --color-kirateal-light: #99F6E4;
+  --color-kiragold: #D4AF37;
+  --color-kiragold-dark: #B8860B;
+  
+  /* UX Luxury Palette */
+  --color-tech-slate: #0F172A;
+  --color-healing-teal: #14B8A6;
+  --color-intel-indigo: #6366F1;
+  --color-empathy-rose: #F43F5E;
+
+  --color-primary: var(--color-primary, #1ec6b6);
+  --color-secondary: var(--color-secondary, #8b5cf6);
+}
+
+[data-theme='indigo'] {
+  --primary: #6366f1;
+  --primary-dark: #4338ca;
+}
+
+[data-theme='rose'] {
+  --primary: #f43f5e;
+  --primary-dark: #be123c;
+}
+
+
+.rich-text-content p {
+  margin-bottom: 0.75rem;
+}
+
+.rich-text-content ul {
+  list-style-type: disc;
+  margin-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.rich-text-content ol {
+  list-style-type: decimal;
+  margin-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.rich-text-content strong {
+  font-weight: 700;
+}
+
+.rich-text-content em {
+  font-style: italic;
+}

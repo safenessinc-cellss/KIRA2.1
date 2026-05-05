@@ -1,0 +1,373 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users
+// Document ID: userId (matches Firebase Auth UID)
+// Fields:
+//   - uid: string (required)
+//   - email: string (required)
+//   - displayName: string (optional)
+//   - photoURL: string (optional)
+//   - role: string (required, 'admin', 'coach', or 'alumno')
+//   - approvalStatus: string (optional, 'pending', 'approved', 'rejected')
+//   - createdAt: timestamp (required, immutable)
+//
+// Collection: courses
+// Document ID: courseId
+// Fields:
+//   - title: string (required)
+//   - description: string (optional)
+//   - price: number (required)
+//   - coachId: string (required, immutable)
+//   - status: string (required, 'draft', 'pending', 'published')
+//   - bannerUrl: string (optional)
+//   - createdAt: timestamp (required, immutable)
+//
+// Collection: enrollments
+// Document ID: enrollmentId
+// Fields:
+//   - userId: string (required, immutable)
+//   - courseId: string (required, immutable)
+//   - progress: number (required)
+//   - createdAt: timestamp (required, immutable)
+//
+// Collection: journals
+// Document ID: journalId
+// Fields:
+//   - userId: string (required, immutable)
+//   - content: string (required)
+//   - sentiment: string (optional)
+//   - createdAt: timestamp (required, immutable)
+//
+// Collection: reviews
+// Document ID: reviewId
+// Fields:
+//   - courseId: string (required, immutable)
+//   - userId: string (required, immutable)
+//   - rating: number (required, 1-5)
+//   - comment: string (optional)
+//   - status: string (required, 'published', 'hidden')
+//   - createdAt: timestamp (required, immutable)
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isDocOwner(userIdField) {
+      return isAuthenticated() && request.auth.uid == userIdField;
+    }
+    
+    function isCurrentUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "safeness.c.a@gmail.com" ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+    
+    function isApprovedCoach() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach' &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved';
+    }
+    
+    function hasOnlyAllowedFields(allowedFields) {
+      return request.resource.data.keys().hasOnly(allowedFields);
+    }
+    
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+    
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    
+    function isValidUser() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'role', 'approvalStatus', 'points', 'theme', 'isEmailVerified', 'staffPermissions', 'lastLoginAt', 'lastActivityAt', 'createdAt', 'specialty', 'bio', 'aiFeedback', 'registeredByCoach', 'status', 'membershipStatus', 'membershipPaidAt', 'socialLinks']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.role in ['admin', 'coach', 'alumno'] &&
+             data.createdAt is timestamp &&
+             (!('approvalStatus' in data) || data.approvalStatus in ['pending', 'approved', 'rejected']) &&
+             (!('points' in data) || data.points is number) &&
+             (!('theme' in data) || data.theme is string) &&
+             (!('isEmailVerified' in data) || data.isEmailVerified is bool) &&
+             (!('staffPermissions' in data) || data.staffPermissions is list) &&
+             (!('lastLoginAt' in data) || data.lastLoginAt is timestamp) &&
+             (!('lastActivityAt' in data) || data.lastActivityAt is timestamp) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000)) &&
+             (!('specialty' in data) || (data.specialty is string && data.specialty.size() < 200)) &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() < 5000)) &&
+             (!('aiFeedback' in data) || data.aiFeedback is map) &&
+             (!('socialLinks' in data) || data.socialLinks is map);
+    }
+
+    function isValidMessage() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['chatId', 'senderId', 'content', 'createdAt']) &&
+             data.chatId is string && data.senderId is string &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 10000 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidContract() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['coachId', 'title', 'status', 'fileUrl', 'expiresAt', 'createdAt']) &&
+             data.coachId is string && data.title is string &&
+             data.status in ['active', 'expired', 'pending'] &&
+             data.createdAt is timestamp &&
+             (!('fileUrl' in data) || data.fileUrl is string) &&
+             (!('expiresAt' in data) || data.expiresAt is timestamp);
+    }
+    
+    function isValidCourse() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['title', 'description', 'price', 'coachId', 'status', 'bannerUrl', 'createdAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.price is number && data.price >= 0 &&
+             data.coachId is string &&
+             data.status in ['draft', 'pending', 'published'] &&
+             data.createdAt is timestamp &&
+             (!('description' in data) || (data.description is string && data.description.size() < 10000)) &&
+             (!('bannerUrl' in data) || (data.bannerUrl is string && data.bannerUrl.size() < 1000));
+    }
+    
+    function isValidEnrollment() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['userId', 'courseId', 'progress', 'createdAt']) &&
+             data.userId is string &&
+             data.courseId is string &&
+             data.progress is number && data.progress >= 0 && data.progress <= 100 &&
+             data.createdAt is timestamp;
+    }
+    
+    function isValidJournal() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['userId', 'content', 'sentiment', 'createdAt']) &&
+             data.userId is string &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 50000 &&
+             data.createdAt is timestamp &&
+             (!('sentiment' in data) || data.sentiment in ['positive', 'neutral', 'negative', 'unknown']);
+    }
+
+    function isValidReview() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['courseId', 'userId', 'rating', 'comment', 'status', 'createdAt']) &&
+             data.courseId is string &&
+             data.userId is string &&
+             data.rating is number && data.rating >= 1 && data.rating <= 5 &&
+             data.status in ['published', 'hidden'] &&
+             data.createdAt is timestamp &&
+             (!('comment' in data) || (data.comment is string && data.comment.size() <= 2000));
+    }
+
+    function isValidTransaction() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['userId', 'amount', 'type', 'courseId', 'coachId', 'commissionAmount', 'createdAt']) &&
+             data.userId is string && data.amount is number && 
+             data.type in ['course_purchase', 'coach_membership'] &&
+             data.createdAt is timestamp &&
+             (!('courseId' in data) || data.courseId is string) &&
+             (!('coachId' in data) || data.coachId is string) &&
+             (!('commissionAmount' in data) || data.commissionAmount is number);
+    }
+
+    function isValidCoupon() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['code', 'discountPercent', 'expiresAt', 'usageCount']) &&
+             data.code is string && data.discountPercent is number &&
+             (!('expiresAt' in data) || data.expiresAt is timestamp) &&
+             (!('usageCount' in data) || data.usageCount is number);
+    }
+
+    function isValidB2B() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['name', 'adminEmail', 'licensesTotal', 'licensesUsed', 'createdAt']) &&
+             data.name is string && data.adminEmail is string && 
+             data.licensesTotal is number && data.createdAt is timestamp;
+    }
+
+    function isValidLog() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['adminId', 'action', 'targetId', 'details', 'createdAt']) &&
+             data.adminId is string && data.action is string && data.createdAt is timestamp;
+    }
+
+    function isValidNotification() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['userId', 'title', 'message', 'type', 'read', 'createdAt']) &&
+             data.userId is string && data.title is string && data.message is string &&
+             data.type in ['system', 'message', 'course', 'ai'] &&
+             data.read is bool && data.createdAt is timestamp;
+    }
+
+    function isValidAutomation() {
+      let data = request.resource.data;
+      return hasOnlyAllowedFields(['name', 'condition', 'thresholdDays', 'actionType', 'messageTemplate', 'active', 'ownerId', 'createdAt', 'processedCount', 'lastRunAt']) &&
+             data.name is string && data.condition in ['inactivity', 'cart_abandonment', 'post_enrollment'] &&
+             data.active is bool && data.createdAt is timestamp &&
+             (!('processedCount' in data) || data.processedCount is number) &&
+             (!('lastRunAt' in data) || data.lastRunAt is timestamp);
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+    
+    match /users/{userId} {
+      // Read: Public can see ALL coach profiles (needed for directory query). Users can read their own. Admins all.
+      // And authenticated users can read profiles for chats etc.
+      allow read: if (resource.data.role == 'coach') || isAuthenticated();
+      
+      // Create: Users can create their own profile. Only admins can create an admin role.
+      allow create: if isAuthenticated() && isCurrentUser(userId) && isValidUser() && 
+                    ((request.resource.data.role == 'admin' && isAdmin()) ||
+                     (request.resource.data.role in ['coach', 'alumno']));
+      
+      // Special: Allow coaches to create/refer new students
+      allow create: if isApprovedCoach() && isValidUser() && request.resource.data.role == 'alumno';
+                     
+      // Update: Users can update their profile but NOT their role or approvalStatus. Admins can update anything.
+      allow update: if isAuthenticated() && isValidUser() &&
+                    ((isAdmin()) || 
+                     (isCurrentUser(userId) && areImmutableFieldsUnchanged(['uid', 'email', 'role', 'approvalStatus', 'createdAt'])));
+                     
+      allow delete: if isAdmin();
+    }
+    
+    match /courses/{courseId} {
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.status == 'published' || (isAuthenticated() && resource.data.coachId == request.auth.uid));
+      allow create: if isApprovedCoach() && isValidCourse() && request.resource.data.coachId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidCourse() && areImmutableFieldsUnchanged(['coachId', 'createdAt']) && 
+                    (isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid));
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
+    }
+    
+    match /enrollments/{enrollmentId} {
+      allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid));
+      allow create: if isAuthenticated() && isValidEnrollment() && (request.resource.data.userId == request.auth.uid || isApprovedCoach());
+      allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt']) && 
+                    (isAdmin() || (isCurrentUser(resource.data.userId)) || isApprovedCoach());
+      allow delete: if isAdmin();
+    }
+    
+    match /journals/{journalId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidJournal() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidJournal() && areImmutableFieldsUnchanged(['userId', 'createdAt']) && 
+                    (isAdmin() || isCurrentUser(resource.data.userId));
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+    }
+    
+    match /reviews/{reviewId} {
+      allow read: if isAdmin() || resource.data.status == 'published' || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidReview() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidReview() && areImmutableFieldsUnchanged(['courseId', 'userId', 'createdAt']) &&
+                    (isAdmin() || (isCurrentUser(resource.data.userId) && request.resource.data.status == resource.data.status));
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+    }
+
+    match /transactions/{id} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidTransaction(); 
+      allow update, delete: if isAdmin();
+    }
+
+    match /coupons/{id} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /promotions/{id} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /ai_coach_rules/{id} {
+      allow read, write: if isAdmin();
+    }
+
+    match /b2b/{id} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /logs/{id} {
+      allow read, create: if isAdmin();
+      allow update, delete: if false; // Logs should be immutable
+    }
+
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.chatId.matches('.*' + request.auth.uid + '.*'));
+      allow create: if isAuthenticated() && isValidMessage() && request.auth.uid == request.resource.data.senderId;
+      allow update, delete: if isAdmin();
+    }
+
+    match /contracts/{contractId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
+      allow create: if isAdmin() || isApprovedCoach();
+      allow update: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{id} {
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidNotification();
+      allow update: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+    }
+
+    match /automations/{id} {
+      allow read: if isAdmin() || isApprovedCoach();
+      allow create, update, delete: if isAdmin() || isApprovedCoach();
+    }
+
+    match /campaign_logs/{id} {
+      allow read, create: if isAdmin() || isApprovedCoach();
+      allow update, delete: if false;
+    }
+
+    match /contract_templates/{id} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
+      allow create: if isApprovedCoach() && request.resource.data.coachId == request.auth.uid;
+      allow update, delete: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+    }
+
+    match /course_activity/{id} {
+      allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || isApprovedCoach()));
+      allow create: if isAuthenticated(); // Allow tracking
+      allow update, delete: if isAdmin();
+    }
+
+    match /settings/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /marketplace/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /stats/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

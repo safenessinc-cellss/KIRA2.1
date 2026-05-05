@@ -1,0 +1,8 @@
+{
+  "name": "KIRA2.1",
+  "description": "Plataforma SaaS, Marketplace de bienestar y CRM con IA integrada.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}

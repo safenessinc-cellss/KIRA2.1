@@ -1,0 +1,389 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a user in the Kira Coach platform (Super Admin, Coach, or Alumno)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "coach", "alumno"] },
+        "approvalStatus": { "type": "string", "enum": ["pending", "approved", "rejected"], "description": "Only relevant for coaches" },
+        "experienceLevel": { "type": "string" },
+        "welcomeVideoUrl": { "type": "string" },
+        "socialLinks": {
+          "type": "object",
+          "properties": {
+            "instagram": { "type": "string" },
+            "linkedin": { "type": "string" },
+            "twitter": { "type": "string" }
+          }
+        },
+        "points": { "type": "number", "description": "Consciousness points earned through actions" },
+        "specialty": { "type": "string" },
+        "bio": { "type": "string" },
+        "theme": { "type": "string", "description": "UI theme preference (e.g., teal, indigo, rose)" },
+        "isEmailVerified": { "type": "boolean" },
+        "staffPermissions": { "type": "array", "items": { "type": "string" }, "description": "Granular permissions for admin staff" },
+        "aiFeedback": {
+          "type": "object",
+          "properties": {
+            "message": { "type": "string" },
+            "suggestedCourseIds": { "type": "array", "items": { "type": "string" } },
+            "updatedAt": { "type": "string", "format": "date-time" }
+          },
+          "description": "Tailored guidance and course suggestions from Kira AI"
+        },
+        "lastLoginAt": { "type": "string", "format": "date-time" },
+        "lastActivityAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Chat message between coach and student",
+      "type": "object",
+      "properties": {
+        "chatId": { "type": "string", "description": "Combination of coachId and studentId" },
+        "senderId": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["chatId", "senderId", "content", "createdAt"]
+    },
+    "Contract": {
+      "title": "Contract",
+      "description": "Legal/Service agreement for coaches",
+      "type": "object",
+      "properties": {
+        "coachId": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "expired", "pending"] },
+        "fileUrl": { "type": "string" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["coachId", "title", "status", "createdAt"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "A wellness course created by a Coach",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "coachId": { "type": "string", "description": "Reference to User.uid" },
+        "status": { "type": "string", "enum": ["draft", "pending", "published"] },
+        "bannerUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "price", "coachId", "status", "createdAt"]
+    },
+    "Enrollment": {
+      "title": "Enrollment",
+      "description": "An Alumno's purchase/enrollment in a Course",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "courseId": { "type": "string" },
+        "progress": { "type": "number", "description": "0 to 100 percentage" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "courseId", "progress", "createdAt"]
+    },
+    "JournalEntry": {
+      "title": "JournalEntry",
+      "description": "A Gratitude Journal entry by an Alumno",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "content": { "type": "string" },
+        "sentiment": { "type": "string", "enum": ["positive", "neutral", "negative", "unknown"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "content", "createdAt"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "A student review/rating for a course and its coach",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string" },
+        "userId": { "type": "string" },
+        "rating": { "type": "number", "description": "1 to 5" },
+        "comment": { "type": "string" },
+        "status": { "type": "string", "enum": ["published", "hidden"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseId", "userId", "rating", "status", "createdAt"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Record of a payment (course purchase or coach subscription)",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["course_purchase", "coach_membership"] },
+        "courseId": { "type": "string", "description": "Optional if course_purchase" },
+        "coachId": { "type": "string", "description": "Recipient of the payout" },
+        "commissionAmount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "amount", "type", "createdAt"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Discount codes for marketing campaigns",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "discountPercent": { "type": "number" },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "usageCount": { "type": "number" }
+      },
+      "required": ["code", "discountPercent"]
+    },
+    "B2BCompany": {
+      "title": "B2BCompany",
+      "description": "Corporate accounts for volume licensing",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "licensesTotal": { "type": "number" },
+        "licensesUsed": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "adminEmail", "licensesTotal"]
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "Security logs for admin actions",
+      "type": "object",
+      "properties": {
+        "adminId": { "type": "string" },
+        "action": { "type": "string" },
+        "targetId": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminId", "action", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification for specific events",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["system", "message", "course", "ai"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "read", "createdAt"]
+    },
+    "AutomationRule": {
+      "title": "AutomationRule",
+      "description": "Rule for triggering automatic actions based on behavior",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "condition": { "type": "string", "enum": ["inactivity", "cart_abandonment", "post_enrollment", "email_verification_pending"] },
+        "thresholdDays": { "type": "number" },
+        "actionType": { "type": "string", "enum": ["notification", "email", "status_change"] },
+        "messageTemplate": { "type": "string" },
+        "active": { "type": "boolean" },
+        "ownerId": { "type": "string" },
+        "processedCount": { "type": "number", "description": "Total users reached by this campaign" },
+        "lastRunAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "condition", "actionType", "active", "createdAt"]
+    },
+    "CampaignLog": {
+      "title": "CampaignLog",
+      "description": "Log of an automation action triggered for a user",
+      "type": "object",
+      "properties": {
+        "ruleId": { "type": "string" },
+        "userId": { "type": "string" },
+        "actionType": { "type": "string" },
+        "status": { "type": "string", "enum": ["sent", "failed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["ruleId", "userId", "actionType", "status", "createdAt"]
+    },
+    "ContractTemplate": {
+      "title": "ContractTemplate",
+      "description": "Predefined terms for coach contracts",
+      "type": "object",
+      "properties": {
+        "coachId": { "type": "string" },
+        "name": { "type": "string" },
+        "terms": { "type": "string" },
+        "expirationRules": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["coachId", "name", "terms", "createdAt"]
+    },
+    "CourseActivity": {
+      "title": "CourseActivity",
+      "description": "Detailed interaction patterns and quiz performance",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "courseId": { "type": "string" },
+        "moduleId": { "type": "string" },
+        "timeSpentMinutes": { "type": "number" },
+        "quizScore": { "type": "number" },
+        "quizTotal": { "type": "number" },
+        "interactionsCount": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "courseId", "updatedAt"]
+    },
+    "SystemStat": {
+      "title": "SystemStat",
+      "description": "Aggregated statistics for the platform",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "e.g., 'members_summary'" },
+        "totalAlumnos": { "type": "number" },
+        "totalCoaches": { "type": "number" },
+        "avgProgress": { "type": "number" },
+        "progressBreakdown": { 
+          "type": "object",
+          "properties": {
+            "low": { "type": "number" },
+            "mid": { "type": "number" },
+            "high": { "type": "number" }
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["totalAlumnos", "avgProgress", "updatedAt"]
+    },
+    "CoachingSession": {
+      "title": "CoachingSession",
+      "description": "Represents a coaching session with transcript and AI analysis",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "coachId": { "type": "string" },
+        "transcript": { "type": "array", "items": { "type": "object" } },
+        "analysis": {
+          "type": "object",
+          "properties": {
+            "resumen_ejecutivo": { "type": "string" },
+            "progreso_metas_anteriores": { "type": "array", "items": { "type": "string" } },
+            "nuevos_compromisos": { "type": "array", "items": { "type": "object" } },
+            "patrones_detectados": { "type": "array", "items": { "type": "string" } },
+            "inconsistencias_detectadas": { "type": "array", "items": { "type": "string" } },
+            "prosodic_inference": { "type": "string" },
+            "roleplay_scenarios": { "type": "array", "items": { "type": "string" } },
+            "personal_mantra": { "type": "string" },
+            "focus_heatmap": {
+              "type": "object",
+              "properties": {
+                "pasado_problemas": { "type": "number" },
+                "presente": { "type": "number" },
+                "futuro_soluciones": { "type": "number" }
+              }
+            },
+            "sugerencia_proxima_sesion": { "type": "string" }
+          }
+        },
+        "psychologicalSnapshot": {
+          "type": "object",
+          "properties": {
+            "dominantEmotion": { "type": "string" },
+            "detectedFears": { "type": "array", "items": { "type": "string" } },
+            "valueAlignment": { "type": "number" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "coachId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles including their roles and approval status."
+    },
+    "/sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/CoachingSession" },
+      "description": "Stores coaching sessions and AI longitudinal analysis."
+    },
+    "/courses/{courseId}": {
+      "schema": { "$ref": "#/entities/Course" },
+      "description": "Stores courses available in the marketplace."
+    },
+    "/enrollments/{enrollmentId}": {
+      "schema": { "$ref": "#/entities/Enrollment" },
+      "description": "Tracks which users are enrolled in which courses and their progress."
+    },
+    "/journals/{journalId}": {
+      "schema": { "$ref": "#/entities/JournalEntry" },
+      "description": "Stores personal gratitude journal entries for Alumnos."
+    },
+    "/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/Review" },
+      "description": "Stores student reviews and ratings for courses."
+    },
+    "/transactions/{id}": {
+      "schema": { "$ref": "#/entities/Transaction" },
+      "description": "Revenue tracking records."
+    },
+    "/coupons/{id}": {
+      "schema": { "$ref": "#/entities/Coupon" },
+      "description": "Marketing coupons."
+    },
+    "/b2b/{id}": {
+      "schema": { "$ref": "#/entities/B2BCompany" },
+      "description": "Corporate licenses."
+    },
+    "/logs/{id}": {
+      "schema": { "$ref": "#/entities/ActivityLog" },
+      "description": "Security logs."
+    },
+    "/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Chat messages."
+    },
+    "/contracts/{contractId}": {
+      "schema": { "$ref": "#/entities/Contract" },
+      "description": "Coach contracts."
+    },
+    "/notifications/{id}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "User notifications."
+    },
+    "/automations/{id}": {
+      "schema": { "$ref": "#/entities/AutomationRule" },
+      "description": "Automation rules."
+    },
+    "/campaign_logs/{id}": {
+      "schema": { "$ref": "#/entities/CampaignLog" },
+      "description": "History of automation triggers."
+    },
+    "/contract_templates/{id}": {
+      "schema": { "$ref": "#/entities/ContractTemplate" },
+      "description": "Templates for coach contracts."
+    },
+    "/course_activity/{id}": {
+      "schema": { "$ref": "#/entities/CourseActivity" },
+      "description": "Detailed activity tracking for alumnos."
+    },
+    "/stats/{id}": {
+      "schema": { "$ref": "#/entities/SystemStat" },
+      "description": "Global statistics snapshots."
+    }
+  }
+}

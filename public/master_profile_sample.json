@@ -1,0 +1,51 @@
+{
+  "master_profile_version": "2.4.0",
+  "user_id": "kira_user_882",
+  "evolutionary_history": {
+    "total_sessions": 10,
+    "last_updated": "2026-04-28T19:53:00Z",
+    "journey_stage": "Crecimiento Exponencial"
+  },
+  "psychological_dynamics": {
+    "personality_traits": {
+      "conscientiousness": 0.85,
+      "neuroticism": 0.32,
+      "agreeableness": 0.65,
+      "extraversion": 0.45,
+      "openness": 0.92
+    },
+    "recurring_patterns": [
+      {
+        "pattern": "Procrastinación por perfeccionismo",
+        "detection_count": 4,
+        "mitigation_strategy": "Dividir tareas en micro-pasos de 5 minutos",
+        "status": "Under Control"
+      },
+      {
+        "pattern": "Duda de competencia ante figuras de autoridad",
+        "detection_count": 2,
+        "context": "Entorno laboral",
+        "status": "Active"
+      }
+    ],
+    "core_fears": [
+      "Incapacidad de proveer a largo plazo",
+      "Pérdida de libertad creativa"
+    ],
+    "values_hierarchy": [
+      "Libertad",
+      "Impacto",
+      "Crecimiento",
+      "Seguridad"
+    ]
+  },
+  "action_logic": {
+    "total_commitments_completed": 24,
+    "current_active_tasks": 3,
+    "efficiency_rating": 8.8
+  },
+  "vector_search_metadata": {
+    "keywords": ["startup", "liderazgo", "ansiedad", "legado"],
+    "top_emotional_states": ["Motivación", "Claridad", "Reflexión"]
+  }
+}
