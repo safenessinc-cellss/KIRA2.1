@@ -140,22 +140,173 @@ export function AdminMonitor() {
   );
 }
 
-// --- MODULO 1: TABLERO GLOBAL ---
+// --- MODULO 1: TABLERO GLOBAL (COMPLETO) ---
 function GlobalDashboardView() {
+  const [stats, setStats] = useState({ users: 0, sales: 0, sentiment: { positive: 0, neutral: 0, negative: 0 } });
+  const [activities, setActivities] = useState<any[]>([]);
+
+  useEffect(() => {
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
+      setStats(prev => ({ ...prev, users: snap.size }));
+    });
+
+    const unsubJournals = onSnapshot(query(collection(db, 'journals'), orderBy('createdAt', 'desc'), limit(5)), (snap) => {
+      const newActivities: any[] = [];
+      snap.forEach(d => {
+        newActivities.push({
+          id: d.id,
+          user: "Estudiante",
+          action: `escribió en su diario`,
+          time: new Date(d.data().createdAt?.toDate()).toLocaleTimeString()
+        });
+      });
+      setActivities(newActivities);
+    });
+
+    const unsubSentiment = onSnapshot(collection(db, 'journals'), (snap) => {
+      const counts = { positive: 0, neutral: 0, negative: 0 };
+      snap.forEach(d => {
+        const s = d.data().sentiment;
+        if (s === 'positive') counts.positive++;
+        else if (s === 'neutral') counts.neutral++;
+        else if (s === 'negative') counts.negative++;
+      });
+      setStats(prev => ({ ...prev, sentiment: counts }));
+    });
+
+    return () => { unsubUsers(); unsubJournals(); unsubSentiment(); };
+  }, []);
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-8">
-      <h2 className="text-2xl font-bold text-slate-800 mb-4">Dashboard Ejecutivo</h2>
-      <p className="text-slate-500">Bienvenido al panel de administración de KIRA Coach.</p>
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+        <div className="bg-white rounded-2xl p-6 border border-slate-200">
+          <div className="text-3xl font-bold text-slate-800">{stats.users}</div>
+          <div className="text-slate-500 text-sm">Total Usuarios</div>
+        </div>
+        <div className="bg-white rounded-2xl p-6 border border-slate-200">
+          <div className="text-3xl font-bold text-emerald-600">{stats.sentiment.positive}</div>
+          <div className="text-slate-500 text-sm">Sentimiento Positivo</div>
+        </div>
+        <div className="bg-white rounded-2xl p-6 border border-slate-200">
+          <div className="text-3xl font-bold text-amber-600">{stats.sentiment.neutral}</div>
+          <div className="text-slate-500 text-sm">Sentimiento Neutral</div>
+        </div>
+        <div className="bg-white rounded-2xl p-6 border border-slate-200">
+          <div className="text-3xl font-bold text-rose-600">{stats.sentiment.negative}</div>
+          <div className="text-slate-500 text-sm">Sentimiento Negativo</div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 p-6">
+        <h3 className="font-semibold text-slate-800 mb-4">Actividad Reciente</h3>
+        <div className="space-y-3">
+          {activities.map(act => (
+            <div key={act.id} className="flex items-center gap-3 py-2 border-b border-slate-100">
+              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+                <Activity size={14} className="text-slate-500" />
+              </div>
+              <div className="flex-1">
+                <span className="font-medium text-slate-800">{act.user}</span>
+                <span className="text-slate-500 mx-1">{act.action}</span>
+              </div>
+              <div className="text-slate-400 text-xs">{act.time}</div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
-// --- MODULO: BI / ANALÍTICAS ---
-function BIView() {
+// --- MODULO: GESTIÓN DE PROMOCIONES (COMPLETO) ---
+function PromotionsManagerView() {
+  const [promotions, setPromotions] = useState<any[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [discount, setDiscount] = useState('');
+  const [code, setCode] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'promotions'), (snap) => {
+      setPromotions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, []);
+
+  const handleSave = async () => {
+    if (!title || !discount) return alert("Completa los campos requeridos");
+    try {
+      await addDoc(collection(db, 'promotions'), {
+        title,
+        description,
+        discount: parseInt(discount),
+        code,
+        startDate,
+        endDate,
+        active: true,
+        createdAt: new Date()
+      });
+      alert("Promoción creada");
+      setShowForm(false);
+      setTitle('');
+      setDescription('');
+      setDiscount('');
+      setCode('');
+      setStartDate('');
+      setEndDate('');
+    } catch (error) {
+      console.error(error);
+      alert("Error al crear promoción");
+    }
+  };
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-8">
-      <h2 className="text-2xl font-bold text-slate-800 mb-4">Business Intelligence</h2>
-      <p className="text-slate-500">Métricas y análisis de la plataforma.</p>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800">Gestión de Promociones</h2>
+        <button onClick={() => setShowForm(!showForm)} className="bg-teal-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-teal-600">
+          + Nueva Promoción
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-6">
+          <h3 className="font-bold text-lg mb-4">Crear Promoción</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input type="text" placeholder="Título" value={title} onChange={e => setTitle(e.target.value)} className="border rounded-lg px-4 py-2" />
+            <input type="text" placeholder="Código" value={code} onChange={e => setCode(e.target.value)} className="border rounded-lg px-4 py-2" />
+            <input type="number" placeholder="Descuento %" value={discount} onChange={e => setDiscount(e.target.value)} className="border rounded-lg px-4 py-2" />
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border rounded-lg px-4 py-2" />
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border rounded-lg px-4 py-2" />
+            <textarea placeholder="Descripción" value={description} onChange={e => setDescription(e.target.value)} className="border rounded-lg px-4 py-2 col-span-2" rows={3} />
+          </div>
+          <div className="flex justify-end gap-3 mt-4">
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 border rounded-lg">Cancelar</button>
+            <button onClick={handleSave} className="px-4 py-2 bg-teal-500 text-white rounded-lg">Guardar</button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {promotions.map(prom => (
+          <div key={prom.id} className="bg-white rounded-2xl border border-slate-200 p-5">
+            <div className="flex justify-between items-start mb-3">
+              <h3 className="font-bold text-slate-800">{prom.title}</h3>
+              <span className="bg-teal-100 text-teal-700 px-2 py-1 rounded text-xs font-bold">{prom.discount}% OFF</span>
+            </div>
+            {prom.code && <p className="text-xs font-mono text-indigo-600 mb-2">Código: {prom.code}</p>}
+            <p className="text-sm text-slate-500 mb-3">{prom.description}</p>
+            <div className="flex justify-between text-xs text-slate-400">
+              <span>Inicio: {new Date(prom.startDate).toLocaleDateString()}</span>
+              <span>Fin: {new Date(prom.endDate).toLocaleDateString()}</span>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
