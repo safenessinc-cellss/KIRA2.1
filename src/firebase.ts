@@ -1,7 +1,37 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDoc, connectFirestoreEmulator } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged, 
+  GoogleAuthProvider, 
+  signInWithPopup 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  addDoc, 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  orderBy, 
+  limit, 
+  onSnapshot,
+  deleteDoc,
+  connectFirestoreEmulator 
+} from 'firebase/firestore';
+import { 
+  getStorage, 
+  ref, 
+  uploadBytes, 
+  getDownloadURL,
+  deleteObject
+} from 'firebase/storage';
 import { getMessaging } from 'firebase/messaging';
 
 // Configuración CORRECTA de Firebase
@@ -24,8 +54,41 @@ export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
-// Nota: enableIndexedDbPersistence está deprecado, no lo uses por ahora
-// Si necesitas offline, usa: import { initializeFirestore, persistentLocalCache } from 'firebase/firestore';
+// Exportar funciones de Auth
+export { 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup
+};
+
+// Exportar funciones de Firestore
+export { 
+  collection, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  addDoc, 
+  query, 
+  where, 
+  getDocs, 
+  orderBy, 
+  limit, 
+  onSnapshot,
+  deleteDoc,
+  connectFirestoreEmulator
+};
+
+// Exportar funciones de Storage
+export { 
+  ref, 
+  uploadBytes, 
+  getDownloadURL,
+  deleteObject
+};
 
 export enum OperationType {
   CREATE = 'create',
