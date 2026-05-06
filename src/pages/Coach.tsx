@@ -1620,7 +1620,12 @@ function CoachProfileSettings({ profile }: any) {
 
     try {
       const storageRef = ref(storage, `coaches/${user.uid}/${type}_${Date.now()}_${file.name}`);
-      const uploadResult = await uploadBytes(storageRef, file);
+      
+      // Agregamos un timeout de 10s para evitar que la UI se congele si Firebase Storage falla
+      const uploadPromise = uploadBytes(storageRef, file);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout: Verifica las reglas de Firebase Storage")), 10000));
+      
+      const uploadResult = await Promise.race([uploadPromise, timeoutPromise]) as any;
       const url = await getDownloadURL(uploadResult.ref);
       
       if (type === 'photo') setFormData(prev => ({ ...prev, photoURL: url }));
@@ -1630,8 +1635,13 @@ function CoachProfileSettings({ profile }: any) {
       setUploading(null);
     } catch (err) {
       console.error(err);
-      setError(`Error al subir ${type}: ` + (err instanceof Error ? err.message : String(err)));
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setError(`Error al subir ${type}: ${errorMsg}. ¿Tienes Firebase Storage configurado?`);
+      if (type === 'resource') alert(`Error al subir recurso: ${errorMsg}\nPuedes pegar una URL externa en su lugar o configurar las reglas de Firebase Storage.`);
       setUploading(null);
+    } finally {
+      // Resetear el input para permitir seleccionar el mismo archivo
+      e.target.value = '';
     }
   };
 
