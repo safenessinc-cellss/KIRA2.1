@@ -1583,15 +1583,38 @@ function CoachProfileSettings({ profile }: any) {
 
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        ...formData,
-        mediaItems,
+      // Explicitly define fields to update to match firestore rules and avoid shadow fields
+      const updateData: any = {
+        displayName: formData.displayName,
+        specialties: formData.specialties,
+        specialty: formData.specialties[0] || '',
+        bio: formData.bio,
+        photoURL: formData.photoURL,
+        calendlyUrl: formData.calendlyUrl,
+        experienceLevel: formData.experienceLevel,
+        languages: formData.languages,
+        welcomeVideoUrl: formData.welcomeVideoUrl,
+        rating: formData.rating,
+        studentCount: formData.studentCount,
+        socialLinks: formData.socialLinks,
+        mediaItems: mediaItems,
         updatedAt: new Date()
-      });
+      };
+
+      await updateDoc(doc(db, 'users', user.uid), updateData);
       setSuccess(true);
+      setError(null);
       setTimeout(() => setSuccess(false), 3000);
-    } catch (e) {
-      handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`);
+    } catch (e: any) {
+      console.error("Error saving coach profile:", e);
+      const errorMsg = e.message || String(e);
+      setError(`Error al guardar: ${errorMsg.includes('permission-denied') ? 'Permisos insuficientes. Contacta a soporte.' : errorMsg}`);
+      
+      try {
+        handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`);
+      } catch (innerError) {
+        // handleFirestoreError throws, so we catch it here to keep the UI state
+      }
     } finally {
       setLoading(false);
     }
@@ -1641,10 +1664,8 @@ function CoachProfileSettings({ profile }: any) {
 
     try {
       const storageRef = ref(storage, `coaches/${user.uid}/${type}_${Date.now()}_${file.name}`);
-      
-      // Agregamos un timeout de 10s para evitar que la UI se congele si Firebase Storage falla
       const uploadPromise = uploadBytes(storageRef, file);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout: Verifica las reglas de Firebase Storage")), 10000));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout de conexión al servidor de archivos. Intente con una imagen más pequeña o revise su conexión.")), 15000));
       
       const uploadResult = await Promise.race([uploadPromise, timeoutPromise]) as any;
       const url = await getDownloadURL(uploadResult.ref);
@@ -1657,7 +1678,8 @@ function CoachProfileSettings({ profile }: any) {
     } catch (err) {
       console.error(err);
       const errorMsg = err instanceof Error ? err.message : String(err);
-      setError(`Error al subir ${type}: ${errorMsg}. ¿Tienes Firebase Storage configurado?`);
+      const isTimeout = errorMsg.includes("Timeout");
+      setError(`Error al subir ${type}: ${errorMsg}. ${isTimeout ? 'Esto suele ocurrir si Firebase Storage no está activado en tu consola de Firebase o si las reglas lo bloquean.' : ''}`);
       setUploading(null);
     } finally {
       // Resetear el input para permitir seleccionar el mismo archivo
