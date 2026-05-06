@@ -570,30 +570,40 @@ export function Journal() {
         collection(db, 'journals'),
         where('userId', '==', user.uid),
         orderBy('createdAt', 'desc'),
-        limit(3)
+        limit(5)
       );
       const snap = await getDocs(q);
-      const previousEntries = snap.docs.map(d => d.data().content).join('\n---\n');
+      const previousEntries = snap.docs.map(d => ({
+        content: d.data().content,
+        date: d.data().createdAt?.toDate?.()?.toLocaleDateString() || 'Reciente'
+      }));
 
-      const prompt = `
-        Actúa como Kira, una asistente de bienestar consciente.
-        Basado en los últimos diarios de ${user.displayName || 'el usuario'}:
-        "${previousEntries || 'El usuario aún no tiene entradas previas.'}"
+      const analyticPrompt = `
+        Actúa como Kira, una IA de alto nivel en Biohacking y Coaching de Mentalidad.
+        Analiza las últimas 5 entradas del diario del usuario (${user.displayName}):
+        ${JSON.stringify(previousEntries)}
         
-        Genera una pregunta corta, cálida y empática (máximo 15 palabras) para que el usuario reflexione hoy. 
-        Si no hay entradas previas, dale una bienvenida inspiradora.
+        Tu objetivo es identificar:
+        1. Patrones de estrés o agotamiento.
+        2. Incongruencias entre sus valores declarados y sus acciones.
+        3. Logros sutiles que el usuario podría estar ignorando.
+
+        Basado en este análisis, genera UNA única pregunta reflexiva y un "Nudge" (impulso) corto.
+        Respuesta esperada en este formato:
+        Pregunta: [Tu pregunta reflexiva de max 15 palabras]
+        Nudge: [Tu sugerencia de acción proactiva]
       `;
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
       const result = await ai.models.generateContent({
         model: "gemini-1.5-flash",
-        contents: prompt
+        contents: analyticPrompt
       });
       const text = result.text || '';
       setAiPrompt(text.trim());
     } catch (e) {
       console.error('Error generating predictive prompt:', e);
-      setAiPrompt('¿Qué intención quieres sembrar en tu corazón hoy?');
+      setAiPrompt('¿Qué intención quieres sembrar en tu corazón hoy?\nNudge: Respira profundamente 3 veces.');
     } finally {
       setLoadingPrompt(false);
     }
