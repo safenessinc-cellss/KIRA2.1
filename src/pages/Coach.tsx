@@ -99,7 +99,6 @@ export function CoachDashboard() {
 
   return (
     <div className="flex flex-col gap-8 animate-in fade-in duration-500">
-      {/* Header Panel */}
       <div className="bg-white/40 backdrop-blur-xl border border-white/60 p-10 rounded-[40px] shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-violet-100/30 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
         <div className="relative z-10">
@@ -144,7 +143,6 @@ export function CoachDashboard() {
         </div>
       )}
 
-      {/* Navegación Modular CRM */}
       <div className="flex flex-wrap gap-2 p-1.5 bg-slate-100 rounded-[32px] w-fit shadow-sm border border-slate-200/50">
         <TabBtn active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<Layout size={16}/>} label="Panel de Control" />
         <TabBtn active={activeTab === 'tracking'} onClick={() => setActiveTab('tracking')} icon={<BadgeCheck size={16}/>} label="Academic Tracking" disabled={!isApproved} />
@@ -1486,18 +1484,22 @@ function CoachProfileSettings({ profile }: any) {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
+    // Mostrar alerta informativa para subida de recursos
+    if (type === 'resource') {
+      alert(`📌 SUBIDA TEMPORALMENTE DESHABILITADA\n\nPara agregar recursos a la Bóveda:\n1. Sube tu archivo a Google Drive, YouTube o Dropbox\n2. Copia el enlace público\n3. Pégalo en el campo de URL\n\n✅ Esto funciona al instante sin configuración adicional.`);
+      e.target.value = '';
+      return;
+    }
+
     setUploading(type);
     setError(null);
 
-    // Timeout para evitar congelamiento
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error("⏱️ Timeout: Firebase Storage no responde. Verifica las reglas de Storage.")), 15000);
     });
 
     try {
       const storageRef = ref(storage, `coaches/${user.uid}/${type}_${Date.now()}_${file.name}`);
-      
-      // Carrera entre subida y timeout
       const uploadPromise = uploadBytes(storageRef, file);
       const uploadResult = await Promise.race([uploadPromise, timeoutPromise]) as any;
       const url = await getDownloadURL(uploadResult.ref);
@@ -1506,14 +1508,6 @@ function CoachProfileSettings({ profile }: any) {
         setFormData(prev => ({ ...prev, photoURL: url }));
       } else if (type === 'welcome') {
         setFormData(prev => ({ ...prev, welcomeVideoUrl: url }));
-      } else if (type === 'resource') {
-        setNewMedia(prev => ({ 
-          ...prev, 
-          url: url, 
-          type: file.type.includes('pdf') ? 'pdf' : file.type.includes('video') ? 'video' : 'imagen' 
-        }));
-        setSuccess(true);
-        setTimeout(() => setSuccess(false), 2000);
       }
 
       setUploading(null);
@@ -1522,14 +1516,10 @@ function CoachProfileSettings({ profile }: any) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       
       setError(`⚠️ No se pudo subir el archivo: ${errorMsg}`);
-      
-      if (type === 'resource') {
-        alert(`❌ Error al subir recurso:\n${errorMsg}\n\n💡 SOLUCIÓN:\n1. Usa una URL externa (YouTube, Drive, Dropbox)\n2. O configura Firebase Storage (ve a Storage → Rules y pega las reglas de prueba)`);
-      }
+      alert(`❌ Error al subir ${type === 'photo' ? 'foto' : 'video'}:\n${errorMsg}\n\n💡 SOLUCIÓN:\nUsa una URL externa (Imgur, YouTube, etc.) en el campo de texto.`);
       
       setUploading(null);
     } finally {
-      // Resetear input para permitir re-intentos
       e.target.value = '';
     }
   };
@@ -1733,35 +1723,56 @@ function CoachProfileSettings({ profile }: any) {
             </div>
           </div>
 
+          {/* FOTO DE PERFIL - VERSIÓN CORREGIDA */}
           <div className="space-y-2">
-            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Foto de Perfil (Web Pública - Servicios)</label>
-            <p className="text-[10px] text-slate-500 px-1 mb-1">Personaliza la foto que verán tus futuros alumnos en la web inicial.</p>
-            <div className="flex gap-4">
-              <div className="flex-1 relative">
-                <input 
-                  value={formData.photoURL}
-                  onChange={e => setFormData({...formData, photoURL: e.target.value})}
-                  className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-                  placeholder="URL de imagen externa..."
+            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Foto de Perfil</label>
+            <p className="text-[10px] text-slate-500 px-1 mb-1">Personaliza la foto que verán tus futuros alumnos.</p>
+            
+            {formData.photoURL && (
+              <div className="mb-3 flex justify-center">
+                <img 
+                  src={formData.photoURL} 
+                  alt="Preview" 
+                  className="w-24 h-24 rounded-full object-cover border-4 border-kirateal/20 shadow-lg"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://via.placeholder.com/96?text=Error';
+                  }}
                 />
               </div>
-              <div className="relative">
-                <input 
-                  type="file" 
-                  id="profile-upload" 
-                  className="hidden" 
-                  accept="image/*"
-                  onChange={(e) => handleFileUpload(e, 'photo')}
-                />
-                <label 
-                  htmlFor="profile-upload"
-                  className="flex items-center gap-2 px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer"
-                >
-                  {uploading === 'photo' ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                  Subir
-                </label>
-              </div>
+            )}
+            
+            <input 
+              value={formData.photoURL}
+              onChange={e => setFormData({...formData, photoURL: e.target.value})}
+              className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
+              placeholder="https://ejemplo.com/mi-foto.jpg"
+            />
+            
+            <div className="flex gap-2">
+              <button 
+                type="button"
+                onClick={() => {
+                  const url = prompt('Pega la URL de tu imagen:');
+                  if (url) setFormData({...formData, photoURL: url});
+                }}
+                className="flex-1 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all"
+              >
+                📷 Pegar URL
+              </button>
+              
+              <a 
+                href="https://postimages.org/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex-1 px-4 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all text-center"
+              >
+                🔗 Subir imagen gratis
+              </a>
             </div>
+            
+            <p className="text-[10px] text-slate-400 px-1 mt-2">
+              💡 Usa <strong>PostImage.org</strong> o <strong>Imgur</strong> para obtener una URL gratis
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -1772,24 +1783,8 @@ function CoachProfileSettings({ profile }: any) {
                   value={formData.welcomeVideoUrl}
                   onChange={e => setFormData({...formData, welcomeVideoUrl: e.target.value})}
                   className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-                  placeholder="URL de video (YouTube/Vimeo) o sube uno..."
+                  placeholder="URL de video (YouTube/Vimeo)..."
                 />
-              </div>
-              <div className="relative">
-                <input 
-                  type="file" 
-                  id="welcome-upload" 
-                  className="hidden" 
-                  accept="video/*"
-                  onChange={(e) => handleFileUpload(e, 'welcome')}
-                />
-                <label 
-                  htmlFor="welcome-upload"
-                  className="flex items-center gap-2 px-4 py-3 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer"
-                >
-                  {uploading === 'welcome' ? <Loader2 size={16} className="animate-spin" /> : <Video size={16} />}
-                  Subir
-                </label>
               </div>
             </div>
             {formData.welcomeVideoUrl && (
@@ -1859,7 +1854,7 @@ function CoachProfileSettings({ profile }: any) {
         </form>
       </div>
 
-      {/* BÓVEDA DE CONTENIDO CORREGIDA */}
+      {/* BÓVEDA DE CONTENIDO - SIN SUBIDA DE ARCHIVOS */}
       <div className="w-full xl:w-[450px] bg-white rounded-2xl border border-slate-200 p-8 flex flex-col">
           <div className="mb-6">
             <h3 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2"><FolderTree size={20} className="text-emerald-500" /> Bóveda de Contenido</h3>
@@ -1948,38 +1943,25 @@ function CoachProfileSettings({ profile }: any) {
                  </div>
                </div>
                
+               {/* SOLO CAMPO DE URL - SIN BOTÓN DE SUBIR ARCHIVO */}
                <div className="flex gap-2">
                  <div className="flex-1">
                    <input 
                      value={newMedia.url} 
                      onChange={e => setNewMedia({...newMedia, url: e.target.value})} 
-                     placeholder={uploading === 'resource' ? "⏳ Subiendo archivo..." : "🔗 URL externa (YouTube, Drive, Dropbox) o sube archivo..."} 
+                     placeholder="🔗 Pega URL de YouTube, Google Drive, Dropbox o imagen directa" 
                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-kirateal/5 transition-all h-full" 
                    />
                  </div>
-                 <div className="relative">
-                   <input 
-                     type="file" 
-                     id="resource-upload" 
-                     className="hidden" 
-                     accept=".pdf,video/*,image/*"
-                     onChange={(e) => handleFileUpload(e, 'resource')} 
-                   />
-                   <label 
-                     htmlFor="resource-upload"
-                     className="flex items-center justify-center p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-all cursor-pointer h-full shadow-lg shadow-slate-200"
-                     title="Subir archivo (requiere Firebase Storage configurado)"
-                   >
-                     {uploading === 'resource' ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
-                   </label>
+                 <div className="text-xs text-slate-400 flex items-center px-2 bg-slate-100 rounded-xl">
+                   <ExternalLink size={14} className="mr-1" /> URL
                  </div>
                </div>
-               
-               {error && error.includes('Storage') && (
-                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-700">
-                   ⚠️ {error}
-                 </div>
-               )}
+
+               <div className="p-3 bg-blue-50 rounded-xl text-[10px] text-blue-700">
+                 ⚡ <strong>Usa URLs externas</strong><br />
+                 Para agregar archivos, súbelos a Google Drive, YouTube o Dropbox y pega el enlace aquí.
+               </div>
                
                <button 
                  type="button"
@@ -2226,7 +2208,7 @@ export function CoachCourses() {
                   {c.status}
                </div>
             </div>
-            <div className="p-6 flex-1 flex flex-col">
+                       <div className="p-6 flex-1 flex flex-col">
               <h3 className="font-bold text-slate-900 text-[16px] mb-1 leading-tight tracking-tight">{c.title}</h3>
               <p className="text-[14px] text-primary font-extrabold mb-3">${c.price}</p>
               <p className="text-[12px] text-slate-500 line-clamp-2 mb-6 flex-1 leading-relaxed">{c.description}</p>
