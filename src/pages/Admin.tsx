@@ -569,7 +569,7 @@ function GlobalDashboardView() {
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2">
       <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200">
         <h2 className="font-black text-slate-800 tracking-tight flex items-center gap-2">
-          <Activity size={20} className="text-kirateal" /> Command Center Executive
+          <Activity size={20} className="text-kirateal" /> Centro de Mando Ejecutivo
         </h2>
         <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
           {[7, 30, 90].map(d => (
@@ -602,19 +602,19 @@ function GlobalDashboardView() {
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
         <StatCard title="Ventas del Día" value={`$${(stats.sales * 0.15).toLocaleString()}`} subtitle="Ultimas 24hs" icon={<BarChart3 className="text-kirateal" />} />
-        <StatCard title="Kira Net Revenue" value={`$${(stats.sales * 0.7).toLocaleString()}`} subtitle="Comisión (70%)" icon={<BarChart3 className="text-emerald-500" />} />
-        <StatCard title="Coach Payouts" value={`$${(stats.sales * 0.3).toLocaleString()}`} subtitle="Liquidación (30%)" icon={<CreditCard className="text-purple-500" />} />
+        <StatCard title="Ingresos Netos Kira" value={`$${(stats.sales * 0.7).toLocaleString()}`} subtitle="Comisión (70%)" icon={<BarChart3 className="text-emerald-500" />} />
+        <StatCard title="Pagos a Coaches" value={`$${(stats.sales * 0.3).toLocaleString()}`} subtitle="Liquidación (30%)" icon={<CreditCard className="text-purple-500" />} />
         <StatCard 
-          title="Product DAU" 
+          title="DAU del Producto" 
           value={`${stats.engagement.dailyActive}`} 
-          subtitle={`${stats.engagement.weeklyActive} WAU (Retention)`} 
+          subtitle={`${stats.engagement.weeklyActive} WAU (Retención)`} 
           icon={<Users className="text-blue-500" />} 
           color="blue" 
         />
         <StatCard 
-          title="Stability Alert" 
+          title="Alerta de Estabilidad" 
           value={`${stats.burnoutRisk.riskIndex.toFixed(1)}%`} 
-          subtitle={`${stats.burnoutRisk.usersAtRisk} Usuarios en Churn Risk`} 
+          subtitle={`${stats.burnoutRisk.usersAtRisk} Usuarios en Riesgo`} 
           icon={<AlertTriangle className={isHighRisk ? "text-rose-600" : "text-emerald-600"} />} 
           color={isHighRisk ? "rose" : "emerald"} 
         />
@@ -699,7 +699,7 @@ function GlobalDashboardView() {
         </div>
         <div className="flex items-center gap-3 mb-6 relative z-10">
            <Sparkles className="text-amber-300 animate-pulse" size={24} />
-           <h3 className="font-bold text-lg tracking-tight">Kira Intelligence: AI-Suggested Insights</h3>
+           <h3 className="font-bold text-lg tracking-tight">Inteligencia Kira: Insights Sugeridos por IA</h3>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
@@ -3630,3 +3630,4 @@ function PromotionsManagerView() {
 // Compatibilidad con rutas anteriores
 export function AdminCoaches() { return <AdminMonitor />; }
 export function AdminReviews() { return <AdminMonitor />; }
+
