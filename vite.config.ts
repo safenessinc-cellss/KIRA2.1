@@ -20,12 +20,12 @@ export default defineConfig(({mode}) => {
           theme_color: '#1B4D5D',
           icons: [
             {
-              src: '/assets/kira-logo.png',
+              src: '/images/11.png',
               sizes: '192x192',
               type: 'image/png'
             },
             {
-              src: '/assets/kira-logo.png',
+              src: '/images/11.png',
               sizes: '512x512',
               type: 'image/png'
             }
@@ -46,29 +46,12 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
-    optimizeDeps: {
-      include: ['react-is', 'recharts', 'react', 'react-dom']
-    },
-    build: {
-      rollupOptions: {
-        // Esto ayuda a resolver react-is correctamente
-        output: {
-          manualChunks: {
-            'react-vendor': ['react', 'react-dom', 'react-is'],
-            'recharts-vendor': ['recharts']
-          }
-        }
-      },
-      commonjsOptions: {
-        include: [/node_modules/],
-        transformMixedEsModules: true
-      }
-    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
+      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: false,
       ws: false,
     },
   };
 });
+
