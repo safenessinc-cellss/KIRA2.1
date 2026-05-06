@@ -90,6 +90,39 @@ export function AdminMonitor() {
              ⌘K
            </div>
         </div>
+        {isSuperAdmin && (
+           <button 
+             onClick={async () => {
+               const confirmSeed = window.confirm("¿Generar datos de prueba en la base de datos vacía? Esto simulará promociones, transacciones y alumnos.");
+               if (!confirmSeed) return;
+               try {
+                  await addDoc(collection(db, 'promotions'), {
+                     title: 'Beca KIRA 2026',
+                     description: 'Descuento especial por registro.',
+                     code: 'Beca2026',
+                     type: 'Descuento',
+                     status: 'active',
+                     priority: 1,
+                     createdAt: new Date().toISOString()
+                  });
+                  await addDoc(collection(db, 'transactions'), {
+                     amount: 149.00,
+                     type: 'payment',
+                     status: 'completed',
+                     description: 'Plan Premium',
+                     userEmail: 'demo@user.com',
+                     createdAt: new Date().toISOString()
+                  });
+                  alert('Datos semilla generados con éxito.');
+               } catch(e) {
+                  console.error(e);
+               }
+             }}
+             className="w-full justify-center flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition shadow-md"
+           >
+             <Zap size={14} className="text-amber-400" /> Cargar Demo Data Inicial
+           </button>
+        )}
 
         <div className="flex flex-col gap-2">
           {categories.map(cat => (
