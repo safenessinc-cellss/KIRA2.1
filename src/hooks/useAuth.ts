@@ -1,175 +1,130 @@
-import React, { useState, useEffect, createContext, useContext } from 'react';
-import { 
-  auth,
-  db,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  GoogleAuthProvider,
-  signInWithPopup,
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc
-} from '../firebase';
+import { useState, useEffect } from 'react';
+import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 
-interface AuthContextType {
-  user: any | null;
-  role: string | null;
-  loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, name: string) => Promise<void>;
-  logout: () => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
-  updateUserRole: (userId: string, newRole: string) => Promise<void>;
-}
+export type UserRole = 'admin' | 'coach' | 'alumno' | null;
 
-const AuthContext = createContext<AuthContextType>({} as AuthContextType);
-
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<any | null>(null);
-  const [role, setRole] = useState<string | null>(null);
+export function useAuth() {
+  const [user, setUser] = useState<any>(null);
+  const [role, setRole] = useState<UserRole>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      
-      if (firebaseUser) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            setRole(userData.role || 'alumno');
-          } else {
-            // Criar documento de usuário se não existir
-            const defaultRole = 'alumno';
-            await setDoc(doc(db, 'users', firebaseUser.uid), {
-              email: firebaseUser.email,
-              displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
-              photoURL: firebaseUser.photoURL || '',
-              role: defaultRole,
-              createdAt: new Date(),
-              approvalStatus: 'approved',
-              points: 0
-            });
-            setRole(defaultRole);
-          }
-        } catch (error) {
-          console.error("Error fetching user role:", error);
-          setRole('alumno');
-        }
-      } else {
-        setRole(null);
-      }
-      
-      setLoading(false);
-    });
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      try {
+        if (u) {
+          const docRef = doc(db, 'users', u.uid);
+          try {
+            const docSnap = await getDoc(docRef);
+            let userData = {
+              uid: u.uid,
+              email: u.email,
+              displayName: u.displayName,
+              photoURL: u.photoURL,
+              emailVerified: u.emailVerified,
+            };
 
+            const requestedRole = sessionStorage.getItem('requestedRole');
+            sessionStorage.removeItem('requestedRole');
+
+            if (docSnap.exists()) {
+              const firestoreData = docSnap.data();
+              
+              let currentRole = firestoreData.role as UserRole;
+              if (u.email === 'safeness.c.a@gmail.com' && currentRole !== 'admin') {
+                currentRole = 'admin';
+                try {
+                  await updateDoc(docRef, { role: 'admin' });
+                } catch (e) {
+                  console.error("Failed to force admin role", e);
+                }
+              }
+
+              setRole(currentRole);
+              setUser({ ...userData, ...firestoreData, role: currentRole, uid: u.uid });
+              
+              // If they requested coach but are alumno, alert them (they must apply manually as update is blocked by rules)
+              if (requestedRole === 'coach' && currentRole !== 'coach' && u.email !== 'safeness.c.a@gmail.com') {
+                alert("Ya tienes una cuenta de alumno. Para solicitar ser Coach, contacta al soporte.");
+              }
+
+              // Update activity
+              try {
+                await updateDoc(docRef, { 
+                  lastLoginAt: new Date(),
+                  lastActivityAt: new Date(),
+                  isEmailVerified: u.emailVerified
+                });
+              } catch (e) {
+                console.error('Failed to update metadata:', e);
+              }
+            } else {
+              const isWhitelistedAdmin = u.email === 'safeness.c.a@gmail.com';
+              const newRole = isWhitelistedAdmin ? 'admin' : (requestedRole === 'coach' ? 'coach' : 'alumno');
+              const initialApprovalStatus = isWhitelistedAdmin ? 'approved' : 'pending';
+              
+              const newUser = {
+                uid: u.uid,
+                email: u.email,
+                displayName: u.displayName || '',
+                photoURL: u.photoURL || '',
+                role: newRole,
+                approvalStatus: initialApprovalStatus,
+                theme: 'teal',
+                isEmailVerified: u.emailVerified,
+                createdAt: new Date(),
+                lastActivityAt: new Date(),
+                points: 0
+              };
+
+              await setDoc(docRef, newUser);
+              setRole(newRole);
+              setUser({ ...userData, ...newUser });
+              
+              if (!isWhitelistedAdmin) {
+                alert(`¡Gracias por registrarte! Tu cuenta de ${newRole === 'coach' ? 'Coach' : 'Alumno'} está pendiente de aprobación por un administrador.`);
+              }
+            }
+          } catch (e) {
+            handleFirestoreError(e, OperationType.GET, `users/${u.uid}`);
+          }
+        } else {
+          setUser(null);
+          setRole(null);
+        }
+      } catch (err) {
+        console.error('Auth handler error:', err);
+      } finally {
+        setLoading(false);
+      }
+    });
+    
     return () => unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string) => {
-    try {
-      const result = await signInWithEmailAndPassword(auth, email, password);
-      const userDoc = await getDoc(doc(db, 'users', result.user.uid));
-      if (userDoc.exists()) {
-        setRole(userDoc.data().role);
-      }
-    } catch (error) {
-      console.error("Login error:", error);
-      throw error;
+  const login = async (requestedRole?: UserRole) => {
+    if (loading) return;
+    if (requestedRole) {
+      sessionStorage.setItem('requestedRole', requestedRole);
     }
-  };
-
-  const signUp = async (email: string, password: string, name: string) => {
+    const provider = new GoogleAuthProvider();
     try {
-      const result = await createUserWithEmailAndPassword(auth, email, password);
-      await setDoc(doc(db, 'users', result.user.uid), {
-        email,
-        displayName: name,
-        photoURL: '',
-        role: 'alumno',
-        createdAt: new Date(),
-        approvalStatus: 'approved',
-        points: 0
-      });
-      setRole('alumno');
-    } catch (error) {
-      console.error("SignUp error:", error);
-      throw error;
-    }
-  };
-
-  const logout = async () => {
-    try {
-      await signOut(auth);
-      setRole(null);
-    } catch (error) {
-      console.error("Logout error:", error);
-      throw error;
-    }
-  };
-
-  const signInWithGoogle = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const firebaseUser = result.user;
-      
-      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-      
-      if (!userDoc.exists()) {
-        await setDoc(doc(db, 'users', firebaseUser.uid), {
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
-          photoURL: firebaseUser.photoURL || '',
-          role: 'alumno',
-          createdAt: new Date(),
-          approvalStatus: 'approved',
-          points: 0
-        });
-        setRole('alumno');
+      await signInWithPopup(auth, provider);
+    } catch (error: any) {
+      if (error.code === 'auth/cancelled-popup-request') {
+        console.warn('Login popup was closed before completion or another request was pending.');
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        console.log('User closed the login popup.');
       } else {
-        setRole(userDoc.data().role);
+        console.error('Authentication Error:', error);
       }
-    } catch (error) {
-      console.error("Google login error:", error);
-      throw error;
     }
   };
-
-  const updateUserRole = async (userId: string, newRole: string) => {
-    try {
-      await updateDoc(doc(db, 'users', userId), { role: newRole });
-      if (user?.uid === userId) {
-        setRole(newRole);
-      }
-    } catch (error) {
-      console.error("Update role error:", error);
-      throw error;
-    }
+  
+  const logout = async () => {
+    await signOut(auth);
   };
 
-  const authValue: AuthContextType = {
-    user,
-    role,
-    loading,
-    login,
-    signUp,
-    logout,
-    signInWithGoogle,
-    updateUserRole
-  };
-
-  return React.createElement(AuthContext.Provider, { value: authValue }, children);
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  return { user, role, loading, login, logout };
 }
