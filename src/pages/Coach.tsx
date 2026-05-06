@@ -98,25 +98,45 @@ export function CoachDashboard() {
   };
 
   return (
-    <div className="flex flex-col gap-8 animate-in fade-in duration-500">
-      <div className="bg-white/40 backdrop-blur-xl border border-white/60 p-10 rounded-[40px] shadow-sm relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-violet-100/30 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
-        <div className="relative z-10">
-          <div className="flex flex-wrap items-center justify-between gap-6">
-            <div>
-              <h1 className="text-4xl font-black text-slate-900 tracking-tighter mb-2">Academic Command Center</h1>
-              <p className="text-slate-500 font-medium max-w-lg">Gestión de alto nivel de tu claustro de alumnos y activos digitales.</p>
-            </div>
-            {!isApproved && (
-              <div className="px-6 py-3 bg-amber-50 border border-amber-100 rounded-3xl flex items-center gap-3">
-                 <AlertCircle size={20} className="text-amber-500" />
-                 <p className="text-xs font-bold text-amber-700 uppercase tracking-tight">Pendiente de Aprobación</p>
-              </div>
-            )}
+ <div className="flex flex-col gap-8 animate-in fade-in duration-500">
+  <div className="bg-white/40 backdrop-blur-xl border border-white/60 p-10 rounded-[40px] shadow-sm relative overflow-hidden">
+    <div className="absolute top-0 right-0 w-64 h-64 bg-violet-100/30 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+    <div className="relative z-10">
+      <div className="flex flex-wrap items-center justify-between gap-6">
+        
+        {/* LOGO + TÍTULO */}
+        <div className="flex items-center gap-4">
+          {/* Logo 11.png */}
+          <img 
+            src="/images/11.png" 
+            alt="KIRA Logo" 
+            className="h-16 w-auto object-contain drop-shadow-lg"
+            onError={(e) => {
+              // Fallback si la imagen no existe
+              const img = e.target as HTMLImageElement;
+              img.style.display = 'none';
+              const fallbackDiv = document.createElement('div');
+              fallbackDiv.className = 'w-16 h-16 bg-gradient-to-br from-kirateal to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg';
+              fallbackDiv.innerHTML = '<span class="text-white font-black text-2xl">K</span>';
+              img.parentElement?.appendChild(fallbackDiv);
+            }}
+          />
+          <div>
+            <h1 className="text-4xl font-black text-slate-900 tracking-tighter mb-2">Academic Command Center</h1>
+            <p className="text-slate-500 font-medium max-w-lg">Gestión de alto nivel de tu claustro de alumnos y activos digitales.</p>
           </div>
         </div>
+        
+        {/* BADGE DE ESTADO */}
+        {!isApproved && (
+          <div className="px-6 py-3 bg-amber-50 border border-amber-100 rounded-3xl flex items-center gap-3">
+             <AlertCircle size={20} className="text-amber-500" />
+             <p className="text-xs font-bold text-amber-700 uppercase tracking-tight">Pendiente de Aprobación</p>
+          </div>
+        )}
       </div>
-
+    </div>
+  </div>
       {!hasMembership && isApproved && (
         <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-[40px] p-10 shadow-2xl relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] -mr-48 -mt-48 transition-transform group-hover:scale-110 duration-700" />
