@@ -1,16 +1,17 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { 
-  auth, 
-  signInWithEmailAndPassword, 
+  auth,
+  db,
+  signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,
-  db,
   doc,
   getDoc,
-  setDoc
+  setDoc,
+  updateDoc
 } from '../firebase';
 
 interface AuthContextType {
@@ -21,6 +22,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
   signInWithGoogle: () => Promise<void>;
+  updateUserRole: (userId: string, newRole: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -38,18 +40,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (userDoc.exists()) {
-            setRole(userDoc.data().role || 'alumno');
+            const userData = userDoc.data();
+            setRole(userData.role || 'alumno');
           } else {
+            // Criar documento de usuário se não existir
+            const defaultRole = 'alumno';
             await setDoc(doc(db, 'users', firebaseUser.uid), {
               email: firebaseUser.email,
               displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
               photoURL: firebaseUser.photoURL || '',
-              role: 'alumno',
+              role: defaultRole,
               createdAt: new Date(),
               approvalStatus: 'approved',
               points: 0
             });
-            setRole('alumno');
+            setRole(defaultRole);
           }
         } catch (error) {
           console.error("Error fetching user role:", error);
@@ -135,17 +140,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const value: AuthContextType = {
+  const updateUserRole = async (userId: string, newRole: string) => {
+    try {
+      await updateDoc(doc(db, 'users', userId), { role: newRole });
+      if (user?.uid === userId) {
+        setRole(newRole);
+      }
+    } catch (error) {
+      console.error("Update role error:", error);
+      throw error;
+    }
+  };
+
+  const authValue: AuthContextType = {
     user,
     role,
     loading,
     login,
     signUp,
     logout,
-    signInWithGoogle
+    signInWithGoogle,
+    updateUserRole
   };
 
-  return React.createElement(AuthContext.Provider, { value }, children);
+  return React.createElement(AuthContext.Provider, { value: authValue }, children);
 }
 
 export function useAuth() {
