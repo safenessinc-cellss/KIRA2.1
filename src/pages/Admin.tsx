@@ -5,6 +5,7 @@ import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSna
 import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, Palette, BrainCircuit, ArrowRight } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
+import { FileUpload } from '../components/FileUpload';
 import { cn } from '../lib/utils';
 
 type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'ai_monitoring';
@@ -1510,6 +1511,8 @@ function CoachCuratorView() {
 function MarketplaceEditorView() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<any>({});
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'marketplace'), (snap) => {
@@ -1528,7 +1531,9 @@ function MarketplaceEditorView() {
          status: 'draft',
          createdAt: new Date(),
          author: 'Admin',
-         imageUrl: 'https://picsum.photos/seed/' + Math.random() + '/400/300'
+         imageUrl: 'https://picsum.photos/seed/' + Math.random() + '/400/300',
+         contentUrl: '',
+         videoUrl: ''
       });
     } catch (e) {
       console.error(e);
@@ -1541,54 +1546,166 @@ function MarketplaceEditorView() {
     } catch (e) {
       console.error(e);
     }
-  }
+  };
+
+  const startEditing = (item: any) => {
+    setEditingId(item.id);
+    setEditForm({ ...item });
+  };
+
+  const handleSave = async () => {
+    if (!editingId) return;
+    try {
+      const { id, ...data } = editForm;
+      await updateDoc(doc(db, 'marketplace', editingId), {
+        ...data,
+        price: Number(data.price)
+      });
+      setEditingId(null);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (window.confirm('¿Estás seguro de eliminar este producto?')) {
+      try {
+        await deleteDoc(doc(db, 'marketplace', id));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in">
        <div className="flex gap-4 mb-4">
-          <button onClick={() => addPlaceholder('curso')} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm transition-all focus:ring-4 focus:ring-indigo-600/20">
+          <button onClick={() => addPlaceholder('curso')} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 shadow-xl shadow-slate-900/10 transition-all">
             + Nuevo Curso
           </button>
-          <button onClick={() => addPlaceholder('libro')} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-sm transition-all focus:ring-4 focus:ring-emerald-600/20">
+          <button onClick={() => addPlaceholder('libro')} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600 shadow-xl shadow-slate-900/10 transition-all">
             + Nuevo Libro
           </button>
        </div>
-       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {items.map(item => (
-             <div key={item.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm group">
-                <div className="h-40 bg-slate-100 relative overflow-hidden">
+             <div key={item.id} className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all group relative">
+                <div className="h-48 bg-slate-100 relative overflow-hidden">
                    {item.imageUrl ? (
-                      <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                      <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                    ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-300">
-                         {item.type === 'curso' ? <PlayCircle size={40} /> : <BookOpen size={40} />}
+                         {item.type === 'curso' ? <PlayCircle size={48} /> : <BookOpen size={48} />}
                       </div>
                    )}
-                   <div className="absolute top-3 left-3 px-2 py-1 bg-black/60 backdrop-blur text-white text-[10px] font-bold uppercase rounded-md tracking-wider">
+                   <div className="absolute top-4 left-4 px-3 py-1.5 bg-black/40 backdrop-blur-md text-white text-[9px] font-black uppercase rounded-full tracking-[0.2em] border border-white/20">
                       {item.type}
                    </div>
+                   <button 
+                     onClick={() => handleDelete(item.id)}
+                     className="absolute top-4 right-4 p-2 bg-white/10 backdrop-blur-md text-white/50 hover:text-rose-500 hover:bg-white rounded-full transition-all group-hover:opacity-100 opacity-0"
+                   >
+                     <Trash2 size={16} />
+                   </button>
                 </div>
-                <div className="p-5">
-                   <h3 className="font-bold text-slate-800 text-sm mb-1">{item.title}</h3>
-                   <p className="text-slate-500 text-xs mb-4">Por {item.author || 'Anónimo'}</p>
-                   
-                   <div className="flex justify-between items-center mt-4">
-                      <span className="font-black text-indigo-600">${item.price} USD</span>
-                      <button 
-                         onClick={() => toggleStatus(item.id, item.status)}
-                         className={cn("px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition", item.status === 'published' ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100" : "bg-slate-100 text-slate-500 hover:bg-slate-200")}
-                      >
-                         {item.status === 'published' ? 'Público' : 'Borrador'}
-                      </button>
-                   </div>
+                <div className="p-8">
+                   {editingId === item.id ? (
+                      <div className="space-y-4">
+                         <input 
+                            className="w-full px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                            value={editForm.title}
+                            onChange={(e) => setEditForm({...editForm, title: e.target.value})}
+                            placeholder="Título"
+                         />
+                         <div className="flex gap-2">
+                           <input 
+                              type="number"
+                              className="w-1/2 px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                              value={editForm.price}
+                              onChange={(e) => setEditForm({...editForm, price: e.target.value})}
+                              placeholder="Precio"
+                           />
+                           <input 
+                              className="w-1/2 px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                              value={editForm.author}
+                              onChange={(e) => setEditForm({...editForm, author: e.target.value})}
+                              placeholder="Autor"
+                           />
+                         </div>
+                         <input 
+                            className="w-full px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
+                            value={editForm.imageUrl}
+                            onChange={(e) => setEditForm({...editForm, imageUrl: e.target.value})}
+                            placeholder="URL de Imagen (Opcional)"
+                         />
+                         {item.type === 'curso' ? (
+                           <div className="space-y-2">
+                             <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">
+                               <PlayCircle size={12} /> Link YouTube
+                             </div>
+                             <input 
+                                className="w-full px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                                value={editForm.videoUrl || ''}
+                                onChange={(e) => setEditForm({...editForm, videoUrl: e.target.value})}
+                                placeholder="https://youtube.com/watch?v=..."
+                             />
+                           </div>
+                         ) : (
+                           <div className="space-y-2">
+                             <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">
+                               <FileText size={12} /> Documento PDF
+                             </div>
+                             <FileUpload 
+                               folderPath="marketplace/pdfs" 
+                               fileType="pdf" 
+                               accept=".pdf"
+                               label={editForm.contentUrl ? "Cambiar PDF" : "Subir PDF"}
+                               onUploadComplete={(url) => setEditForm({...editForm, contentUrl: url})}
+                             />
+                             {editForm.contentUrl && (
+                               <p className="text-[10px] text-emerald-500 font-bold truncate px-2">✓ Cargado: {editForm.contentUrl.substring(0, 30)}...</p>
+                             )}
+                           </div>
+                         )}
+                         <div className="flex gap-2 pt-2">
+                            <button onClick={handleSave} className="flex-1 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-colors">Guardar</button>
+                            <button onClick={() => setEditingId(null)} className="flex-1 py-2 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancelar</button>
+                         </div>
+                      </div>
+                   ) : (
+                      <>
+                        <div className="flex justify-between items-start mb-2">
+                           <h3 className="font-black text-slate-900 text-lg tracking-tight uppercase leading-tight group-hover:text-indigo-600 transition-colors">{item.title}</h3>
+                           <button onClick={() => startEditing(item)} className="p-2 text-slate-300 hover:text-slate-600 transition-colors">
+                              <Settings size={18} />
+                           </button>
+                        </div>
+                        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest leading-none">Por {item.author || 'Admin'}</p>
+                        
+                        <div className="flex justify-between items-center mt-10">
+                           <span className="font-black text-slate-900 text-lg italic">${item.price} <span className="text-[10px] not-italic text-slate-400">USD</span></span>
+                           <button 
+                              onClick={() => toggleStatus(item.id, item.status)}
+                              className={cn(
+                                "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg", 
+                                item.status === 'published' ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100 shadow-emerald-500/5 border border-emerald-100" : "bg-slate-50 text-slate-400 hover:bg-slate-100 shadow-slate-900/5 border border-slate-200"
+                              )}
+                           >
+                              {item.status === 'published' ? 'Público' : 'Borrador'}
+                           </button>
+                        </div>
+                      </>
+                   )}
                 </div>
              </div>
           ))}
           {items.length === 0 && !loading && (
-             <div className="col-span-full py-16 text-center border-2 border-dashed border-slate-200 rounded-2xl">
-                <ShoppingBag className="mx-auto text-slate-300 mb-3" size={40} />
-                <p className="text-slate-500 font-medium">No hay productos en el marketplace.</p>
-                <p className="text-slate-400 text-xs mt-1">Aparecerán aquí cuando crees un curso o libro.</p>
+             <div className="col-span-full py-24 text-center border-4 border-dashed border-slate-100 rounded-[40px] flex flex-col items-center">
+                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6 text-slate-300">
+                   <ShoppingBag size={40} />
+                </div>
+                <p className="text-slate-400 font-black uppercase tracking-[0.2em] text-sm">Inventario Vacío</p>
+                <p className="text-slate-300 text-[10px] font-bold uppercase mt-2">Crea tu primer programa o libro para empezar a vender.</p>
              </div>
           )}
        </div>
@@ -1736,19 +1853,25 @@ function CMSView() {
 function PillsEditor() {
   const [uploading, setUploading] = useState(false);
   const [title, setTitle] = useState('');
+  const [audioUrl, setAudioUrl] = useState('');
   
   const handleSimulateUpload = async () => {
-    if (!title) return;
+    if (!title || !audioUrl) {
+      alert("Por favor ingresa un título y sube el archivo de audio.");
+      return;
+    }
     setUploading(true);
     try {
       await addDoc(collection(db, 'pills'), {
         title,
+        audioUrl,
         createdAt: new Date(),
         author: 'Admin',
         type: 'audio',
-        duration: '1:00'
+        duration: '1:00' // In real app, we'd calculate this from the audio file
       });
       setTitle('');
+      setAudioUrl('');
       alert("Píldora '" + title + "' publicada exitosamente.");
     } catch (e) {
       console.error(e);
@@ -1768,24 +1891,30 @@ function PillsEditor() {
            Sube audios cortos de 1 minuto para tus alumnos. El sistema enviará una notificación Push inmediata a todos los usuarios de la app móvil.
         </p>
         
-        <div className="w-full max-w-md space-y-4">
+        <div className="w-full max-w-md space-y-6">
            <div>
-             <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Título del Audio</label>
-             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej: Meditación Exprés" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+             <label className="block text-[10px] font-black text-slate-400 mb-1.5 uppercase tracking-widest pl-1">Título del Audio</label>
+             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej: Meditación Exprés" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-teal-500" />
            </div>
            
-           <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center bg-slate-50 relative hover:bg-slate-100 transition cursor-pointer">
-              <UploadCloud size={32} className="text-slate-400 mb-3" />
-              <span className="text-sm font-medium text-slate-600">Click para subir MP3/WAV</span>
-              <span className="text-xs text-slate-400 mt-1">Máximo 10MB</span>
+           <div>
+             <label className="block text-[10px] font-black text-slate-400 mb-1.5 uppercase tracking-widest pl-1">Archivo MP3</label>
+             <FileUpload 
+               folderPath="pills/audio" 
+               fileType="audio" 
+               accept="audio/*"
+               label={audioUrl ? "Audio Cargado ✓" : "Seleccionar Archivo de Audio"}
+               onUploadComplete={(url) => setAudioUrl(url)}
+               className={cn(audioUrl ? "border-emerald-200 bg-emerald-50/30" : "")}
+             />
            </div>
            
            <button 
              onClick={handleSimulateUpload} 
-             disabled={!title || uploading}
-             className="w-full bg-teal-600 text-white rounded-lg px-4 py-3 font-bold hover:bg-teal-700 transition disabled:opacity-50 flex justify-center items-center gap-2"
+             disabled={!title || !audioUrl || uploading}
+             className="w-full bg-slate-900 text-white rounded-[24px] px-6 py-4 font-black uppercase text-xs tracking-[0.2em] hover:bg-teal-600 transition disabled:opacity-50 flex justify-center items-center gap-3 shadow-xl shadow-slate-900/10"
            >
-             {uploading ? <span className="animate-pulse">Emitiendo...</span> : <>Emitir Notificación Push <Send size={16}/></>}
+             {uploading ? <Loader2 className="animate-spin" size={18} /> : <>Emitir Píldora <Send size={16}/></>}
            </button>
         </div>
      </div>
