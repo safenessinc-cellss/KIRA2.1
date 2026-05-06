@@ -6,7 +6,6 @@ import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { Dashboard, Journal } from './pages/Dashboard';
 import { EliteLibrary } from './pages/EliteLibrary';
-import AdminApprovals from './pages/AdminApprovals';
 import { AdminMonitor } from './pages/Admin';
 import { CoachDashboard, CoachCourses } from './pages/Coach';
 import SessionIntelligence from './pages/SessionIntelligence';
@@ -57,8 +56,7 @@ export default function App() {
               <Route path="/login" element={<Login />} />
               
               {/* Alumnos */}
-              <Route element={<ProtectedRoute allowedRoles={['alumno']} />}>
-                <Route path="/admin/approvals" element={<AdminApprovals />} />
+              <Route element={<ProtectedRoute allowedRoles={['alumno', 'admin']} />}>
                 <Route element={<DashboardLayout title="Mi Aprendizaje" />}>
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/dashboard/journal" element={<Journal />} />
@@ -68,7 +66,7 @@ export default function App() {
               </Route>
 
               {/* Coaches */}
-              <Route element={<ProtectedRoute allowedRoles={['coach']} />}>
+              <Route element={<ProtectedRoute allowedRoles={['coach', 'admin']} />}>
                 <Route element={<DashboardLayout title="Panel de Coach" />}>
                   <Route path="/coach" element={<CoachDashboard />} />
                   <Route path="/coach/courses" element={<CoachCourses />} />
