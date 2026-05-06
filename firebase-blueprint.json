@@ -13,6 +13,23 @@
         "approvalStatus": { "type": "string", "enum": ["pending", "approved", "rejected"], "description": "Only relevant for coaches" },
         "experienceLevel": { "type": "string" },
         "welcomeVideoUrl": { "type": "string" },
+        "specialties": { "type": "array", "items": { "type": "string" } },
+        "calendlyUrl": { "type": "string" },
+        "rating": { "type": "number" },
+        "studentCount": { "type": "number" },
+        "languages": { "type": "string" },
+        "mediaItems": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" },
+              "url": { "type": "string" },
+              "title": { "type": "string" },
+              "pointCost": { "type": "number" }
+            }
+          }
+        },
         "socialLinks": {
           "type": "object",
           "properties": {
