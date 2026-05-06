@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { Logo } from '../components/Logo'; // 👈 IMPORTAR EL LOGO
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search } from 'lucide-react';
@@ -76,6 +77,12 @@ export function AdminMonitor() {
     <div className="flex flex-col md:flex-row gap-8">
       {/* Sidebar Refinada */}
       <div className="w-full md:w-72 flex flex-col gap-4">
+        
+        {/* 👇 LOGO EN EL SIDEBAR 👇 */}
+        <div className="flex justify-center mb-4 pt-4">
+          <Logo size="lg" withText textClassName="text-xl" />
+        </div>
+        
         {/* Command Center Omnibar */}
         <div className="relative group mb-2">
            <Zap className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={16} />
@@ -90,6 +97,7 @@ export function AdminMonitor() {
              ⌘K
            </div>
         </div>
+        
         {isSuperAdmin && (
            <button 
              onClick={async () => {
@@ -152,6 +160,64 @@ export function AdminMonitor() {
           ))}
         </div>
       </div>
+      
+      {/* Contenido principal - Aquí va el resto de tu código */}
+      <div className="flex-1">
+        {/* Tu contenido dinámico según activeTab */}
+        {activeTab === 'dashboard' && <AdminDashboardContent />}
+        {activeTab === 'coaches' && <AdminCoachesPanel />}
+        {activeTab === 'students' && <AdminStudentsPanel />}
+        {/* ... resto de tus renders ... */}
+      </div>
+    </div>
+  );
+}
+
+// Componente NavButton (asegúrate de tenerlo)
+function NavButton({ active, onClick, icon, label }: any) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all text-left",
+        active 
+          ? "bg-kirateal text-white shadow-md shadow-kirateal/20" 
+          : "text-slate-600 hover:bg-slate-100"
+      )}
+    >
+      <span className={active ? "text-white" : "text-slate-400"}>{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+// Placeholder components (ajusta según tu código existente)
+function AdminDashboardContent() {
+  return (
+    <div className="bg-white rounded-2xl p-6 border border-slate-200">
+      <h2 className="text-2xl font-bold mb-4">Dashboard Ejecutivo</h2>
+      <p className="text-slate-500">Bienvenido al panel de administración de KIRA.COACH</p>
+    </div>
+  );
+}
+
+function AdminCoachesPanel() {
+  return (
+    <div className="bg-white rounded-2xl p-6 border border-slate-200">
+      <h2 className="text-2xl font-bold mb-4">Gestión de Coaches</h2>
+      <p className="text-slate-500">Administra los coaches de la plataforma</p>
+    </div>
+  );
+}
+
+function AdminStudentsPanel() {
+  return (
+    <div className="bg-white rounded-2xl p-6 border border-slate-200">
+      <h2 className="text-2xl font-bold mb-4">Directorio de Alumnos</h2>
+      <p className="text-slate-500">Visualiza y gestiona todos los estudiantes</p>
+    </div>
+  );
+}
 
       {/* Area de Contenido del Módulo */}
       <div className="flex-1 min-w-0">
