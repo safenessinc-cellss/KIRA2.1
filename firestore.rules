@@ -75,12 +75,13 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && (
         request.auth.token.email == "safeness.c.a@gmail.com" ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
     
     function isApprovedCoach() {
       return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach' &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved';
     }
@@ -261,7 +262,7 @@ service cloud.firestore {
     }
     
     match /enrollments/{enrollmentId} {
-      allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid));
+      allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid)));
       allow create: if isAuthenticated() && isValidEnrollment() && (request.resource.data.userId == request.auth.uid || isApprovedCoach());
       allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt']) && 
                     (isAdmin() || (isCurrentUser(resource.data.userId)) || isApprovedCoach());
@@ -269,11 +270,18 @@ service cloud.firestore {
     }
     
     match /journals/{journalId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid) || isApprovedCoach();
       allow create: if isAuthenticated() && isValidJournal() && request.resource.data.userId == request.auth.uid;
       allow update: if isAuthenticated() && isValidJournal() && areImmutableFieldsUnchanged(['userId', 'createdAt']) && 
                     (isAdmin() || isCurrentUser(resource.data.userId));
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+    }
+    
+    match /sessions/{sessionId} {
+      allow read: if isAdmin() || (isAuthenticated() && (resource.data.coachId == request.auth.uid || resource.data.userId == request.auth.uid));
+      allow create: if isAuthenticated() && (isAdmin() || request.resource.data.coachId == request.auth.uid);
+      allow update: if isAuthenticated() && (isAdmin() || resource.data.coachId == request.auth.uid);
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
     }
     
     match /reviews/{reviewId} {
