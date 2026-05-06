@@ -1726,7 +1726,7 @@ function BIView() {
 
         const courseSnap = await getDocs(collection(db, 'courses'));
         const dist = courseSnap.docs.map(d => ({
-          name: d.data().title.substring(0, 15) + '...',
+          name: (d.data().title || 'Curso Sin Nombre').substring(0, 15) + '...',
           value: courseMap[d.id] || 0
         })).filter(d => d.value > 0);
 
@@ -2301,8 +2301,8 @@ function TransactionsMonitorView() {
             {txs.map(t => (
               <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                 <td className="px-6 py-4 text-slate-500 font-mono italic">{t.createdAt?.toDate?.().toLocaleString()}</td>
-                <td className="px-6 py-4 font-bold text-slate-700">{t.userId.substring(0, 8)}...</td>
-                <td className="px-6 py-4 capitalize text-indigo-600">{t.type.replace('_', ' ')}</td>
+                <td className="px-6 py-4 font-bold text-slate-700">{t.userEmail || (t.userId ? t.userId.substring(0, 8) + '...' : 'Unknown')}</td>
+                <td className="px-6 py-4 capitalize text-indigo-600">{(t.type || '').replace('_', ' ')}</td>
                 <td className="px-6 py-4 font-black text-slate-800">${t.amount?.toFixed(2)}</td>
               </tr>
             ))}
@@ -2362,7 +2362,7 @@ function SettlementCenterView() {
                const coachRev = monto * 0.3;
                return (
                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                   <td className="px-6 py-4 text-slate-500 font-mono italic">#{t.id.substring(0,6).toUpperCase()}</td>
+                   <td className="px-6 py-4 text-slate-500 font-mono italic">#{t.id ? t.id.substring(0,6).toUpperCase() : 'N/A'}</td>
                    <td className="px-6 py-4 font-black text-slate-700">${monto.toFixed(2)}</td>
                    <td className="px-6 py-4 font-black text-emerald-600">+${kiraRev.toFixed(2)}</td>
                    <td className="px-6 py-4 font-black text-purple-600">+${coachRev.toFixed(2)}</td>
@@ -2462,7 +2462,7 @@ function CampaignHistoryView() {
                   </td>
                   <td className="px-6 py-4">
                     <span className="font-bold text-slate-700">{rules[log.ruleId] || 'Regla Desconocida'}</span>
-                    <span className="block text-[9px] text-slate-400 mt-0.5">ID: {log.ruleId.substring(0,8)}...</span>
+                    <span className="block text-[9px] text-slate-400 mt-0.5">ID: {log.ruleId ? log.ruleId.substring(0,8) + '...' : 'N/A'}</span>
                   </td>
                   <td className="px-6 py-4 text-slate-400 font-mono text-[10px]">{log.userId}</td>
                   <td className="px-6 py-4 text-center">
@@ -2947,7 +2947,7 @@ function ActivityItem({ user, action, time }: { user: string, action: string, ti
   return (
     <div className="flex items-center gap-4 py-2 text-[13px]">
       <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-400 text-[10px]">
-        {user.substring(0, 2).toUpperCase()}
+        {(user || 'U').substring(0, 2).toUpperCase()}
       </div>
       <div className="flex-1">
         <span className="font-semibold text-slate-800">{user}</span>
@@ -3216,4 +3216,3 @@ function PromotionsManagerView() {
 // Compatibilidad con rutas anteriores
 export function AdminCoaches() { return <AdminMonitor />; }
 export function AdminReviews() { return <AdminMonitor />; }
-
