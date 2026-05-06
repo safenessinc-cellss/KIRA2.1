@@ -1737,14 +1737,25 @@ function PillsEditor() {
   const [uploading, setUploading] = useState(false);
   const [title, setTitle] = useState('');
   
-  const handleSimulateUpload = () => {
+  const handleSimulateUpload = async () => {
     if (!title) return;
     setUploading(true);
-    setTimeout(() => {
-      setUploading(false);
+    try {
+      await addDoc(collection(db, 'pills'), {
+        title,
+        createdAt: new Date(),
+        author: 'Admin',
+        type: 'audio',
+        duration: '1:00'
+      });
       setTitle('');
-      alert("Píldora '" + title + "' enviada por Push Notification exitosamente.");
-    }, 1500);
+      alert("Píldora '" + title + "' publicada exitosamente.");
+    } catch (e) {
+      console.error(e);
+      alert("Error al publicar la píldora.");
+    } finally {
+      setUploading(false);
+    }
   };
   
   return (
