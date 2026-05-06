@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
-import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon } from 'lucide-react';
+import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
 import { cn } from '../lib/utils';
@@ -1822,6 +1822,9 @@ function RetentionBar({ label, percent, color = 'teal' }: any) {
 function SecurityView() {
   const [logs, setLogs] = useState<any[]>([]);
   const [staff, setStaff] = useState<any[]>([]);
+  const [searchEmail, setSearchEmail] = useState('');
+  const [searchResult, setSearchResult] = useState<any | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   useEffect(() => {
     const qL = query(collection(db, 'logs'), orderBy('createdAt', 'desc'), limit(10));
@@ -1832,6 +1835,44 @@ function SecurityView() {
 
     return () => { unsubLogs(); unsubStaff(); };
   }, []);
+
+  const handleSearch = async () => {
+    if (!searchEmail) return;
+    setSearchLoading(true);
+    setSearchResult(null);
+    try {
+      const q = query(collection(db, 'users'), where('email', '==', searchEmail.toLowerCase().trim()));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        setSearchResult({ id: snap.docs[0].id, ...snap.docs[0].data() });
+      } else {
+        alert("Usuario con ese email no fue encontrado.");
+      }
+    } catch(e) {
+      handleFirestoreError(e, OperationType.GET, 'users');
+    }
+    setSearchLoading(false);
+  }
+
+  const changeRole = async (userId: string, newRole: string) => {
+    if (!confirm(`¿Estás seguro de cambiar el rol a ${newRole}?`)) return;
+    try {
+      await updateDoc(doc(db, 'users', userId), { role: newRole });
+      if (searchResult && searchResult.id === userId) {
+        setSearchResult({...searchResult, role: newRole});
+      }
+      // Log interaction
+      addDoc(collection(db, 'logs'), {
+         action: 'ROLE_CHANGED',
+         targetId: userId,
+         reason: `Role changed to ${newRole}`,
+         createdAt: new Date()
+      });
+      alert("Rol actualizado correctamente.");
+    } catch(e) {
+      handleFirestoreError(e, OperationType.UPDATE, `users/${userId}`);
+    }
+  }
 
   const togglePermission = async (userId: string, current: string[], perm: string) => {
     try {
@@ -1897,6 +1938,65 @@ function SecurityView() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+         {/* Búsqueda y Asignación de Roles */}
+         <div className="lg:col-span-3 bg-slate-900/90 rounded-3xl border border-white/5 shadow-xl backdrop-blur-xl p-6 relative mb-2">
+             <h3 className="font-bold text-slate-200 flex items-center gap-2 mb-4">
+               <ShieldCheck size={18} className="text-cyan-400" /> Búsqueda y Asignación de Roles
+             </h3>
+             <div className="flex flex-col sm:flex-row gap-3">
+               <input 
+                 type="email" 
+                 placeholder="Ingrese email del usuario (ej: admin@kira.com)" 
+                 value={searchEmail} 
+                 onChange={e => setSearchEmail(e.target.value)} 
+                 className="flex-1 rounded-xl bg-slate-800/50 border border-white/10 text-white px-4 py-2.5 text-sm outline-none focus:border-cyan-500/50 transition-colors"
+                 onKeyDown={e => e.key === 'Enter' && handleSearch()}
+               />
+               <button 
+                 onClick={handleSearch} 
+                 disabled={searchLoading || !searchEmail}
+                 className="bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 border border-cyan-500/40 rounded-xl px-6 py-2.5 text-sm font-bold transition-colors shadow-[0_0_15px_rgba(34,211,238,0.15)] flex items-center justify-center gap-2 disabled:opacity-50"
+               >
+                 {searchLoading ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
+                 Buscar Usuario
+               </button>
+             </div>
+             
+             {searchResult && (
+               <div className="mt-6 flex flex-col md:flex-row items-center gap-6 p-4 rounded-2xl bg-white/5 border border-white/10">
+                 <div className="flex items-center gap-4 flex-1">
+                   <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center font-bold text-slate-300">
+                     {searchResult.displayName?.[0] || 'X'}
+                   </div>
+                   <div>
+                     <p className="text-white font-bold">{searchResult.displayName || 'Sin Nombre'}</p>
+                     <p className="text-slate-400 text-sm">{searchResult.email}</p>
+                     <div className="mt-1">
+                       <span className={cn("text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border", roleColors[searchResult.role] || "text-slate-400 bg-slate-800 border-slate-700")}>
+                          Rol Actual: {searchResult.role}
+                       </span>
+                     </div>
+                   </div>
+                 </div>
+                 
+                 <div className="flex items-center gap-3">
+                    <select 
+                      value="" 
+                      onChange={(e) => {
+                         if (e.target.value) changeRole(searchResult.id, e.target.value);
+                      }}
+                      className="bg-slate-800 border border-white/10 rounded-lg text-sm text-white px-3 py-2 outline-none focus:border-cyan-500/50"
+                    >
+                      <option value="">Cambiar Rol a...</option>
+                      <option value="admin">Administrador (admin)</option>
+                      <option value="coach">Coach (coach)</option>
+                      <option value="alumno">Alumno (alumno)</option>
+                    </select>
+                 </div>
+               </div>
+             )}
+         </div>
+
          {/* Matriz de Permisos (Central/Left 2 cols) */}
          <div className="lg:col-span-2 bg-slate-900/90 rounded-3xl border border-white/5 shadow-xl backdrop-blur-xl overflow-hidden relative">
             <div className="px-6 py-5 border-b border-white/5 flex items-center justify-between">
@@ -2845,11 +2945,23 @@ function PromotionsManagerView() {
   const [priority, setPriority] = useState(1);
 
   useEffect(() => {
-    const q = query(collection(db, 'promotions'), orderBy('priority', 'asc'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'promotions'));
     const unsub = onSnapshot(q, (snap) => {
-      setPromotions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const proms = snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      proms.sort((a, b) => {
+         const pA = typeof a.priority === 'number' ? a.priority : 99;
+         const pB = typeof b.priority === 'number' ? b.priority : 99;
+         if (pA === pB) {
+            const dA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const dB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return dB - dA;
+         }
+         return pA - pB;
+      });
+      setPromotions(proms);
       setLoading(false);
     }, (error) => {
+      setLoading(false);
       handleFirestoreError(error, OperationType.GET, 'promotions');
     });
     return () => unsub();
