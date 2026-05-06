@@ -40,6 +40,7 @@ export function AdminMonitor() {
     { id: 'ai_monitoring', label: 'Monitor de IA', icon: <Activity size={18}/>, category: 'Centro de Mando', perm: 'system' },
 
     { id: 'security', label: 'Control de Identidad', icon: <ShieldCheck size={18}/>, category: 'Gobernanza y Acceso', superOnly: true },
+    { id: 'approvals', label: 'Autorización de Usuarios', icon: <UserCheck size={18}/>, category: 'Gobernanza y Acceso', perm: 'users' },
     { id: 'website', label: 'Marca & Personalización', icon: <Palette size={18}/>, category: 'Gobernanza y Acceso', superOnly: true },
     { id: 'campaign_history', label: 'Ciberseguridad y Logs', icon: <ShieldAlert size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
     { id: 'ai_coaches', label: 'IA para Coaches', icon: <Sparkles size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
@@ -162,6 +163,7 @@ export function AdminMonitor() {
         {activeTab === 'ai_monitoring' && hasPerm(navItems.find(i=>i.id==='ai_monitoring')) && <AiMonitoringView />}
 
         {activeTab === 'security' && isSuperAdmin && <SecurityView />}
+        {activeTab === 'approvals' && hasPerm(navItems.find(i=>i.id==='approvals')) && <UserApprovalsView />}
         {activeTab === 'website' && isSuperAdmin && <WebsiteConfigView />}
         {activeTab === 'campaign_history' && hasPerm(navItems.find(i=>i.id==='campaign_history')) && <CampaignHistoryView />}
         {activeTab === 'ai_coaches' && hasPerm(navItems.find(i=>i.id==='ai_coaches')) && <AICoachesView />}
