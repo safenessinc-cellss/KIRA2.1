@@ -20,6 +20,8 @@ export function Landing() {
   const [promotions, setPromotions] = useState<any[]>([]);
   const [marketplaceItems, setMarketplaceItems] = useState<any[]>([]);
   const [pills, setPills] = useState<any[]>([]);
+  const [activeAudio, setActiveAudio] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [selectedPromotion, setSelectedPromotion] = useState<any | null>(null);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('Todos');
   const [selectedExperience, setSelectedExperience] = useState<string>('Todos');
@@ -140,6 +142,21 @@ export function Landing() {
     });
     return () => unsub();
   }, []);
+
+  const playAudio = (url: string) => {
+    if (activeAudio === url) {
+      if (audioRef.current) {
+        if (audioRef.current.paused) audioRef.current.play().catch(console.error);
+        else audioRef.current.pause();
+      }
+    } else {
+      setActiveAudio(url);
+      if (audioRef.current) {
+        audioRef.current.src = url;
+        audioRef.current.play().catch(console.error);
+      }
+    }
+  };
 
   useEffect(() => {
     if (!user) {
@@ -488,13 +505,37 @@ export function Landing() {
                           {item.type === 'curso' ? <PlayCircle size={64} /> : <BookOpen size={64} />}
                         </div>
                       )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-8">
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-8 gap-2">
                         <button 
                           onClick={() => navigate('/login')}
-                          className="w-full py-4 bg-white text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-kirateal hover:text-white transition-all shadow-xl active:scale-95"
+                          className="flex-1 py-4 bg-white text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-kirateal hover:text-white transition-all shadow-xl active:scale-95"
                         >
-                          {item.type === 'curso' ? 'Inscribirse Ahora' : 'Obtener Copia'}
+                          {item.type === 'curso' ? 'Inscribirse' : 'Obtener'}
                         </button>
+                        {item.videoUrl && (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(item.videoUrl, '_blank');
+                            }}
+                            className="w-14 h-14 bg-white/20 backdrop-blur-md text-white rounded-2xl flex items-center justify-center hover:bg-white hover:text-indigo-600 transition-all shadow-xl active:scale-95"
+                            title="Ver Preview"
+                          >
+                            <PlayCircle size={24} />
+                          </button>
+                        )}
+                        {item.contentUrl && item.type === 'libro' && (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(item.contentUrl, '_blank');
+                            }}
+                            className="w-14 h-14 bg-white/20 backdrop-blur-md text-white rounded-2xl flex items-center justify-center hover:bg-white hover:text-rose-600 transition-all shadow-xl active:scale-95"
+                            title="Ver Extracto"
+                          >
+                            <FileText size={24} />
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="p-8 flex-1 flex flex-col">
@@ -548,14 +589,23 @@ export function Landing() {
                </div>
                
                <div className="flex-1 grid grid-cols-1 gap-4 w-full">
+                  <audio ref={audioRef} className="hidden" onEnded={() => setActiveAudio(null)} />
                   {pills.map((pill, idx) => (
-                    <div key={pill.id} className={cn(
-                      "p-6 rounded-[2rem] border bg-white/5 border-white/10 flex items-center justify-between group hover:bg-white/10 transition-all cursor-pointer",
-                      idx === 0 ? "scale-105 shadow-2xl shadow-kirateal/20 border-white/30" : "opacity-60 hover:opacity-100"
-                    )}>
+                    <div 
+                      key={pill.id} 
+                      onClick={() => pill.audioUrl && playAudio(pill.audioUrl)}
+                      className={cn(
+                        "p-6 rounded-[2rem] border bg-white/5 border-white/10 flex items-center justify-between group hover:bg-white/10 transition-all cursor-pointer",
+                        idx === 0 ? "scale-105 shadow-2xl shadow-kirateal/20 border-white/30" : "opacity-60 hover:opacity-100",
+                        activeAudio === pill.audioUrl && "bg-kirateal/10 border-kirateal/40 opacity-100"
+                      )}
+                    >
                        <div className="flex items-center gap-5">
-                          <div className="w-14 h-14 rounded-2xl bg-kirateal/20 text-kirateal flex items-center justify-center shadow-lg">
-                             <PlayCircle size={28} />
+                          <div className={cn(
+                            "w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-all",
+                            activeAudio === pill.audioUrl ? "bg-kirateal text-white animate-pulse" : "bg-kirateal/20 text-kirateal"
+                          )}>
+                             {activeAudio === pill.audioUrl ? <Loader2 size={28} className="animate-spin" /> : <PlayCircle size={28} />}
                           </div>
                           <div>
                              <p className="text-white font-bold text-lg mb-0.5">{pill.title}</p>
@@ -566,7 +616,7 @@ export function Landing() {
                              </div>
                           </div>
                        </div>
-                       {idx === 0 && (
+                       {idx === 0 && !activeAudio && (
                          <div className="px-3 py-1 bg-kirateal text-white text-[8px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg">
                            Nueva
                          </div>
