@@ -5,7 +5,7 @@ import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSna
 import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, Palette, BrainCircuit, ArrowRight } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
-import { FileUpload } from '../components/FileUpload';
+import { FileUploader } from '../components/FileUploader';
 import { cn } from '../lib/utils';
 
 type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'ai_monitoring';
@@ -1655,7 +1655,7 @@ function MarketplaceEditorView() {
                              <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">
                                <FileText size={12} /> Documento PDF
                              </div>
-                             <FileUpload 
+                             <FileUploader 
                                folderPath="marketplace/pdfs" 
                                fileType="pdf" 
                                accept=".pdf"
@@ -1899,7 +1899,7 @@ function PillsEditor() {
            
            <div>
              <label className="block text-[10px] font-black text-slate-400 mb-1.5 uppercase tracking-widest pl-1">Archivo MP3</label>
-             <FileUpload 
+             <FileUploader 
                folderPath="pills/audio" 
                fileType="audio" 
                accept="audio/*"
