@@ -227,12 +227,10 @@ function CoachDashboardView({ profile, isApproved }: any) {
           activeStudents = studentsSet.size;
         }
 
-        // Fetch recent sessions
         const sessionsQ = query(collection(db, 'sessions'), where('coachId', '==', user.uid), orderBy('date', 'desc'), limit(50));
         const sessionsSnap = await getDocs(sessionsQ);
         recentSessionsCount = sessionsSnap.docs.length;
 
-        // Prepare last 7 days chart data
         const last7Days = Array.from({length: 7}).map((_, i) => {
           const d = new Date();
           d.setDate(d.getDate() - i);
@@ -287,8 +285,7 @@ function CoachDashboardView({ profile, isApproved }: any) {
         }
         setTopTopics(sortedTopics);
 
-        // Fetch Journals to mock team energy heatmap
-        const journalsSnap = await getDocs(collection(db, 'journals')); // In a real app we'd filter by the coach's students
+        const journalsSnap = await getDocs(collection(db, 'journals'));
         let pos = 0, neu = 0, neg = 0;
         journalsSnap.docs.forEach(doc => {
           const s = doc.data().sentiment || 'neutral';
@@ -298,7 +295,7 @@ function CoachDashboardView({ profile, isApproved }: any) {
         });
 
         if (pos === 0 && neu === 0 && neg === 0) {
-          pos = 10; neu = 5; neg = 2; // mock data if empty
+          pos = 10; neu = 5; neg = 2;
         }
 
         setStats({
@@ -348,7 +345,6 @@ function CoachDashboardView({ profile, isApproved }: any) {
           </div>
         </div>
 
-        {/* Heatmap de Energía (Resumen del equipo) */}
         <div className={cn("bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm flex flex-col justify-center", !isApproved && "opacity-50 pointer-events-none")}>
            <h3 className="text-lg font-black text-slate-800 mb-6 text-center">Heatmap Energía de Equipo</h3>
            {loading ? (
@@ -389,7 +385,6 @@ function CoachDashboardView({ profile, isApproved }: any) {
         </div>
       </div>
 
-      {/* Analysis Row: Sessions Chart and Topics */}
       <div className={cn("grid grid-cols-1 lg:grid-cols-2 gap-6", !isApproved && "opacity-50 pointer-events-none")}>
         <div className="bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm">
            <h3 className="text-xl font-black text-slate-900 tracking-tight leading-none mb-6">Sesiones Realizadas (7 días)</h3>
@@ -468,7 +463,6 @@ function QuickAction({ title, desc, icon }: any) {
   );
 }
 
-// --- MODULO: ACTIVIDAD DE ALUMNOS (PARA COACH) ---
 function CoachStudentsActivity() {
   const { user } = useAuth();
   const [students, setStudents] = useState<any[]>([]);
@@ -481,7 +475,6 @@ function CoachStudentsActivity() {
   useEffect(() => {
     if (!user) return;
     
-    // Logic: Find students enrolled in THIS coach's courses
     const fetchStudentsAndJournals = async () => {
       try {
         const coursesQ = query(collection(db, 'courses'), where('coachId', '==', user.uid));
@@ -508,14 +501,12 @@ function CoachStudentsActivity() {
         const studentsList = Array.from(studentsMap.values());
         setStudents(studentsList);
 
-        // Fetch Journals to analyze team sentiment
         if (studentsList.length > 0) {
           setAnalyzing(true);
           const studentIds = studentsList.map(s => s.id);
           
           let allJournals: string[] = [];
           
-          // Firestore 'in' query has a limit of 10, chunk if necessary
           const fetchJournalsChunk = async (ids: string[]) => {
             const q = query(
               collection(db, 'journals'), 
@@ -527,7 +518,6 @@ function CoachStudentsActivity() {
             return snap.docs.map(d => d.data().content);
           };
 
-          // Simple chunking up to 10
           if (studentIds.length <= 10) {
               const j = await fetchJournalsChunk(studentIds);
               allJournals = allJournals.concat(j);
@@ -584,7 +574,7 @@ function CoachStudentsActivity() {
            createdAt: new Date()
          });
       }
-      setCustomMessage('');
+      setCustomMessage("");
       alert("¡Mensajes enviados exitosamente a todos tus alumnos!");
     } catch (e) {
       console.error(e);
@@ -612,7 +602,6 @@ function CoachStudentsActivity() {
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-         {/* Team Emotional Insights */}
          <div className="bg-kirateal rounded-2xl p-6 text-white shadow-xl shadow-kirateal/10 col-span-1 md:col-span-2 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
             <div className="flex items-center gap-3 mb-4 relative z-10">
@@ -637,7 +626,6 @@ function CoachStudentsActivity() {
             )}
          </div>
 
-         {/* Bulk Messaging Widget */}
          <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col shadow-sm">
             <h3 className="font-bold text-slate-800 tracking-tight flex items-center gap-2 mb-4">
               <Zap size={16} className="text-kiragold" /> Push de Motivación
@@ -699,7 +687,7 @@ function CoachStudentsActivity() {
                         <div className="text-[10px] text-slate-400">{s.email}</div>
                       </div>
                   </div>
-                </td>
+                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2">
                     <div className="flex-1 max-w-[100px] h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -707,19 +695,19 @@ function CoachStudentsActivity() {
                     </div>
                     <span className="text-[11px] font-bold text-slate-600">{s.courseProgress}%</span>
                   </div>
-                </td>
+                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-2">
                     <div className={cn("w-2.5 h-2.5 rounded-full pulse-ping", status.color)} />
                     <span className="text-[11px] font-medium text-slate-600">{status.label}</span>
                   </div>
-                </td>
+                 </td>
                 <td className="px-6 py-4 text-right">
                   <button className="p-2 text-slate-400 hover:text-primary transition-colors">
                     <ChevronRight size={16} />
                   </button>
-                </td>
-              </tr>
+                 </td>
+                </tr>
             );
           })}
           {students.length === 0 && (
@@ -730,13 +718,12 @@ function CoachStudentsActivity() {
             </tr>
           )}
         </tbody>
-      </table>
+       </table>
       </div>
     </div>
   );
 }
 
-// --- MODULO: GESTOR DE CONTRATOS (PARA COACH) ---
 function CoachContractManager() {
   const { user } = useAuth();
   const [contracts, setContracts] = useState<any[]>([]);
@@ -905,7 +892,6 @@ function CoachContractManager() {
   );
 }
 
-// --- MODULO: MOTOR DE AUTOMATIZACIÓN (PARA COACH) ---
 function CoachAutomationView() {
   const { user } = useAuth();
   const [rules, setRules] = useState<any[]>([]);
@@ -1001,7 +987,6 @@ function CoachAutomationView() {
             <div className="bg-slate-50 border border-slate-100 p-10 rounded-[40px] relative">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
                 
-                {/* IF SECTION */}
                 <div className="md:col-span-5 flex flex-col gap-4">
                   <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-100 rounded-full text-indigo-600 text-[10px] font-black uppercase tracking-widest w-fit">
                     TRIGGER (IF)
@@ -1031,14 +1016,12 @@ function CoachAutomationView() {
                   </div>
                 </div>
 
-                {/* ARROW */}
                 <div className="md:col-span-2 flex justify-center py-6">
                   <div className="w-12 h-12 rounded-full bg-slate-900 text-white flex items-center justify-center shadow-2xl">
                     <ChevronRight size={24} />
                   </div>
                 </div>
 
-                {/* THEN SECTION */}
                 <div className="md:col-span-5 flex flex-col gap-4">
                   <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-100 rounded-full text-emerald-600 text-[10px] font-black uppercase tracking-widest w-fit">
                     ACTION (THEN)
@@ -1174,6 +1157,7 @@ function CoachAutomationView() {
     </div>
   );
 }
+
 function CoachRegisterClient() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -1195,7 +1179,6 @@ function CoachRegisterClient() {
     e.preventDefault();
     setLoading(true);
     try {
-      // 1. Create User Document (or Update if exists - simplified for demo: always create reference)
       const userRef = await addDoc(collection(db, 'users'), {
         displayName: formData.name,
         email: formData.email,
@@ -1206,7 +1189,6 @@ function CoachRegisterClient() {
         status: 'awaiting_login'
       });
 
-      // 2. Enroll in course if selected
       if (formData.courseId) {
         await addDoc(collection(db, 'enrollments'), {
           userId: userRef.id,
@@ -1216,7 +1198,6 @@ function CoachRegisterClient() {
         });
       }
 
-      // 3. Create initial notification
       await addDoc(collection(db, 'notifications'), {
         userId: userRef.id,
         title: '¡Bienvenido a Kira Coach!',
@@ -1289,116 +1270,6 @@ function CoachRegisterClient() {
     </div>
   );
 }
-// --- COMPONENTE DE ANALÍTICAS ---
-function CoachAnalyticsOld({ coachId }: { coachId?: string }) {
-  const [stats, setStats] = useState({
-    views: 0,
-    favorites: 0,
-    enrollments: 0,
-    zapsGenerated: 0
-  });
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!coachId) return;
-
-    const fetchStats = async () => {
-      try {
-        // 1. Get views from coach doc
-        const coachDoc = await getDoc(doc(db, 'users', coachId));
-        const views = coachDoc.data()?.viewCount || 0;
-
-        // 2. Get favorites count by querying users
-        const favsQuery = query(collection(db, 'users'), where('favorites', 'array-contains', coachId));
-        const favsSnap = await getDocs(favsQuery);
-        const favorites = favsSnap.size;
-
-        // 3. Get enrollments for this coach's courses
-        const coursesQuery = query(collection(db, 'courses'), where('coachId', '==', coachId));
-        const coursesSnap = await getDocs(coursesQuery);
-        const coachCourseIds = coursesSnap.docs.map(d => d.id);
-        
-        let enrollments = 0;
-        if (coachCourseIds.length > 0) {
-           const enrollQuery = query(collection(db, 'enrollments'), where('courseId', 'in', coachCourseIds));
-           const enrollSnap = await getDocs(enrollQuery);
-           enrollments = enrollSnap.size;
-        }
-
-        setStats({
-          views,
-          favorites,
-          enrollments,
-          zapsGenerated: Math.floor(views * 1.5 + enrollments * 10) // Simulated Zaps impact
-        });
-      } catch (err) {
-        console.error("Error fetching analytics:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchStats();
-  }, [coachId]);
-
-  if (loading) return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 className="animate-spin text-kirateal" size={32} />
-    </div>
-  );
-
-  return (
-    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="mb-8">
-         <h3 className="text-xl font-black text-slate-800 tracking-tight">Analíticas Élite</h3>
-         <p className="text-sm text-slate-500 mt-1">Monitorea el impacto de tu consciencia en la comunidad.</p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-         <AnalyticsStatCard 
-           icon={<Activity className="text-sky-500" />} 
-           label="Vistas de Perfil" 
-           value={stats.views} 
-           trend="+12%" 
-           color="sky" 
-         />
-         <AnalyticsStatCard 
-           icon={<HeartPulse className="text-rose-500" />} 
-           label="Favoritos" 
-           value={stats.favorites} 
-           trend="+5" 
-           color="rose" 
-         />
-         <AnalyticsStatCard 
-           icon={<GraduationCap className="text-indigo-500" />} 
-           label="Alumnos Inscritos" 
-           value={stats.enrollments} 
-           trend="+2" 
-           color="indigo" 
-         />
-         <AnalyticsStatCard 
-           icon={<Sparkles className="text-kiragold" />} 
-           label="Impacto (Zaps)" 
-           value={stats.zapsGenerated} 
-           trend="Epic" 
-           color="gold" 
-         />
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200 p-8">
-         <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-kirateal/10 rounded-lg text-kirateal">
-               <TrendingUp size={20} />
-            </div>
-            <h4 className="font-bold text-slate-800">Rendimiento de Contenido</h4>
-         </div>
-         <p className="text-slate-500 text-sm italic py-10 text-center border-2 border-dashed border-slate-100 rounded-xl">
-           Gráficas de retención y engagement próximamente disponibles en Kira Analytics 2.0.
-         </p>
-      </div>
-    </div>
-  );
-}
 
 function AnalyticsStatCard({ icon, label, value, trend, color }: any) {
   const colors: any = {
@@ -1432,7 +1303,7 @@ function CoachProfileSettings({ profile }: any) {
   
   const [formData, setFormData] = useState({
     displayName: profile?.displayName || '',
-    specialty: profile?.specialty || '', // Keep this for backward compatibility if it's a string, we'll convert it
+    specialty: profile?.specialty || '',
     specialties: Array.isArray(profile?.specialties) ? profile.specialties : (profile?.specialty ? [profile.specialty] : []),
     bio: profile?.bio || '',
     photoURL: profile?.photoURL || '',
@@ -1461,6 +1332,7 @@ function CoachProfileSettings({ profile }: any) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+  
   const [mediaItems, setMediaItems] = useState<{type: string, url: string, title: string, pointCost?: number}[]>(profile?.mediaItems || []);
   const [newMedia, setNewMedia] = useState({ type: 'video', url: '', title: '', pointCost: 10 });
 
@@ -1507,7 +1379,6 @@ function CoachProfileSettings({ profile }: any) {
   };
 
   const validate = () => {
-    // Robust URL regex
     const urlRegex = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([\/\w .-]*)*\/?$/i;
     const photoRegex = /\.(jpeg|jpg|gif|png|webp|svg)((\?.*)?|$)/i;
     const calendlyRegex = /calendly\.com\/[a-zA-Z0-9_\-]+(\/[a-zA-Z0-9_\-]+)?/i;
@@ -1517,7 +1388,6 @@ function CoachProfileSettings({ profile }: any) {
     if (!formData.displayName.trim()) return "El nombre público es obligatorio.";
     if (formData.specialties.length === 0) return "Debes seleccionar al menos una especialidad profesional.";
     
-    // Bio validation (strip HTML tags to check if there is actual text)
     const bioText = formData.bio.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').trim();
     if (!bioText) return "La biografía es obligatoria para presentarte ante tus alumnos.";
     
@@ -1581,7 +1451,7 @@ function CoachProfileSettings({ profile }: any) {
       setError("Por favor, introduce un título para que Kira pueda analizarlo.");
       return;
     }
-    setUploading('resource'); // Reuse uploading state for UX
+    setUploading('resource');
     try {
       const prompt = `Analiza este recurso educativo para un coach: "${newMedia.title}".
       Determina el tipo más probable (video, pdf, imagen) y sugiere un costo en puntos (valor percibido del 1 al 100).
@@ -1611,6 +1481,7 @@ function CoachProfileSettings({ profile }: any) {
     }
   };
 
+  // ✅ HANDLE FILE UPLOAD CORREGIDO - CON TIMEOUT Y SIN CONGELAMIENTO
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'photo' | 'welcome' | 'resource') => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
@@ -1618,29 +1489,47 @@ function CoachProfileSettings({ profile }: any) {
     setUploading(type);
     setError(null);
 
+    // Timeout para evitar congelamiento
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("⏱️ Timeout: Firebase Storage no responde. Verifica las reglas de Storage.")), 15000);
+    });
+
     try {
       const storageRef = ref(storage, `coaches/${user.uid}/${type}_${Date.now()}_${file.name}`);
       
-      // Agregamos un timeout de 10s para evitar que la UI se congele si Firebase Storage falla
+      // Carrera entre subida y timeout
       const uploadPromise = uploadBytes(storageRef, file);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout: Verifica las reglas de Firebase Storage")), 10000));
-      
       const uploadResult = await Promise.race([uploadPromise, timeoutPromise]) as any;
       const url = await getDownloadURL(uploadResult.ref);
       
-      if (type === 'photo') setFormData(prev => ({ ...prev, photoURL: url }));
-      else if (type === 'welcome') setFormData(prev => ({ ...prev, welcomeVideoUrl: url }));
-      else if (type === 'resource') setNewMedia(prev => ({ ...prev, url: url, type: file.type.includes('pdf') ? 'pdf' : file.type.includes('video') ? 'video' : 'imagen' }));
+      if (type === 'photo') {
+        setFormData(prev => ({ ...prev, photoURL: url }));
+      } else if (type === 'welcome') {
+        setFormData(prev => ({ ...prev, welcomeVideoUrl: url }));
+      } else if (type === 'resource') {
+        setNewMedia(prev => ({ 
+          ...prev, 
+          url: url, 
+          type: file.type.includes('pdf') ? 'pdf' : file.type.includes('video') ? 'video' : 'imagen' 
+        }));
+        setSuccess(true);
+        setTimeout(() => setSuccess(false), 2000);
+      }
 
       setUploading(null);
     } catch (err) {
-      console.error(err);
+      console.error('Upload error:', err);
       const errorMsg = err instanceof Error ? err.message : String(err);
-      setError(`Error al subir ${type}: ${errorMsg}. ¿Tienes Firebase Storage configurado?`);
-      if (type === 'resource') alert(`Error al subir recurso: ${errorMsg}\nPuedes pegar una URL externa en su lugar o configurar las reglas de Firebase Storage.`);
+      
+      setError(`⚠️ No se pudo subir el archivo: ${errorMsg}`);
+      
+      if (type === 'resource') {
+        alert(`❌ Error al subir recurso:\n${errorMsg}\n\n💡 SOLUCIÓN:\n1. Usa una URL externa (YouTube, Drive, Dropbox)\n2. O configura Firebase Storage (ve a Storage → Rules y pega las reglas de prueba)`);
+      }
+      
       setUploading(null);
     } finally {
-      // Resetear el input para permitir seleccionar el mismo archivo
+      // Resetear input para permitir re-intentos
       e.target.value = '';
     }
   };
@@ -1663,8 +1552,7 @@ function CoachProfileSettings({ profile }: any) {
 
   return (
     <div className="flex flex-col xl:flex-row gap-8 animate-in slide-in-from-bottom-2">
-       {/* Información Principal */}
-      <div className="flex-1 bg-white rounded-2xl border border-slate-200 p-8">
+       <div className="flex-1 bg-white rounded-2xl border border-slate-200 p-8">
         <div className="mb-8 flex justify-between items-start">
           <div>
             <h3 className="text-xl font-black text-slate-800 tracking-tight">Perfil Público de Coach</h3>
@@ -1971,7 +1859,7 @@ function CoachProfileSettings({ profile }: any) {
         </form>
       </div>
 
-      {/* Editor de Contenido / Espacio (Bóveda Externa) */}
+      {/* BÓVEDA DE CONTENIDO CORREGIDA */}
       <div className="w-full xl:w-[450px] bg-white rounded-2xl border border-slate-200 p-8 flex flex-col">
           <div className="mb-6">
             <h3 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2"><FolderTree size={20} className="text-emerald-500" /> Bóveda de Contenido</h3>
@@ -2020,27 +1908,42 @@ function CoachProfileSettings({ profile }: any) {
              
              <div className="space-y-3">
                <div className="relative">
-                 <input value={newMedia.title} onChange={e=>setNewMedia({...newMedia, title: e.target.value})} placeholder="Título descriptivo (ej: Guía de Meditación)" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-kirateal/5 transition-all pr-12" />
+                 <input 
+                   value={newMedia.title} 
+                   onChange={e => setNewMedia({...newMedia, title: e.target.value})} 
+                   placeholder="Título descriptivo (ej: Guía de Meditación)" 
+                   className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-kirateal/5 transition-all pr-12" 
+                 />
                  <button 
                    type="button"
                    onClick={handleAiMediaSuggestion}
                    title="Kira sugiere Categoría y Costo"
                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-kirateal hover:bg-kirateal/10 rounded-lg transition-all"
                  >
-                   <Sparkles size={14} className={cn(uploading === 'resource' && "animate-spin")} />
+                   <Sparkles size={14} className={uploading === 'resource' ? "animate-spin" : ""} />
                  </button>
                </div>
                
                <div className="grid grid-cols-2 gap-2">
                  <div className="relative">
-                    <select value={newMedia.type} onChange={e=>setNewMedia({...newMedia, type: e.target.value})} className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs outline-none w-full appearance-none">
+                    <select 
+                      value={newMedia.type} 
+                      onChange={e => setNewMedia({...newMedia, type: e.target.value})} 
+                      className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs outline-none w-full appearance-none"
+                    >
                        <option value="video">🎥 Video Masterclass</option>
                        <option value="pdf">📄 Workbook (PDF)</option>
                        <option value="imagen">🖼️ Infografía Premium</option>
                     </select>
                  </div>
                  <div className="relative">
-                    <input type="number" value={newMedia.pointCost} onChange={e=>setNewMedia({...newMedia, pointCost: parseInt(e.target.value)})} placeholder="Costo pts" className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-2 py-2.5 text-xs outline-none focus:ring-2 focus:ring-kirateal/5 transition-all" />
+                    <input 
+                      type="number" 
+                      value={newMedia.pointCost} 
+                      onChange={e => setNewMedia({...newMedia, pointCost: parseInt(e.target.value)})} 
+                      placeholder="Costo pts" 
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-2 py-2.5 text-xs outline-none focus:ring-2 focus:ring-kirateal/5 transition-all" 
+                    />
                     <Zap size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-kiragold" />
                  </div>
                </div>
@@ -2049,8 +1952,8 @@ function CoachProfileSettings({ profile }: any) {
                  <div className="flex-1">
                    <input 
                      value={newMedia.url} 
-                     onChange={e=>setNewMedia({...newMedia, url: e.target.value})} 
-                     placeholder={uploading === 'resource' ? "Subiendo archivo..." : "URL o sube PDF/Video..."} 
+                     onChange={e => setNewMedia({...newMedia, url: e.target.value})} 
+                     placeholder={uploading === 'resource' ? "⏳ Subiendo archivo..." : "🔗 URL externa (YouTube, Drive, Dropbox) o sube archivo..."} 
                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-kirateal/5 transition-all h-full" 
                    />
                  </div>
@@ -2065,11 +1968,18 @@ function CoachProfileSettings({ profile }: any) {
                    <label 
                      htmlFor="resource-upload"
                      className="flex items-center justify-center p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-all cursor-pointer h-full shadow-lg shadow-slate-200"
+                     title="Subir archivo (requiere Firebase Storage configurado)"
                    >
                      {uploading === 'resource' ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
                    </label>
                  </div>
                </div>
+               
+               {error && error.includes('Storage') && (
+                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-700">
+                   ⚠️ {error}
+                 </div>
+               )}
                
                <button 
                  type="button"
@@ -2079,6 +1989,10 @@ function CoachProfileSettings({ profile }: any) {
                 >
                    <PlusCircle size={16} /> Asegurar en Bóveda
                 </button>
+                
+                <div className="text-center text-[9px] text-slate-400">
+                  💡 <strong>Tip:</strong> Usa URLs de Google Drive, Dropbox o YouTube (más rápido y seguro)
+                </div>
              </div>
           </div>
       </div>
@@ -2140,7 +2054,6 @@ export function CoachCourses() {
   const [profile, setProfile] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
   
-  // Form State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState(0);
