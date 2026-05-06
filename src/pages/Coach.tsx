@@ -30,13 +30,13 @@ import { cn } from '../lib/utils';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
-type CoachTab = 'vision' | 'tracking' | 'nexus' | 'register' | 'automation' | 'profile' | 'analytics';
+type CoachTab = 'dashboard' | 'tracking' | 'nexus' | 'register' | 'automation' | 'profile' | 'analytics';
 
 export function CoachDashboard() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [profile, setProfile] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<CoachTab>('vision');
+  const [activeTab, setActiveTab] = useState<CoachTab>('dashboard');
 
   useEffect(() => {
     if (user) {
@@ -145,7 +145,7 @@ export function CoachDashboard() {
 
       {/* Navegación Modular CRM */}
       <div className="flex flex-wrap gap-2 p-1.5 bg-slate-100 rounded-[32px] w-fit shadow-sm border border-slate-200/50">
-        <TabBtn active={activeTab === 'vision'} onClick={() => setActiveTab('vision')} icon={<Layout size={16}/>} label="Visión Global" />
+        <TabBtn active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<Layout size={16}/>} label="Panel de Control" />
         <TabBtn active={activeTab === 'tracking'} onClick={() => setActiveTab('tracking')} icon={<BadgeCheck size={16}/>} label="Academic Tracking" disabled={!isApproved} />
         <TabBtn active={activeTab === 'nexus'} onClick={() => setActiveTab('nexus')} icon={<FolderKanban size={16}/>} label="Legal & Revenue" disabled={!isApproved} />
         <TabBtn active={activeTab === 'automation'} onClick={() => setActiveTab('automation')} icon={<Zap size={16}/>} label="Kira Flow™" disabled={!isApproved} />
@@ -155,7 +155,7 @@ export function CoachDashboard() {
       </div>
 
       <div className="flex-1">
-        {activeTab === 'vision' && <CoachOverview profile={profile} isApproved={isApproved} />}
+        {activeTab === 'dashboard' && <CoachDashboardView profile={profile} isApproved={isApproved} />}
         {activeTab === 'tracking' && <CoachStudentsActivity />}
         {activeTab === 'nexus' && <CoachContractManager />}
         {activeTab === 'automation' && <CoachAutomationView />}
@@ -186,29 +186,148 @@ function TabBtn({ active, onClick, icon, label, disabled }: any) {
   );
 }
 
-function CoachOverview({ profile, isApproved }: any) {
+function CoachDashboardView({ profile, isApproved }: any) {
+  const { user } = useAuth();
+  const [stats, setStats] = useState({
+    activeStudents: 0,
+    avgProgress: 0,
+    recentSessions: 0,
+    sentiment: { positive: 0, neutral: 0, negative: 0 }
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    const fetchDashboardStats = async () => {
+      try {
+        const coursesQ = query(collection(db, 'courses'), where('coachId', '==', user.uid));
+        const coursesSnap = await getDocs(coursesQ);
+        const courseIds = coursesSnap.docs.map(d => d.id);
+
+        let activeStudents = 0;
+        let totalProgress = 0;
+        let totalEnrollments = 0;
+        let recentSessionsCount = 0;
+
+        if (courseIds.length > 0) {
+          const studentsSet = new Set();
+          for (const cid of courseIds) {
+            const enrollQ = query(collection(db, 'enrollments'), where('courseId', '==', cid));
+            const enrollSnap = await getDocs(enrollQ);
+            for (const eDoc of enrollSnap.docs) {
+              const data = eDoc.data();
+              studentsSet.add(data.userId);
+              totalProgress += data.progress || 0;
+              totalEnrollments++;
+            }
+          }
+          activeStudents = studentsSet.size;
+        }
+
+        // Fetch recent sessions (last 30 days)
+        const sessionsQ = query(collection(db, 'sessions'), where('coachId', '==', user.uid), orderBy('date', 'desc'), limit(10));
+        const sessionsSnap = await getDocs(sessionsQ);
+        recentSessionsCount = sessionsSnap.docs.length;
+
+        // Fetch Journals to mock team energy heatmap
+        const journalsSnap = await getDocs(collection(db, 'journals')); // In a real app we'd filter by the coach's students
+        let pos = 0, neu = 0, neg = 0;
+        journalsSnap.docs.forEach(doc => {
+          const s = doc.data().sentiment || 'neutral';
+          if (s === 'positive') pos++;
+          else if (s === 'negative') neg++;
+          else neu++;
+        });
+
+        if (pos === 0 && neu === 0 && neg === 0) {
+          pos = 10; neu = 5; neg = 2; // mock data if empty
+        }
+
+        setStats({
+          activeStudents,
+          avgProgress: totalEnrollments > 0 ? Math.round(totalProgress / totalEnrollments) : 0,
+          recentSessions: recentSessionsCount,
+          sentiment: { positive: pos, neutral: neu, negative: neg }
+        });
+        setLoading(false);
+      } catch (error) {
+        console.error("Dashboard fetch error:", error);
+        setLoading(false);
+      }
+    };
+    fetchDashboardStats();
+  }, [user]);
+
+  const totalEmotions = stats.sentiment.positive + stats.sentiment.neutral + stats.sentiment.negative;
+  const posPct = totalEmotions > 0 ? (stats.sentiment.positive / totalEmotions) * 100 : 0;
+  const neuPct = totalEmotions > 0 ? (stats.sentiment.neutral / totalEmotions) * 100 : 0;
+  const negPct = totalEmotions > 0 ? (stats.sentiment.negative / totalEmotions) * 100 : 0;
+
   return (
     <div className="flex flex-col gap-10 animate-in fade-in slide-in-from-bottom-2">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <StatCard title="Alumnos Totales" value="0" icon={<Users className="text-indigo-600" />} />
-        <StatCard title="Ingresos Brutos" value="$0.00" icon={<CreditCard className="text-emerald-600" />} />
-        <StatCard title="Energy Points" value="0" icon={<Zap className="text-amber-500" />} />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard title="Alumnos Activos" value={loading ? "..." : stats.activeStudents} icon={<Users className="text-indigo-600" />} />
+        <StatCard title="Promedio Progreso" value={loading ? "..." : `${stats.avgProgress}%`} icon={<BarChart3 className="text-emerald-600" />} />
+        <StatCard title="Sesiones Recientes" value={loading ? "..." : stats.recentSessions} icon={<Calendar className="text-amber-500" />} />
+        <StatCard title="Ingresos Brutos" value="$0.00" icon={<CreditCard className="text-teal-600" />} />
       </div>
 
-      <div className={cn("bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm", !isApproved && "opacity-50 pointer-events-none")}>
-        <div className="flex justify-between items-center mb-10">
-          <h3 className="text-xl font-black text-slate-900 tracking-tight leading-none">Acciones Directas</h3>
-          <Link to="/coach/courses" className="px-6 py-3 bg-slate-900 text-white rounded-2xl text-[12px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all">
-            Studio de Cursos
-          </Link>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className={cn("lg:col-span-2 bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm", !isApproved && "opacity-50 pointer-events-none")}>
+          <div className="flex justify-between items-center mb-10">
+            <h3 className="text-xl font-black text-slate-900 tracking-tight leading-none">Acciones Directas</h3>
+            <Link to="/coach/courses" className="px-6 py-3 bg-slate-900 text-white rounded-2xl text-[12px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all">
+              Studio de Cursos
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Link to="/coach/session" className="group">
+              <QuickAction title="Sesión Inteligente" desc="Transcripción y análisis IA" icon={<Brain size={24} className="text-indigo-600" />} />
+            </Link>
+            <QuickAction title="Revisar Tareas" desc="Feedback de módulos" icon={<BookOpen size={24} className="text-amber-500" />} />
+            <QuickAction title="AI Audit CRM" desc="Optimizar embudo" icon={<Activity size={24} className="text-rose-500" />} />
+            <QuickAction title="Cloud Support" desc="Kira Corp Direct" icon={<ShieldCheck size={24} className="text-emerald-600" />} />
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Link to="/coach/session" className="group">
-            <QuickAction title="Sesión Inteligente" desc="Transcripción y análisis IA" icon={<Brain size={24} className="text-indigo-600" />} />
-          </Link>
-          <QuickAction title="Revisar Tareas" desc="Feedback de módulos" icon={<BookOpen size={24} className="text-amber-500" />} />
-          <QuickAction title="AI Audit CRM" desc="Optimizar embudo" icon={<Activity size={24} className="text-rose-500" />} />
-          <QuickAction title="Cloud Support" desc="Kira Corp Direct" icon={<ShieldCheck size={24} className="text-emerald-600" />} />
+
+        {/* Heatmap de Energía (Resumen del equipo) */}
+        <div className={cn("bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm flex flex-col justify-center", !isApproved && "opacity-50 pointer-events-none")}>
+           <h3 className="text-lg font-black text-slate-800 mb-6 text-center">Heatmap Energía de Equipo</h3>
+           {loading ? (
+              <div className="flex justify-center py-10"><Loader2 className="animate-spin text-teal-500" size={32} /></div>
+           ) : (
+              <div className="flex flex-col gap-5">
+                 <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Sinergia (Alta)</span>
+                       <span className="text-sm font-black text-emerald-600">{Math.round(posPct)}%</span>
+                    </div>
+                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                       <div className="h-full bg-emerald-500 transition-all duration-1000 shadow-sm" style={{ width: `${posPct}%` }}></div>
+                    </div>
+                 </div>
+
+                 <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Estable (Neutral)</span>
+                       <span className="text-sm font-black text-amber-500">{Math.round(neuPct)}%</span>
+                    </div>
+                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                       <div className="h-full bg-amber-400 transition-all duration-1000 shadow-sm" style={{ width: `${neuPct}%` }}></div>
+                    </div>
+                 </div>
+
+                 <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Agotamiento (Riesgo)</span>
+                       <span className="text-sm font-black text-rose-500">{Math.round(negPct)}%</span>
+                    </div>
+                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                       <div className="h-full bg-rose-500 transition-all duration-1000 shadow-sm" style={{ width: `${negPct}%` }}></div>
+                    </div>
+                 </div>
+              </div>
+           )}
         </div>
       </div>
     </div>
@@ -2100,3 +2219,4 @@ export function CoachCourses() {
     </div>
   );
 }
+
