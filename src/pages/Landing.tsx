@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Navigate } from 'react-router-dom';
 import { Logo } from '../components/Brand';
-import { LogIn, ArrowRight, ShieldCheck, Activity, Users, BrainCircuit, Globe, BarChart3, Star, DownloadCloud, Award, User, Instagram, Linkedin, Twitter, BadgeCheck, MessageCircleHeart, X, Send, Loader2, HeartPulse, FileText, Search, Zap, Wind, Heart, Target, Tag, Calendar, Ticket } from 'lucide-react';
+import { LogIn, ArrowRight, ShieldCheck, Activity, Users, BrainCircuit, Globe, BarChart3, Star, DownloadCloud, Award, User, Instagram, Linkedin, Twitter, BadgeCheck, MessageCircleHeart, X, Send, Loader2, HeartPulse, FileText, Search, Zap, Wind, Heart, Target, Tag, Calendar, Ticket, ShoppingBag, PlayCircle, BookOpen } from 'lucide-react';
 import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, onSnapshot, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
 import { cn } from '../lib/utils';
 
@@ -18,6 +18,8 @@ export function Landing() {
   const navigate = useNavigate();
   const [coaches, setCoaches] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<any[]>([]);
+  const [marketplaceItems, setMarketplaceItems] = useState<any[]>([]);
+  const [pills, setPills] = useState<any[]>([]);
   const [selectedPromotion, setSelectedPromotion] = useState<any | null>(null);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('Todos');
   const [selectedExperience, setSelectedExperience] = useState<string>('Todos');
@@ -114,6 +116,27 @@ export function Landing() {
       setPromotions(validPromos);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'promotions');
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, 'marketplace'), where('status', '==', 'published'));
+    const unsub = onSnapshot(q, (snap) => {
+      setMarketplaceItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'marketplace');
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const q = query(collection(db, 'pills'), orderBy('createdAt', 'desc'), limit(3));
+    const unsub = onSnapshot(q, (snap) => {
+      setPills(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (error) => {
+      // Pills might not exist yet, handle gracefully
+      console.warn("Pills collection not found or accessible");
     });
     return () => unsub();
   }, []);
@@ -431,6 +454,126 @@ export function Landing() {
                   );
                 })}
               </div>
+            </div>
+          </section>
+        )}
+
+        {/* MARKETPLACE SECTION: COURSES & BOOKS */}
+        {marketplaceItems.length > 0 && (
+          <section className="px-6 lg:px-12 py-24 bg-[#FAFAFA] border-t border-slate-200">
+            <div className="max-w-7xl mx-auto">
+              <div className="mb-14 text-center flex flex-col items-center">
+                <span className="text-kirateal font-bold tracking-widest uppercase text-xs mb-3 flex items-center gap-2">
+                  <ShoppingBag size={14} /> Academia & Recursos
+                </span>
+                <h3 className="text-4xl md:text-5xl font-serif text-slate-900 mb-6 tracking-tight">
+                  Eleva tu potencial Cognitivo
+                </h3>
+                <p className="text-slate-500 max-w-2xl mx-auto text-lg leading-relaxed">
+                  Programas de alto impacto y herramientas diseñadas para la re-evolución consciente de tu mente y espíritu, seleccionadas por Kira.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+                {marketplaceItems.map(item => (
+                  <div key={item.id} className="group bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden hover:shadow-2xl transition-all duration-500 flex flex-col hover:-translate-y-2">
+                    <div className="aspect-[4/3] relative overflow-hidden">
+                      <div className="absolute top-4 left-4 z-10 px-3 py-1.5 bg-white/90 backdrop-blur rounded-full text-[10px] font-black uppercase tracking-widest text-slate-900 shadow-sm">
+                        {item.type === 'curso' ? 'Masterclass' : 'E-Book'}
+                      </div>
+                      {item.imageUrl ? (
+                        <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      ) : (
+                        <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300">
+                          {item.type === 'curso' ? <PlayCircle size={64} /> : <BookOpen size={64} />}
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-8">
+                        <button 
+                          onClick={() => navigate('/login')}
+                          className="w-full py-4 bg-white text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-kirateal hover:text-white transition-all shadow-xl active:scale-95"
+                        >
+                          {item.type === 'curso' ? 'Inscribirse Ahora' : 'Obtener Copia'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-8 flex-1 flex flex-col">
+                      <div className="flex justify-between items-start mb-4">
+                        <h4 className="text-xl font-bold text-slate-900 leading-tight group-hover:text-kirateal transition-colors">{item.title}</h4>
+                        <div className="text-lg font-black text-slate-900">${item.price}</div>
+                      </div>
+                      <p className="text-sm text-slate-500 mb-6 flex-1 line-clamp-2">
+                        {item.type === 'curso' 
+                          ? 'Domina los principios de la mentalidad de alto rendimiento con este programa intensivo guiado.' 
+                          : 'Una guía profunda sobre los pilares del coaching adaptativo y la bio-sincronización.'}
+                      </p>
+                      <div className="flex items-center gap-3 pt-6 border-t border-slate-100 mt-auto">
+                        <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-bold text-indigo-500">
+                          {item.author?.[0] || 'A'}
+                        </div>
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Publicado por {item.author || 'Admin'}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* PILLS SECTION: PÍLDORAS DE SABIDURÍA */}
+        {pills.length > 0 && (
+          <section className="px-6 lg:px-12 py-20 bg-slate-900 overflow-hidden relative">
+            <div className="absolute inset-0 opacity-10">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-kirateal rounded-full blur-[100px] -mr-32 -mt-32"></div>
+            </div>
+            
+            <div className="max-w-7xl mx-auto relative z-10 flex flex-col lg:flex-row items-center gap-12">
+               <div className="flex-1 space-y-6">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-kirateal text-[10px] font-black uppercase tracking-widest">
+                     <BrainCircuit size={14} /> Contenido Instantáneo
+                  </div>
+                  <h3 className="text-3xl md:text-5xl font-serif italic text-white leading-tight">
+                    Píldoras de Sabiduría: <br/> El Coach en tu bolsillo.
+                  </h3>
+                  <p className="text-slate-400 text-lg leading-relaxed max-w-xl">
+                    Audios de 1 minuto diseñados para resetear tu mente y reconectar con tu propósito en cualquier momento del día. Exclusivo para nuestra comunidad de alto rendimiento.
+                  </p>
+                  <button 
+                    onClick={() => navigate('/login')}
+                    className="group px-8 py-4 bg-white text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-kirateal hover:text-white transition-all flex items-center gap-2 shadow-xl shadow-white/5"
+                  >
+                    Desbloquear todo el catálogo <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                  </button>
+               </div>
+               
+               <div className="flex-1 grid grid-cols-1 gap-4 w-full">
+                  {pills.map((pill, idx) => (
+                    <div key={pill.id} className={cn(
+                      "p-6 rounded-[2rem] border bg-white/5 border-white/10 flex items-center justify-between group hover:bg-white/10 transition-all cursor-pointer",
+                      idx === 0 ? "scale-105 shadow-2xl shadow-kirateal/20 border-white/30" : "opacity-60 hover:opacity-100"
+                    )}>
+                       <div className="flex items-center gap-5">
+                          <div className="w-14 h-14 rounded-2xl bg-kirateal/20 text-kirateal flex items-center justify-center shadow-lg">
+                             <PlayCircle size={28} />
+                          </div>
+                          <div>
+                             <p className="text-white font-bold text-lg mb-0.5">{pill.title}</p>
+                             <div className="flex gap-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                <span>{pill.duration || '1:00'} min</span>
+                                <span>•</span>
+                                <span>{pill.author || 'Admin'}</span>
+                             </div>
+                          </div>
+                       </div>
+                       {idx === 0 && (
+                         <div className="px-3 py-1 bg-kirateal text-white text-[8px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg">
+                           Nueva
+                         </div>
+                       )}
+                    </div>
+                  ))}
+               </div>
             </div>
           </section>
         )}
