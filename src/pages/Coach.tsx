@@ -210,10 +210,41 @@ return (
       </div>
     </div>
   );
-}
+}export function CoachDashboard() {
+  const { user } = useAuth();
+  // ... estados y efectos ...
+
+  return (
+    <div className="flex flex-col gap-8 animate-in fade-in duration-500">
+      {/* Header con logo */}
+      <div className="bg-white/40 backdrop-blur-xl border border-white/60 p-10 rounded-[40px] shadow-sm relative overflow-hidden">
+        {/* ... contenido del header ... */}
+      </div>
+
+      {/* Banner de membresía */}
+      {!hasMembership && isApproved && (
+        <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-[40px] p-10 shadow-2xl">
+          {/* ... */}
+        </div>
+      )}
+
+      {/* Navegación */}
+      <div className="flex flex-wrap gap-2 p-1.5 bg-slate-100 rounded-[32px] w-fit shadow-sm">
+        {/* ... tabs ... */}
+      </div>
+
+      {/* Contenido dinámico */}
+      <div className="flex-1">
+        {activeTab === 'dashboard' && <CoachDashboardView profile={profile} isApproved={isApproved} />}
+        {/* ... otros tabs ... */}
+      </div>
+    </div>
+  );
+} // ← CIERRE CORRECTO DEL CoachDashboard (línea 213)
 
 function TabBtn({ active, onClick, icon, label, disabled }: any) {
-  return (
+  // ...
+}
     <button 
       onClick={onClick}
       disabled={disabled}
