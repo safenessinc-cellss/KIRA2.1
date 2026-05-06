@@ -249,6 +249,42 @@
       },
       "required": ["coachId", "name", "terms", "createdAt"]
     },
+    "AppSetting": {
+      "title": "Application Settings",
+      "description": "Global branding and configuration",
+      "type": "object",
+      "properties": {
+        "primaryColor": { "type": "string" },
+        "secondaryColor": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "heroImageUrl": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "AiMetric": {
+      "title": "AI Performance Metrics",
+      "description": "Monitors latency, precision, and escalation rates",
+      "type": "object",
+      "properties": {
+        "latency": { "type": "number", "description": "Average response time in ms" },
+        "sentimentPrecision": { "type": "number", "description": "% of accurate sentiment analysis" },
+        "escalationRate": { "type": "number", "description": "% of sessions requiring human intervention" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Sale": {
+      "title": "Sales Entry",
+      "description": "Record of a transaction for analytics",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number" },
+        "type": { "type": "string", "enum": ["course", "membership"] },
+        "month": { "type": "string", "description": "YYYY-MM" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "CourseActivity": {
       "title": "CourseActivity",
       "description": "Detailed interaction patterns and quiz performance",
@@ -418,6 +454,18 @@
     "/stats/{id}": {
       "schema": { "$ref": "#/entities/SystemStat" },
       "description": "Global statistics snapshots."
+    },
+    "/settings/{id}": {
+      "schema": { "$ref": "#/entities/AppSetting" },
+      "description": "Global application branding and settings."
+    },
+    "/ai_metrics/{id}": {
+      "schema": { "$ref": "#/entities/AiMetric" },
+      "description": "AI performance tracking."
+    },
+    "/sales/{id}": {
+      "schema": { "$ref": "#/entities/Sale" },
+      "description": "Sales records for monthly trends."
     }
   }
 }
