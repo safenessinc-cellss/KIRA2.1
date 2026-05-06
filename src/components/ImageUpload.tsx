@@ -1,26 +1,25 @@
+// src/components/ImageUpload.tsx
 import React, { useState, useRef } from 'react';
 import { storage } from '../firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
-import { UploadCloud, Loader2, FileText, Music, PlayCircle } from 'lucide-react';
+import { UploadCloud, Loader2, Image as ImageIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 
-interface FileUploadProps {
+interface ImageUploadProps {
   onUploadComplete: (url: string) => void;
   folderPath: string;
   className?: string;
   label?: string;
   accept?: string;
-  fileType?: 'image' | 'pdf' | 'audio' | 'video' | 'any';
 }
 
-export function FileUpload({ 
+export function ImageUpload({ 
   onUploadComplete, 
   folderPath, 
   className, 
-  label = "Subir Archivo", 
-  accept = "*/*",
-  fileType = 'any'
-}: FileUploadProps) {
+  label = "Subir Imagen", 
+  accept = "image/*",
+}: ImageUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -29,13 +28,9 @@ export function FileUpload({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Optional validation based on fileType
-    if (fileType === 'pdf' && file.type !== 'application/pdf') {
-      alert("Por favor selecciona un archivo PDF válido.");
-      return;
-    }
-    if (fileType === 'audio' && !file.type.startsWith('audio/')) {
-      alert("Por favor selecciona un archivo de audio válido.");
+    // Validar que sea una imagen
+    if (!file.type.startsWith('image/')) {
+      alert("Por favor selecciona un archivo de imagen válido (JPEG, PNG, GIF, etc.).");
       return;
     }
 
@@ -56,7 +51,7 @@ export function FileUpload({
       },
       (error) => {
         console.error("Upload Error:", error);
-        alert("Ocurrió un error al subir el archivo.");
+        alert("Ocurrió un error al subir la imagen.");
         setIsUploading(false);
       },
       async () => {
@@ -65,13 +60,6 @@ export function FileUpload({
         onUploadComplete(downloadURL);
       }
     );
-  };
-
-  const getIcon = () => {
-    if (fileType === 'pdf') return <FileText size={16} className="text-rose-500" />;
-    if (fileType === 'audio') return <Music size={16} className="text-cyan-500" />;
-    if (fileType === 'video') return <PlayCircle size={16} className="text-indigo-500" />;
-    return <UploadCloud size={16} className="text-kirateal" />;
   };
 
   return (
@@ -100,7 +88,7 @@ export function FileUpload({
           </>
         ) : (
           <>
-            {getIcon()}
+            <ImageIcon size={16} className="text-kirateal" />
             {label}
           </>
         )}
