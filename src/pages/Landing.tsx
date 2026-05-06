@@ -224,9 +224,16 @@ export function Landing() {
 
       <main className="flex-1 flex flex-col">
         {/* HERO SECTION */}
-        <section className="relative px-6 lg:px-12 py-20 lg:py-32 flex flex-col lg:flex-row items-center gap-12 overflow-hidden">
+        <section className="relative px-6 lg:px-12 py-20 lg:py-32 flex flex-col lg:flex-row items-center gap-12 overflow-hidden min-h-[600px]">
+          {/* Sunset/Ocean Background Image */}
+          <div 
+             className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
+             style={{ backgroundImage: `url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=2073&auto=format&fit=crop')` }}
+          />
+          <div className="absolute inset-0 z-0 bg-gradient-to-r from-[#FDFBF7]/95 via-[#FDFBF7]/80 to-[#FDFBF7]/20 backdrop-blur-[2px]" />
+
           <div className="flex-1 max-w-2xl space-y-8 z-10">
-            <span className="text-kirateal font-bold tracking-widest uppercase text-xs flex items-center gap-2">
+            <span className="text-kirateal-dark font-bold tracking-widest uppercase text-xs flex items-center gap-2 drop-shadow-sm">
               <span className="w-8 h-px bg-kirateal inline-block"></span> Coach Adaptativo & Proactivo
             </span>
             <h2 className="text-5xl md:text-7xl font-bold leading-tight text-slate-900 tracking-tight">
