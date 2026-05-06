@@ -40,7 +40,7 @@ export function Logo({ className, size = 40, withText = false, variant = 'color'
     <div className={cn("flex items-center gap-4", className)}>
       <div className="relative shrink-0 flex items-center justify-center rounded-full overflow-hidden" style={{ width: size, height: size }}>
         <img 
-          src={logoUrl || "/assets/kira-logo.png"} 
+          src={logoUrl || "/images/11.png"} 
           alt="Kira Coach Logo" 
           className={cn(
              "w-full h-full object-contain drop-shadow-md",
