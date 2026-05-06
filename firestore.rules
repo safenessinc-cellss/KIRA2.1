@@ -100,11 +100,12 @@ service cloud.firestore {
     
     function isValidUser() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'role', 'approvalStatus', 'points', 'theme', 'isEmailVerified', 'staffPermissions', 'lastLoginAt', 'lastActivityAt', 'createdAt', 'specialty', 'bio', 'aiFeedback', 'registeredByCoach', 'status', 'membershipStatus', 'membershipPaidAt', 'socialLinks']) &&
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'role', 'approvalStatus', 'points', 'theme', 'isEmailVerified', 'staffPermissions', 'lastLoginAt', 'lastActivityAt', 'createdAt', 'updatedAt', 'specialty', 'specialties', 'bio', 'aiFeedback', 'registeredByCoach', 'status', 'membershipStatus', 'membershipPaidAt', 'socialLinks', 'calendlyUrl', 'experienceLevel', 'languages', 'welcomeVideoUrl', 'rating', 'studentCount', 'mediaItems']) &&
              data.uid is string &&
              data.email is string &&
              data.role in ['admin', 'coach', 'alumno'] &&
              data.createdAt is timestamp &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp) &&
              (!('approvalStatus' in data) || data.approvalStatus in ['pending', 'approved', 'rejected']) &&
              (!('points' in data) || data.points is number) &&
              (!('theme' in data) || data.theme is string) &&
@@ -115,9 +116,17 @@ service cloud.firestore {
              (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
              (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000)) &&
              (!('specialty' in data) || (data.specialty is string && data.specialty.size() < 200)) &&
-             (!('bio' in data) || (data.bio is string && data.bio.size() < 5000)) &&
+             (!('specialties' in data) || data.specialties is list) &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() < 10000)) &&
              (!('aiFeedback' in data) || data.aiFeedback is map) &&
-             (!('socialLinks' in data) || data.socialLinks is map);
+             (!('socialLinks' in data) || data.socialLinks is map) &&
+             (!('calendlyUrl' in data) || (data.calendlyUrl is string && data.calendlyUrl.size() < 500)) &&
+             (!('experienceLevel' in data) || data.experienceLevel is string) &&
+             (!('languages' in data) || data.languages is string) &&
+             (!('welcomeVideoUrl' in data) || (data.welcomeVideoUrl is string && data.welcomeVideoUrl.size() < 1000)) &&
+             (!('rating' in data) || data.rating is number) &&
+             (!('studentCount' in data) || data.studentCount is number) &&
+             (!('mediaItems' in data) || data.mediaItems is list);
     }
 
     function isValidMessage() {
