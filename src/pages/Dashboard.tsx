@@ -184,7 +184,7 @@ export function Dashboard() {
           <div className="flex items-center gap-2 mb-3">
             <div className="flex items-center gap-1.5 px-2 py-0.5 bg-kirateal/10 text-kirateal text-[10px] font-black uppercase tracking-widest rounded-lg border border-kirateal/20">
               <Activity size={10} />
-              Evolution Pipeline
+              Pipeline de Evolución
             </div>
             <span className="text-slate-300">/</span>
             <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Workspace Personal</span>
@@ -197,7 +197,7 @@ export function Dashboard() {
         
         <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-[24px] border border-slate-100 shadow-inner">
           <div className="px-6 py-3 bg-white rounded-2xl shadow-sm border border-slate-200/60">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">Energy Pts</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">Pts de Energía</p>
             <div className="flex items-center gap-2">
               <Zap size={16} className="text-kiragold fill-kiragold" />
               <span className="text-2xl font-black text-slate-900 tracking-tight">{userDocPoints.toLocaleString()}</span>
@@ -246,15 +246,15 @@ export function Dashboard() {
           <div className="flex justify-between items-center mb-1">
              <div className="flex items-center gap-2">
                 <span className={cn("p-2 rounded-xl bg-white/60", currentTier.color)}>{currentTier.icon}</span>
-                <h3 className={cn("text-[10px] font-black uppercase tracking-widest", currentTier.color)}>Tier {currentTier.name}</h3>
+                <h3 className={cn("text-[10px] font-black uppercase tracking-widest", currentTier.color)}>Rango {currentTier.name}</h3>
              </div>
-             <span className="text-[10px] font-bold opacity-50 uppercase tracking-tighter">Kira League™</span>
+             <span className="text-[10px] font-bold opacity-50 uppercase tracking-tighter">Liga Kira™</span>
           </div>
           <div>
-            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-1 italic">Personal Growth</p>
+            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-1 italic">Desarrollo Personal</p>
             <div className="flex items-baseline gap-2">
                <p className="text-4xl font-black text-slate-900 tracking-tighter">{userDocPoints.toLocaleString()}</p>
-               <span className="text-[11px] font-bold text-slate-500 uppercase">Energy Pts</span>
+               <span className="text-[11px] font-bold text-slate-500 uppercase">Pts Energía</span>
             </div>
           </div>
           <div className="mt-4">
@@ -371,7 +371,7 @@ export function Dashboard() {
                           
                           <div className="flex gap-5 mt-auto items-center">
                             <div className="flex-1">
-                              <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 block mb-2 opacity-60">Identity Verified By</span>
+                              <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 block mb-2 opacity-60">Identidad Verificada Por</span>
                               <div className="-ml-3 scale-90 origin-left">
                                 <Seal size={42} />
                               </div>
@@ -417,7 +417,7 @@ export function Dashboard() {
                      </div>
                      <h3 className="text-2xl font-black text-slate-900 tracking-tight">Mis Mentores</h3>
                   </div>
-                  <button onClick={() => navigate('/')} className="text-[11px] font-black text-kirateal uppercase tracking-widest hover:underline border border-kirateal/20 px-4 py-2 rounded-xl transition-colors hover:bg-kirateal/5">Full Directory</button>
+                  <button onClick={() => navigate('/')} className="text-[11px] font-black text-kirateal uppercase tracking-widest hover:underline border border-kirateal/20 px-4 py-2 rounded-xl transition-colors hover:bg-kirateal/5">Directorio Completo</button>
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -449,7 +449,7 @@ export function Dashboard() {
               <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center text-kiragold mb-8 border border-white/20">
                 <Sparkles size={24} />
               </div>
-              <h3 className="font-black text-2xl mb-6 tracking-tight leading-none">AI Insight <br/> Evolution</h3>
+              <h3 className="font-black text-2xl mb-6 tracking-tight leading-none">Evolución de <br/> Insights IA</h3>
               <p className="text-sm opacity-80 leading-relaxed mb-8 font-medium italic text-indigo-100/90">
                 "Tu reciente actividad académica sugiere un enfoque en Liderazgo. Recomendamos profundizar con el análisis de 'Biología del Éxito' en tu Vault."
               </p>
@@ -465,7 +465,7 @@ export function Dashboard() {
                   <div className="w-11 h-11 bg-kiragold/10 rounded-2xl flex items-center justify-center text-kiragold-dark shadow-sm">
                      <Zap size={22} />
                   </div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Kira Vault</h3>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Bóveda Kira</h3>
                </div>
                <button onClick={() => navigate('/dashboard/elite')} className="text-[10px] font-black text-kirateal uppercase tracking-widest hover:underline px-3 py-1.5 bg-kirateal/5 rounded-lg border border-kirateal/10">Ir</button>
             </div>
@@ -492,7 +492,7 @@ export function Dashboard() {
                 <div className="py-16 flex flex-col items-center justify-center text-center opacity-20 grayscale transition-all hover:grayscale-0 hover:opacity-100 duration-1000">
                    <Zap size={56} className="mb-4 text-kiragold" />
                    <div className="space-y-1">
-                      <p className="text-[11px] font-black uppercase tracking-[0.2em] leading-tight mb-1">Elite Vault</p>
+                      <p className="text-[11px] font-black uppercase tracking-[0.2em] leading-tight mb-1">Bóveda Élite</p>
                       <p className="text-[10px] font-bold text-slate-500 italic">Desbloquea contenido exclusivo</p>
                    </div>
                 </div>
@@ -659,7 +659,7 @@ export function Journal() {
                 <Sparkles size={20} />
              </div>
              <div className="relative z-10 flex-1">
-                <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Kira Predictive Insight</p>
+                <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Insight Predictivo de Kira</p>
                 <p className="text-lg text-slate-700 italic font-medium leading-relaxed italic">
                   {loadingPrompt ? "Decodificando patrones energéticos..." : `"${aiPrompt}"`}
                 </p>
@@ -712,3 +712,4 @@ export function Journal() {
     </div>
   );
 }
+
