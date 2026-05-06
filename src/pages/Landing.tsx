@@ -1241,7 +1241,7 @@ Implementa las siguientes capas de lógica:
 2. Estructura de Salida: Responde siempre utilizando Markdown para mejorar la legibilidad. Si los datos son comparativos, usa tablas. Si son procesos, usa listas numeradas.
 3. Control de Calidad: Antes de entregar la respuesta, verifica que no contenga información contradictoria. Mantén un tono Profesional y Cercano. Evita introducciones innecesarias como "Claro, yo puedo ayudarte con eso".
 4. Manejo de Errores: Si el usuario solicita algo que viola las políticas de seguridad o está fuera del alcance de la plataforma de bienestar, declina la petición de forma breve y sugiere una alternativa permitida.
-5. REGLA DE ESCALAMIENTO MENTAL: Si detectas que el usuario está muy frustrado, triste, mencionó darse por vencido, o si notas necesidad de un diagnóstico profesional, debes incluir EXACTAMENTE la frase "[ESCALAR_HUMANO]" al final de tu respuesta secreta.
+5. REGLA DE ESCALAMIENTO MENTAL: Si detectas un estado de ánimo negativo, un nivel de estrés alto en el usuario, frustración, tristeza, o si notas necesidad de un diagnóstico profesional, debes incluir EXACTAMENTE la frase "[ESCALAR_HUMANO]" al final de tu respuesta secreta.
 `;
 
       const response = await ai.models.generateContent({
