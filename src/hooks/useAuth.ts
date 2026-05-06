@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from 'react';
+import React, { useState, useEffect, createContext, useContext } from 'react';
 import { 
   auth, 
   signInWithEmailAndPassword, 
@@ -6,10 +6,12 @@ import {
   signOut,
   onAuthStateChanged,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  db,
+  doc,
+  getDoc,
+  setDoc
 } from '../firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 
 interface AuthContextType {
   user: any | null;
@@ -33,21 +35,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(firebaseUser);
       
       if (firebaseUser) {
-        // Buscar rol no Firestore
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-          setRole(userDoc.data().role || 'alumno');
-        } else {
-          // Criar documento se não existir
-          const defaultRole = 'alumno';
-          await setDoc(doc(db, 'users', firebaseUser.uid), {
-            email: firebaseUser.email,
-            displayName: firebaseUser.displayName,
-            role: defaultRole,
-            createdAt: new Date(),
-            approvalStatus: 'approved'
-          });
-          setRole(defaultRole);
+        try {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            setRole(userDoc.data().role || 'alumno');
+          } else {
+            await setDoc(doc(db, 'users', firebaseUser.uid), {
+              email: firebaseUser.email,
+              displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
+              photoURL: firebaseUser.photoURL || '',
+              role: 'alumno',
+              createdAt: new Date(),
+              approvalStatus: 'approved',
+              points: 0
+            });
+            setRole('alumno');
+          }
+        } catch (error) {
+          console.error("Error fetching user role:", error);
+          setRole('alumno');
         }
       } else {
         setRole(null);
@@ -62,7 +68,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       const result = await signInWithEmailAndPassword(auth, email, password);
-      // Buscar role do usuário
       const userDoc = await getDoc(doc(db, 'users', result.user.uid));
       if (userDoc.exists()) {
         setRole(userDoc.data().role);
@@ -79,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await setDoc(doc(db, 'users', result.user.uid), {
         email,
         displayName: name,
+        photoURL: '',
         role: 'alumno',
         createdAt: new Date(),
         approvalStatus: 'approved',
@@ -107,15 +113,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
       
-      // Verificar se usuário já existe no Firestore
       const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
       
       if (!userDoc.exists()) {
-        // Criar novo usuário
         await setDoc(doc(db, 'users', firebaseUser.uid), {
           email: firebaseUser.email,
           displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
-          photoURL: firebaseUser.photoURL,
+          photoURL: firebaseUser.photoURL || '',
           role: 'alumno',
           createdAt: new Date(),
           approvalStatus: 'approved',
@@ -125,20 +129,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setRole(userDoc.data().role);
       }
-      
     } catch (error) {
       console.error("Google login error:", error);
       throw error;
     }
   };
 
-  return (
-    <AuthContext.Provider value={{ user, role, loading, login, signUp, logout, signInWithGoogle }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  const value: AuthContextType = {
+    user,
+    role,
+    loading,
+    login,
+    signUp,
+    logout,
+    signInWithGoogle
+  };
+
+  return React.createElement(AuthContext.Provider, { value }, children);
 }
 
 export function useAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 }
