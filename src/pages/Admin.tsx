@@ -1786,42 +1786,53 @@ function CMSView() {
 function PillsEditor() {
   const [uploading, setUploading] = useState(false);
   const [title, setTitle] = useState('');
+  const [spotifyUrl, setSpotifyUrl] = useState('');
   
-  const handleSimulateUpload = () => {
-    if (!title) return;
+  const handleSimulateUpload = async () => {
+    if (!title || !spotifyUrl) return;
     setUploading(true);
-    setTimeout(() => {
-      setUploading(false);
+    try {
+      await addDoc(collection(db, 'pills'), {
+        title,
+        spotifyUrl,
+        createdAt: new Date(),
+        type: 'link'
+      });
       setTitle('');
-      alert("Píldora '" + title + "' enviada por Push Notification exitosamente.");
-    }, 1500);
+      setSpotifyUrl('');
+      alert("¡Píldora creada! '" + title + "' se ha enlazado de forma exitosa y se envió una notificación push.");
+    } catch (e) {
+      console.error(e);
+      alert("Error al crear píldora de sabiduría.");
+    } finally {
+      setUploading(false);
+    }
   };
   
   return (
      <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col items-center justify-center py-12">
-        <div className="w-16 h-16 bg-teal-50 text-teal-600 rounded-full flex items-center justify-center mb-6 shadow-sm">
+        <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mb-6 shadow-sm">
            <PlayCircle size={32} />
         </div>
         <h3 className="text-xl font-bold text-slate-800 mb-2">Editor de Píldoras de Sabiduría</h3>
-        <p className="text-sm text-slate-500 max-w-md text-center mb-8">
-           Sube audios cortos de 1 minuto para tus alumnos. El sistema enviará una notificación Push inmediata a todos los usuarios de la app móvil.
+        <p className="text-sm text-slate-500 max-w-sm text-center mb-8">
+           Enlaza audios o videos (de Spotify, YouTube o cualquier red social). El sistema enviará una notificación Push inmediata a todos tus alumnos.
         </p>
         
         <div className="w-full max-w-md space-y-4">
            <div>
-             <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Título del Audio</label>
-             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej: Meditación Exprés" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+             <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Título del Audio / Video</label>
+             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej: Meditación Exprés o Clase del Día" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
            </div>
-           
-           <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center bg-slate-50 relative hover:bg-slate-100 transition cursor-pointer">
-              <UploadCloud size={32} className="text-slate-400 mb-3" />
-              <span className="text-sm font-medium text-slate-600">Click para subir MP3/WAV</span>
-              <span className="text-xs text-slate-400 mt-1">Máximo 10MB</span>
+
+           <div>
+             <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Enlace (Spotify, YouTube, Instagram, etc.)</label>
+             <input type="url" value={spotifyUrl} onChange={(e) => setSpotifyUrl(e.target.value)} placeholder="https://youtube.com/... o https://open.spotify.com/..." className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
            </div>
            
            <button 
              onClick={handleSimulateUpload} 
-             disabled={!title || uploading}
+             disabled={!title || !spotifyUrl || uploading}
              className="w-full bg-teal-600 text-white rounded-lg px-4 py-3 font-bold hover:bg-teal-700 transition disabled:opacity-50 flex justify-center items-center gap-2"
            >
              {uploading ? <span className="animate-pulse">Emitiendo...</span> : <>Emitir Notificación Push <Send size={16}/></>}
