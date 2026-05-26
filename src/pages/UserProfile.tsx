@@ -30,6 +30,7 @@ export function UserProfile() {
       await updateDoc(userRef, {
         displayName,
         photoURL,
+        photoUrl: photoURL,
         socialLinks
       });
       setSuccess(true);
