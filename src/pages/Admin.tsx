@@ -1450,6 +1450,14 @@ function MarketplaceEditorView() {
   const [editImageUrl, setEditImageUrl] = useState('');
   const [editAuthor, setEditAuthor] = useState('');
 
+  // Creation modal states
+  const [createType, setCreateType] = useState<'curso' | 'libro' | null>(null);
+  const [createTitle, setCreateTitle] = useState('');
+  const [createPrice, setCreatePrice] = useState('99');
+  const [createImageUrl, setCreateImageUrl] = useState('');
+  const [createAuthor, setCreateAuthor] = useState('Kira Coach');
+  const [createStatus, setCreateStatus] = useState<'published' | 'draft'>('draft');
+
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'marketplace'), (snap) => {
        setItems(snap.docs.map(d => ({id: d.id, ...d.data()})));
@@ -1457,6 +1465,40 @@ function MarketplaceEditorView() {
     });
     return () => unsub();
   }, []);
+
+  const handleCreateItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createTitle.trim()) {
+      alert('Por favor introduce un título para el catálogo.');
+      return;
+    }
+    try {
+      const defaultImg = createType === 'curso' 
+        ? 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500'
+        : 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=500';
+
+      await addDoc(collection(db, 'marketplace'), {
+         title: createTitle,
+         price: parseFloat(createPrice) || 0,
+         type: createType,
+         status: createStatus,
+         createdAt: new Date(),
+         author: createAuthor || 'Kira Coach',
+         imageUrl: createImageUrl || defaultImg
+      });
+
+      // Reset
+      setCreateTitle('');
+      setCreatePrice('99');
+      setCreateImageUrl('');
+      setCreateAuthor('Kira Coach');
+      setCreateStatus('draft');
+      setCreateType(null);
+    } catch (e) {
+      console.error('Error creating marketplace item:', e);
+      alert('Error al crear el producto.');
+    }
+  };
 
   const addPlaceholder = async (type: 'curso' | 'libro') => {
     try {
@@ -1523,12 +1565,146 @@ function MarketplaceEditorView() {
 
   return (
     <div className="space-y-6 animate-in fade-in">
+       {/* Modal de Creación */}
+       {createType && (
+         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-100">
+           <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-lg w-full overflow-hidden">
+             <div className="px-6 py-4 bg-slate-900 text-white flex justify-between items-center">
+               <div className="flex items-center gap-2">
+                 <Sparkles size={18} className="text-amber-400" />
+                 <h3 className="font-bold text-sm tracking-tight">
+                   Publicar Nuevo {createType === 'curso' ? 'Curso' : 'Libro'}
+                 </h3>
+               </div>
+               <button 
+                 type="button"
+                 onClick={() => setCreateType(null)} 
+                 className="p-1 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white"
+               >
+                 <XCircle size={20} />
+               </button>
+             </div>
+             
+             <form onSubmit={handleCreateItem} className="p-6 space-y-4">
+               <div>
+                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Título</label>
+                 <input 
+                   type="text" 
+                   value={createTitle}
+                   onChange={(e) => setCreateTitle(e.target.value)}
+                   placeholder={createType === 'curso' ? 'Ej: Fundamentos del Coaching' : 'Ej: El Camino de la Excelencia'}
+                   className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
+                   required
+                 />
+               </div>
+
+               <div className="grid grid-cols-2 gap-4">
+                 <div>
+                   <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Autor / Coach</label>
+                   <input 
+                     type="text" 
+                     value={createAuthor}
+                     onChange={(e) => setCreateAuthor(e.target.value)}
+                     className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
+                   />
+                 </div>
+                 <div>
+                   <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Precio (USD)</label>
+                   <input 
+                     type="number" 
+                     value={createPrice}
+                     onChange={(e) => setCreatePrice(e.target.value)}
+                     className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
+                     required
+                   />
+                 </div>
+               </div>
+
+               <div>
+                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">URL de la Imagen (Portada)</label>
+                 <input 
+                   type="url" 
+                   value={createImageUrl}
+                   onChange={(e) => setCreateImageUrl(e.target.value)}
+                   placeholder="https://images.unsplash.com/photo-..."
+                   className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium"
+                 />
+               </div>
+
+               <div>
+                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Visibilidad</label>
+                 <div className="flex gap-4">
+                   <label className="flex items-center gap-2 cursor-pointer">
+                     <input 
+                       type="radio" 
+                       name="status" 
+                       value="draft"
+                       checked={createStatus === 'draft'}
+                       onChange={() => setCreateStatus('draft')}
+                       className="text-indigo-600 focus:ring-indigo-500"
+                     />
+                     <span className="text-xs font-semibold text-slate-600">Borrador (Oculto)</span>
+                   </label>
+                   <label className="flex items-center gap-2 cursor-pointer">
+                     <input 
+                       type="radio" 
+                       name="status" 
+                       value="published"
+                       checked={createStatus === 'published'}
+                       onChange={() => setCreateStatus('published')}
+                       className="text-emerald-600 focus:ring-emerald-500"
+                     />
+                     <span className="text-xs font-semibold text-slate-600">Público (Visible en tienda)</span>
+                   </label>
+                 </div>
+               </div>
+
+               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                 <button 
+                   type="button"
+                   onClick={() => setCreateType(null)} 
+                   className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-bold text-slate-600 transition"
+                 >
+                   Cancelar
+                 </button>
+                 <button 
+                   type="submit" 
+                   className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                 >
+                   Crear Publicación
+                 </button>
+               </div>
+             </form>
+           </div>
+         </div>
+       )}
+
        <div className="flex gap-4 mb-4">
-          <button onClick={() => addPlaceholder('curso')} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm transition-all focus:ring-4 focus:ring-indigo-600/20">
-            + Nuevo Curso
+          <button 
+            onClick={() => {
+              setCreateType('curso');
+              setCreateTitle('');
+              setCreatePrice('199');
+              setCreateImageUrl('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500');
+              setCreateAuthor('Kira Coach');
+              setCreateStatus('draft');
+            }} 
+            className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm transition-all focus:ring-4 focus:ring-indigo-605/20 flex items-center gap-2"
+          >
+             <PlayCircle size={15} /> + Nuevo Curso
           </button>
-          <button onClick={() => addPlaceholder('libro')} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-sm transition-all focus:ring-4 focus:ring-emerald-600/20">
-            + Nuevo Libro
+          <button 
+            onClick={() => {
+              setCreateType('libro');
+              setCreateTitle('');
+              setCreatePrice('29');
+              setCreateImageUrl('https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=500');
+              setCreateAuthor('Kira Coach');
+              setCreateStatus('draft');
+            }} 
+            className="px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-sm transition-all focus:ring-4 focus:ring-emerald-605/20 flex items-center gap-2"
+          >
+             <BookOpen size={15} /> + Nuevo Libro
           </button>
        </div>
        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
