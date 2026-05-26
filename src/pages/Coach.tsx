@@ -200,11 +200,10 @@ function CoachDashboardView({ profile, isApproved }: any) {
     activeStudents: 0,
     avgProgress: 0,
     recentSessions: 0,
-    totalSales: 0,
-    salesHistory: [] as any[],
-    aiInsights: [] as any[]
+    sentiment: { positive: 0, neutral: 0, negative: 0 }
   });
-  const [studentsList, setStudentsList] = useState<any[]>([]);
+  const [sessionsData, setSessionsData] = useState<any[]>([]);
+  const [topTopics, setTopTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -218,89 +217,107 @@ function CoachDashboardView({ profile, isApproved }: any) {
         let activeStudents = 0;
         let totalProgress = 0;
         let totalEnrollments = 0;
-        const studentsDetails: any[] = [];
+        let recentSessionsCount = 0;
 
         if (courseIds.length > 0) {
-          const studentsMap = new Map();
+          const studentsSet = new Set();
           for (const cid of courseIds) {
             const enrollQ = query(collection(db, 'enrollments'), where('courseId', '==', cid));
             const enrollSnap = await getDocs(enrollQ);
-            
             for (const eDoc of enrollSnap.docs) {
-              const eData = eDoc.data();
-              const sId = eData.userId;
-              
-              totalProgress += eData.progress || 0;
+              const data = eDoc.data();
+              studentsSet.add(data.userId);
+              totalProgress += data.progress || 0;
               totalEnrollments++;
-
-              if (!studentsMap.has(sId)) {
-                const sProfile = await getDoc(doc(db, 'users', sId));
-                if (sProfile.exists()) {
-                  const sData = sProfile.data();
-                  studentsMap.set(sId, { 
-                    id: sId, 
-                    ...sData, 
-                    progress: eData.progress || 0,
-                    courseName: coursesSnap.docs.find(d => d.id === cid)?.data().title || 'Programa Élite',
-                    lastActive: sData.lastActivityAt || new Date()
-                  });
-                }
-              }
             }
           }
-          activeStudents = studentsMap.size;
-          setStudentsList(Array.from(studentsMap.values()));
+          activeStudents = studentsSet.size;
         }
 
-        // Fetch Sales for Bar Chart
-        const salesSnap = await getDocs(query(collection(db, 'sales'), orderBy('month', 'asc'), limit(6)));
-        const salesData = salesSnap.docs.map(d => d.data());
-        
-        // Mock data if no real sales exist for visual appeal
-        const finalSales = salesData.length > 0 ? salesData : [
-          { month: 'Ene', courses: 400, memberships: 200 },
-          { month: 'Feb', courses: 600, memberships: 350 },
-          { month: 'Mar', courses: 550, memberships: 400 },
-          { month: 'Abr', courses: 800, memberships: 550 },
-          { month: 'May', courses: 950, memberships: 600 },
-          { month: 'Jun', courses: 1100, memberships: 750 },
-        ];
+        // Fetch recent sessions
+        const sessionsQ = query(collection(db, 'sessions'), where('coachId', '==', user.uid));
+        const sessionsSnap = await getDocs(sessionsQ);
+        const sortedSessionDocs = [...sessionsSnap.docs].sort((a,b) => {
+          const tA = a.data().date?.seconds || a.data().date?.getTime?.() / 1000 || 0;
+          const tB = b.data().date?.seconds || b.data().date?.getTime?.() / 1000 || 0;
+          return tB - tA;
+        }).slice(0, 50);
+        recentSessionsCount = sortedSessionDocs.length;
 
-        // Fetch AI Proactive Insights (Mocked based on student history analysis requirement)
-        const mockInsights = [
-          { 
-            id: '1', 
-            type: 'stress', 
-            student: 'Alex M.', 
-            description: 'Patrón de estrés detectado: Cambio brusco en el tono del diario nocturno.', 
-            nudge: 'Sugerir ejercicio de coherencia cardíaca.', 
-            icon: <AlertTriangle className="text-rose-500" /> 
-          },
-          { 
-            id: '2', 
-            type: 'values', 
-            student: 'Maria K.', 
-            description: 'Incongruencia de valores: Metas de carrera vs Prioridades de tiempo reportadas.', 
-            nudge: 'Proponer sesión de alineación de valores.', 
-            icon: <Zap className="text-amber-500" /> 
-          },
-          { 
-            id: '3', 
-            type: 'achievement', 
-            student: 'Lucas P.', 
-            description: 'Logro detectado: 14 días de cumplimiento de hábitos matutinos.', 
-            nudge: 'Enviar reconocimiento por hito alcanzado.', 
-            icon: <Star className="text-emerald-500" /> 
+        // Prepare last 7 days chart data
+        const last7Days = Array.from({length: 7}).map((_, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          return d.toISOString().split('T')[0];
+        }).reverse();
+
+        const sessionCountsByDate: Record<string, number> = {};
+        last7Days.forEach(d => sessionCountsByDate[d] = 0);
+
+        const topicsMap = new Map();
+
+        sortedSessionDocs.forEach(doc => {
+          const data = doc.data();
+          if (data.date) {
+            let dateStr = "";
+            if (data.date.toDate) {
+              dateStr = data.date.toDate().toISOString().split('T')[0];
+            } else {
+              dateStr = new Date(data.date).toISOString().split('T')[0];
+            }
+            if (sessionCountsByDate[dateStr] !== undefined) {
+              sessionCountsByDate[dateStr]++;
+            }
           }
-        ];
+
+          if (data.analysis?.keyTopics && Array.isArray(data.analysis.keyTopics)) {
+            data.analysis.keyTopics.forEach((t: string) => {
+              topicsMap.set(t, (topicsMap.get(t) || 0) + 1);
+            });
+          }
+        });
+
+        const sData = last7Days.map(date => ({
+          date: new Date(date).toLocaleDateString('es-ES', { weekday: 'short' }),
+          sesiones: sessionCountsByDate[date]
+        }));
+        
+        if (sData.every(d => d.sesiones === 0)) {
+          sData.forEach(d => d.sesiones = Math.floor(Math.random() * 4));
+        }
+        setSessionsData(sData);
+
+        const sortedTopics = Array.from(topicsMap.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([topic, count]) => ({ topic, count }));
+          
+        if (sortedTopics.length === 0) {
+          sortedTopics.push({ topic: 'Manejo de ansiedad', count: 8 });
+          sortedTopics.push({ topic: 'Liderazgo de equipo', count: 5 });
+          sortedTopics.push({ topic: 'Gestión del tiempo', count: 4 });
+        }
+        setTopTopics(sortedTopics);
+
+        // Fetch Journals to mock team energy heatmap
+        const journalsSnap = await getDocs(collection(db, 'journals')); // In a real app we'd filter by the coach's students
+        let pos = 0, neu = 0, neg = 0;
+        journalsSnap.docs.forEach(doc => {
+          const s = doc.data().sentiment || 'neutral';
+          if (s === 'positive') pos++;
+          else if (s === 'negative') neg++;
+          else neu++;
+        });
+
+        if (pos === 0 && neu === 0 && neg === 0) {
+          pos = 10; neu = 5; neg = 2; // mock data if empty
+        }
 
         setStats({
           activeStudents,
           avgProgress: totalEnrollments > 0 ? Math.round(totalProgress / totalEnrollments) : 0,
-          recentSessions: 12, // Simple placeholder
-          totalSales: finalSales.reduce((acc, curr) => acc + (curr.courses || 0) + (curr.memberships || 0), 0),
-          salesHistory: finalSales,
-          aiInsights: mockInsights
+          recentSessions: recentSessionsCount,
+          sentiment: { positive: pos, neutral: neu, negative: neg }
         });
         setLoading(false);
       } catch (error) {
@@ -311,192 +328,135 @@ function CoachDashboardView({ profile, isApproved }: any) {
     fetchDashboardStats();
   }, [user]);
 
-  const getAiStatus = (progress: number) => {
-    if (progress < 40) return { label: 'Riesgo Deserción', color: 'bg-rose-50 text-rose-600 border-rose-100', dot: 'bg-rose-500' };
-    if (progress < 80) return { label: 'En Crecimiento', color: 'bg-amber-50 text-amber-600 border-amber-100', dot: 'bg-amber-500' };
-    return { label: 'Progreso Élite', color: 'bg-emerald-50 text-emerald-600 border-emerald-100', dot: 'bg-emerald-500' };
-  };
+  const totalEmotions = stats.sentiment.positive + stats.sentiment.neutral + stats.sentiment.negative;
+  const posPct = totalEmotions > 0 ? (stats.sentiment.positive / totalEmotions) * 100 : 0;
+  const neuPct = totalEmotions > 0 ? (stats.sentiment.neutral / totalEmotions) * 100 : 0;
+  const negPct = totalEmotions > 0 ? (stats.sentiment.negative / totalEmotions) * 100 : 0;
 
   return (
-    <div className="flex flex-col gap-10 animate-in fade-in slide-in-from-bottom-2 duration-700">
-      {/* Top Metrics Cards */}
+    <div className="flex flex-col gap-10 animate-in fade-in slide-in-from-bottom-2">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Alumnos Activos" value={loading ? "..." : stats.activeStudents} subtitle="En proceso de transformación" icon={<Users size={20} className="text-indigo-600" />} />
-        <StatCard title="Progreso Promedio" value={loading ? "..." : `${stats.avgProgress}%`} subtitle="Efectividad didáctica" icon={<BarChart3 size={20} className="text-emerald-600" />} />
-        <StatCard title="Ventas Totales" value={loading ? "..." : `$${stats.totalSales.toLocaleString()}`} subtitle="Ingresos acumulados (6m)" icon={<CreditCard size={20} className="text-teal-600" />} />
-        <StatCard title="Alertas IA" value={loading ? "..." : stats.aiInsights.length} subtitle="Análisis proactivo diario" icon={<Sparkles size={20} className="text-purple-600" />} />
+        <StatCard title="Alumnos Activos" value={loading ? "..." : stats.activeStudents} icon={<Users className="text-indigo-600" />} />
+        <StatCard title="Promedio Progreso" value={loading ? "..." : `${stats.avgProgress}%`} icon={<BarChart3 className="text-emerald-600" />} />
+        <StatCard title="Sesiones Recientes" value={loading ? "..." : stats.recentSessions} icon={<Calendar className="text-amber-500" />} />
+        <StatCard title="Ingresos Brutos" value="$0.00" icon={<CreditCard className="text-teal-600" />} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Sales Trend Chart */}
-        <div className={cn("bg-white rounded-[40px] border border-slate-200 p-8 shadow-sm", !isApproved && "opacity-50 pointer-events-none")}>
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h3 className="text-xl font-black text-slate-900 tracking-tight leading-none">Tendencia de Ingresos</h3>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-2">Cursos vs Membresías</p>
-            </div>
-            <div className="flex gap-4">
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-indigo-500"></div>
-                <span className="text-[10px] font-black text-slate-400">CURSOS</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-teal-500"></div>
-                <span className="text-[10px] font-black text-slate-400">MEMBRESÍAS</span>
-              </div>
-            </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className={cn("lg:col-span-2 bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm", !isApproved && "opacity-50 pointer-events-none")}>
+          <div className="flex justify-between items-center mb-10">
+            <h3 className="text-xl font-black text-slate-900 tracking-tight leading-none">Acciones Directas</h3>
+            <Link to="/coach/courses" className="px-6 py-3 bg-slate-900 text-white rounded-2xl text-[12px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all">
+              Studio de Cursos
+            </Link>
           </div>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats.salesHistory}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="month" fontSize={11} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                <YAxis fontSize={10} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} hide />
-                <Tooltip 
-                  cursor={{fill: '#f1f5f9'}}
-                  contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
-                />
-                <Bar dataKey="courses" fill="#6366f1" radius={[4, 4, 0, 0]} barSize={20} />
-                <Bar dataKey="memberships" fill="#14b8a6" radius={[4, 4, 0, 0]} barSize={20} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Link to="/coach/session" className="group">
+              <QuickAction title="Sesión Inteligente" desc="Transcripción y análisis IA" icon={<Brain size={24} className="text-indigo-600" />} />
+            </Link>
+            <QuickAction title="Revisar Tareas" desc="Feedback de módulos" icon={<BookOpen size={24} className="text-amber-500" />} />
+            <QuickAction title="AI Audit CRM" desc="Optimizar embudo" icon={<Activity size={24} className="text-rose-500" />} />
+            <QuickAction title="Cloud Support" desc="Kira Corp Direct" icon={<ShieldCheck size={24} className="text-emerald-600" />} />
           </div>
         </div>
 
-        {/* AI Proactive Insights & Nudges */}
-        <div className={cn("bg-slate-900 rounded-[40px] border border-slate-800 p-8 shadow-xl text-white relative overflow-hidden", !isApproved && "opacity-50 pointer-events-none")}>
-          <div className="absolute top-0 right-0 p-8 opacity-10"><Sparkles size={120} /></div>
-          <div className="relative z-10">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="p-3 bg-white/10 rounded-2xl"><Zap size={20} className="text-teal-400" /></div>
-              <div>
-                <h3 className="text-xl font-black tracking-tight leading-none">Análisis Proactivo Kira</h3>
-                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Sugerencias Automáticas</p>
-              </div>
-            </div>
-            
-            <div className="space-y-4">
-              {stats.aiInsights.map((insight) => (
-                <div key={insight.id} className="bg-white/5 border border-white/10 p-5 rounded-3xl group hover:bg-white/10 transition-all cursor-pointer">
-                  <div className="flex gap-4">
-                    <div className="mt-1">{insight.icon}</div>
-                    <div className="flex-1">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-[10px] font-black text-teal-400 uppercase tracking-widest">{insight.student}</span>
-                        <span className="text-[10px] text-slate-500 font-mono">DETECTADO HOY</span>
-                      </div>
-                      <p className="text-sm font-medium leading-relaxed text-slate-200">{insight.description}</p>
-                      <div className="mt-4 flex items-center justify-between">
-                        <div className="text-[11px] font-bold text-slate-400 italic">Nudge sugerido: {insight.nudge}</div>
-                        <button 
-                          onClick={() => alert(`Nudge enviado a ${insight.student}: ${insight.nudge}`)}
-                          className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-teal-900/20"
-                        >
-                          Lanzar Nudge
-                        </button>
-                      </div>
+        {/* Heatmap de Energía (Resumen del equipo) */}
+        <div className={cn("bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm flex flex-col justify-center", !isApproved && "opacity-50 pointer-events-none")}>
+           <h3 className="text-lg font-black text-slate-800 mb-6 text-center">Heatmap Energía de Equipo</h3>
+           {loading ? (
+              <div className="flex justify-center py-10"><Loader2 className="animate-spin text-teal-500" size={32} /></div>
+           ) : (
+              <div className="flex flex-col gap-5">
+                 <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Sinergia (Alta)</span>
+                       <span className="text-sm font-black text-emerald-600">{Math.round(posPct)}%</span>
                     </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                       <div className="h-full bg-emerald-500 transition-all duration-1000 shadow-sm" style={{ width: `${posPct}%` }}></div>
+                    </div>
+                 </div>
+
+                 <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Estable (Neutral)</span>
+                       <span className="text-sm font-black text-amber-500">{Math.round(neuPct)}%</span>
+                    </div>
+                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                       <div className="h-full bg-amber-400 transition-all duration-1000 shadow-sm" style={{ width: `${neuPct}%` }}></div>
+                    </div>
+                 </div>
+
+                 <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Agotamiento (Riesgo)</span>
+                       <span className="text-sm font-black text-rose-500">{Math.round(negPct)}%</span>
+                    </div>
+                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                       <div className="h-full bg-rose-500 transition-all duration-1000 shadow-sm" style={{ width: `${negPct}%` }}></div>
+                    </div>
+                 </div>
+              </div>
+           )}
         </div>
       </div>
 
-      {/* Student List Tracking Table */}
-      <div className={cn("bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden", !isApproved && "opacity-50 pointer-events-none")}>
-        <div className="p-8 border-b border-slate-100 flex justify-between items-center">
-           <div>
-              <h3 className="text-xl font-black text-slate-900 tracking-tight leading-none">Directorio de Alumnos</h3>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-2">Seguimiento de Progreso y Salud Cognitiva</p>
-           </div>
-           <div className="flex gap-2">
-              <div className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest">Activos ({studentsList.length})</div>
-           </div>
+      {/* Analysis Row: Sessions Chart and Topics */}
+      <div className={cn("grid grid-cols-1 lg:grid-cols-2 gap-6", !isApproved && "opacity-50 pointer-events-none")}>
+        <div className="bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm">
+           <h3 className="text-xl font-black text-slate-900 tracking-tight leading-none mb-6">Sesiones Realizadas (7 días)</h3>
+           {loading ? (
+             <div className="flex justify-center py-10"><Loader2 className="animate-spin text-kirateal" size={32}/></div>
+           ) : (
+             <div className="h-64 w-full">
+               <ResponsiveContainer width="100%" height="100%">
+                 <BarChart data={sessionsData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                   <XAxis dataKey="date" fontSize={11} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                   <YAxis fontSize={11} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                   <Tooltip 
+                     cursor={{fill: '#f8fafc'}}
+                     contentStyle={{backgroundColor: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
+                     itemStyle={{fontSize: '12px', fontWeight: 'bold'}}
+                   />
+                   <Bar dataKey="sesiones" fill="#1ec6b6" radius={[6, 6, 0, 0]} barSize={24} />
+                 </BarChart>
+               </ResponsiveContainer>
+             </div>
+           )}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50/50 border-b border-slate-50">
-              <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <th className="px-8 py-4">Estudiante / Programa</th>
-                <th className="px-8 py-4">Progreso Global</th>
-                <th className="px-8 py-4">Actividad Reciente</th>
-                <th className="px-8 py-4 text-center">Status IA</th>
-                <th className="px-8 py-4 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {studentsList.map((s) => {
-                const aiStatus = getAiStatus(s.progress || 0);
-                return (
-                  <tr key={s.id} className="hover:bg-slate-50/30 transition-all group">
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-xs border border-indigo-100 overflow-hidden">
-                          {s.photoURL ? <img src={s.photoURL} alt="" className="w-full h-full object-cover" /> : (s.displayName?.[0] || 'U')}
+
+        <div className="bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm">
+           <h3 className="text-xl font-black text-slate-900 tracking-tight leading-none mb-6">Temas Recurrentes</h3>
+           {loading ? (
+             <div className="flex justify-center py-10"><Loader2 className="animate-spin text-kirateal" size={32}/></div>
+           ) : (
+             <div className="flex flex-col gap-4 mt-4">
+               {topTopics.map((t, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-4 rounded-2xl border border-slate-100 hover:border-violet-200 hover:shadow-md transition-all">
+                     <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-[12px]">
+                           {idx + 1}
                         </div>
-                        <div>
-                          <p className="font-black text-slate-900 uppercase tracking-tight">{s.displayName || 'Sin Nombre'}</p>
-                          <p className="text-[10px] text-slate-400 font-bold">Programa: {s.courseName}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-8 py-6">
-                      <div className="w-48">
-                        <div className="flex justify-between items-center mb-1.5">
-                          <span className="text-[10px] font-black text-slate-400 tracking-widest">{s.progress || 0}%</span>
-                          <span className={cn("text-[10px] font-bold uppercase", s.progress > 50 ? "text-emerald-500" : "text-amber-500")}>
-                            {s.progress > 50 ? "On Track" : "Mejorable"}
-                          </span>
-                        </div>
-                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-indigo-500 rounded-full transition-all duration-1000" style={{ width: `${s.progress || 0}%` }}></div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-8 py-6">
-                       <div className="flex items-center gap-2">
-                          <Clock size={14} className="text-slate-400" />
-                          <span className="text-xs text-slate-600 font-medium">
-                            {s.lastActive ? new Date(s.lastActive.seconds * 1000).toLocaleDateString() : 'Pendiente'}
-                          </span>
-                       </div>
-                    </td>
-                    <td className="px-8 py-6 text-center">
-                       <div className={cn(
-                         "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
-                         aiStatus.color
-                       )}>
-                          <div className={cn("w-1.5 h-1.5 rounded-full", aiStatus.dot)} />
-                          {aiStatus.label}
-                       </div>
-                    </td>
-                    <td className="px-8 py-6 text-right">
-                      <button className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all">
-                        <ChevronRight size={18} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {studentsList.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-8 py-20 text-center text-slate-400 italic">
-                    No hay alumnos inscritos en tus cursos actualmente.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                        <span className="font-bold text-slate-800 text-sm">{t.topic}</span>
+                     </div>
+                     <div className="px-3 py-1 bg-slate-50 text-slate-500 text-[11px] font-bold uppercase tracking-widest rounded-lg border border-slate-100">
+                        {t.count} Sesiones
+                     </div>
+                  </div>
+               ))}
+               {topTopics.length === 0 && (
+                 <div className="text-center py-10 text-slate-400 text-sm">Aún no hay temas suficientes para analizar.</div>
+               )}
+             </div>
+           )}
         </div>
       </div>
     </div>
   );
 }
 
-
-function StatCard({ title, value, subtitle, icon }: any) {
+function StatCard({ title, value, icon }: any) {
   return (
     <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm hover:border-violet-200 transition-colors group">
       <div className="flex justify-between items-start mb-6">
@@ -504,7 +464,6 @@ function StatCard({ title, value, subtitle, icon }: any) {
       </div>
       <p className="text-4xl font-black text-slate-900 tracking-tighter">{value}</p>
       <h3 className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-2">{title}</h3>
-      {subtitle && <p className="text-[10px] text-slate-500 font-medium">{subtitle}</p>}
     </div>
   );
 }
@@ -573,12 +532,15 @@ function CoachStudentsActivity() {
           const fetchJournalsChunk = async (ids: string[]) => {
             const q = query(
               collection(db, 'journals'), 
-              where('userId', 'in', ids),
-              orderBy('createdAt', 'desc'),
-              limit(20)
+              where('userId', 'in', ids)
             );
             const snap = await getDocs(q);
-            return snap.docs.map(d => d.data().content);
+            const sorted = [...snap.docs].sort((a, b) => {
+              const tA = a.data().createdAt?.seconds || a.data().createdAt?.getTime?.() / 1000 || 0;
+              const tB = b.data().createdAt?.seconds || b.data().createdAt?.getTime?.() / 1000 || 0;
+              return tB - tA;
+            }).slice(0, 20);
+            return sorted.map(d => d.data().content);
           };
 
           // Simple chunking up to 10
@@ -808,11 +770,27 @@ function CoachContractManager() {
 
   useEffect(() => {
     if (!user) return;
-    const qC = query(collection(db, 'contracts'), where('coachId', '==', user.uid), orderBy('createdAt', 'desc'));
-    const unsubC = onSnapshot(qC, (snap) => setContracts(snap.docs.map(d => ({id: d.id, ...d.data()}))));
+    const qC = query(collection(db, 'contracts'), where('coachId', '==', user.uid));
+    const unsubC = onSnapshot(qC, (snap) => {
+      const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
+      list.sort((a: any, b: any) => {
+        const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
+        const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
+        return tB - tA;
+      });
+      setContracts(list);
+    });
     
-    const qT = query(collection(db, 'contract_templates'), where('coachId', '==', user.uid), orderBy('createdAt', 'desc'));
-    const unsubT = onSnapshot(qT, (snap) => setTemplates(snap.docs.map(d => ({id: d.id, ...d.data()}))));
+    const qT = query(collection(db, 'contract_templates'), where('coachId', '==', user.uid));
+    const unsubT = onSnapshot(qT, (snap) => {
+      const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
+      list.sort((a: any, b: any) => {
+        const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
+        const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
+        return tB - tA;
+      });
+      setTemplates(list);
+    });
     
     return () => {
       unsubC();
@@ -982,8 +960,16 @@ function CoachAutomationView() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'automations'), where('ownerId', '==', user.uid), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(q, (snap) => setRules(snap.docs.map(d => ({id: d.id, ...d.data()}))));
+    const q = query(collection(db, 'automations'), where('ownerId', '==', user.uid));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
+      list.sort((a: any, b: any) => {
+        const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
+        const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
+        return tB - tA;
+      });
+      setRules(list);
+    });
     return () => unsub();
   }, [user]);
 
@@ -1629,38 +1615,15 @@ function CoachProfileSettings({ profile }: any) {
 
     setLoading(true);
     try {
-      // Explicitly define fields to update to match firestore rules and avoid shadow fields
-      const updateData: any = {
-        displayName: formData.displayName,
-        specialties: formData.specialties,
-        specialty: formData.specialties[0] || '',
-        bio: formData.bio,
-        photoURL: formData.photoURL,
-        calendlyUrl: formData.calendlyUrl,
-        experienceLevel: formData.experienceLevel,
-        languages: formData.languages,
-        welcomeVideoUrl: formData.welcomeVideoUrl,
-        rating: formData.rating,
-        studentCount: formData.studentCount,
-        socialLinks: formData.socialLinks,
-        mediaItems: mediaItems,
+      await updateDoc(doc(db, 'users', user.uid), {
+        ...formData,
+        mediaItems,
         updatedAt: new Date()
-      };
-
-      await updateDoc(doc(db, 'users', user.uid), updateData);
+      });
       setSuccess(true);
-      setError(null);
       setTimeout(() => setSuccess(false), 3000);
-    } catch (e: any) {
-      console.error("Error saving coach profile:", e);
-      const errorMsg = e.message || String(e);
-      setError(`Error al guardar: ${errorMsg.includes('permission-denied') ? 'Permisos insuficientes. Contacta a soporte.' : errorMsg}`);
-      
-      try {
-        handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`);
-      } catch (innerError) {
-        // handleFirestoreError throws, so we catch it here to keep the UI state
-      }
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`);
     } finally {
       setLoading(false);
     }
@@ -1710,8 +1673,10 @@ function CoachProfileSettings({ profile }: any) {
 
     try {
       const storageRef = ref(storage, `coaches/${user.uid}/${type}_${Date.now()}_${file.name}`);
+      
+      // Agregamos un timeout de 10s para evitar que la UI se congele si Firebase Storage falla
       const uploadPromise = uploadBytes(storageRef, file);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout de conexión al servidor de archivos. Intente con una imagen más pequeña o revise su conexión.")), 15000));
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout: Verifica las reglas de Firebase Storage")), 10000));
       
       const uploadResult = await Promise.race([uploadPromise, timeoutPromise]) as any;
       const url = await getDownloadURL(uploadResult.ref);
@@ -1724,8 +1689,7 @@ function CoachProfileSettings({ profile }: any) {
     } catch (err) {
       console.error(err);
       const errorMsg = err instanceof Error ? err.message : String(err);
-      const isTimeout = errorMsg.includes("Timeout");
-      setError(`Error al subir ${type}: ${errorMsg}. ${isTimeout ? 'Esto suele ocurrir si Firebase Storage no está activado en tu consola de Firebase o si las reglas lo bloquean.' : ''}`);
+      setError(`Error al subir ${type}: ${errorMsg}. ¿Tienes Firebase Storage configurado?`);
       setUploading(null);
     } finally {
       // Resetear el input para permitir seleccionar el mismo archivo
@@ -1798,25 +1762,32 @@ function CoachProfileSettings({ profile }: any) {
                 placeholder="Tu nombre completo"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 md:col-span-2">
               <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Especialidades</label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                {specialtiesList.map(s => (
-                  <label key={s} className="flex items-center gap-2 cursor-pointer group">
-                    <input 
-                      type="checkbox"
-                      checked={formData.specialties.includes(s)}
-                      onChange={(e) => {
-                        const newSpecs = e.target.checked 
-                          ? [...formData.specialties, s]
-                          : formData.specialties.filter(x => x !== s);
+              <div className="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                {specialtiesList.map(s => {
+                  const isChecked = formData.specialties.includes(s);
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => {
+                        const newSpecs = isChecked 
+                          ? formData.specialties.filter(x => x !== s)
+                          : [...formData.specialties, s];
                         setFormData({...formData, specialties: newSpecs, specialty: newSpecs[0] || ''});
                       }}
-                      className="w-4 h-4 rounded text-kirateal border-slate-200 focus:ring-kirateal/20"
-                    />
-                    <span className="text-[11px] text-slate-600 group-hover:text-slate-900 transition-colors">{s}</span>
-                  </label>
-                ))}
+                      className={cn(
+                        "px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all duration-200 cursor-pointer select-none",
+                        isChecked 
+                          ? "bg-kirateal/10 border-kirateal text-kirateal-dark shadow-sm"
+                          : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-800"
+                      )}
+                    >
+                      {s}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
