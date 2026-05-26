@@ -6,7 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { MentorWidget } from '../components/MentorWidget';
 import { Seal } from '../components/Brand';
-import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse } from 'lucide-react';
+import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2 } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
 
@@ -24,6 +24,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
 
   const userDocPoints = user?.points || 0;
 
@@ -139,6 +140,7 @@ export function Dashboard() {
 
   const handleStripeCheckout = async (course: any) => {
     if(!user) return;
+    setCheckingOutId(course.id);
     try {
       const resp = await fetch('/api/create-checkout-session', {
         method: 'POST',
@@ -150,10 +152,15 @@ export function Dashboard() {
           title: course.title
         })
       });
-      const { url } = await resp.json();
-      window.location.href = url;
-    } catch(e) {
+      const data = await resp.json();
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      window.location.href = data.url;
+    } catch(e: any) {
       console.error('Stripe Redirect Error:', e);
+      alert('Error al iniciar la inscripción: ' + (e.message || String(e)));
+      setCheckingOutId(null);
     }
   };
 
@@ -184,7 +191,7 @@ export function Dashboard() {
           <div className="flex items-center gap-2 mb-3">
             <div className="flex items-center gap-1.5 px-2 py-0.5 bg-kirateal/10 text-kirateal text-[10px] font-black uppercase tracking-widest rounded-lg border border-kirateal/20">
               <Activity size={10} />
-              Pipeline de Evolución
+              Evolution Pipeline
             </div>
             <span className="text-slate-300">/</span>
             <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Workspace Personal</span>
@@ -197,14 +204,14 @@ export function Dashboard() {
         
         <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-[24px] border border-slate-100 shadow-inner">
           <div className="px-6 py-3 bg-white rounded-2xl shadow-sm border border-slate-200/60">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">Pts de Energía</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">Energy Pts</p>
             <div className="flex items-center gap-2">
               <Zap size={16} className="text-kiragold fill-kiragold" />
               <span className="text-2xl font-black text-slate-900 tracking-tight">{userDocPoints.toLocaleString()}</span>
             </div>
           </div>
           <button 
-            onClick={() => navigate('/perfil')}
+            onClick={() => navigate('/dashboard/profile')}
             className="w-16 h-16 rounded-2xl bg-slate-200 overflow-hidden border-4 border-white shadow-md hover:ring-4 hover:ring-kirateal/10 transition-all duration-300"
           >
             {user?.photoUrl ? <img src={user.photoUrl} alt="Profile" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center font-black text-slate-400 text-2xl">{user?.name?.[0]}</div>}
@@ -246,15 +253,15 @@ export function Dashboard() {
           <div className="flex justify-between items-center mb-1">
              <div className="flex items-center gap-2">
                 <span className={cn("p-2 rounded-xl bg-white/60", currentTier.color)}>{currentTier.icon}</span>
-                <h3 className={cn("text-[10px] font-black uppercase tracking-widest", currentTier.color)}>Rango {currentTier.name}</h3>
+                <h3 className={cn("text-[10px] font-black uppercase tracking-widest", currentTier.color)}>Tier {currentTier.name}</h3>
              </div>
-             <span className="text-[10px] font-bold opacity-50 uppercase tracking-tighter">Liga Kira™</span>
+             <span className="text-[10px] font-bold opacity-50 uppercase tracking-tighter">Kira League™</span>
           </div>
           <div>
-            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-1 italic">Desarrollo Personal</p>
+            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-1 italic">Personal Growth</p>
             <div className="flex items-baseline gap-2">
                <p className="text-4xl font-black text-slate-900 tracking-tighter">{userDocPoints.toLocaleString()}</p>
-               <span className="text-[11px] font-bold text-slate-500 uppercase">Pts Energía</span>
+               <span className="text-[11px] font-bold text-slate-500 uppercase">Energy Pts</span>
             </div>
           </div>
           <div className="mt-4">
@@ -371,7 +378,7 @@ export function Dashboard() {
                           
                           <div className="flex gap-5 mt-auto items-center">
                             <div className="flex-1">
-                              <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 block mb-2 opacity-60">Identidad Verificada Por</span>
+                              <span className="text-[9px] uppercase font-black tracking-widest text-slate-400 block mb-2 opacity-60">Identity Verified By</span>
                               <div className="-ml-3 scale-90 origin-left">
                                 <Seal size={42} />
                               </div>
@@ -387,9 +394,18 @@ export function Dashboard() {
                               ) : (
                                 <button 
                                   onClick={() => handleStripeCheckout(course)} 
-                                  className="w-full text-[13px] px-6 py-3.5 bg-kirateal text-white rounded-2xl hover:bg-kirateal-light font-black transition flex items-center justify-center gap-2 shadow-xl shadow-teal-100"
+                                  disabled={checkingOutId !== null}
+                                  className="w-full text-[13px] px-6 py-3.5 bg-kirateal text-white rounded-2xl hover:bg-kirateal-light font-black transition flex items-center justify-center gap-2 shadow-xl shadow-teal-100 disabled:opacity-50"
                                 >
-                                  <ShoppingCart size={16} /> Inscribirse
+                                  {checkingOutId === course.id ? (
+                                    <>
+                                      <Loader2 size={16} className="animate-spin" /> Inscribiendo...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ShoppingCart size={16} /> Inscribirse
+                                    </>
+                                  )}
                                 </button>
                               )}
                             </div>
@@ -417,7 +433,7 @@ export function Dashboard() {
                      </div>
                      <h3 className="text-2xl font-black text-slate-900 tracking-tight">Mis Mentores</h3>
                   </div>
-                  <button onClick={() => navigate('/')} className="text-[11px] font-black text-kirateal uppercase tracking-widest hover:underline border border-kirateal/20 px-4 py-2 rounded-xl transition-colors hover:bg-kirateal/5">Directorio Completo</button>
+                  <button onClick={() => navigate('/')} className="text-[11px] font-black text-kirateal uppercase tracking-widest hover:underline border border-kirateal/20 px-4 py-2 rounded-xl transition-colors hover:bg-kirateal/5">Full Directory</button>
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -449,7 +465,7 @@ export function Dashboard() {
               <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center text-kiragold mb-8 border border-white/20">
                 <Sparkles size={24} />
               </div>
-              <h3 className="font-black text-2xl mb-6 tracking-tight leading-none">Evolución de <br/> Insights IA</h3>
+              <h3 className="font-black text-2xl mb-6 tracking-tight leading-none">AI Insight <br/> Evolution</h3>
               <p className="text-sm opacity-80 leading-relaxed mb-8 font-medium italic text-indigo-100/90">
                 "Tu reciente actividad académica sugiere un enfoque en Liderazgo. Recomendamos profundizar con el análisis de 'Biología del Éxito' en tu Vault."
               </p>
@@ -465,7 +481,7 @@ export function Dashboard() {
                   <div className="w-11 h-11 bg-kiragold/10 rounded-2xl flex items-center justify-center text-kiragold-dark shadow-sm">
                      <Zap size={22} />
                   </div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Bóveda Kira</h3>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Kira Vault</h3>
                </div>
                <button onClick={() => navigate('/dashboard/elite')} className="text-[10px] font-black text-kirateal uppercase tracking-widest hover:underline px-3 py-1.5 bg-kirateal/5 rounded-lg border border-kirateal/10">Ir</button>
             </div>
@@ -492,7 +508,7 @@ export function Dashboard() {
                 <div className="py-16 flex flex-col items-center justify-center text-center opacity-20 grayscale transition-all hover:grayscale-0 hover:opacity-100 duration-1000">
                    <Zap size={56} className="mb-4 text-kiragold" />
                    <div className="space-y-1">
-                      <p className="text-[11px] font-black uppercase tracking-[0.2em] leading-tight mb-1">Bóveda Élite</p>
+                      <p className="text-[11px] font-black uppercase tracking-[0.2em] leading-tight mb-1">Elite Vault</p>
                       <p className="text-[10px] font-bold text-slate-500 italic">Desbloquea contenido exclusivo</p>
                    </div>
                 </div>
@@ -570,40 +586,30 @@ export function Journal() {
         collection(db, 'journals'),
         where('userId', '==', user.uid),
         orderBy('createdAt', 'desc'),
-        limit(5)
+        limit(3)
       );
       const snap = await getDocs(q);
-      const previousEntries = snap.docs.map(d => ({
-        content: d.data().content,
-        date: d.data().createdAt?.toDate?.()?.toLocaleDateString() || 'Reciente'
-      }));
+      const previousEntries = snap.docs.map(d => d.data().content).join('\n---\n');
 
-      const analyticPrompt = `
-        Actúa como Kira, una IA de alto nivel en Biohacking y Coaching de Mentalidad.
-        Analiza las últimas 5 entradas del diario del usuario (${user.displayName}):
-        ${JSON.stringify(previousEntries)}
+      const prompt = `
+        Actúa como Kira, una asistente de bienestar consciente.
+        Basado en los últimos diarios de ${user.displayName || 'el usuario'}:
+        "${previousEntries || 'El usuario aún no tiene entradas previas.'}"
         
-        Tu objetivo es identificar:
-        1. Patrones de estrés o agotamiento.
-        2. Incongruencias entre sus valores declarados y sus acciones.
-        3. Logros sutiles que el usuario podría estar ignorando.
-
-        Basado en este análisis, genera UNA única pregunta reflexiva y un "Nudge" (impulso) corto.
-        Respuesta esperada en este formato:
-        Pregunta: [Tu pregunta reflexiva de max 15 palabras]
-        Nudge: [Tu sugerencia de acción proactiva]
+        Genera una pregunta corta, cálida y empática (máximo 15 palabras) para que el usuario reflexione hoy. 
+        Si no hay entradas previas, dale una bienvenida inspiradora.
       `;
 
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
       const result = await ai.models.generateContent({
         model: "gemini-1.5-flash",
-        contents: analyticPrompt
+        contents: prompt
       });
       const text = result.text || '';
       setAiPrompt(text.trim());
     } catch (e) {
       console.error('Error generating predictive prompt:', e);
-      setAiPrompt('¿Qué intención quieres sembrar en tu corazón hoy?\nNudge: Respira profundamente 3 veces.');
+      setAiPrompt('¿Qué intención quieres sembrar en tu corazón hoy?');
     } finally {
       setLoadingPrompt(false);
     }
@@ -659,7 +665,7 @@ export function Journal() {
                 <Sparkles size={20} />
              </div>
              <div className="relative z-10 flex-1">
-                <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Insight Predictivo de Kira</p>
+                <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Kira Predictive Insight</p>
                 <p className="text-lg text-slate-700 italic font-medium leading-relaxed italic">
                   {loadingPrompt ? "Decodificando patrones energéticos..." : `"${aiPrompt}"`}
                 </p>
@@ -712,4 +718,3 @@ export function Journal() {
     </div>
   );
 }
-
