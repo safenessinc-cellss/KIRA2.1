@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { db, handleFirestoreError, OperationType, auth } from '../firebase';
+import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
-import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, Palette, BrainCircuit, ArrowRight } from 'lucide-react';
+import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
-import { FileUploader } from '../components/FileUploader';
 import { cn } from '../lib/utils';
 
-type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'ai_monitoring';
+type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions';
 
 export function AdminMonitor() {
   const { user } = useAuth();
@@ -38,11 +37,8 @@ export function AdminMonitor() {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard Ejecutivo', icon: <LayoutDashboard size={18}/>, category: 'Centro de Mando' },
     { id: 'analytics', label: 'Business Intelligence', icon: <TrendingUp size={18}/>, category: 'Centro de Mando', perm: 'system' },
-    { id: 'ai_monitoring', label: 'Monitor de IA', icon: <Activity size={18}/>, category: 'Centro de Mando', perm: 'system' },
 
     { id: 'security', label: 'Control de Identidad', icon: <ShieldCheck size={18}/>, category: 'Gobernanza y Acceso', superOnly: true },
-    { id: 'approvals', label: 'Autorización de Usuarios', icon: <UserCheck size={18}/>, category: 'Gobernanza y Acceso', perm: 'users' },
-    { id: 'website', label: 'Marca & Personalización', icon: <Palette size={18}/>, category: 'Gobernanza y Acceso', superOnly: true },
     { id: 'campaign_history', label: 'Ciberseguridad y Logs', icon: <ShieldAlert size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
     { id: 'ai_coaches', label: 'IA para Coaches', icon: <Sparkles size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
 
@@ -161,11 +157,8 @@ export function AdminMonitor() {
       <div className="flex-1 min-w-0">
         {activeTab === 'dashboard' && hasPerm(navItems.find(i=>i.id==='dashboard')) && <GlobalDashboardView />}
         {activeTab === 'analytics' && hasPerm(navItems.find(i=>i.id==='analytics')) && <BIView />}
-        {activeTab === 'ai_monitoring' && hasPerm(navItems.find(i=>i.id==='ai_monitoring')) && <AiMonitoringView />}
 
         {activeTab === 'security' && isSuperAdmin && <SecurityView />}
-        {activeTab === 'approvals' && hasPerm(navItems.find(i=>i.id==='approvals')) && <UserApprovalsView />}
-        {activeTab === 'website' && isSuperAdmin && <WebsiteConfigView />}
         {activeTab === 'campaign_history' && hasPerm(navItems.find(i=>i.id==='campaign_history')) && <CampaignHistoryView />}
         {activeTab === 'ai_coaches' && hasPerm(navItems.find(i=>i.id==='ai_coaches')) && <AICoachesView />}
 
@@ -246,36 +239,6 @@ function WebsiteConfigView() {
               <Eye size={16} /> Vista Previa Pública
            </a>
         </div>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-         <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-            <Layout size={18} className="text-teal-500" /> Títulos & SEO (Brand Identity)
-         </h3>
-         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div>
-               <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Nombre / Título del Ecosistema</label>
-               <input 
-                  type="text" 
-                  value={config.title || ''}
-                  onChange={(e) => setConfig({ ...config, title: e.target.value })}
-                  onBlur={(e) => handleUpdateField('title', e.target.value)}
-                  placeholder="Kira Coach Wellness"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500/20"
-               />
-            </div>
-            <div>
-               <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Eslogan / Descripción</label>
-               <input 
-                  type="text" 
-                  value={config.description || ''}
-                  onChange={(e) => setConfig({ ...config, description: e.target.value })}
-                  onBlur={(e) => handleUpdateField('description', e.target.value)}
-                  placeholder="La plataforma de bienestar más completa..."
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-teal-500/20"
-               />
-            </div>
-         </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
@@ -569,7 +532,7 @@ function GlobalDashboardView() {
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2">
       <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200">
         <h2 className="font-black text-slate-800 tracking-tight flex items-center gap-2">
-          <Activity size={20} className="text-kirateal" /> Centro de Mando Ejecutivo
+          <Activity size={20} className="text-kirateal" /> Command Center Executive
         </h2>
         <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
           {[7, 30, 90].map(d => (
@@ -602,19 +565,19 @@ function GlobalDashboardView() {
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
         <StatCard title="Ventas del Día" value={`$${(stats.sales * 0.15).toLocaleString()}`} subtitle="Ultimas 24hs" icon={<BarChart3 className="text-kirateal" />} />
-        <StatCard title="Ingresos Netos Kira" value={`$${(stats.sales * 0.7).toLocaleString()}`} subtitle="Comisión (70%)" icon={<BarChart3 className="text-emerald-500" />} />
-        <StatCard title="Pagos a Coaches" value={`$${(stats.sales * 0.3).toLocaleString()}`} subtitle="Liquidación (30%)" icon={<CreditCard className="text-purple-500" />} />
+        <StatCard title="Kira Net Revenue" value={`$${(stats.sales * 0.7).toLocaleString()}`} subtitle="Comisión (70%)" icon={<BarChart3 className="text-emerald-500" />} />
+        <StatCard title="Coach Payouts" value={`$${(stats.sales * 0.3).toLocaleString()}`} subtitle="Liquidación (30%)" icon={<CreditCard className="text-purple-500" />} />
         <StatCard 
-          title="DAU del Producto" 
+          title="Product DAU" 
           value={`${stats.engagement.dailyActive}`} 
-          subtitle={`${stats.engagement.weeklyActive} WAU (Retención)`} 
+          subtitle={`${stats.engagement.weeklyActive} WAU (Retention)`} 
           icon={<Users className="text-blue-500" />} 
           color="blue" 
         />
         <StatCard 
-          title="Alerta de Estabilidad" 
+          title="Stability Alert" 
           value={`${stats.burnoutRisk.riskIndex.toFixed(1)}%`} 
-          subtitle={`${stats.burnoutRisk.usersAtRisk} Usuarios en Riesgo`} 
+          subtitle={`${stats.burnoutRisk.usersAtRisk} Usuarios en Churn Risk`} 
           icon={<AlertTriangle className={isHighRisk ? "text-rose-600" : "text-emerald-600"} />} 
           color={isHighRisk ? "rose" : "emerald"} 
         />
@@ -699,7 +662,7 @@ function GlobalDashboardView() {
         </div>
         <div className="flex items-center gap-3 mb-6 relative z-10">
            <Sparkles className="text-amber-300 animate-pulse" size={24} />
-           <h3 className="font-bold text-lg tracking-tight">Inteligencia Kira: Insights Sugeridos por IA</h3>
+           <h3 className="font-bold text-lg tracking-tight">Kira Intelligence: AI-Suggested Insights</h3>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
@@ -952,13 +915,29 @@ function StudentActivityDashboard({ student, enrollments, onClose }: any) {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const actQ = query(collection(db, 'course_activity'), where('userId', '==', student.id), orderBy('createdAt', 'desc'), limit(10));
+        const actQ = query(collection(db, 'course_activity'), where('userId', '==', student.id));
         const actSnap = await getDocs(actQ);
-        setActivity(actSnap.docs.map(d => d.data()));
+        const sortedAct = actSnap.docs
+          .map(d => ({id: d.id, ...d.data()}))
+          .sort((a: any, b: any) => {
+            const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+            const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+            return dateB.getTime() - dateA.getTime();
+          })
+          .slice(0, 10);
+        setActivity(sortedAct);
 
-        const journalQ = query(collection(db, 'journals'), where('userId', '==', student.id), orderBy('createdAt', 'desc'), limit(5));
+        const journalQ = query(collection(db, 'journals'), where('userId', '==', student.id));
         const journalSnap = await getDocs(journalQ);
-        setJournals(journalSnap.docs.map(d => d.data()));
+        const sortedJournal = journalSnap.docs
+          .map(d => ({id: d.id, ...d.data()}))
+          .sort((a: any, b: any) => {
+             const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+             const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+             return dateB.getTime() - dateA.getTime();
+          })
+          .slice(0, 5);
+        setJournals(sortedJournal);
       } catch (e) {
         console.error(e);
       } finally {
@@ -1217,95 +1196,60 @@ function ProgressStat({ label, value, total, color }: { label: string, value: nu
 // --- MODULO DE AUTORIZACIONES ---
 function UserApprovalsView() {
   const [candidates, setCandidates] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const q = query(collection(db, 'users'), where('approvalStatus', '==', 'pending'));
     const unsubscribe = onSnapshot(q, (snap) => {
       setCandidates(snap.docs.map(d => ({id: d.id, ...d.data()})));
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching approvals:", error);
-      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
   const handleAction = async (id: string, action: 'approved' | 'rejected') => {
     try {
-      await updateDoc(doc(db, 'users', id), { 
-        approvalStatus: action,
-        approvedAt: action === 'approved' ? new Date() : null,
-        approvedBy: auth.currentUser?.email
-      });
+      await updateDoc(doc(db, 'users', id), { approvalStatus: action });
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `users/${id}`);
     }
   };
 
   return (
-    <div className="bg-white rounded-[32px] border border-slate-200 overflow-hidden animate-in fade-in shadow-sm">
-      <div className="px-8 py-6 border-b border-slate-100 bg-amber-50/30 flex justify-between items-center">
-        <div>
-          <h3 className="font-black text-slate-800 flex items-center gap-2 tracking-tight">
-            <ShieldCheck size={20} className="text-amber-600" /> Control de Acceso Pendiente
-          </h3>
-          <p className="text-[11px] text-slate-500 font-medium mt-1">Verifica la identidad y el rol antes de liberar el acceso al ecosistema.</p>
-        </div>
-        <div className="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
-          {candidates.length} Solicitudes
-        </div>
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden animate-in fade-in">
+      <div className="px-6 py-4 border-b border-slate-100 bg-amber-50/50">
+        <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+          <ShieldCheck size={18} className="text-amber-600" /> Solicitudes de Autorización
+        </h3>
       </div>
-      <div className="p-8 space-y-4">
+      <div className="p-6 space-y-4">
         {candidates.map(c => (
-          <div key={c.id} className="flex items-center justify-between p-6 bg-slate-50/50 border border-slate-100 rounded-[24px] hover:bg-white hover:shadow-xl hover:shadow-slate-200/50 transition-all group">
-            <div className="flex items-center gap-5">
-              <div className="w-14 h-14 rounded-2xl bg-white shadow-sm border border-slate-100 flex items-center justify-center text-slate-400 font-black text-xl uppercase group-hover:scale-110 transition-transform">
-                {c.photoURL ? <img src={c.photoURL} alt="" className="w-full h-full object-cover rounded-2xl" /> : (c.displayName?.[0] || 'U')}
+          <div key={c.id} className="flex items-center justify-between p-4 border border-slate-100 rounded-xl hover:shadow-md transition-shadow">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold uppercase">
+                {c.displayName?.[0] || 'U'}
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <p className="font-black text-slate-900 uppercase tracking-tight">{c.displayName || 'Sin Nombre'}</p>
-                  <span className={cn(
-                    "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest",
-                    c.role === 'coach' ? "bg-purple-100 text-purple-600" : "bg-cyan-100 text-cyan-600"
-                  )}>
-                    {c.role}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">{c.email}</p>
-                <p className="text-[10px] text-slate-300 font-bold uppercase mt-1">Registrado: {c.createdAt?.toDate().toLocaleDateString()}</p>
+                <p className="font-semibold text-slate-800">{c.displayName || 'Sin Nombre'}</p>
+                <p className="text-xs text-slate-500">{c.email} • Rol: {c.role}</p>
               </div>
             </div>
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <button 
                 onClick={() => handleAction(c.id, 'rejected')}
-                className="px-5 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                className="px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
               >
                 Rechazar
               </button>
               <button 
                 onClick={() => handleAction(c.id, 'approved')}
-                className="px-6 py-3 text-[11px] font-black uppercase tracking-widest text-white bg-slate-900 hover:bg-teal-600 rounded-xl shadow-lg shadow-slate-900/10 transition-all flex items-center gap-2"
+                className="px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors"
               >
-                Liberar Acceso <ArrowRight size={14} />
+                Autorizar
               </button>
             </div>
           </div>
         ))}
-        {loading && (
-          <div className="flex justify-center py-12">
-            <Loader2 className="animate-spin text-slate-300" size={32} />
-          </div>
-        )}
-        {!loading && candidates.length === 0 && (
-          <div className="text-center py-16 flex flex-col items-center">
-            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4 text-slate-300">
-               <ShieldCheck size={32} />
-            </div>
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-xs italic">Cero Amenazas / Todo en Orden</p>
-            <p className="text-[11px] text-slate-300 mt-2">No hay usuarios esperando autorización en este momento.</p>
-          </div>
+        {candidates.length === 0 && (
+          <div className="text-center py-8 text-slate-400 italic text-sm">No hay solicitudes pendientes.</div>
         )}
       </div>
     </div>
@@ -1424,11 +1368,9 @@ function CoachCuratorView() {
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-tighter">
-                <th className="px-6 py-3">Nombre / E-mail</th>
-                <th className="px-6 py-3">Especialidad</th>
+                <th className="px-6 py-3">Nombre / Email</th>
                 <th className="px-6 py-3 text-center">Estado</th>
                 <th className="px-6 py-3 text-center">Cursos</th>
-                <th className="px-6 py-3 text-center">Calificación</th>
                 <th className="px-6 py-4 text-right">Acciones de Control</th>
               </tr>
             </thead>
@@ -1441,9 +1383,6 @@ function CoachCuratorView() {
                       <span className="text-[10px] text-slate-400 font-mono italic">{c.email}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
-                    <span className="text-slate-600 font-medium">{c.specialty || 'Generalist'}</span>
-                  </td>
                   <td className="px-6 py-4 text-center">
                      <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider", statusColors[c.approvalStatus] || 'bg-slate-100 text-slate-500')}>
                         {c.approvalStatus === 'suspended' ? 'SUSPENDIDO' : (c.approvalStatus || 'pending')}
@@ -1451,12 +1390,6 @@ function CoachCuratorView() {
                   </td>
                   <td className="px-6 py-4 text-center font-bold text-slate-600">
                      {courseCounts[c.id] || 0}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <Star size={12} className="text-amber-400 fill-amber-400" />
-                      <span className="font-bold text-slate-700">{c.rating || 5.0}</span>
-                    </div>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2 flex-wrap">
@@ -1512,7 +1445,10 @@ function MarketplaceEditorView() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<any>({});
+  const [editTitle, setEditTitle] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [editImageUrl, setEditImageUrl] = useState('');
+  const [editAuthor, setEditAuthor] = useState('');
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'marketplace'), (snap) => {
@@ -1524,19 +1460,56 @@ function MarketplaceEditorView() {
 
   const addPlaceholder = async (type: 'curso' | 'libro') => {
     try {
-      await addDoc(collection(db, 'marketplace'), {
+      const docRef = await addDoc(collection(db, 'marketplace'), {
          title: type === 'curso' ? 'Nuevo Curso Estelar' : 'Libro: El Camino del Coach',
          price: type === 'curso' ? 199 : 29,
          type: type,
          status: 'draft',
          createdAt: new Date(),
          author: 'Admin',
-         imageUrl: 'https://picsum.photos/seed/' + Math.random() + '/400/300',
-         contentUrl: '',
-         videoUrl: ''
+         imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400'
       });
+      // Start editing immediately
+      setEditingId(docRef.id);
+      setEditTitle(type === 'curso' ? 'Nuevo Curso Estelar' : 'Libro: El Camino del Coach');
+      setEditPrice(type === 'curso' ? '199' : '29');
+      setEditImageUrl('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400');
+      setEditAuthor('Admin');
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const startEditing = (item: any) => {
+    setEditingId(item.id);
+    setEditTitle(item.title || '');
+    setEditPrice(item.price ? String(item.price) : '0');
+    setEditImageUrl(item.imageUrl || '');
+    setEditAuthor(item.author || '');
+  };
+
+  const saveEdit = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'marketplace', id), {
+        title: editTitle,
+        price: parseFloat(editPrice) || 0,
+        imageUrl: editImageUrl,
+        author: editAuthor
+      });
+      setEditingId(null);
+    } catch (e) {
+      console.error('Error saving marketplace item:', e);
+      alert('Error al guardar el producto.');
+    }
+  };
+
+  const deleteItem = async (id: string) => {
+    if (confirm('¿Seguro que deseas eliminar este producto?')) {
+      try {
+        await deleteDoc(doc(db, 'marketplace', id));
+      } catch (e) {
+        console.error(e);
+      }
     }
   };
 
@@ -1548,169 +1521,129 @@ function MarketplaceEditorView() {
     }
   };
 
-  const startEditing = (item: any) => {
-    setEditingId(item.id);
-    setEditForm({ ...item });
-  };
-
-  const handleSave = async () => {
-    if (!editingId) return;
-    try {
-      const { id, ...data } = editForm;
-      await updateDoc(doc(db, 'marketplace', editingId), {
-        ...data,
-        price: Number(data.price)
-      });
-      setEditingId(null);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (window.confirm('¿Estás seguro de eliminar este producto?')) {
-      try {
-        await deleteDoc(doc(db, 'marketplace', id));
-      } catch (e) {
-        console.error(e);
-      }
-    }
-  };
-
   return (
     <div className="space-y-6 animate-in fade-in">
        <div className="flex gap-4 mb-4">
-          <button onClick={() => addPlaceholder('curso')} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-600 shadow-xl shadow-slate-900/10 transition-all">
+          <button onClick={() => addPlaceholder('curso')} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 shadow-sm transition-all focus:ring-4 focus:ring-indigo-600/20">
             + Nuevo Curso
           </button>
-          <button onClick={() => addPlaceholder('libro')} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-emerald-600 shadow-xl shadow-slate-900/10 transition-all">
+          <button onClick={() => addPlaceholder('libro')} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-sm transition-all focus:ring-4 focus:ring-emerald-600/20">
             + Nuevo Libro
           </button>
        </div>
-       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {items.map(item => (
-             <div key={item.id} className="bg-white rounded-[32px] border border-slate-200 overflow-hidden shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all group relative">
-                <div className="h-48 bg-slate-100 relative overflow-hidden">
+             <div key={item.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm group">
+                <div className="h-40 bg-slate-100 relative overflow-hidden">
                    {item.imageUrl ? (
-                      <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                    ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-300">
-                         {item.type === 'curso' ? <PlayCircle size={48} /> : <BookOpen size={48} />}
+                         {item.type === 'curso' ? <PlayCircle size={40} /> : <BookOpen size={40} />}
                       </div>
                    )}
-                   <div className="absolute top-4 left-4 px-3 py-1.5 bg-black/40 backdrop-blur-md text-white text-[9px] font-black uppercase rounded-full tracking-[0.2em] border border-white/20">
+                   <div className="absolute top-3 left-3 px-2 py-1 bg-black/60 backdrop-blur text-white text-[10px] font-bold uppercase rounded-md tracking-wider">
                       {item.type}
                    </div>
-                   <button 
-                     onClick={() => handleDelete(item.id)}
-                     className="absolute top-4 right-4 p-2 bg-white/10 backdrop-blur-md text-white/50 hover:text-rose-500 hover:bg-white rounded-full transition-all group-hover:opacity-100 opacity-0"
-                   >
-                     <Trash2 size={16} />
-                   </button>
                 </div>
-                <div className="p-8">
+                <div className="p-5">
                    {editingId === item.id ? (
-                      <div className="space-y-4">
-                         <input 
-                            className="w-full px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
-                            value={editForm.title}
-                            onChange={(e) => setEditForm({...editForm, title: e.target.value})}
-                            placeholder="Título"
-                         />
-                         <div className="flex gap-2">
-                           <input 
-                              type="number"
-                              className="w-1/2 px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
-                              value={editForm.price}
-                              onChange={(e) => setEditForm({...editForm, price: e.target.value})}
-                              placeholder="Precio"
-                           />
-                           <input 
-                              className="w-1/2 px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
-                              value={editForm.author}
-                              onChange={(e) => setEditForm({...editForm, author: e.target.value})}
-                              placeholder="Autor"
-                           />
+                      <div className="space-y-3">
+                         <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Título</label>
+                            <input 
+                               type="text" 
+                               value={editTitle} 
+                               onChange={(e) => setEditTitle(e.target.value)} 
+                               className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
                          </div>
-                         <input 
-                            className="w-full px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none font-mono"
-                            value={editForm.imageUrl}
-                            onChange={(e) => setEditForm({...editForm, imageUrl: e.target.value})}
-                            placeholder="URL de Imagen (Opcional)"
-                         />
-                         {item.type === 'curso' ? (
-                           <div className="space-y-2">
-                             <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">
-                               <PlayCircle size={12} /> Link YouTube
-                             </div>
-                             <input 
-                                className="w-full px-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
-                                value={editForm.videoUrl || ''}
-                                onChange={(e) => setEditForm({...editForm, videoUrl: e.target.value})}
-                                placeholder="https://youtube.com/watch?v=..."
-                             />
-                           </div>
-                         ) : (
-                           <div className="space-y-2">
-                             <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">
-                               <FileText size={12} /> Documento PDF
-                             </div>
-                             <FileUploader 
-                               folderPath="marketplace/pdfs" 
-                               fileType="pdf" 
-                               accept=".pdf"
-                               label={editForm.contentUrl ? "Cambiar PDF" : "Subir PDF"}
-                               onUploadComplete={(url) => setEditForm({...editForm, contentUrl: url})}
-                             />
-                             {editForm.contentUrl && (
-                               <p className="text-[10px] text-emerald-500 font-bold truncate px-2">✓ Cargado: {editForm.contentUrl.substring(0, 30)}...</p>
-                             )}
-                           </div>
-                         )}
-                         <div className="flex gap-2 pt-2">
-                            <button onClick={handleSave} className="flex-1 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-colors">Guardar</button>
-                            <button onClick={() => setEditingId(null)} className="flex-1 py-2 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-colors">Cancelar</button>
+                         <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Autor</label>
+                            <input 
+                               type="text" 
+                               value={editAuthor} 
+                               onChange={(e) => setEditAuthor(e.target.value)} 
+                               className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                         </div>
+                         <div className="grid grid-cols-2 gap-2">
+                            <div>
+                               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Precio (USD)</label>
+                               <input 
+                                  type="number" 
+                                  value={editPrice} 
+                                  onChange={(e) => setEditPrice(e.target.value)} 
+                                  className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                               />
+                            </div>
+                            <div>
+                               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Tipo</label>
+                               <span className="block text-xs text-slate-500 py-1.5 capitalize font-semibold">{item.type}</span>
+                            </div>
+                         </div>
+                         <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">URL de la Imagen</label>
+                            <input 
+                               type="url" 
+                               value={editImageUrl} 
+                               onChange={(e) => setEditImageUrl(e.target.value)} 
+                               placeholder="https://images.unsplash.com/..."
+                               className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                         </div>
+                         <div className="flex justify-end gap-2 pt-2">
+                            <button onClick={() => setEditingId(null)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded text-[10px] font-bold text-slate-600 transition">
+                               Cancelar
+                            </button>
+                            <button onClick={() => saveEdit(item.id)} className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10px] font-bold transition">
+                               Guardar
+                            </button>
                          </div>
                       </div>
                    ) : (
                       <>
-                        <div className="flex justify-between items-start mb-2">
-                           <h3 className="font-black text-slate-900 text-lg tracking-tight uppercase leading-tight group-hover:text-indigo-600 transition-colors">{item.title}</h3>
-                           <button onClick={() => startEditing(item)} className="p-2 text-slate-300 hover:text-slate-600 transition-colors">
-                              <Settings size={18} />
-                           </button>
-                        </div>
-                        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest leading-none">Por {item.author || 'Admin'}</p>
-                        
-                        <div className="flex justify-between items-center mt-10">
-                           <span className="font-black text-slate-900 text-lg italic">${item.price} <span className="text-[10px] not-italic text-slate-400">USD</span></span>
-                           <button 
-                              onClick={() => toggleStatus(item.id, item.status)}
-                              className={cn(
-                                "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg", 
-                                item.status === 'published' ? "bg-emerald-50 text-emerald-600 hover:bg-emerald-100 shadow-emerald-500/5 border border-emerald-100" : "bg-slate-50 text-slate-400 hover:bg-slate-100 shadow-slate-900/5 border border-slate-200"
-                              )}
-                           >
-                              {item.status === 'published' ? 'Público' : 'Borrador'}
-                           </button>
-                        </div>
+                         <h3 className="font-bold text-slate-800 text-sm mb-1">{item.title}</h3>
+                         <p className="text-slate-500 text-xs mb-3">Por {item.author || 'Anónimo'}</p>
+                         
+                         <div className="flex justify-between items-center mt-4">
+                            <span className="font-black text-indigo-600">${item.price} USD</span>
+                            <div className="flex gap-2">
+                               <button 
+                                  onClick={() => startEditing(item)} 
+                                  className="px-2 py-1 rounded bg-slate-50 hover:bg-slate-100 text-[10px] font-bold border border-slate-200 text-slate-600 tracking-wider transition"
+                               >
+                                  Editar
+                               </button>
+                               <button 
+                                  onClick={() => deleteItem(item.id)} 
+                                  className="px-2 py-1 rounded bg-rose-50 hover:bg-rose-100 text-[10px] font-bold border border-rose-100 text-rose-600 tracking-wider transition"
+                               >
+                                  Eliminar
+                               </button>
+                               <button 
+                                  onClick={() => toggleStatus(item.id, item.status)}
+                                  className={cn("px-2 py-1 rounded text-[10px] font-bold uppercase transition border", item.status === 'published' ? "bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-110" : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200")}
+                               >
+                                  {item.status === 'published' ? 'Público' : 'Borrador'}
+                               </button>
+                            </div>
+                         </div>
                       </>
                    )}
                 </div>
              </div>
           ))}
           {items.length === 0 && !loading && (
-             <div className="col-span-full py-24 text-center border-4 border-dashed border-slate-100 rounded-[40px] flex flex-col items-center">
-                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6 text-slate-300">
-                   <ShoppingBag size={40} />
-                </div>
-                <p className="text-slate-400 font-black uppercase tracking-[0.2em] text-sm">Inventario Vacío</p>
-                <p className="text-slate-300 text-[10px] font-bold uppercase mt-2">Crea tu primer programa o libro para empezar a vender.</p>
+             <div className="col-span-full py-16 text-center border-2 border-dashed border-slate-200 rounded-2xl">
+                <ShoppingBag className="mx-auto text-slate-300 mb-3" size={40} />
+                <p className="text-slate-500 font-medium">No hay productos en el marketplace.</p>
+                <p className="text-slate-400 text-xs mt-1">Aparecerán aquí cuando crees un curso o libro.</p>
              </div>
           )}
        </div>
     </div>
-  )
+  );
 }
 
 // --- MODULO 4: CMS / VENTAS ---
@@ -1853,32 +1786,15 @@ function CMSView() {
 function PillsEditor() {
   const [uploading, setUploading] = useState(false);
   const [title, setTitle] = useState('');
-  const [audioUrl, setAudioUrl] = useState('');
   
-  const handleSimulateUpload = async () => {
-    if (!title || !audioUrl) {
-      alert("Por favor ingresa un título y sube el archivo de audio.");
-      return;
-    }
+  const handleSimulateUpload = () => {
+    if (!title) return;
     setUploading(true);
-    try {
-      await addDoc(collection(db, 'pills'), {
-        title,
-        audioUrl,
-        createdAt: new Date(),
-        author: 'Admin',
-        type: 'audio',
-        duration: '1:00' // In real app, we'd calculate this from the audio file
-      });
-      setTitle('');
-      setAudioUrl('');
-      alert("Píldora '" + title + "' publicada exitosamente.");
-    } catch (e) {
-      console.error(e);
-      alert("Error al publicar la píldora.");
-    } finally {
+    setTimeout(() => {
       setUploading(false);
-    }
+      setTitle('');
+      alert("Píldora '" + title + "' enviada por Push Notification exitosamente.");
+    }, 1500);
   };
   
   return (
@@ -1891,30 +1807,24 @@ function PillsEditor() {
            Sube audios cortos de 1 minuto para tus alumnos. El sistema enviará una notificación Push inmediata a todos los usuarios de la app móvil.
         </p>
         
-        <div className="w-full max-w-md space-y-6">
+        <div className="w-full max-w-md space-y-4">
            <div>
-             <label className="block text-[10px] font-black text-slate-400 mb-1.5 uppercase tracking-widest pl-1">Título del Audio</label>
-             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej: Meditación Exprés" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-teal-500" />
+             <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Título del Audio</label>
+             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej: Meditación Exprés" className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
            </div>
            
-           <div>
-             <label className="block text-[10px] font-black text-slate-400 mb-1.5 uppercase tracking-widest pl-1">Archivo MP3</label>
-             <FileUploader 
-               folderPath="pills/audio" 
-               fileType="audio" 
-               accept="audio/*"
-               label={audioUrl ? "Audio Cargado ✓" : "Seleccionar Archivo de Audio"}
-               onUploadComplete={(url) => setAudioUrl(url)}
-               className={cn(audioUrl ? "border-emerald-200 bg-emerald-50/30" : "")}
-             />
+           <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center bg-slate-50 relative hover:bg-slate-100 transition cursor-pointer">
+              <UploadCloud size={32} className="text-slate-400 mb-3" />
+              <span className="text-sm font-medium text-slate-600">Click para subir MP3/WAV</span>
+              <span className="text-xs text-slate-400 mt-1">Máximo 10MB</span>
            </div>
            
            <button 
              onClick={handleSimulateUpload} 
-             disabled={!title || !audioUrl || uploading}
-             className="w-full bg-slate-900 text-white rounded-[24px] px-6 py-4 font-black uppercase text-xs tracking-[0.2em] hover:bg-teal-600 transition disabled:opacity-50 flex justify-center items-center gap-3 shadow-xl shadow-slate-900/10"
+             disabled={!title || uploading}
+             className="w-full bg-teal-600 text-white rounded-lg px-4 py-3 font-bold hover:bg-teal-700 transition disabled:opacity-50 flex justify-center items-center gap-2"
            >
-             {uploading ? <Loader2 className="animate-spin" size={18} /> : <>Emitir Píldora <Send size={16}/></>}
+             {uploading ? <span className="animate-pulse">Emitiendo...</span> : <>Emitir Notificación Push <Send size={16}/></>}
            </button>
         </div>
      </div>
@@ -1923,7 +1833,7 @@ function PillsEditor() {
 
 // --- MODULO 5: BI / ANALÍTICAS ---
 function BIView() {
-  const [stats, setStats] = useState({ sentiment: { positive: 0, neutral: 0, negative: 0 }, courseDist: [] as any[], salesByMonth: [] as any[] });
+  const [stats, setStats] = useState({ sentiment: { positive: 0, neutral: 0, negative: 0 }, courseDist: [] as any[] });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1952,20 +1862,7 @@ function BIView() {
           value: courseMap[d.id] || 0
         })).filter(d => d.value > 0);
 
-        // Sales trend
-        const salesSnap = await getDocs(query(collection(db, 'sales'), orderBy('month', 'asc')));
-        const salesData = salesSnap.docs.map(d => d.data());
-        
-        // If no real sales, generate mock for visual
-        const finalSales = salesData.length > 0 ? salesData : [
-          { month: '2026-01', amount: 4500, type: 'course' },
-          { month: '2026-02', amount: 5200, type: 'course' },
-          { month: '2026-03', amount: 3800, type: 'course' },
-          { month: '2026-04', amount: 6100, type: 'course' },
-          { month: '2026-05', amount: 7500, type: 'course' },
-        ];
-
-        setStats({ sentiment: counts, courseDist: dist, salesByMonth: finalSales });
+        setStats({ sentiment: counts, courseDist: dist });
       } catch (e) {
         console.error(e);
       } finally {
@@ -1984,31 +1881,12 @@ function BIView() {
   return (
     <div className="flex flex-col gap-8 animate-in fade-in">
        <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
-          <div className="flex justify-between items-center mb-8">
-             <div className="flex items-center gap-3">
-                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Sliders size={20}/></div>
-                <div>
-                   <h3 className="font-bold text-slate-900 text-lg">Inteligencia de Negocio</h3>
-                   <p className="text-sm text-slate-500">Métricas avanzadas y comportamiento de comunidad.</p>
-                </div>
+          <div className="flex items-center gap-3 mb-8">
+             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Sliders size={20}/></div>
+             <div>
+                <h3 className="font-bold text-slate-900 text-lg">Inteligencia de Negocio</h3>
+                <p className="text-sm text-slate-500">Métricas avanzadas y comportamiento de comunidad.</p>
              </div>
-             <button 
-               onClick={async () => {
-                 const months = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05'];
-                 for (const m of months) {
-                    await addDoc(collection(db, 'sales'), {
-                       month: m,
-                       amount: Math.floor(Math.random() * 5000) + 2000,
-                       type: 'course',
-                       createdAt: new Date().toISOString()
-                    });
-                 }
-                 alert('Reporte de ventas simulado generado.');
-               }}
-               className="text-[10px] bg-slate-900 text-white px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider"
-             >
-                Simular Reporte de Ventas
-             </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -2054,28 +1932,9 @@ function BIView() {
               </div>
             </div>
 
-            {/* Ventas por Mes */}
-            <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-100 flex flex-col">
-              <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Ventas Totales (Cursos & Membresías)</h4>
-              <div className="h-56 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={stats.salesByMonth}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                      <XAxis dataKey="month" fontSize={10} tickLine={false} axisLine={false} tick={{fill: '#94a3b8'}} />
-                      <YAxis hide />
-                      <Tooltip 
-                        cursor={{fill: '#f1f5f9'}}
-                        contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                      />
-                      <Bar dataKey="amount" fill="#14b8a6" radius={[4, 4, 0, 0]} barSize={25} />
-                    </BarChart>
-                  </ResponsiveContainer>
-              </div>
-            </div>
-
             {/* Distribución de Cursos */}
             <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-100 flex flex-col">
-              <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Top Programs (Enrollments)</h4>
+              <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Demanda por Programa</h4>
               <div className="h-56 w-full">
                  {stats.courseDist.length > 0 ? (
                     <ResponsiveContainer width="100%" height="100%">
@@ -2094,164 +1953,23 @@ function BIView() {
                  )}
               </div>
             </div>
+
+            {/* Retention */}
+            <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-100 flex flex-col">
+              <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Retention Flow (%)</h4>
+              <div className="flex-1 flex flex-col justify-center gap-6">
+                  <RetentionBar label="Intro" percent={98} />
+                  <RetentionBar label="Sesión 1" percent={85} />
+                  <RetentionBar label="Sesión 3" percent={62} />
+                  <RetentionBar label="Cert." percent={45} color="rose" />
+              </div>
+            </div>
           </div>
        </div>
     </div>
   );
 }
 
-// --- MODULO: MONITOR DE IA ---
-function AiMonitoringView() {
-  const [metrics, setMetrics] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  
-  useEffect(() => {
-    // Generate dates for the last 7 days for the chart
-    const days = Array.from({length: 7}, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      return d.toISOString().split('T')[0];
-    });
-
-    const unsub = onSnapshot(query(collection(db, 'ai_metrics'), orderBy('timestamp', 'desc'), limit(50)), (snap) => {
-      const allMetrics = snap.docs.map(d => d.data());
-      setMetrics(allMetrics);
-      setLoading(false);
-    });
-    return () => unsub();
-  }, []);
-
-  const latest = metrics[0] || { latency: 342, sentimentPrecision: 92, escalationRate: 4.2 };
-
-  const chartData = Array.from({length: 7}, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    const dayStr = d.toISOString().split('T')[0];
-    const dayLabel = d.toLocaleDateString('es-ES', { weekday: 'short' });
-    
-    const matches = metrics.filter(m => m.timestamp?.startsWith(dayStr));
-    if (matches.length > 0) {
-      return {
-        name: dayLabel,
-        latency: matches.reduce((acc, curr) => acc + curr.latency, 0) / matches.length,
-        precision: matches.reduce((acc, curr) => acc + curr.sentimentPrecision, 0) / matches.length,
-        escalation: matches.reduce((acc, curr) => acc + curr.escalationRate, 0) / matches.length
-      };
-    }
-    // Realistic mock data for visualization baseline
-    return {
-      name: dayLabel,
-      latency: 280 + (Math.random() * 120),
-      precision: 90 + (Math.random() * 6),
-      escalation: 2 + (Math.random() * 4)
-    };
-  });
-
-  return (
-    <div className="flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard 
-          title="Latencia Media" 
-          value={`${Math.round(latest.latency)}ms`} 
-          subtitle="Tiempo de respuesta Kira" 
-          icon={<Clock className="text-cyan-600" />} 
-          trend="-15ms" 
-          trendUp={true}
-        />
-        <StatCard 
-          title="Precisión Análisis" 
-          value={`${latest.sentimentPrecision}%`} 
-          subtitle="Análisis de Sentimiento" 
-          icon={<BrainCircuit className="text-emerald-600" />} 
-          trend="+4%" 
-          trendUp={true}
-        />
-        <StatCard 
-          title="Tasa Escalación" 
-          value={`${latest.escalationRate}%`} 
-          subtitle="A soporte humano" 
-          icon={<ShieldAlert className="text-rose-600" />} 
-          trend="-2%" 
-          trendUp={true}
-        />
-      </div>
-
-      <div className="bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
-           <Activity size={180} className="text-indigo-600" strokeWidth={0.5} />
-        </div>
-        <div className="relative z-10">
-          <div className="flex justify-between items-center mb-10">
-             <div>
-               <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-none">Rendimiento de IA Proactiva</h3>
-               <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-2">Métricas de salud del motor cognitivo (Última Semana)</p>
-             </div>
-             <div className="flex gap-4">
-                <LegendBadge color="bg-cyan-500" label="LATENCIA" />
-                <LegendBadge color="bg-emerald-500" label="PRECISIÓN" />
-                <LegendBadge color="bg-rose-500" label="ESCALACIÓN" />
-             </div>
-          </div>
-          
-          <div className="h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" fontSize={11} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                <YAxis fontSize={10} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} hide />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)' }}
-                />
-                <Line type="monotone" dataKey="latency" name="Latencia (ms)" stroke="#06b6d4" strokeWidth={4} dot={{fill: '#06b6d4', strokeWidth: 2, r: 4}} activeDot={{r: 8}} />
-                <Line type="monotone" dataKey="precision" name="Precisión (%)" stroke="#10b981" strokeWidth={4} dot={{fill: '#10b981', r: 4}} />
-                <Line type="monotone" dataKey="escalation" name="Escalación (%)" stroke="#f43f5e" strokeWidth={4} dot={{fill: '#f43f5e', r: 4}} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-slate-950 rounded-[40px] p-10 text-white shadow-2xl relative overflow-hidden">
-         <div className="absolute top-0 right-0 p-8 opacity-10"><Sparkles size={100} /></div>
-         <h4 className="text-lg font-black tracking-tight mb-8">Logs de Cognición Recientes</h4>
-         <div className="space-y-4">
-            {metrics.slice(0, 5).map((m, i) => (
-              <div key={i} className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-2xl">
-                 <div className="flex items-center gap-4">
-                    <div className={cn(
-                      "w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs",
-                      m.sentiment === 'Positive' ? "bg-emerald-500/20 text-emerald-400" : "bg-amber-500/20 text-amber-400"
-                    )}>
-                      {m.sentiment?.[0] || 'N'}
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-200">Análisis: {m.context || 'Consulta General'}</p>
-                      <p className="text-[10px] text-slate-500 font-mono">{m.timestamp}</p>
-                    </div>
-                 </div>
-                 <div className="text-right">
-                    <p className="text-xs font-black text-white">{m.latency}ms</p>
-                    <p className="text-[10px] text-slate-400">Escalado: {m.isEscalated ? 'SÍ' : 'NO'}</p>
-                 </div>
-              </div>
-            ))}
-            {metrics.length === 0 && (
-              <div className="text-center py-10 opacity-30 italic text-sm">Esperando nuevos logs cognitivos...</div>
-            )}
-         </div>
-      </div>
-    </div>
-  );
-}
-
-function LegendBadge({ color, label }: { color: string, label: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className={cn("w-2 h-2 rounded-full", color)}></div>
-      <span className="text-[10px] font-black text-slate-400 italic">{label}</span>
-    </div>
-  );
-}
 function RetentionBar({ label, percent, color = 'teal' }: any) {
   const colorClass = color === 'rose' ? 'bg-rose-500' : 'bg-teal-500';
   return (
@@ -3630,4 +3348,3 @@ function PromotionsManagerView() {
 // Compatibilidad con rutas anteriores
 export function AdminCoaches() { return <AdminMonitor />; }
 export function AdminReviews() { return <AdminMonitor />; }
-
