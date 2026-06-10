@@ -10,6 +10,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
+import { Arteterapia } from '../components/Arteterapia';
 
 interface Chapter {
   id: string;
@@ -538,24 +539,68 @@ export function Microlearning() {
           </div>
 
           {/* Gamified Rank Display Card */}
-          <div className="bg-slate-900 text-white rounded-3xl p-5 border border-slate-800 shadow-lg relative overflow-hidden mt-6">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/5 rounded-full filter blur-xl pointer-events-none" />
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 bg-gradient-to-br from-teal-400 to-cyan-500 rounded-xl text-white">
-                <Trophy size={20} />
+          <div className="bg-slate-950 text-white rounded-3xl p-6 border border-slate-800 shadow-xl relative overflow-hidden mt-6">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/10 rounded-full filter blur-xl pointer-events-none" />
+            
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 bg-gradient-to-br from-teal-450 to-cyan-500 rounded-2xl text-white shadow-md shadow-teal-500/15">
+                <Trophy size={20} className="text-amber-300" />
               </div>
               <div>
                 <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">Medalla de Consciencia</h4>
-                <p className="text-[11px] text-teal-400 font-bold">{getBadgeTitle(points)}</p>
+                <p className="text-[12px] text-[#14b8a6] font-black tracking-tight">{getBadgeTitle(points)}</p>
               </div>
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Responde las preguntas de cada capítulo y colorea el mándala creativo para desbloquear rangos superiores.
-            </p>
             
-            <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-500">
-              <span>Nivel Completo:</span>
-              <span className="font-bold text-teal-400">{completedChapters.length} de {config.chapters.length} capítulos</span>
+            <p className="text-[11px] text-slate-400 leading-relaxed mb-5">
+              Completa la lectura de los capítulos, responde las preguntas de introspección y realiza prácticas de arteterapia para acumular Zaps de Energía.
+            </p>
+
+            {/* Visual Progress Bars */}
+            <div className="space-y-4 pt-4 border-t border-slate-900">
+              {/* Chapters Progress */}
+              <div className="space-y-1.5 animate-in slide-in-from-left-2 duration-300">
+                <div className="flex justify-between items-center text-[10px] font-bold">
+                  <span className="text-slate-400">Lectura de Capítulos</span>
+                  <span className="text-teal-400">{completedChapters.length} de {config.chapters.length} ({Math.round((completedChapters.length / Math.max(config.chapters.length, 1)) * 100)}%)</span>
+                </div>
+                <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${(completedChapters.length / Math.max(config.chapters.length, 1)) * 100}%` }}
+                    transition={{ duration: 0.8, ease: 'easeOut' }}
+                    className="h-full bg-gradient-to-r from-teal-400 to-emerald-400 rounded-full"
+                  />
+                </div>
+              </div>
+
+              {/* Exercises Response Progress */}
+              {(() => {
+                const totalQuestions = config.chapters.reduce((acc, ch) => acc + (ch.coachingQuestions?.length || 0), 0);
+                const answeredQuestions = Object.values(localAnswers).filter(val => val && val.trim().length > 0).length;
+                const percentage = totalQuestions > 0 ? Math.round((answeredQuestions / totalQuestions) * 100) : 0;
+                return (
+                  <div className="space-y-1.5 animate-in slide-in-from-left-2 duration-450">
+                    <div className="flex justify-between items-center text-[10px] font-bold">
+                      <span className="text-slate-400">Ejercicios Realizados</span>
+                      <span className="text-indigo-400">{answeredQuestions} de {totalQuestions} ({percentage}%)</span>
+                    </div>
+                    <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${percentage}%` }}
+                        transition={{ duration: 0.8, ease: 'easeOut' }}
+                        className="h-full bg-gradient-to-r from-[#14b8a6] to-indigo-500 rounded-full"
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="mt-5 pt-3.5 border-t border-slate-900 flex justify-between items-center text-[10px] text-slate-500">
+              <span className="font-medium">Total de Energía:</span>
+              <span className="font-black text-white bg-teal-500/10 border border-teal-500/20 px-2 py-0.5 rounded-md">{points} Zaps</span>
             </div>
           </div>
         </div>
@@ -812,6 +857,10 @@ export function Microlearning() {
                     </div>
                   </div>
                 ))}
+
+                <div className="border-t border-slate-100 pt-10 mt-10">
+                  <Arteterapia onAwardPoints={(pts) => saveProgressToLocal(localAnswers, completedChapters, pts)} />
+                </div>
 
                 <div className="p-3.5 bg-slate-905 border border-slate-800 rounded-2xl flex items-center justify-between mt-8 text-xs bg-slate-900 text-white">
                   <span className="font-semibold text-slate-300">¡Comparte tus creaciones!</span>
