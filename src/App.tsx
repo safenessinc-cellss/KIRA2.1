@@ -11,11 +11,10 @@ import { CoachDashboard, CoachCourses } from './pages/Coach';
 import SessionIntelligence from './pages/SessionIntelligence';
 import { HRDashboard } from './pages/HRDashboard';
 import { UserProfile } from './pages/UserProfile';
+import { Microlearning } from './pages/Microlearning';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
-import ClubPaginasVivas from './pages/ClubPaginasVivas'; // ← LÍNEA 1: EL IMPORT
-
 
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<any>({ primaryColor: '', secondaryColor: '' });
@@ -56,10 +55,10 @@ export default function App() {
             <Route element={<CoreLayout />}>
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
-               <Route path="/club" element={<ClubPaginasVivas />} />
+              <Route path="/microlearning" element={<Microlearning />} />
               
               {/* Alumnos */}
-              <Route element={<ProtectedRoute allowedRoles={['alumno', 'admin']} />}>
+              <Route element={<ProtectedRoute allowedRoles={['alumno']} />}>
                 <Route element={<DashboardLayout title="Mi Aprendizaje" />}>
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/dashboard/journal" element={<Journal />} />
@@ -69,7 +68,7 @@ export default function App() {
               </Route>
 
               {/* Coaches */}
-              <Route element={<ProtectedRoute allowedRoles={['coach', 'admin']} />}>
+              <Route element={<ProtectedRoute allowedRoles={['coach']} />}>
                 <Route element={<DashboardLayout title="Panel de Coach" />}>
                   <Route path="/coach" element={<CoachDashboard />} />
                   <Route path="/coach/courses" element={<CoachCourses />} />
