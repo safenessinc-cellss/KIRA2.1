@@ -1826,7 +1826,7 @@ function MarketplaceEditorView() {
 function CMSView() {
   const [coupons, setCoupons] = useState<any[]>([]);
   const [b2bAccounts, setB2BAccounts] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'ventas'|'pills'|'marketplace'>('ventas');
+  const [activeTab, setActiveTab] = useState<'ventas'|'pills'|'marketplace'|'microlearning'>('ventas');
 
   useEffect(() => {
     const unsubscribeCoupons = onSnapshot(collection(db, 'coupons'), 
@@ -1880,12 +1880,20 @@ function CMSView() {
           >
              Píldoras de Sabiduría
           </button>
+          <button 
+             onClick={() => setActiveTab('microlearning')}
+             className={cn("pb-3 text-sm font-semibold transition-colors duration-200", activeTab === 'microlearning' ? "border-b-2 border-kirateal text-kirateal" : "text-slate-500 hover:text-slate-700")}
+          >
+             📖 Libro Aniversario Config
+          </button>
        </div>
 
        {activeTab === 'pills' ? (
           <PillsEditor />
        ) : activeTab === 'marketplace' ? (
           <MarketplaceEditorView />
+       ) : activeTab === 'microlearning' ? (
+          <MicrolearningAdminView />
        ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in">
              <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col">
@@ -1955,6 +1963,338 @@ function CMSView() {
        </div>
           </div>
        )}
+    </div>
+  );
+}
+
+const MICRO_DEFAULTS = [
+  {
+    id: 'cap-1',
+    title: 'Capítulo 1: El Despertar del Observador Consciente',
+    subtitle: 'Aprende a desvincularte del ruido mental y conectar con tu presente',
+    duration: '5 min',
+    summary: [
+      'Nuestra mente funciona en piloto automático el 95% del día, reaccionando a estímulos sin conciencia real.',
+      'El "Observador" es esa parte de ti que mira tus pensamientos sin juzgarlos ni identificarse con ellos.',
+      'Al tomar distancia de la tormentas emocionales, recuperas tu poder de elección y tu paz de inmediato.'
+    ],
+    coachingQuestions: [
+      { id: 'q1_1', text: '¿Qué pensamiento recurrente has observado hoy que drena tu energía emocional?', placeholder: 'Ej: Sentirme insuficiente con mis entregas...' },
+      { id: 'q1_2', text: 'Si miraras ese pensamiento como una nube pasajera en el cielo, ¿qué le dirías con compasión?', placeholder: 'Ej: Entiendo que tienes miedo, pero yo tengo el control ahora...' }
+    ],
+    dynamics: [
+      { 
+        id: 'dyn_1_1', 
+        title: 'Mándala de la Calma Centrada', 
+        instruction: 'Descarga o dibuja este mándala circular interactivo para centrar tu mente. Enfócate exclusivamente en trazos curvos y respira hondo 4-7-8 al final de cada color.', 
+        mandalaType: 'calm' 
+      }
+    ]
+  },
+  {
+    id: 'cap-2',
+    title: 'Capítulo 2: Alquimia Emocional: De la Reactividad a la Acción',
+    subtitle: 'Transforma tus crisis de estrés en combustible creativo',
+    duration: '7 min',
+    summary: [
+      'Las emociones no son buenas ni malas; son simplemente indicadores biológicos de energía en movimiento.',
+      'La reactividad canjea tu paz a corto plazo por arrepentimiento a largo plazo; la responsabilidad te da soberanía.',
+      'Canalizar el enojo o la duda hacia una actividad artística despierta zonas cerebrales de alta resolución de problemas.'
+    ],
+    coachingQuestions: [
+      { id: 'q2_1', text: '¿Qué situación actual te genera mayor frustración y cómo has estado reaccionando mecánicamente?', placeholder: 'Ej: Cuando mi jefe cambia los requerimientos a última hora...' },
+      { id: 'q2_2', text: 'Al transformarlo en arte o acción positiva, ¿cuál es el primer paso creativo que darás hoy?', placeholder: 'Ej: Escribir un poema libre o crear un boceto de mi estado ideal...' }
+    ],
+    dynamics: [
+      { 
+        id: 'dyn_2_1', 
+        title: 'Mándala del Fuego y Liberación', 
+        instruction: 'Este patrón geométrico de estrellas ayuda a liberar el estrés reprimido. Utiliza tonos cálidos de rojo, naranja y dorado para transmutar la atención hostil.', 
+        mandalaType: 'fire' 
+      }
+    ]
+  },
+  {
+    id: 'cap-3',
+    title: 'Capítulo 3: Ontología del Éxito Sostenible',
+    subtitle: 'Configura tus hábitos con un propósito alíneado a tus valores reales',
+    duration: '6 min',
+    summary: [
+      'El éxito social a menudo ignora la ecología interna. El verdadero alto rendimiento surge de la coherencia interna.',
+      'Los objetivos eficientes necesitan apoyarse en tu SER antes de enfocarse en el HACER o TENER.',
+      'Tu red de apoyo y tu nivel de autodisciplina compasiva determinan la longevidad de tu evolución profesional.'
+    ],
+    coachingQuestions: [
+      { id: 'q3_1', text: 'Define 3 valores innegociables que guían tu vida laboral y personal actualmente.', placeholder: 'Ej: Autenticidad, Salud integral, Libertad creativa...' },
+      { id: 'q3_2', text: '¿Qué hábito diario podrías implementar hoy para honrar el más importante de estos valores?', placeholder: 'Ej: 10 minutos de lectura sin dispositivos antes de dormir...' }
+    ],
+    dynamics: [
+      { 
+        id: 'dyn_3_1', 
+        title: 'Mándala de la Red Sagrada', 
+        instruction: 'Un diseño floral intrincado que simboliza la interconectividad y tu comunidad estelar. Colorea de afuera hacia adentro para reconectar.', 
+        mandalaType: 'flower' 
+      }
+    ]
+  }
+];
+
+function MicrolearningAdminView() {
+  const [welcomeTitle, setWelcomeTitle] = useState('');
+  const [welcomeMessage, setWelcomeMessage] = useState('');
+  const [communityUrl, setCommunityUrl] = useState('');
+  const [chapters, setChapters] = useState<any[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const docRef = doc(db, 'settings', 'microlearning');
+    getDoc(docRef).then((snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setWelcomeTitle(data.welcomeTitle || '');
+        setWelcomeMessage(data.welcomeMessage || '');
+        setCommunityUrl(data.communityUrl || '');
+        setChapters(data.chapters || []);
+      } else {
+        setWelcomeTitle('✨ Aniversario Estelar: Del Libro a la Acción Consciente');
+        setWelcomeMessage('¡Celebramos un año de transformar vidas! Este espacio de Microlearning está diseñado para convertir la lectura pasiva en un viaje interactivo de autodescubrimiento. Explora los capítulos de mi nuevo Ebook, responde a las preguntas clave de coaching ontológico y realiza las dinámicas creativas avanzadas. Tus descubrimientos se guardan localmente para que midas tu evolución.');
+        setCommunityUrl('https://chat.whatsapp.com/GZpEnbI7V64DuKiraCommunity');
+        setChapters(MICRO_DEFAULTS);
+      }
+      setLoading(false);
+    }).catch(e => {
+      console.error(e);
+      setLoading(false);
+    });
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await setDoc(doc(db, 'settings', 'microlearning'), {
+        welcomeTitle,
+        welcomeMessage,
+        communityUrl,
+        chapters,
+        updatedAt: new Date()
+      });
+      alert('✨ Configuración de Microlearning actualizada de forma segura en Firestore para todos los usuarios.');
+    } catch (e) {
+      console.error(e);
+      alert('Error guardando configuración: ' + String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateChapterField = (idx: number, field: string, val: any) => {
+    const updated = [...chapters];
+    updated[idx] = { ...updated[idx], [field]: val };
+    setChapters(updated);
+  };
+
+  const handleAddChapter = () => {
+    const newChapter = {
+      id: 'cap-' + (chapters.length + 1),
+      title: `Capítulo ${chapters.length + 1}: Nuevo Capítulo de Consciencia`,
+      subtitle: 'Lección principal o resumen ejecutivo del capítulo',
+      duration: '5 min',
+      summary: [
+        'Idea clave 1 del nuevo módulo o capítulo.',
+        'Idea clave 2 del nuevo módulo o capítulo.'
+      ],
+      coachingQuestions: [
+        { id: `q${chapters.length + 1}_1`, text: '¿Qué sientes que debes de calibrar hoy?', placeholder: 'Escribe tu respuesta...' }
+      ],
+      dynamics: [
+        { id: `dyn_${chapters.length + 1}_1`, title: 'Mándala de Equilibrio', instruction: 'Colorea este lienzo para estabilizar tus emociones.', mandalaType: 'flower' }
+      ]
+    };
+    setChapters([...chapters, newChapter]);
+  };
+
+  const handleRemoveChapter = (idx: number) => {
+    if (confirm('¿Seguro que quieres borrar este capítulo? Se eliminará de la vista pública.')) {
+      setChapters(chapters.filter((_, i) => i !== idx));
+    }
+  };
+
+  if (loading) {
+    return <div className="p-12 text-center text-slate-500 italic text-xs">Cargando datos de Microaprendizaje desde Firestore...</div>;
+  }
+
+  return (
+    <div className="bg-white rounded-3xl border border-slate-200 p-6 md:p-8 space-y-6 animate-in fade-in max-w-4xl">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4 gap-4">
+        <div>
+          <h3 className="font-serif text-lg font-bold text-slate-900">Configuración de Experiencia Ebook Gamificado</h3>
+          <p className="text-xs text-slate-500">Administra los módulos, el mensaje de aniversario superior y links de comunidad.</p>
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition duration-200 disabled:opacity-50 shrink-0 cursor-pointer"
+        >
+          {saving ? 'Guardando...' : 'Guardar Cambios'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-2">
+          <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Título de Bienvenida</label>
+          <input
+            type="text"
+            value={welcomeTitle}
+            onChange={(e) => setWelcomeTitle(e.target.value)}
+            className="w-full text-xs font-semibold p-3 border border-slate-200 focus:border-teal-400 focus:outline-none rounded-xl"
+            placeholder="Ej: ✨ Aniversario Estelar: El Cambio Consciente"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Enlace Grupo de WhatsApp</label>
+          <input
+            type="text"
+            value={communityUrl}
+            onChange={(e) => setCommunityUrl(e.target.value)}
+            className="w-full text-xs font-mono p-3 border border-slate-200 focus:border-teal-400 focus:outline-[#14b8a6] rounded-xl"
+            placeholder="https://chat.whatsapp.com/..."
+          />
+        </div>
+
+        <div className="space-y-2 md:col-span-2">
+          <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Mensaje de Bienvenida Aniversario</label>
+          <textarea
+            value={welcomeMessage}
+            onChange={(e) => setWelcomeMessage(e.target.value)}
+            className="w-full h-24 text-xs p-3 border border-slate-200 focus:border-teal-400 focus:outline-[#14b8a6] rounded-xl leading-relaxed"
+            placeholder="Describe detalladamente el logro del aniversario..."
+          />
+        </div>
+      </div>
+
+      <div className="space-y-4 pt-4 border-t border-slate-100">
+        <div className="flex justify-between items-center">
+          <h4 className="text-sm font-bold text-slate-800">Módulos/Capítulos de Lectura ({chapters.length})</h4>
+          <button
+            onClick={handleAddChapter}
+            className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-black transition cursor-pointer"
+          >
+            + Añadir Nuevo Capítulo
+          </button>
+        </div>
+
+        {chapters.length === 0 && (
+          <div className="p-8 text-center bg-slate-50 border border-slate-100 rounded-2xl">
+            <p className="text-xs text-slate-400 italic">No tienes capítulos cargados. Se mostrarán los por defecto de la aplicación.</p>
+            <button
+               onClick={() => {
+                 setChapters(MICRO_DEFAULTS);
+               }}
+               className="mt-3 text-[11px] underline text-indigo-500 font-bold"
+            >
+               Cargar Capítulos Prebásicos de Demostración
+            </button>
+          </div>
+        )}
+
+        {chapters.map((ch, idx) => (
+          <div key={ch.id || idx} className="bg-slate-50 rounded-2xl p-5 border border-slate-200/60 space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] bg-indigo-50 text-indigo-600 border border-indigo-100 font-black px-2.5 py-1 rounded-lg uppercase">Capítulo #{idx + 1}</span>
+              <button
+                onClick={() => handleRemoveChapter(idx)}
+                className="text-xs text-red-500 hover:text-red-700 font-bold"
+              >
+                Eliminar Capítulo
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Título del Capítulo</label>
+                <input
+                  type="text"
+                  value={ch.title}
+                  onChange={(e) => updateChapterField(idx, 'title', e.target.value)}
+                  className="w-full text-xs font-semibold p-2.5 bg-white border border-slate-200 rounded-lg"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Subtítulo Descriptivo</label>
+                <input
+                  type="text"
+                  value={ch.subtitle}
+                  onChange={(e) => updateChapterField(idx, 'subtitle', e.target.value)}
+                  className="w-full text-xs font-semibold p-2.5 bg-white border border-slate-200 rounded-lg"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Duración Lectura</label>
+                <input
+                  type="text"
+                  value={ch.duration}
+                  onChange={(e) => updateChapterField(idx, 'duration', e.target.value)}
+                  className="w-full text-xs font-semibold p-2.5 bg-white border border-slate-200 rounded-lg"
+                />
+              </div>
+            </div>
+
+            {/* Questions Configuration */}
+            <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3">
+              <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Preguntas de Coaching de este módulo</h5>
+              {ch.coachingQuestions?.map((q: any, qIdx: number) => (
+                <div key={q.id || qIdx} className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2 border-b border-slate-100 last:border-0 last:pb-0">
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold text-slate-400">Pregunta #{qIdx + 1}</span>
+                    <input
+                      type="text"
+                      value={q.text}
+                      placeholder="Pregunta de coaching"
+                      onChange={(e) => {
+                        const updatedQs = [...ch.coachingQuestions];
+                        updatedQs[qIdx] = { ...updatedQs[qIdx], text: e.target.value };
+                        updateChapterField(idx, 'coachingQuestions', updatedQs);
+                      }}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold text-slate-400">Sugerencia (Placeholder)</span>
+                    <input
+                      type="text"
+                      value={q.placeholder}
+                      placeholder="Sugerencia de respuesta para el alumno"
+                      onChange={(e) => {
+                        const updatedQs = [...ch.coachingQuestions];
+                        updatedQs[qIdx] = { ...updatedQs[qIdx], placeholder: e.target.value };
+                        updateChapterField(idx, 'coachingQuestions', updatedQs);
+                      }}
+                      className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                </div>
+              ))}
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updatedQs = ch.coachingQuestions ? [...ch.coachingQuestions] : [];
+                    updatedQs.push({ id: `q${idx+1}_${updatedQs.length+1}`, text: '¿Qué reto asumes hoy?', placeholder: 'Escribe tu respuesta...' });
+                    updateChapterField(idx, 'coachingQuestions', updatedQs);
+                  }}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 font-extrabold cursor-pointer flex items-center gap-1"
+                >
+                  + Añadir otra pregunta
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
