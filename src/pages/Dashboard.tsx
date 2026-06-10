@@ -282,9 +282,7 @@ export function Dashboard() {
                </div>
             </div>
          </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      )}      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className={cn("p-6 rounded-3xl border shadow-sm flex flex-col justify-between transition-all hover:shadow-md h-44", currentTier.bg, currentTier.border)}>
           <div className="flex justify-between items-center mb-1">
              <div className="flex items-center gap-2">
@@ -354,8 +352,7 @@ export function Dashboard() {
           </div>
         </div>
       </div>
-      
-      {/* Grid de Contenido Principal: Mentor + Actividad */}
+            {/* Grid de Contenido Principal: Mentor + Actividad */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
         <div className="lg:col-span-8 flex flex-col gap-12">
           {/* Mentor AI Widget */}
