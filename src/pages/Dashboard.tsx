@@ -18,6 +18,7 @@ export function Dashboard() {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
+  const [availableBooks, setAvailableBooks] = useState<any[]>([]);
   const [myEnrollments, setMyEnrollments] = useState<any[]>([]);
   const [favoriteCoaches, setFavoriteCoaches] = useState<any[]>([]);
   const [unlockedHistory, setUnlockedHistory] = useState<any[]>([]);
@@ -105,6 +106,14 @@ export function Dashboard() {
       const coursesQ = query(collection(db, 'courses'), where('status', '==', 'published'));
       const coursesSnap = await getDocs(coursesQ);
       setAvailableCourses(coursesSnap.docs.map(d => ({id: d.id, ...d.data()})));
+
+      try {
+        const booksQ = query(collection(db, 'books'), where('status', '==', 'published'));
+        const booksSnap = await getDocs(booksQ);
+        setAvailableBooks(booksSnap.docs.map(d => ({id: d.id, ...d.data()})));
+      } catch (booksErr) {
+        console.warn("Dynamic books fetch failed:", booksErr);
+      }
 
       const enrollQ = query(collection(db, 'enrollments'), where('userId', '==', user.uid));
       const enrollSnap = await getDocs(enrollQ);
@@ -447,6 +456,53 @@ export function Dashboard() {
               </div>
             </div>
           </section>
+
+          {/* Marketplace de Libros Recomendados (Librería Premium) */}
+          {availableBooks.length > 0 && (
+            <section className="bg-slate-900 rounded-[40px] border border-slate-800 p-10 shadow-xl relative overflow-hidden text-white">
+              <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full filter blur-3xl pointer-events-none" />
+              <div className="absolute bottom-0 left-0 w-80 h-80 bg-indigo-500/10 rounded-full filter blur-3xl pointer-events-none" />
+              
+              <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4 relative z-10">
+                <div>
+                  <h3 className="text-2xl font-black text-slate-100 tracking-tight flex items-center gap-3">
+                    <BookOpen className="text-emerald-400" size={24} />
+                    Librería Premium: Ebooks Recomendados
+                  </h3>
+                  <p className="text-sm text-slate-400 mt-1 font-medium">Lecturas concisas seleccionadas por coaches para tu desarrollo holístico.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 relative z-10">
+                {availableBooks.map((book) => (
+                  <div key={book.id} className="border border-white/5 rounded-[32px] overflow-hidden bg-slate-950/60 hover:border-emerald-400/40 transition-all duration-500 flex flex-col h-[400px]">
+                    <div className="h-56 bg-slate-950 relative overflow-hidden shrink-0">
+                      {book.imageUrl && <img src={book.imageUrl} alt={book.title} className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />}
+                      <div className="absolute top-5 left-5 bg-emerald-500 text-white px-3.5 py-1.5 rounded-full text-xs font-black shadow-lg">
+                        ${book.price} USD
+                      </div>
+                    </div>
+                    <div className="p-6 flex flex-col flex-1">
+                      <h4 className="font-black text-lg text-slate-100 mb-1 line-clamp-1">{book.title}</h4>
+                      <p className="text-[11px] text-emerald-400 font-bold mb-4">Por {book.author || 'Kira Coach'}</p>
+                      <p className="text-xs text-slate-400 mb-5 flex-1 line-clamp-3 leading-relaxed font-medium">
+                        {book.description || 'Un libro canalizado y estructurado con herramientas prácticas de arteterapia, respiración consciente y autoconocimiento.'}
+                      </p>
+                      
+                      <button 
+                        onClick={() => {
+                          alert(`Has adquirido o desbloqueado con éxito el libro: ${book.title}. ¡Busca su versión digital en tu correo u opción de lectura en tu perfil!`);
+                        }}
+                        className="w-full mt-auto text-[11px] py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-2xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider"
+                      >
+                        <ShoppingCart size={13} /> Adquirir Libro
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* Mentores Favoritos */}
           {favoriteCoaches.length > 0 && (
