@@ -60,5 +60,3 @@ export function ProtectedRoute({ allowedRoles }: { allowedRoles?: string[] }) {
 
   return <Outlet />;
 }
-  return <Outlet />;
-}
