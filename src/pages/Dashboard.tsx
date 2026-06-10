@@ -219,6 +219,31 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* SECCIÓN ESPECIAL ANIVERSARIO: EBOOK INTERACTIVO */}
+      <div className="bg-gradient-to-r from-teal-900 to-indigo-950 border border-teal-500/20 rounded-[32px] p-6 text-white relative overflow-hidden shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-teal-400/5 rounded-full filter blur-3xl pointer-events-none" />
+        <div className="flex items-center gap-4 relative z-10">
+          <div className="p-3 bg-teal-500/10 text-teal-400 rounded-2xl border border-teal-400/20">
+            <Award size={28} className="animate-pulse" />
+          </div>
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-teal-400 tracking-widest bg-teal-500/15 px-2.5 py-0.5 rounded-full border border-teal-500/20">
+              <Sparkles size={10} className="fill-current" /> Especial de Aniversario
+            </div>
+            <h3 className="text-xl font-black">Nuevo Ebook de Coaching Ontológico & Arteterapia</h3>
+            <p className="text-xs text-slate-300 max-w-xl text-left">
+              ¡Disfruta del microaprendizaje interactivo! Convierte la lectura en acción con preguntas de reflexión de Kira Moreno, mándalas virtuales y gana +50 Zaps por capítulo.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => navigate('/microlearning')}
+          className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-black uppercase tracking-widest text-[11px] px-6 py-3.5 rounded-2xl shadow-lg shadow-teal-500/15 hover:scale-105 transition active:scale-95 shrink-0 relative z-10 cursor-pointer flex items-center gap-2"
+        >
+          Explorar Ebook Gamificado <ArrowRight size={14} />
+        </button>
+      </div>
+
       {/* ONBOARDING MODAL */}
       {showOnboarding && (
          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
