@@ -6,6 +6,7 @@ import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { Dashboard, Journal } from './pages/Dashboard';
 import { EliteLibrary } from './pages/EliteLibrary';
+import { Community } from './pages/Community';
 import { AdminMonitor } from './pages/Admin';
 import { CoachDashboard, CoachCourses } from './pages/Coach';
 import SessionIntelligence from './pages/SessionIntelligence';
@@ -63,6 +64,7 @@ export default function App() {
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/dashboard/journal" element={<Journal />} />
                   <Route path="/dashboard/elite-library" element={<EliteLibrary />} />
+                  <Route path="/dashboard/community" element={<Community />} />
                   <Route path="/dashboard/profile" element={<UserProfile />} />
                 </Route>
               </Route>
