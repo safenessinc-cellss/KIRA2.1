@@ -1939,7 +1939,7 @@ function MarketplaceEditorView() {
 function CMSView() {
   const [coupons, setCoupons] = useState<any[]>([]);
   const [b2bAccounts, setB2BAccounts] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'ventas'|'pills'|'marketplace'|'microlearning'>('ventas');
+  const [activeTab, setActiveTab] = useState<'ventas'|'pills'|'marketplace'|'microlearning'|'comunidad'>('ventas');
 
   useEffect(() => {
     const unsubscribeCoupons = onSnapshot(collection(db, 'coupons'), 
@@ -1999,6 +1999,12 @@ function CMSView() {
           >
              📖 Libro Aniversario Config
           </button>
+          <button 
+             onClick={() => setActiveTab('comunidad')}
+             className={cn("pb-3 text-sm font-semibold transition-colors duration-200", activeTab === 'comunidad' ? "border-b-2 border-kirateal text-kirateal" : "text-slate-500 hover:text-slate-700")}
+          >
+             👥 Canales de Comunidad
+          </button>
        </div>
 
        {activeTab === 'pills' ? (
@@ -2007,6 +2013,8 @@ function CMSView() {
           <MarketplaceEditorView />
        ) : activeTab === 'microlearning' ? (
           <MicrolearningAdminView />
+       ) : activeTab === 'comunidad' ? (
+          <CommunityAdminView />
        ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in">
              <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col">
@@ -2076,6 +2084,217 @@ function CMSView() {
        </div>
           </div>
        )}
+    </div>
+  );
+}
+
+// --- GESTIÓN DE COMUNIDAD (ADMIN) ---
+function CommunityAdminView() {
+  const [links, setLinks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
+
+  useEffect(() => {
+    const docRef = doc(db, 'settings', 'community');
+    const unsubscribe = onSnapshot(docRef, 
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && Array.isArray(data.links)) {
+            setLinks(data.links);
+          } else {
+            setLinks(getDefaultLinks());
+          }
+        } else {
+          setLinks(getDefaultLinks());
+        }
+        setLoading(false);
+      },
+      (err) => {
+        handleFirestoreError(err, OperationType.GET, 'settings/community');
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const getDefaultLinks = () => [
+    {
+      name: 'Comunidad WhatsApp',
+      description: 'Soporte estelar, networking y canal oficial de avisos de Kira Moreno.',
+      url: 'https://chat.whatsapp.com/GZpEnbI7V64DuKiraCommunity',
+      badge: 'Canal Oficial',
+      type: 'whatsapp'
+    },
+    {
+      name: 'Telegram de Sabiduría',
+      description: 'Píldoras de mentalidad diaria, audios inéditos y dinámicas semanales.',
+      url: 'https://t.me/KiraCoachCommunity',
+      badge: 'Contenido Exclusivo',
+      type: 'telegram'
+    }
+  ];
+
+  const handleFieldChange = (idx: number, field: string, value: string) => {
+    const updated = [...links];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setLinks(updated);
+  };
+
+  const handleAddLink = () => {
+    setLinks([...links, {
+      name: 'Nuevo Canal',
+      description: 'Breve descripción del propósito de este canal de la comunidad.',
+      url: 'https://',
+      badge: 'Acceso Directo',
+      type: 'other'
+    }]);
+  };
+
+  const handleRemoveLink = (idx: number) => {
+    const updated = links.filter((_, i) => i !== idx);
+    setLinks(updated);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSuccessMsg('');
+    try {
+      const docRef = doc(db, 'settings', 'community');
+      await setDoc(docRef, { links });
+      setSuccessMsg('¡Canales de comunidad guardados y desplegados con éxito!');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'settings/community');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-12 text-center">
+        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-kirateal" />
+        <p className="text-xs text-slate-400 mt-2 font-semibold">Cargando configuración de canales...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-3xl border border-slate-200 p-8 space-y-8 animate-in fade-in duration-350">
+      <div>
+        <h2 className="text-xl font-black text-slate-800 tracking-tight">Gestor de Canales de Comunidad</h2>
+        <p className="text-xs text-slate-500 mt-1 font-semibold">
+          Personaliza los links, descripciones y tipo de canal de los grupos oficiales de Kira Moreno. Los cambios se reflejarán instantáneamente en la pestaña "Comunidad Estelar" del panel de Alumnos.
+        </p>
+      </div>
+
+      {successMsg && (
+        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold animate-in zoom-in-95 duration-200 flex items-center gap-2 font-sans">
+          ✨ {successMsg}
+        </div>
+      )}
+
+      <div className="space-y-6">
+        {links.map((link, idx) => (
+          <div key={idx} className="p-6 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-4 relative group">
+            <div className="absolute top-4 right-4 flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Canal #{idx + 1}</span>
+              <button 
+                onClick={() => handleRemoveLink(idx)}
+                className="p-1.5 hover:bg-rose-50 hover:text-rose-600 rounded-lg text-slate-400 transition cursor-pointer text-[10px] font-black uppercase tracking-wider"
+                title="Eliminar este canal"
+              >
+                Eliminar
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Nombre del Canal</label>
+                <input 
+                  type="text" 
+                  value={link.name} 
+                  onChange={(e) => handleFieldChange(idx, 'name', e.target.value)}
+                  className="w-full text-xs font-bold border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-kirateal/20 focus:border-kirateal bg-white transition"
+                  placeholder="Ej: WhatsApp VIP"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Tipo de Red</label>
+                <select 
+                  value={link.type} 
+                  onChange={(e) => handleFieldChange(idx, 'type', e.target.value)}
+                  className="w-full text-xs font-semibold border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-kirateal/20 focus:border-kirateal bg-white transition cursor-pointer font-sans"
+                >
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="telegram font-sans">Telegram</option>
+                  <option value="other">Otro (Sitio Web/Foro)</option>
+                </select>
+              </div>
+
+              <div className="md:col-span-3">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Descripción o Propósito</label>
+                <input 
+                  type="text" 
+                  value={link.description} 
+                  onChange={(e) => handleFieldChange(idx, 'description', e.target.value)}
+                  className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-kirateal/20 focus:border-kirateal bg-white transition"
+                  placeholder="Ej: Comparte tus insights diarios..."
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">Enlace de Invitación (URL)</label>
+                <input 
+                  type="url" 
+                  value={link.url} 
+                  onChange={(e) => handleFieldChange(idx, 'url', e.target.value)}
+                  className="w-full text-xs font-mono border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-kirateal/20 focus:border-kirateal bg-white transition"
+                  placeholder="https://chat.whatsapp.com/..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Etiqueta (Badge)</label>
+                <input 
+                  type="text" 
+                  value={link.badge || ''} 
+                  onChange={(e) => handleFieldChange(idx, 'badge', e.target.value)}
+                  className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-kirateal/20 focus:border-kirateal bg-white transition"
+                  placeholder="Ej: Exclusivo, Recomendado"
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+        
+        {links.length === 0 && (
+          <div className="p-8 text-center text-slate-400 text-xs italic border border-dashed border-slate-200 rounded-2xl">
+            No tienes ningún canal registrado. Haz clic abajo para agregar un nuevo enlace de conexión.
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-between items-center pt-6 border-t border-slate-100">
+        <button 
+          onClick={handleAddLink}
+          className="px-5 py-3 border border-slate-200 hover:border-slate-300 rounded-2xl text-xs font-black uppercase tracking-wider text-slate-600 hover:text-slate-800 transition shadow-sm active:scale-95 cursor-pointer"
+        >
+          + Agregar Nuevo Canal
+        </button>
+
+        <button 
+          onClick={handleSave}
+          disabled={saving}
+          className="px-6 py-3 bg-kirateal hover:bg-[#0f8b7e] disabled:bg-slate-300 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition shadow-md shadow-teal-700/10 active:scale-95 flex items-center gap-2 cursor-pointer"
+        >
+          {saving ? 'Guardando...' : 'Guardar y Desplegar Canales'}
+        </button>
+      </div>
     </div>
   );
 }
