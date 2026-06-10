@@ -75,6 +75,7 @@ export function DashboardLayout({ title }: { title: string }) {
       { to: "/dashboard", icon: BookOpen, label: "Plan Maestro" },
       { to: "/dashboard/elite-library", icon: Sparkles, label: "Elite Vault" },
       { to: "/dashboard/journal", icon: Activity, label: "Journaling IA" },
+      { to: "/dashboard/community", icon: Users, label: "Comunidad Estelar" },
       { to: "/dashboard/profile", icon: Users, label: "Perfil Personal" },
     ]
   };
@@ -197,6 +198,14 @@ export function DashboardLayout({ title }: { title: string }) {
             <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
                <Palette size={16} />
             </div>
+            <button 
+              onClick={logout}
+              className="flex items-center gap-2 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer active:scale-95"
+              title="Cerrar Sesión"
+              id="header-logout-btn"
+            >
+              <LogOut size={13} /> Salir
+            </button>
           </div>
         </header>
         <div className="flex-1 overflow-auto p-8 flex flex-col gap-6 relative">
