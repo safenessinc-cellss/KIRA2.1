@@ -29,6 +29,20 @@ export function Landing() {
     heroImage: 'https://picsum.photos/seed/kiramoreno/800/1000',
     secondaryImage: 'https://api.dicebear.com/7.x/notionists/svg?seed=Kira&backgroundColor=f8fafc'
   });
+  const [communityLink, setCommunityLink] = useState<string>('https://chat.whatsapp.com/GZpEnbI7V64DuKiraCommunity');
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'community'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data && Array.isArray(data.links) && data.links.length > 0) {
+          const firstLink = data.links[0]?.url;
+          if (firstLink) setCommunityLink(firstLink);
+        }
+      }
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'website'), (docSnap) => {
@@ -1259,6 +1273,22 @@ export function Landing() {
 
       {/* FLOATING EMOTIONAL AI ASSISTANT */}
       <EmotionalAssistant contextualCoach={selectedCoach?.displayName} secondaryImage={siteSettings.secondaryImage} />
+
+      {/* Floating Community Button */}
+      <a 
+        href={communityLink}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-6 left-6 z-50 flex items-center gap-2 px-5 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-full shadow-lg hover:shadow-emerald-500/20 transition-all duration-300 transform hover:-translate-y-1 active:scale-95 text-xs font-black uppercase tracking-wider cursor-pointer"
+        id="landing-floating-community-btn"
+      >
+        <span className="flex h-2 w-2 relative">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+        </span>
+        <Users size={15} className="shrink-0" />
+        <span>Únete a nuestra Comunidad</span>
+      </a>
     </div>
   );
 }
