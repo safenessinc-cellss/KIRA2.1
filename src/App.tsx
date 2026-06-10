@@ -14,6 +14,8 @@ import { UserProfile } from './pages/UserProfile';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
+import ClubPaginasVivas from './pages/ClubPaginasVivas'; // ← LÍNEA 1: EL IMPORT
+
 
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<any>({ primaryColor: '', secondaryColor: '' });
@@ -54,6 +56,7 @@ export default function App() {
             <Route element={<CoreLayout />}>
               <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
+               <Route path="/club" element={<ClubPaginasVivas />} />
               
               {/* Alumnos */}
               <Route element={<ProtectedRoute allowedRoles={['alumno', 'admin']} />}>
