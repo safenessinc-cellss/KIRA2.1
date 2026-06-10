@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Navigate } from 'react-router-dom';
 import { Logo } from '../components/Brand';
-import { LogIn, ArrowRight, ShieldCheck, Activity, Users, BrainCircuit, Globe, BarChart3, Star, DownloadCloud, Award, User, Instagram, Linkedin, Twitter, BadgeCheck, MessageCircleHeart, X, Send, Loader2, HeartPulse, FileText, Search, Zap, Wind, Heart, Target, Tag, Calendar, Ticket, ShoppingBag, PlayCircle, BookOpen } from 'lucide-react';
+import { LogIn, ArrowRight, ShieldCheck, Activity, Users, BrainCircuit, Globe, BarChart3, Star, DownloadCloud, Award, User, Instagram, Linkedin, Twitter, BadgeCheck, MessageCircleHeart, X, Send, Loader2, HeartPulse, FileText, Search, Zap, Wind, Heart, Target, Tag, Calendar, Ticket, Sparkles, Trophy, BookOpen } from 'lucide-react';
 import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { GoogleGenAI } from '@google/genai';
 import { cn } from '../lib/utils';
 
@@ -18,10 +18,6 @@ export function Landing() {
   const navigate = useNavigate();
   const [coaches, setCoaches] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<any[]>([]);
-  const [marketplaceItems, setMarketplaceItems] = useState<any[]>([]);
-  const [pills, setPills] = useState<any[]>([]);
-  const [activeAudio, setActiveAudio] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [selectedPromotion, setSelectedPromotion] = useState<any | null>(null);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('Todos');
   const [selectedExperience, setSelectedExperience] = useState<string>('Todos');
@@ -123,42 +119,6 @@ export function Landing() {
   }, []);
 
   useEffect(() => {
-    const q = query(collection(db, 'marketplace'), where('status', '==', 'published'));
-    const unsub = onSnapshot(q, (snap) => {
-      setMarketplaceItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'marketplace');
-    });
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
-    const q = query(collection(db, 'pills'), orderBy('createdAt', 'desc'), limit(3));
-    const unsub = onSnapshot(q, (snap) => {
-      setPills(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (error) => {
-      // Pills might not exist yet, handle gracefully
-      console.warn("Pills collection not found or accessible");
-    });
-    return () => unsub();
-  }, []);
-
-  const playAudio = (url: string) => {
-    if (activeAudio === url) {
-      if (audioRef.current) {
-        if (audioRef.current.paused) audioRef.current.play().catch(console.error);
-        else audioRef.current.pause();
-      }
-    } else {
-      setActiveAudio(url);
-      if (audioRef.current) {
-        audioRef.current.src = url;
-        audioRef.current.play().catch(console.error);
-      }
-    }
-  };
-
-  useEffect(() => {
     if (!user) {
       setUserFavorites([]);
       return;
@@ -247,6 +207,21 @@ export function Landing() {
 
   return (
     <div className="flex flex-col min-h-screen text-slate-900 bg-[#FDFBF7] font-sans relative">
+      {/* Ribbon de Aniversario de Kira Coach */}
+      <div className="bg-gradient-to-r from-teal-600 to-indigo-700 text-white text-xs font-bold py-3 px-4 text-center flex flex-col sm:flex-row items-center justify-center gap-2 relative z-50 shadow-sm">
+        <div className="flex items-center gap-1.5 justify-center">
+          <Sparkles size={14} className="text-amber-300 animate-pulse fill-amber-300" />
+          <span>¡Celebramos nuestro Primer Aniversario Estelar! 🌟</span>
+        </div>
+        <span className="opacity-90">Transformamos el contenido del Ebook en microaprendizaje interactivo:</span>
+        <button 
+          onClick={() => navigate('/microlearning')}
+          className="underline hover:text-amber-200 transition-all ml-1 flex items-center gap-1 font-extrabold uppercase tracking-wide bg-white/10 px-2 py-0.5 rounded cursor-pointer"
+        >
+          ¡Probar Gratis sin Registro! <ArrowRight size={12} className="inline" />
+        </button>
+      </div>
+
       {/* Subtle Paper Texture Overlay */}
       <div className="fixed inset-0 pointer-events-none opacity-[0.03] mix-blend-multiply z-0" 
            style={{ backgroundImage: `url('https://www.transparenttextures.com/patterns/p6.png')` }} />
@@ -364,6 +339,124 @@ export function Landing() {
           </div>
         </section>
 
+        {/* SECCIÓN ESPECIAL: LIBRO EN ACCIÓN - MICROLEARNING INTERACTIVO DE ANIVERSARIO */}
+        <section className="px-6 lg:px-12 py-20 bg-[#0f172a] text-white relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-[#14b8a6]/10 rounded-full filter blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 w-80 h-80 bg-indigo-500/10 rounded-full filter blur-3xl pointer-events-none" />
+          
+          <div className="max-w-6xl mx-auto relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+            <div className="lg:col-span-7 space-y-6">
+              <div className="inline-flex items-center gap-2 bg-[#14b8a6]/15 border border-[#14b8a6]/20 text-[#14b8a6] px-3.5 py-1.5 rounded-full text-xs font-black uppercase tracking-widest">
+                <Trophy size={14} className="text-amber-400" /> 1er Aniversario de Kira Coach App
+              </div>
+              
+              <h3 className="text-3xl md:text-5xl font-black tracking-tight leading-tight">
+                Pasa de la <span className="text-teal-400 italic font-serif">lectura pasiva</span> a la acción interactiva.
+              </h3>
+              
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Transformamos el Ebook completo de Kira Moreno en un ecosistema de microaprendizaje gamificado en tiempo real con dinámicas holísticas para tu dispositivo. 
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                <div className="flex items-start gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+                  <div className="p-2 bg-teal-500/10 text-teal-400 rounded-lg shrink-0 mt-0.5">
+                    <BookOpen size={16} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">Ebook en Capítulos</h4>
+                    <p className="text-[11px] text-slate-400 mt-1">Resúmenes estratégicos condensados para asimilación inmediata.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+                  <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-lg shrink-0 mt-0.5">
+                    <HeartPulse size={16} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">Mándalas y Arteterapia</h4>
+                    <p className="text-[11px] text-slate-400 mt-1">Lienzos digitales de autocalibración interactiva e imprenta simple.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+                  <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg shrink-0 mt-0.5">
+                    <Sparkles size={16} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">Coaching Ontológico</h4>
+                    <p className="text-[11px] text-slate-400 mt-1">Preguntas clave de Kira Moreno para desbloquear estatus local.</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
+                  <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg shrink-0 mt-0.5">
+                    <Users size={16} />
+                  </div>
+                   <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">Grupo de Co-Creación</h4>
+                    <p className="text-[11px] text-slate-400 mt-1">Enlace activo directo con alumnos para debate comunitario.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4">
+                <button
+                  onClick={() => navigate('/microlearning')}
+                  className="px-8 py-4 bg-[#14b8a6] hover:bg-[#0d9488] text-slate-950 font-black uppercase tracking-widest text-xs rounded-2xl shadow-lg shadow-teal-500/10 transition-all flex items-center gap-2 group cursor-pointer font-sans"
+                >
+                  Acceder Ahora Gratis <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                </button>
+              </div>
+            </div>
+
+            <div className="lg:col-span-5 flex justify-center">
+              {/* Phone display layout preview */}
+              <div className="relative w-full max-w-sm bg-slate-950 border-4 border-slate-800 rounded-[3rem] p-3 shadow-2xl shadow-indigo-500/10 overflow-hidden transform hover:scale-[1.02] transition-transform">
+                <div className="absolute top-0 inset-x-0 h-4 bg-slate-800 rounded-b-xl w-32 mx-auto z-20 flex justify-center items-center">
+                  <div className="w-10 h-1 bg-slate-700 rounded-full" />
+                </div>
+                
+                <div className="bg-slate-900 rounded-[2.5rem] p-4 text-xs font-sans space-y-4 text-slate-300 relative h-[420px] overflow-hidden flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold uppercase">
+                      <span>Kira Ebook Microlearning</span>
+                      <span className="text-[#14b8a6] font-bold">● 100% ONLINE</span>
+                    </div>
+                    <div className="p-3 bg-slate-950 rounded-2xl border border-slate-850 space-y-1">
+                      <p className="text-[10px] text-[#14b8a6] font-bold tracking-widest uppercase mb-0.5">Capítulo 1</p>
+                      <p className="font-black text-white text-xs leading-none">El Observador Consciente</p>
+                      <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden mt-2.5">
+                        <div className="bg-[#14b8a6] h-full w-2/3 animate-pulse" />
+                      </div>
+                    </div>
+                    <div className="space-y-1 p-2">
+                       <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">¿Tu mente reacciona o elige?</p>
+                      <div className="bg-slate-950 flex justify-center p-3 rounded-2xl border border-dashed border-slate-850">
+                        {/* Circle mandala thumbnail */}
+                        <div className="w-16 h-16 rounded-full border border-[#14b8a6]/45 flex items-center justify-center relative">
+                          <div className="w-10 h-10 rounded-full border-2 border-indigo-500/40 border-dashed" />
+                          <div className="w-6 h-6 rounded-full bg-[#14b8a6]/25" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <button 
+                      onClick={() => navigate('/microlearning')}
+                      className="w-full bg-[#14b8a6] text-slate-950 py-2.5 rounded-xl font-black text-center uppercase tracking-wider cursor-pointer hover:bg-teal-400 transition"
+                    >
+                      Iniciar Experiencia
+                    </button>
+                    <p className="text-[9px] text-slate-500 text-center font-bold">NO SE REQUIERE REGISTRO</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* SECCIÓN: MÁS ALLÁ DE LA ESCUCHA (Funciones Proactivas) */}
         <section className="px-6 lg:px-12 py-24 bg-[#f8fafc] overflow-hidden">
           <div className="max-w-7xl mx-auto">
@@ -471,159 +564,6 @@ export function Landing() {
                   );
                 })}
               </div>
-            </div>
-          </section>
-        )}
-
-        {/* MARKETPLACE SECTION: COURSES & BOOKS */}
-        {marketplaceItems.length > 0 && (
-          <section className="px-6 lg:px-12 py-24 bg-[#FAFAFA] border-t border-slate-200">
-            <div className="max-w-7xl mx-auto">
-              <div className="mb-14 text-center flex flex-col items-center">
-                <span className="text-kirateal font-bold tracking-widest uppercase text-xs mb-3 flex items-center gap-2">
-                  <ShoppingBag size={14} /> Academia & Recursos
-                </span>
-                <h3 className="text-4xl md:text-5xl font-serif text-slate-900 mb-6 tracking-tight">
-                  Eleva tu potencial Cognitivo
-                </h3>
-                <p className="text-slate-500 max-w-2xl mx-auto text-lg leading-relaxed">
-                  Programas de alto impacto y herramientas diseñadas para la re-evolución consciente de tu mente y espíritu, seleccionadas por Kira.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                {marketplaceItems.map(item => (
-                  <div key={item.id} className="group bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden hover:shadow-2xl transition-all duration-500 flex flex-col hover:-translate-y-2">
-                    <div className="aspect-[4/3] relative overflow-hidden">
-                      <div className="absolute top-4 left-4 z-10 px-3 py-1.5 bg-white/90 backdrop-blur rounded-full text-[10px] font-black uppercase tracking-widest text-slate-900 shadow-sm">
-                        {item.type === 'curso' ? 'Masterclass' : 'E-Book'}
-                      </div>
-                      {item.imageUrl ? (
-                        <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                      ) : (
-                        <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-300">
-                          {item.type === 'curso' ? <PlayCircle size={64} /> : <BookOpen size={64} />}
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 flex items-end p-8 gap-2">
-                        <button 
-                          onClick={() => navigate('/login')}
-                          className="flex-1 py-4 bg-white text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-kirateal hover:text-white transition-all shadow-xl active:scale-95"
-                        >
-                          {item.type === 'curso' ? 'Inscribirse' : 'Obtener'}
-                        </button>
-                        {item.videoUrl && (
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(item.videoUrl, '_blank');
-                            }}
-                            className="w-14 h-14 bg-white/20 backdrop-blur-md text-white rounded-2xl flex items-center justify-center hover:bg-white hover:text-indigo-600 transition-all shadow-xl active:scale-95"
-                            title="Ver Preview"
-                          >
-                            <PlayCircle size={24} />
-                          </button>
-                        )}
-                        {item.contentUrl && item.type === 'libro' && (
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(item.contentUrl, '_blank');
-                            }}
-                            className="w-14 h-14 bg-white/20 backdrop-blur-md text-white rounded-2xl flex items-center justify-center hover:bg-white hover:text-rose-600 transition-all shadow-xl active:scale-95"
-                            title="Ver Extracto"
-                          >
-                            <FileText size={24} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="p-8 flex-1 flex flex-col">
-                      <div className="flex justify-between items-start mb-4">
-                        <h4 className="text-xl font-bold text-slate-900 leading-tight group-hover:text-kirateal transition-colors">{item.title}</h4>
-                        <div className="text-lg font-black text-slate-900">${item.price}</div>
-                      </div>
-                      <p className="text-sm text-slate-500 mb-6 flex-1 line-clamp-2">
-                        {item.type === 'curso' 
-                          ? 'Domina los principios de la mentalidad de alto rendimiento con este programa intensivo guiado.' 
-                          : 'Una guía profunda sobre los pilares del coaching adaptativo y la bio-sincronización.'}
-                      </p>
-                      <div className="flex items-center gap-3 pt-6 border-t border-slate-100 mt-auto">
-                        <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[10px] font-bold text-indigo-500">
-                          {item.author?.[0] || 'A'}
-                        </div>
-                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Publicado por {item.author || 'Admin'}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* PILLS SECTION: PÍLDORAS DE SABIDURÍA */}
-        {pills.length > 0 && (
-          <section className="px-6 lg:px-12 py-20 bg-slate-900 overflow-hidden relative">
-            <div className="absolute inset-0 opacity-10">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-kirateal rounded-full blur-[100px] -mr-32 -mt-32"></div>
-            </div>
-            
-            <div className="max-w-7xl mx-auto relative z-10 flex flex-col lg:flex-row items-center gap-12">
-               <div className="flex-1 space-y-6">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-kirateal text-[10px] font-black uppercase tracking-widest">
-                     <BrainCircuit size={14} /> Contenido Instantáneo
-                  </div>
-                  <h3 className="text-3xl md:text-5xl font-serif italic text-white leading-tight">
-                    Píldoras de Sabiduría: <br/> El Coach en tu bolsillo.
-                  </h3>
-                  <p className="text-slate-400 text-lg leading-relaxed max-w-xl">
-                    Audios de 1 minuto diseñados para resetear tu mente y reconectar con tu propósito en cualquier momento del día. Exclusivo para nuestra comunidad de alto rendimiento.
-                  </p>
-                  <button 
-                    onClick={() => navigate('/login')}
-                    className="group px-8 py-4 bg-white text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-kirateal hover:text-white transition-all flex items-center gap-2 shadow-xl shadow-white/5"
-                  >
-                    Desbloquear todo el catálogo <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                  </button>
-               </div>
-               
-               <div className="flex-1 grid grid-cols-1 gap-4 w-full">
-                  <audio ref={audioRef} className="hidden" onEnded={() => setActiveAudio(null)} />
-                  {pills.map((pill, idx) => (
-                    <div 
-                      key={pill.id} 
-                      onClick={() => pill.audioUrl && playAudio(pill.audioUrl)}
-                      className={cn(
-                        "p-6 rounded-[2rem] border bg-white/5 border-white/10 flex items-center justify-between group hover:bg-white/10 transition-all cursor-pointer",
-                        idx === 0 ? "scale-105 shadow-2xl shadow-kirateal/20 border-white/30" : "opacity-60 hover:opacity-100",
-                        activeAudio === pill.audioUrl && "bg-kirateal/10 border-kirateal/40 opacity-100"
-                      )}
-                    >
-                       <div className="flex items-center gap-5">
-                          <div className={cn(
-                            "w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-all",
-                            activeAudio === pill.audioUrl ? "bg-kirateal text-white animate-pulse" : "bg-kirateal/20 text-kirateal"
-                          )}>
-                             {activeAudio === pill.audioUrl ? <Loader2 size={28} className="animate-spin" /> : <PlayCircle size={28} />}
-                          </div>
-                          <div>
-                             <p className="text-white font-bold text-lg mb-0.5">{pill.title}</p>
-                             <div className="flex gap-3 text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                                <span>{pill.duration || '1:00'} min</span>
-                                <span>•</span>
-                                <span>{pill.author || 'Admin'}</span>
-                             </div>
-                          </div>
-                       </div>
-                       {idx === 0 && !activeAudio && (
-                         <div className="px-3 py-1 bg-kirateal text-white text-[8px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg">
-                           Nueva
-                         </div>
-                       )}
-                    </div>
-                  ))}
-               </div>
             </div>
           </section>
         )}
