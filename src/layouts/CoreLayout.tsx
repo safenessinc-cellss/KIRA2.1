@@ -1,7 +1,6 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { AIChat } from '../components/AIChat';
-import { CommunityWidget } from '../components/CommunityWidget';
 import { Loader2 } from 'lucide-react';
 import { PushNotificationManager } from '../components/PushNotificationManager';
 
@@ -21,7 +20,6 @@ export function CoreLayout() {
       <PushNotificationManager />
       <Outlet />
       <AIChat />
-      <CommunityWidget />
     </div>
   );
 }
