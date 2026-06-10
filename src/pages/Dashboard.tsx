@@ -6,12 +6,12 @@ import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { MentorWidget } from '../components/MentorWidget';
 import { Seal } from '../components/Brand';
-import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen } from 'lucide-react';
+import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
 
 export function Dashboard() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [courseReviewing, setCourseReviewing] = useState<string | null>(null);
@@ -210,8 +210,7 @@ export function Dashboard() {
           </h1>
           <p className="text-slate-500 mt-4 font-medium text-lg max-w-xl">Tu centro de comando para el alto rendimiento y la expansión de consciencia.</p>
         </div>
-        
-        <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-[24px] border border-slate-100 shadow-inner">
+               <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-[24px] border border-slate-100 shadow-inner">
           <div className="px-6 py-3 bg-white rounded-2xl shadow-sm border border-slate-200/60">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">Energy Pts</p>
             <div className="flex items-center gap-2">
@@ -222,8 +221,18 @@ export function Dashboard() {
           <button 
             onClick={() => navigate('/dashboard/profile')}
             className="w-16 h-16 rounded-2xl bg-slate-200 overflow-hidden border-4 border-white shadow-md hover:ring-4 hover:ring-kirateal/10 transition-all duration-300"
+            title="Mi Perfil"
           >
             {user?.photoUrl ? <img src={user.photoUrl} alt="Profile" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center font-black text-slate-400 text-2xl">{user?.name?.[0]}</div>}
+          </button>
+          <button
+            onClick={logout}
+            className="flex items-center gap-2 px-4 py-3 bg-red-50 hover:bg-red-100 text-red-600 border border-red-150 rounded-2xl font-black text-[11px] uppercase tracking-wider transition-all duration-300 hover:shadow-md animate-in fade-in duration-300 cursor-pointer"
+            title="Cerrar sesión"
+            id="logout-button"
+          >
+            <LogOut size={14} className="shrink-0" />
+            <span>Salir</span>
           </button>
         </div>
       </div>
