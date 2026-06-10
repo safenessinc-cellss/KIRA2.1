@@ -36,3 +36,5 @@ export function ProtectedRoute({ allowedRoles }: { allowedRoles?: string[] }) {
     return <Navigate to="/" replace />;
   }
 
+  return <Outlet />;
+}
