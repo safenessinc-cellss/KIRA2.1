@@ -1477,7 +1477,7 @@ function MarketplaceEditorView() {
         ? 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500'
         : 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=500';
 
-      await addDoc(collection(db, 'marketplace'), {
+      const dRef = await addDoc(collection(db, 'marketplace'), {
          title: createTitle,
          price: parseFloat(createPrice) || 0,
          type: createType,
@@ -1486,6 +1486,31 @@ function MarketplaceEditorView() {
          author: createAuthor || 'Kira Coach',
          imageUrl: createImageUrl || defaultImg
       });
+
+      // Transactional sync to primary collections for dynamic cross-app rendering
+      if (createType === 'curso') {
+        await setDoc(doc(db, 'courses', dRef.id), {
+          title: createTitle,
+          price: parseFloat(createPrice) || 0,
+          bannerUrl: createImageUrl || defaultImg,
+          status: createStatus,
+          description: 'Un curso integrador enfocado en expandir tu bienestar mental, emocional y espiritual a través de dinámicas en vivo.',
+          studentsCount: 0,
+          coachId: 'coach_kira',
+          coachName: createAuthor || 'Kira Coach',
+          createdAt: new Date()
+        });
+      } else if (createType === 'libro') {
+        await setDoc(doc(db, 'books', dRef.id), {
+          title: createTitle,
+          price: parseFloat(createPrice) || 0,
+          imageUrl: createImageUrl || defaultImg,
+          status: createStatus,
+          author: createAuthor || 'Kira Coach',
+          description: 'Un libro canalizado y estructurado con herramientas de arteterapia, respiración consciente y introspección guiada.',
+          createdAt: new Date()
+        });
+      }
 
       // Reset
       setCreateTitle('');
@@ -1502,6 +1527,10 @@ function MarketplaceEditorView() {
 
   const addPlaceholder = async (type: 'curso' | 'libro') => {
     try {
+      const defaultImg = type === 'curso' 
+        ? 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400'
+        : 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=400';
+
       const docRef = await addDoc(collection(db, 'marketplace'), {
          title: type === 'curso' ? 'Nuevo Curso Estelar' : 'Libro: El Camino del Coach',
          price: type === 'curso' ? 199 : 29,
@@ -1509,13 +1538,39 @@ function MarketplaceEditorView() {
          status: 'draft',
          createdAt: new Date(),
          author: 'Admin',
-         imageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400'
+         imageUrl: defaultImg
       });
+
+      // Transactional sync for default placeholders
+      if (type === 'curso') {
+        await setDoc(doc(db, 'courses', docRef.id), {
+          title: 'Nuevo Curso Estelar',
+          price: 199,
+          bannerUrl: defaultImg,
+          status: 'draft',
+          description: 'Un curso integrador enfocado en expandir tu bienestar mental, emocional y espiritual.',
+          studentsCount: 0,
+          coachId: 'coach_kira',
+          coachName: 'Admin',
+          createdAt: new Date()
+        });
+      } else {
+        await setDoc(doc(db, 'books', docRef.id), {
+          title: 'Libro: El Camino del Coach',
+          price: 29,
+          imageUrl: defaultImg,
+          status: 'draft',
+          author: 'Admin',
+          description: 'Un libro canalizado y estructurado con herramientas de arteterapia.',
+          createdAt: new Date()
+        });
+      }
+
       // Start editing immediately
       setEditingId(docRef.id);
       setEditTitle(type === 'curso' ? 'Nuevo Curso Estelar' : 'Libro: El Camino del Coach');
       setEditPrice(type === 'curso' ? '199' : '29');
-      setEditImageUrl('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400');
+      setEditImageUrl(defaultImg);
       setEditAuthor('Admin');
     } catch (e) {
       console.error(e);
@@ -1538,6 +1593,35 @@ function MarketplaceEditorView() {
         imageUrl: editImageUrl,
         author: editAuthor
       });
+
+      // Synchronize update down to courses
+      try {
+        const courseRef = doc(db, 'courses', id);
+        const courseSnap = await getDoc(courseRef);
+        if (courseSnap.exists()) {
+          await updateDoc(courseRef, {
+            title: editTitle,
+            price: parseFloat(editPrice) || 0,
+            bannerUrl: editImageUrl,
+            coachName: editAuthor
+          });
+        }
+      } catch (ce) {}
+
+      // Synchronize update down to books
+      try {
+        const bookRef = doc(db, 'books', id);
+        const bookSnap = await getDoc(bookRef);
+        if (bookSnap.exists()) {
+          await updateDoc(bookRef, {
+            title: editTitle,
+            price: parseFloat(editPrice) || 0,
+            imageUrl: editImageUrl,
+            author: editAuthor
+          });
+        }
+      } catch (be) {}
+
       setEditingId(null);
     } catch (e) {
       console.error('Error saving marketplace item:', e);
@@ -1549,6 +1633,15 @@ function MarketplaceEditorView() {
     if (confirm('¿Seguro que deseas eliminar este producto?')) {
       try {
         await deleteDoc(doc(db, 'marketplace', id));
+        
+        // Synchronize deletion from other collections
+        try {
+          await deleteDoc(doc(db, 'courses', id));
+        } catch (ce) {}
+        try {
+          await deleteDoc(doc(db, 'books', id));
+        } catch (be) {}
+
       } catch (e) {
         console.error(e);
       }
@@ -1557,7 +1650,27 @@ function MarketplaceEditorView() {
 
   const toggleStatus = async (id: string, currentStatus: string) => {
     try {
-      await updateDoc(doc(db, 'marketplace', id), { status: currentStatus === 'draft' ? 'published' : 'draft' });
+      const nextStatus = currentStatus === 'draft' ? 'published' : 'draft';
+      await updateDoc(doc(db, 'marketplace', id), { status: nextStatus });
+
+      // Synchronize status toggle down to courses
+      try {
+        const courseRef = doc(db, 'courses', id);
+        const courseSnap = await getDoc(courseRef);
+        if (courseSnap.exists()) {
+          await updateDoc(courseRef, { status: nextStatus });
+        }
+      } catch (ce) {}
+
+      // Synchronize status toggle down to books
+      try {
+        const bookRef = doc(db, 'books', id);
+        const bookSnap = await getDoc(bookRef);
+        if (bookSnap.exists()) {
+          await updateDoc(bookRef, { status: nextStatus });
+        }
+      } catch (be) {}
+
     } catch (e) {
       console.error(e);
     }
