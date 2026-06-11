@@ -29,6 +29,7 @@ export function Dashboard() {
   const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
 
   const [showCommunityModal, setShowCommunityModal] = useState(false);
+  // NUEVO ENLACE DE WHATSAPP ACTUALIZADO
   const [whatsappUrl, setWhatsappUrl] = useState('https://chat.whatsapp.com/GpX9cVM0AOXGV6f56Sam6H');
   const [communityLinksArr, setCommunityLinksArr] = useState<any[]>([]);
   const [savingCommunity, setSavingCommunity] = useState(false);
@@ -50,6 +51,18 @@ export function Dashboard() {
               setWhatsappUrl(data.links[0].url);
             }
           }
+        } else {
+          // Si no existe el documento en Firestore, crear uno con el enlace por defecto
+          const defaultLinks = [{
+            name: 'Comunidad WhatsApp',
+            description: 'Soporte estelar, networking y canal oficial de avisos de Kira Moreno.',
+            url: 'https://chat.whatsapp.com/GpX9cVM0AOXGV6f56Sam6H',
+            badge: 'Canal Oficial',
+            type: 'whatsapp'
+          }];
+          setDoc(docRef, { links: defaultLinks });
+          setCommunityLinksArr(defaultLinks);
+          setWhatsappUrl(defaultLinks[0].url);
         }
       }, (err) => {
         console.error("Error listening to community settings:", err);
