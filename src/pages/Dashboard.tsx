@@ -7,7 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { MentorWidget } from '../components/MentorWidget';
 import { Seal } from '../components/Brand';
-import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut, MessageCircle, Globe } from 'lucide-react';
+import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut, MessageCircle, Globe, Copy, Check } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
 
@@ -32,7 +32,9 @@ export function Dashboard() {
   const [whatsappUrl, setWhatsappUrl] = useState('');
   const [communityLinksArr, setCommunityLinksArr] = useState<any[]>([]);
   const [savingCommunity, setSavingCommunity] = useState(false);
+  const [copied, setCopied] = useState(false);
 
+  // ESCUCHAR CAMBIOS DEL ENLACE DE WHATSAPP EN FIRESTORE
   useEffect(() => {
     if (user && (user.role === 'admin' || user.role === 'coach')) {
       const docRef = doc(db, 'settings', 'community');
@@ -56,6 +58,7 @@ export function Dashboard() {
     }
   }, [user]);
 
+  // GUARDAR NUEVO ENLACE DE WHATSAPP
   const saveWhatsappUrl = async () => {
     if (!user) return;
     setSavingCommunity(true);
@@ -78,14 +81,28 @@ export function Dashboard() {
       
       const docRef = doc(db, 'settings', 'community');
       await setDoc(docRef, {
-        links: updatedLinks
+        links: updatedLinks,
+        updatedAt: new Date(),
+        updatedBy: user.uid
       });
       setShowCommunityModal(false);
+      alert('✅ Enlace de WhatsApp actualizado correctamente');
     } catch (e) {
       console.error(e);
-      alert('Error al guardar el enlace. Por favor, inténtalo de nuevo.');
+      alert('❌ Error al guardar el enlace. Por favor, inténtalo de nuevo.');
     } finally {
       setSavingCommunity(false);
+    }
+  };
+
+  // COPIAR ENLACE AL PORTAPAPELES
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Error al copiar:', err);
     }
   };
 
@@ -284,7 +301,7 @@ export function Dashboard() {
             <button
               onClick={() => setShowCommunityModal(true)}
               className="px-5 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-wider transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/20 active:scale-95 flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-500/5 h-16 shrink-0"
-              title="Editar botón de comunidad WhatsApp de la página de inicio"
+              title="Editar enlace de comunidad WhatsApp"
               id="dashboard-edit-whatsapp-floating-btn"
             >
               <MessageCircle size={15} className="fill-white/30" />
@@ -364,7 +381,9 @@ export function Dashboard() {
                </div>
             </div>
          </div>
-      )}      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      )}      
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className={cn("p-6 rounded-3xl border shadow-sm flex flex-col justify-between transition-all hover:shadow-md h-44", currentTier.bg, currentTier.border)}>
           <div className="flex justify-between items-center mb-1">
              <div className="flex items-center gap-2">
@@ -434,7 +453,8 @@ export function Dashboard() {
           </div>
         </div>
       </div>
-            {/* Grid de Contenido Principal: Mentor + Actividad */}
+            
+      {/* Grid de Contenido Principal: Mentor + Actividad */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
         <div className="lg:col-span-8 flex flex-col gap-12">
           {/* Mentor AI Widget */}
@@ -725,7 +745,7 @@ export function Dashboard() {
           </div>
        )}
 
-      {/* EXCLUSIVE COMMUNITY CONFIG MODAL */}
+      {/* EXCLUSIVE COMMUNITY CONFIG MODAL - MEJORADO */}
       {showCommunityModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowCommunityModal(false)} />
@@ -739,7 +759,7 @@ export function Dashboard() {
               <div className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase text-emerald-600 tracking-widest bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
                 <Globe size={11} className="text-emerald-500" /> Landing Page Floating Button
               </div>
-              <h2 className="text-2xl font-black text-slate-800 tracking-tight font-serif text-slate-900">Editar Link de WhatsApp</h2>
+              <h2 className="text-2xl font-black text-slate-800 tracking-tight font-serif">Editar Link de WhatsApp</h2>
               <p className="text-slate-500 font-medium text-xs leading-relaxed">
                 Actualiza el link de invitación que se abre cuando un usuario hace clic en el botón flotante <strong className="font-bold">"Únete a nuestra Comunidad"</strong> en la página de inicio.
               </p>
@@ -762,8 +782,31 @@ export function Dashboard() {
                 </div>
               </div>
 
+              {/* Mostrar enlace actual con botón de copiar */}
+              {whatsappUrl && (
+                <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl">
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2">🔗 Enlace actual activo</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-[11px] font-mono text-slate-600 bg-white p-2 rounded-lg border border-slate-200 truncate">
+                      {whatsappUrl}
+                    </code>
+                    <button
+                      onClick={() => copyToClipboard(whatsappUrl)}
+                      className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
+                      title="Copiar enlace"
+                    >
+                      {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} className="text-slate-500" />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-[11px] text-amber-700 font-medium leading-relaxed">
+                ⚠️ <strong className="text-amber-800">Importante:</strong> Para obtener un nuevo enlace, ve a tu grupo de WhatsApp → Ajustes de grupo → Enlace de invitación → <strong>Restablecer enlace</strong>. Luego copia el nuevo enlace y pégalo aquí.
+              </div>
+
               <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl text-[11px] text-slate-500 font-medium leading-relaxed">
-                ⚡ <strong className="text-slate-700">Nota:</strong> Este cambio también se actualizará automáticamente en la primera opción de la pestaña <strong className="text-slate-700">"Comunidad Estelar"</strong> del panel de alumnos para mantenerlos siempre sincronizados. ¡Los cambios se publican en tiempo real!
+                💡 <strong className="text-slate-700">Nota técnica:</strong> Este cambio se actualiza en tiempo real en Firestore y se sincroniza automáticamente con el botón flotante de la landing page y la pestaña <strong>"Comunidad Estelar"</strong> del panel de alumnos.
               </div>
             </div>
 
@@ -779,7 +822,13 @@ export function Dashboard() {
                 disabled={savingCommunity || !whatsappUrl.trim()}
                 className="flex-[2] py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:from-slate-300 disabled:to-slate-300 text-white rounded-2xl font-black text-xs transition-all shadow-lg shadow-emerald-500/10 uppercase tracking-widest cursor-pointer flex items-center justify-center gap-2"
               >
-                {savingCommunity ? 'Guardando...' : 'Guardar y Publicar'}
+                {savingCommunity ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" /> Guardando...
+                  </>
+                ) : (
+                  'Guardar y Publicar'
+                )}
               </button>
             </div>
           </motion.div>
@@ -925,24 +974,6 @@ export function Journal() {
           className="w-full h-56 p-8 rounded-[32px] border border-slate-100 focus:outline-none focus:ring-4 focus:ring-violet-500/5 font-medium leading-relaxed bg-slate-50 mb-8 text-[15px] shadow-inner transition-all focus:bg-white focus:border-violet-200"
         />
         
-        <div className="flex justify-between items-center bg-slate-50 p-4 rounded-[28px] border border-slate-100">
-          <div className="px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-            {content.length} caracteres
-          </div>
-          <button 
-            onClick={handleSave}
-            disabled={!content.trim()}
-            className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-[13px] font-black uppercase tracking-widest hover:bg-black disabled:opacity-30 transition-all shadow-xl active:scale-95"
-          >
-            Sincronizar Al Búnker
-          </button>
-        </div>
-      </div>
-      <KiraNudge />
-    </div>
-  );
-}
-   
         <div className="flex justify-between items-center bg-slate-50 p-4 rounded-[28px] border border-slate-100">
           <div className="px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
             {content.length} caracteres
