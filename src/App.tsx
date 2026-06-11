@@ -16,48 +16,86 @@ import { Microlearning } from './pages/Microlearning';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FloatingWhatsAppButton } from './components/FloatingWhatsAppButton';
 import { doc, onSnapshot } from 'firebase/firestore';
-// ✅ CAMBIA ESTA LÍNEA SEGÚN TU PROYECTO:
-import { db } from './lib/firebase'; // <--- AJUSTA ESTA RUTA
+// ✅ CORREGIDO - RUTA CORRECTA
+import { db } from './firebase';
 
-// ... resto del código igual
-
-export function FloatingWhatsAppButton() {
-  const [whatsappUrl, setWhatsappUrl] = useState('https://chat.whatsapp.com/GpX9cVM0AOXGV6f56Sam6H');
+function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [theme, setTheme] = useState<any>({ primaryColor: '', secondaryColor: '' });
 
   useEffect(() => {
-    // Escuchar cambios en tiempo real desde Firestore
-    const communityRef = doc(db, 'settings', 'community');
-    const unsubscribe = onSnapshot(communityRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.links && Array.isArray(data.links)) {
-          const waLink = data.links.find((link: any) => link.type === 'whatsapp');
-          if (waLink?.url) {
-            setWhatsappUrl(waLink.url);
-          }
+    let unsub = () => {};
+    try {
+      unsub = onSnapshot(doc(db, 'settings', 'website'), (docSnap) => {
+        if (docSnap.exists()) {
+           setTheme(docSnap.data());
         }
-      }
-    }, (error) => {
-      console.error("Error escuchando cambios del enlace de WhatsApp:", error);
-    });
-
-    return () => unsubscribe();
+      });
+    } catch(e) {
+      console.warn("Could not load theme", e);
+    }
+    return () => unsub();
   }, []);
 
-  if (!whatsappUrl) return null;
+  useEffect(() => {
+    if (theme.primaryColor) {
+      document.documentElement.style.setProperty('--color-primary', theme.primaryColor);
+    }
+    if (theme.secondaryColor) {
+      document.documentElement.style.setProperty('--color-secondary', theme.secondaryColor);
+    }
+  }, [theme.primaryColor, theme.secondaryColor]);
 
+  return <>{children}</>;
+}
+
+export default function App() {
   return (
-    <a
-      href={whatsappUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="fixed bottom-6 right-6 z-50 bg-green-500 hover:bg-green-600 text-white p-4 rounded-full shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center group"
-      title="Únete a nuestra comunidad de WhatsApp"
-    >
-      <MessageCircle size={28} className="fill-white/20" />
-      <span className="absolute right-full mr-3 bg-slate-900 text-white text-xs font-bold py-1.5 px-3 rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-        Únete a nuestra Comunidad
-      </span>
-    </a>
+    <ThemeProvider>
+      <ErrorBoundary>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<CoreLayout />}>
+              <Route path="/" element={<Landing />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/microlearning" element={<Microlearning />} />
+              
+              <Route element={<ProtectedRoute allowedRoles={['alumno']} />}>
+                <Route element={<DashboardLayout title="Mi Aprendizaje" />}>
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/dashboard/journal" element={<Journal />} />
+                  <Route path="/dashboard/elite-library" element={<EliteLibrary />} />
+                  <Route path="/dashboard/community" element={<Community />} />
+                  <Route path="/dashboard/profile" element={<UserProfile />} />
+                </Route>
+              </Route>
+
+              <Route element={<ProtectedRoute allowedRoles={['coach']} />}>
+                <Route element={<DashboardLayout title="Panel de Coach" />}>
+                  <Route path="/coach" element={<CoachDashboard />} />
+                  <Route path="/coach/courses" element={<CoachCourses />} />
+                  <Route path="/coach/session" element={<SessionIntelligence />} />
+                  <Route path="/coach/profile" element={<UserProfile />} />
+                </Route>
+              </Route>
+
+              <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+                <Route element={<DashboardLayout title="Control total" />}>
+                  <Route path="/admin" element={<AdminMonitor />} />
+                </Route>
+              </Route>
+
+              <Route element={<ProtectedRoute allowedRoles={['hr_admin']} />}>
+                <Route element={<DashboardLayout title="Portal Empresa" />}>
+                  <Route path="/hr" element={<HRDashboard />} />
+                </Route>
+              </Route>
+
+            </Route>
+          </Routes>
+          {/* Botón flotante de WhatsApp - aparece en todas las páginas */}
+          <FloatingWhatsAppButton />
+        </BrowserRouter>
+      </ErrorBoundary>
+    </ThemeProvider>
   );
 }
