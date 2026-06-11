@@ -1,7 +1,25 @@
-import { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { CoreLayout, ProtectedRoute } from './layouts/CoreLayout';
+import { DashboardLayout } from './layouts/DashboardLayout';
+import { Landing } from './pages/Landing';
+import { Login } from './pages/Login';
+import { Dashboard, Journal } from './pages/Dashboard';
+import { EliteLibrary } from './pages/EliteLibrary';
+import { Community } from './pages/Community';
+import { AdminMonitor } from './pages/Admin';
+import { CoachDashboard, CoachCourses } from './pages/Coach';
+import SessionIntelligence from './pages/SessionIntelligence';
+import { HRDashboard } from './pages/HRDashboard';
+import { UserProfile } from './pages/UserProfile';
+import { Microlearning } from './pages/Microlearning';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { FloatingWhatsAppButton } from './components/FloatingWhatsAppButton';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
-import { MessageCircle } from 'lucide-react';
+// ✅ CAMBIA ESTA LÍNEA SEGÚN TU PROYECTO:
+import { db } from './lib/firebase'; // <--- AJUSTA ESTA RUTA
+
+// ... resto del código igual
 
 export function FloatingWhatsAppButton() {
   const [whatsappUrl, setWhatsappUrl] = useState('https://chat.whatsapp.com/GpX9cVM0AOXGV6f56Sam6H');
