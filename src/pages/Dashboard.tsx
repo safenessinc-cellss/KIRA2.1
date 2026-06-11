@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
+import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, getDocs, addDoc, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, onSnapshot, doc, updateDoc, setDoc, orderBy, limit } from 'firebase/firestore';
 import { GoogleGenAI } from "@google/genai";
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { MentorWidget } from '../components/MentorWidget';
 import { Seal } from '../components/Brand';
-import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut } from 'lucide-react';
+import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut, MessageCircle, Globe } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
 
@@ -26,6 +27,67 @@ export function Dashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
+
+  const [showCommunityModal, setShowCommunityModal] = useState(false);
+  const [whatsappUrl, setWhatsappUrl] = useState('');
+  const [communityLinksArr, setCommunityLinksArr] = useState<any[]>([]);
+  const [savingCommunity, setSavingCommunity] = useState(false);
+
+  useEffect(() => {
+    if (user && (user.role === 'admin' || user.role === 'coach')) {
+      const docRef = doc(db, 'settings', 'community');
+      const unsub = onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data && Array.isArray(data.links)) {
+            setCommunityLinksArr(data.links);
+            const wa = data.links.find((l: any) => l.type === 'whatsapp');
+            if (wa) {
+              setWhatsappUrl(wa.url);
+            } else if (data.links[0]) {
+              setWhatsappUrl(data.links[0].url);
+            }
+          }
+        }
+      }, (err) => {
+        console.error("Error listening to community settings:", err);
+      });
+      return () => unsub();
+    }
+  }, [user]);
+
+  const saveWhatsappUrl = async () => {
+    if (!user) return;
+    setSavingCommunity(true);
+    try {
+      const updatedLinks = [...communityLinksArr];
+      const waIndex = updatedLinks.findIndex((l: any) => l.type === 'whatsapp');
+      if (waIndex !== -1) {
+        updatedLinks[waIndex] = { ...updatedLinks[waIndex], url: whatsappUrl };
+      } else if (updatedLinks.length > 0) {
+        updatedLinks[0] = { ...updatedLinks[0], url: whatsappUrl };
+      } else {
+        updatedLinks.push({
+          name: 'Comunidad WhatsApp',
+          description: 'Soporte estelar, networking y canal oficial de avisos de Kira Moreno.',
+          url: whatsappUrl,
+          badge: 'Canal Oficial',
+          type: 'whatsapp'
+        });
+      }
+      
+      const docRef = doc(db, 'settings', 'community');
+      await setDoc(docRef, {
+        links: updatedLinks
+      });
+      setShowCommunityModal(false);
+    } catch (e) {
+      console.error(e);
+      alert('Error al guardar el enlace. Por favor, inténtalo de nuevo.');
+    } finally {
+      setSavingCommunity(false);
+    }
+  };
 
   const userDocPoints = user?.points || 0;
 
@@ -218,6 +280,17 @@ export function Dashboard() {
               <span className="text-2xl font-black text-slate-900 tracking-tight">{userDocPoints.toLocaleString()}</span>
             </div>
           </div>
+          {(user?.role === 'admin' || user?.role === 'coach') && (
+            <button
+              onClick={() => setShowCommunityModal(true)}
+              className="px-5 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-wider transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/20 active:scale-95 flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-500/5 h-16 shrink-0"
+              title="Editar botón de comunidad WhatsApp de la página de inicio"
+              id="dashboard-edit-whatsapp-floating-btn"
+            >
+              <MessageCircle size={15} className="fill-white/30" />
+              <span>Editar WhatsApp</span>
+            </button>
+          )}
           <button 
             onClick={() => navigate('/dashboard/profile')}
             className="w-16 h-16 rounded-2xl bg-slate-200 overflow-hidden border-4 border-white shadow-md hover:ring-4 hover:ring-kirateal/10 transition-all duration-300"
@@ -647,9 +720,70 @@ export function Dashboard() {
                <button onClick={submitReview} className="flex-[2] py-4 bg-kirateal text-white rounded-2xl font-black text-xs hover:bg-kirateal-light transition-all shadow-lg shadow-teal-100 uppercase tracking-widest">
                  Enviar mi Opinión
                </button>
-             </div>
-           </div>
-         </div>
+              </div>
+            </div>
+          </div>
+       )}
+
+      {/* EXCLUSIVE COMMUNITY CONFIG MODAL */}
+      {showCommunityModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowCommunityModal(false)} />
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            className="bg-white rounded-[40px] border border-slate-200/60 w-full max-w-lg p-10 relative z-10 shadow-2xl space-y-6 animate-in fade-in zoom-in-95 duration-200"
+          >
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase text-emerald-600 tracking-widest bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
+                <Globe size={11} className="text-emerald-500" /> Landing Page Floating Button
+              </div>
+              <h2 className="text-2xl font-black text-slate-800 tracking-tight font-serif text-slate-900">Editar Link de WhatsApp</h2>
+              <p className="text-slate-500 font-medium text-xs leading-relaxed">
+                Actualiza el link de invitación que se abre cuando un usuario hace clic en el botón flotante <strong className="font-bold">"Únete a nuestra Comunidad"</strong> en la página de inicio.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 font-mono">Enlace de Invitación de WhatsApp</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-emerald-500">
+                    <MessageCircle size={16} />
+                  </div>
+                  <input
+                    type="url"
+                    value={whatsappUrl}
+                    onChange={(e) => setWhatsappUrl(e.target.value)}
+                    placeholder="https://chat.whatsapp.com/..."
+                    className="w-full text-xs font-mono border border-slate-200 rounded-2xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 bg-slate-50 focus:bg-white transition text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl text-[11px] text-slate-500 font-medium leading-relaxed">
+                ⚡ <strong className="text-slate-700">Nota:</strong> Este cambio también se actualizará automáticamente en la primera opción de la pestaña <strong className="text-slate-700">"Comunidad Estelar"</strong> del panel de alumnos para mantenerlos siempre sincronizados. ¡Los cambios se publican en tiempo real!
+              </div>
+            </div>
+
+            <div className="flex gap-4 pt-2">
+              <button
+                onClick={() => setShowCommunityModal(false)}
+                className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black text-xs transition uppercase tracking-widest cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={saveWhatsappUrl}
+                disabled={savingCommunity || !whatsappUrl.trim()}
+                className="flex-[2] py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:from-slate-300 disabled:to-slate-300 text-white rounded-2xl font-black text-xs transition-all shadow-lg shadow-emerald-500/10 uppercase tracking-widest cursor-pointer flex items-center justify-center gap-2"
+              >
+                {savingCommunity ? 'Guardando...' : 'Guardar y Publicar'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
       )}
     </div>
   );
@@ -791,6 +925,24 @@ export function Journal() {
           className="w-full h-56 p-8 rounded-[32px] border border-slate-100 focus:outline-none focus:ring-4 focus:ring-violet-500/5 font-medium leading-relaxed bg-slate-50 mb-8 text-[15px] shadow-inner transition-all focus:bg-white focus:border-violet-200"
         />
         
+        <div className="flex justify-between items-center bg-slate-50 p-4 rounded-[28px] border border-slate-100">
+          <div className="px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+            {content.length} caracteres
+          </div>
+          <button 
+            onClick={handleSave}
+            disabled={!content.trim()}
+            className="px-10 py-4 bg-slate-900 text-white rounded-2xl text-[13px] font-black uppercase tracking-widest hover:bg-black disabled:opacity-30 transition-all shadow-xl active:scale-95"
+          >
+            Sincronizar Al Búnker
+          </button>
+        </div>
+      </div>
+      <KiraNudge />
+    </div>
+  );
+}
+   
         <div className="flex justify-between items-center bg-slate-50 p-4 rounded-[28px] border border-slate-100">
           <div className="px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
             {content.length} caracteres
