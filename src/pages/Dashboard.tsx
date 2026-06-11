@@ -29,7 +29,7 @@ export function Dashboard() {
   const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
 
   const [showCommunityModal, setShowCommunityModal] = useState(false);
-  const [whatsappUrl, setWhatsappUrl] = useState('');
+  const [whatsappUrl, setWhatsappUrl] = useState('https://chat.whatsapp.com/GpX9cVM0AOXGV6f56Sam6H');
   const [communityLinksArr, setCommunityLinksArr] = useState<any[]>([]);
   const [savingCommunity, setSavingCommunity] = useState(false);
   const [copied, setCopied] = useState(false);
