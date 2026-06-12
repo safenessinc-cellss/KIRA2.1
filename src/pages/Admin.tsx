@@ -2674,70 +2674,140 @@ function MicrolearningAdminView() {
             </div>
 
             {/* Dynamic Mandala Configuration */}
-            {(() => {
-              const dyn = (ch.dynamics && ch.dynamics[0]) || {
-                id: `dyn_${idx + 1}_1`,
-                title: 'Mándala de Equilibrio',
-                instruction: 'Colorea este lienzo para estabilizar tus emociones.',
-                mandalaType: 'flower'
-              };
-
-              const updateDynamicField = (field: string, value: string) => {
-                const updatedDyns = ch.dynamics ? [...ch.dynamics] : [];
-                if (updatedDyns.length === 0) {
-                  updatedDyns.push({ ...dyn, [field]: value });
-                } else {
-                  updatedDyns[0] = { ...updatedDyns[0], [field]: value };
-                }
-                updateChapterField(idx, 'dynamics', updatedDyns);
-              };
-
-              return (
-                <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <span className="p-1 px-2.5 bg-teal-50 text-teal-600 border border-teal-100 rounded-lg text-[9px] font-black uppercase tracking-wider">
-                      🎨 Mándala Interactivo de Arteterapia
-                    </span>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase">Título de la Dinámica Mándala</label>
-                      <input
-                        type="text"
-                        value={dyn.title || ''}
-                        placeholder="Ej: Mándala de la Calma Centrada"
-                        onChange={(e) => updateDynamicField('title', e.target.value)}
-                        className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase">Tipo de Mándala Visual</label>
-                      <select
-                        value={dyn.mandalaType || 'flower'}
-                        onChange={(e) => updateDynamicField('mandalaType', e.target.value)}
-                        className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-400"
-                      >
-                        <option value="calm">Círculos Concéntricos / Mándala de la Calma</option>
-                        <option value="fire">Geometría de Estrellas / Mándala del Fuego</option>
-                        <option value="flower">Pétalos Florales / Mándala de la Red Sagrada</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase">Instrucciones de Arteterapia</label>
-                    <textarea
-                      value={dyn.instruction || ''}
-                      placeholder="Instrucciones para guiar al alumno sobre cómo respirar y pintar este mándala..."
-                      onChange={(e) => updateDynamicField('instruction', e.target.value)}
-                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none h-20 resize-none leading-relaxed"
-                    />
-                  </div>
+            <div className="p-5 bg-white rounded-xl border border-slate-200/80 space-y-4">
+              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="p-1 px-3 bg-teal-50 text-teal-700 border border-teal-100 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                    🎨 Mándalas de Arteterapia ({ch.dynamics?.length || 0})
+                  </span>
                 </div>
-              );
-            })()}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentDyns = ch.dynamics ? [...ch.dynamics] : [];
+                    const newId = `dyn_${idx + 1}_${currentDyns.length + 1}`;
+                    currentDyns.push({
+                      id: newId,
+                      title: `Mándala de Arteterapia #${currentDyns.length + 1}`,
+                      instruction: 'Rellena este lienzo con tus colores favoritos mientras inhalas profundamente en 4 tiempos y exhalas en 4.',
+                      mandalaType: 'flower'
+                    });
+                    updateChapterField(idx, 'dynamics', currentDyns);
+                  }}
+                  className="text-xs bg-teal-500 hover:bg-teal-600 text-white font-black px-3.5 py-1.5 rounded-xl transition duration-200 cursor-pointer shadow-sm shadow-teal-500/15"
+                >
+                  + Añadir Mándala
+                </button>
+              </div>
+
+              {(!ch.dynamics || ch.dynamics.length === 0) ? (
+                <div className="py-6 text-center border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                  <p className="text-[11px] text-slate-400 italic">No hay mándalas interactivos agregados a este capítulo.</p>
+                  <p className="text-[10px] text-slate-400 mt-1">El alumno no tendrá la pestaña de "Arteterapia" activa si no añades al menos uno.</p>
+                </div>
+              ) : (
+                <div className="space-y-4 max-h-[420px] overflow-y-auto pr-1">
+                  {ch.dynamics.map((dyn: any, dIdx: number) => {
+                    const updateDynField = (field: string, val: string) => {
+                      const updated = [...ch.dynamics];
+                      updated[dIdx] = { ...updated[dIdx], [field]: val };
+                      updateChapterField(idx, 'dynamics', updated);
+                    };
+
+                    const handleRemoveDyn = () => {
+                      const updated = ch.dynamics.filter((_: any, i: number) => i !== dIdx);
+                      updateChapterField(idx, 'dynamics', updated);
+                    };
+
+                    return (
+                      <div key={dyn.id || dIdx} className="p-4 bg-slate-50/70 border border-slate-150 rounded-2xl space-y-4 relative group">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest font-mono">Mándala #{dIdx + 1} ({dyn.id})</span>
+                          <button
+                            type="button"
+                            onClick={handleRemoveDyn}
+                            className="text-[10px] text-red-500 hover:text-red-700 font-bold transition-all"
+                          >
+                            Eliminar Mándala
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+                          {/* Mini SVG Preview */}
+                          <div className="md:col-span-3 flex flex-col items-center justify-center bg-white p-3 rounded-2xl border border-slate-200 h-28 relative">
+                            {dyn.mandalaType === 'fire' && (
+                              <svg viewBox="0 0 100 100" className="w-12 h-12 text-slate-600">
+                                <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="1" />
+                                {Array.from({ length: 8 }).map((_, i) => (
+                                  <line key={i} x1="50" y1="50" x2={50 + 45 * Math.cos(i * Math.PI / 4)} y2={50 + 45 * Math.sin(i * Math.PI / 4)} stroke="currentColor" strokeWidth="0.8" />
+                                ))}
+                                <circle cx="50" cy="50" r="10" fill="#f43f5e" />
+                              </svg>
+                            )}
+                            {dyn.mandalaType === 'calm' && (
+                              <svg viewBox="0 0 100 100" className="w-12 h-12 text-slate-600">
+                                <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="1" />
+                                <circle cx="50" cy="50" r="30" fill="none" stroke="currentColor" strokeWidth="1" />
+                                <circle cx="50" cy="50" r="15" fill="none" stroke="currentColor" strokeWidth="1" />
+                                <circle cx="50" cy="50" r="6" fill="#06b6d4" />
+                              </svg>
+                            )}
+                            {dyn.mandalaType === 'flower' && (
+                              <svg viewBox="0 0 100 100" className="w-12 h-12 text-slate-600">
+                                <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="1" />
+                                {Array.from({ length: 8 }).map((_, i) => (
+                                  <circle key={i} cx={50 + 15 * Math.cos(i * Math.PI / 4)} cy={50 + 15 * Math.sin(i * Math.PI / 4)} r="12" fill="none" stroke="currentColor" strokeWidth="0.6" />
+                                ))}
+                                <circle cx="50" cy="50" r="8" fill="#a855f7" />
+                              </svg>
+                            )}
+                            <span className="text-[8px] font-black uppercase text-slate-400 mt-2 tracking-widest">{dyn.mandalaType} Pattern</span>
+                          </div>
+
+                          <div className="md:col-span-9 space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Título de la Dinámica</label>
+                                <input
+                                  type="text"
+                                  value={dyn.title || ''}
+                                  placeholder="Ej: Mándala del Corazón Abierto"
+                                  onChange={(e) => updateDynField('title', e.target.value)}
+                                  className="w-full text-xs font-semibold p-2 bg-white border border-slate-200 rounded-lg focus:outline-none"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Tipo de Mándala</label>
+                                <select
+                                  value={dyn.mandalaType || 'flower'}
+                                  onChange={(e) => updateDynField('mandalaType', e.target.value)}
+                                  className="w-full text-xs font-semibold p-2 bg-white border border-slate-200 rounded-lg focus:outline-none"
+                                >
+                                  <option value="calm">Círculos Concéntricos / Mándala de la Calma</option>
+                                  <option value="fire">Geometría de Estrellas / Mándala del Fuego</option>
+                                  <option value="flower">Pétalos Florales / Mándala de la Red Sagrada</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">Instrucciones de Arteterapia</label>
+                              <textarea
+                                value={dyn.instruction || ''}
+                                placeholder="Escribe instrucciones claras para tu alumno..."
+                                onChange={(e) => updateDynField('instruction', e.target.value)}
+                                className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg focus:outline-none h-14 resize-none leading-relaxed"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>
