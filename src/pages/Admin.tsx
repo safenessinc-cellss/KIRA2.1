@@ -2624,6 +2624,120 @@ function MicrolearningAdminView() {
                 </button>
               </div>
             </div>
+
+            {/* Practical/Executive Summaries */}
+            <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3">
+              <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Resumen Ejecutivo (Ideas Claves / Puntos Destacados)</h5>
+              {(!ch.summary || ch.summary.length === 0) ? (
+                <p className="text-[10px] text-slate-400 italic">No hay ideas claves guardadas para este capítulo.</p>
+              ) : (
+                (ch.summary || []).map((bullet: string, bIdx: number) => (
+                  <div key={bIdx} className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-lg border border-slate-100">
+                    <span className="text-[10px] font-bold text-slate-400 font-mono w-5 text-center">#{bIdx + 1}</span>
+                    <input
+                      type="text"
+                      value={bullet}
+                      placeholder={`Ej: Idea clave #${bIdx + 1}`}
+                      onChange={(e) => {
+                        const updatedSummary = [...(ch.summary || [])];
+                        updatedSummary[bIdx] = e.target.value;
+                        updateChapterField(idx, 'summary', updatedSummary);
+                      }}
+                      className="flex-1 text-xs p-1.5 bg-white border border-slate-200 rounded-md focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updatedSummary = (ch.summary || []).filter((_: any, i: number) => i !== bIdx);
+                        updateChapterField(idx, 'summary', updatedSummary);
+                      }}
+                      className="text-[10px] text-red-500 hover:text-red-700 font-bold px-2"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                ))
+              )}
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updatedSummary = ch.summary ? [...ch.summary] : [];
+                    updatedSummary.push('Nueva idea clave o resumen conceptual para este capítulo.');
+                    updateChapterField(idx, 'summary', updatedSummary);
+                  }}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 font-extrabold cursor-pointer flex items-center gap-1"
+                >
+                  + Añadir Idea Clave
+                </button>
+              </div>
+            </div>
+
+            {/* Dynamic Mandala Configuration */}
+            {(() => {
+              const dyn = (ch.dynamics && ch.dynamics[0]) || {
+                id: `dyn_${idx + 1}_1`,
+                title: 'Mándala de Equilibrio',
+                instruction: 'Colorea este lienzo para estabilizar tus emociones.',
+                mandalaType: 'flower'
+              };
+
+              const updateDynamicField = (field: string, value: string) => {
+                const updatedDyns = ch.dynamics ? [...ch.dynamics] : [];
+                if (updatedDyns.length === 0) {
+                  updatedDyns.push({ ...dyn, [field]: value });
+                } else {
+                  updatedDyns[0] = { ...updatedDyns[0], [field]: value };
+                }
+                updateChapterField(idx, 'dynamics', updatedDyns);
+              };
+
+              return (
+                <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1 px-2.5 bg-teal-50 text-teal-600 border border-teal-100 rounded-lg text-[9px] font-black uppercase tracking-wider">
+                      🎨 Mándala Interactivo de Arteterapia
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Título de la Dinámica Mándala</label>
+                      <input
+                        type="text"
+                        value={dyn.title || ''}
+                        placeholder="Ej: Mándala de la Calma Centrada"
+                        onChange={(e) => updateDynamicField('title', e.target.value)}
+                        className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Tipo de Mándala Visual</label>
+                      <select
+                        value={dyn.mandalaType || 'flower'}
+                        onChange={(e) => updateDynamicField('mandalaType', e.target.value)}
+                        className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-teal-400"
+                      >
+                        <option value="calm">Círculos Concéntricos / Mándala de la Calma</option>
+                        <option value="fire">Geometría de Estrellas / Mándala del Fuego</option>
+                        <option value="flower">Pétalos Florales / Mándala de la Red Sagrada</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Instrucciones de Arteterapia</label>
+                    <textarea
+                      value={dyn.instruction || ''}
+                      placeholder="Instrucciones para guiar al alumno sobre cómo respirar y pintar este mándala..."
+                      onChange={(e) => updateDynamicField('instruction', e.target.value)}
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none h-20 resize-none leading-relaxed"
+                    />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         ))}
       </div>
