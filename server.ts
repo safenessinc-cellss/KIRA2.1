@@ -48,9 +48,22 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+// Endpoint to verify Gemini configuration
+app.get("/api/gemini/config", (req, res) => {
+  res.json({ configured: !!process.env.GEMINI_API_KEY });
+});
+
 // Gemini Content Generation Proxy
 app.post("/api/gemini/generate", async (req, res) => {
   try {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) {
+      return res.status(412).json({
+        error: "GEMINI_API_KEY_MISSING",
+        message: "La clave de API de Gemini no está configurada en las variables de entorno del servidor. Por favor, añádela en Settings > Secrets."
+      });
+    }
+
     const { model, contents, config } = req.body;
     
     // Map models to ensure we use supported models
