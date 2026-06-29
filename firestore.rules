@@ -100,7 +100,7 @@ service cloud.firestore {
     
     function isValidUser() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'role', 'approvalStatus', 'points', 'theme', 'isEmailVerified', 'staffPermissions', 'lastLoginAt', 'lastActivityAt', 'createdAt', 'specialty', 'bio', 'aiFeedback', 'registeredByCoach', 'status', 'membershipStatus', 'membershipPaidAt', 'socialLinks', 'specialties', 'calendlyUrl', 'experienceLevel', 'languages', 'welcomeVideoUrl', 'rating', 'studentCount', 'mediaItems', 'updatedAt', 'manualActiveStudents', 'manualAvgProgress', 'manualRecentSessions']) &&
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'name', 'photoURL', 'photoUrl', 'role', 'approvalStatus', 'points', 'theme', 'isEmailVerified', 'staffPermissions', 'lastLoginAt', 'lastActivityAt', 'createdAt', 'specialty', 'bio', 'aiFeedback', 'registeredByCoach', 'status', 'membershipStatus', 'membershipPaidAt', 'socialLinks', 'specialties', 'calendlyUrl', 'experienceLevel', 'languages', 'welcomeVideoUrl', 'rating', 'studentCount', 'mediaItems', 'updatedAt', 'manualActiveStudents', 'manualAvgProgress', 'manualRecentSessions']) &&
              data.uid is string &&
              data.email is string &&
              data.role in ['admin', 'coach', 'alumno'] &&
@@ -113,7 +113,9 @@ service cloud.firestore {
              (!('lastLoginAt' in data) || data.lastLoginAt is timestamp) &&
              (!('lastActivityAt' in data) || data.lastActivityAt is timestamp) &&
              (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
-             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 100000)) &&
+             (!('name' in data) || (data.name is string && data.name.size() < 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000000)) &&
+             (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() < 1000000)) &&
              (!('specialty' in data) || (data.specialty is string && data.specialty.size() < 200)) &&
              (!('bio' in data) || (data.bio is string && data.bio.size() < 10000)) &&
              (!('aiFeedback' in data) || data.aiFeedback is map) &&
