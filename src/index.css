@@ -9,6 +9,7 @@
   
   --color-kirateal: #14B8A6;
   --color-kirateal-light: #99F6E4;
+  --color-kirateal-dark: #0D9488;
   --color-kiragold: #D4AF37;
   --color-kiragold-dark: #B8860B;
   
@@ -18,8 +19,8 @@
   --color-intel-indigo: #6366F1;
   --color-empathy-rose: #F43F5E;
 
-  --color-primary: var(--color-primary, #1ec6b6);
-  --color-secondary: var(--color-secondary, #8b5cf6);
+  --color-primary: #1ec6b6;
+  --color-secondary: #8b5cf6;
 }
 
 [data-theme='indigo'] {
