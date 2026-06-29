@@ -2230,6 +2230,7 @@ function CoachProfileSettings({ profile }: any) {
             </button>
           </div>
         </form>
+      </div>
     </div>
   );
 }
