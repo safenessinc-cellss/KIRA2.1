@@ -1776,8 +1776,27 @@ function CoachProfileSettings({ profile }: any) {
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
-    } catch (e) {
-      handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`);
+    } catch (e: any) {
+      console.error("Error al guardar el perfil:", e);
+      let errorMsg = e instanceof Error ? e.message : String(e);
+      
+      try {
+        const parsed = JSON.parse(errorMsg);
+        if (parsed && parsed.error) {
+          errorMsg = parsed.error;
+        }
+      } catch (err) {
+        // Not JSON
+      }
+
+      let userFriendlyError = "Error al guardar el perfil. Por favor, verifica tu conexión.";
+      if (errorMsg.includes("permission-denied") || errorMsg.toLowerCase().includes("permission") || errorMsg.toLowerCase().includes("insufficient")) {
+        userFriendlyError = "Permiso denegado por las reglas de seguridad. Asegúrate de que la foto de perfil no sea excesivamente grande (límite aproximado de 100KB para carga directa en base64) o usa un enlace estándar.";
+      } else {
+        userFriendlyError = errorMsg;
+      }
+      setError(userFriendlyError);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setLoading(false);
     }
