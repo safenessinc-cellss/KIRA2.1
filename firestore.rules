@@ -104,7 +104,7 @@ service cloud.firestore {
              data.uid is string &&
              data.email is string &&
              data.role in ['admin', 'coach', 'alumno'] &&
-             data.createdAt is timestamp &&
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
              (!('approvalStatus' in data) || data.approvalStatus in ['pending', 'approved', 'rejected']) &&
              (!('points' in data) || data.points is number) &&
              (!('theme' in data) || data.theme is string) &&
