@@ -28,7 +28,14 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '../lib/utils';
 
-const resizeAndConvertToBase64 = (file: File, maxWidth = 300, maxHeight = 300, quality = 0.7): Promise<string> => {
+const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.75): Promise<string> => {
+  console.log(`[Compresión] Iniciando compresión para: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+  
+  if (file.size > 2 * 1024 * 1024) {
+    console.warn(`[Compresión] El archivo excede el límite recomendado de 2MB: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+    alert(`El archivo de imagen excede el tamaño recomendado de 2MB. Intentaremos comprimirlo para ajustarlo al límite.`);
+  }
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -36,36 +43,84 @@ const resizeAndConvertToBase64 = (file: File, maxWidth = 300, maxHeight = 300, q
       const img = new Image();
       img.src = event.target?.result as string;
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
+        let currentWidth = img.width;
+        let currentHeight = img.height;
+        let currentQuality = quality;
+        let currentMaxWidth = maxWidth;
+        let currentMaxHeight = maxHeight;
 
-        if (width > height) {
-          if (width > maxWidth) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
+        // Calculate initial dimensions
+        if (currentWidth > currentHeight) {
+          if (currentWidth > currentMaxWidth) {
+            currentHeight = Math.round((currentHeight * currentMaxWidth) / currentWidth);
+            currentWidth = currentMaxWidth;
           }
         } else {
-          if (height > maxHeight) {
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
+          if (currentHeight > currentMaxHeight) {
+            currentWidth = Math.round((currentWidth * currentMaxHeight) / currentHeight);
+            currentHeight = currentMaxHeight;
           }
         }
 
-        canvas.width = width;
-        canvas.height = height;
+        const canvas = document.createElement('canvas');
+        canvas.width = currentWidth;
+        canvas.height = currentHeight;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-          reject(new Error("No canvas 2D context"));
+          reject(new Error("No se pudo obtener el contexto del lienzo (Canvas)"));
           return;
         }
-        ctx.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+        ctx.drawImage(img, 0, 0, currentWidth, currentHeight);
+        let dataUrl = canvas.toDataURL('image/jpeg', currentQuality);
+        let sizeInBytes = Math.round((dataUrl.length - 'data:image/jpeg;base64,'.length) * 3 / 4);
+
+        console.log(`[Compresión] Tamaño inicial comprimido: ${(sizeInBytes / 1024).toFixed(2)} KB con calidad: ${currentQuality}`);
+
+        // Dynamic adjustment loop to ensure it's under 500KB
+        let attempts = 0;
+        while (sizeInBytes > 500 * 1024 && attempts < 5) {
+          attempts++;
+          currentQuality -= 0.15;
+          currentMaxWidth = Math.round(currentMaxWidth * 0.8);
+          currentMaxHeight = Math.round(currentMaxHeight * 0.8);
+
+          let w = img.width;
+          let h = img.height;
+          if (w > h) {
+            if (w > currentMaxWidth) {
+              h = Math.round((h * currentMaxWidth) / w);
+              w = currentMaxWidth;
+            }
+          } else {
+            if (h > currentMaxHeight) {
+              w = Math.round((w * currentMaxHeight) / h);
+              h = currentMaxHeight;
+            }
+          }
+
+          canvas.width = w;
+          canvas.height = h;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, w, h);
+          dataUrl = canvas.toDataURL('image/jpeg', Math.max(currentQuality, 0.1));
+          sizeInBytes = Math.round((dataUrl.length - 'data:image/jpeg;base64,'.length) * 3 / 4);
+
+          console.log(`[Compresión] Intento ${attempts}: Nuevo tamaño: ${(sizeInBytes / 1024).toFixed(2)} KB, calidad: ${currentQuality.toFixed(2)}, dimensiones: ${w}x${h}`);
+        }
+
+        console.log(`[Compresión] Finalizado con éxito. Tamaño final: ${(sizeInBytes / 1024).toFixed(2)} KB`);
         resolve(dataUrl);
       };
-      img.onerror = (err) => reject(err);
+      img.onerror = (err) => {
+        console.error("[Compresión] Error al cargar la imagen en memoria", err);
+        reject(new Error("Error al procesar la imagen."));
+      };
     };
-    reader.onerror = (err) => reject(err);
+    reader.onerror = (err) => {
+      console.error("[Compresión] Error al leer el archivo de imagen", err);
+      reject(new Error("Error al leer el archivo."));
+    };
   });
 };
 
@@ -94,17 +149,21 @@ export function CoachDashboard() {
 
     if (success === 'true' && type === 'coach_membership' && user) {
       try {
-        await updateDoc(doc(db, 'users', user.uid), {
-          membershipStatus: 'active',
-          membershipPaidAt: new Date(),
-          role: 'coach'
-        });
-        await addDoc(collection(db, 'transactions'), {
-          userId: user.uid,
-          amount: Number(amount),
-          type: 'coach_membership',
-          createdAt: new Date()
-        });
+        console.log("[Membresía] Registrando pago de membresía en paralelo...");
+        await Promise.all([
+          updateDoc(doc(db, 'users', user.uid), {
+            membershipStatus: 'active',
+            membershipPaidAt: new Date(),
+            role: 'coach'
+          }),
+          addDoc(collection(db, 'transactions'), {
+            userId: user.uid,
+            amount: Number(amount),
+            type: 'coach_membership',
+            createdAt: new Date()
+          })
+        ]);
+        console.log("[Membresía] Actualización de membresía y transacción registradas exitosamente.");
         setSearchParams({});
       } catch (e) {
         console.error('Error recording membership success:', e);
@@ -1395,8 +1454,11 @@ function CoachRegisterClient() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     try {
-      // 1. Create User Document (or Update if exists - simplified for demo: always create reference)
+      console.log(`[Registro Alumno] Registrando nuevo alumno con email: ${formData.email}...`);
+      
+      // 1. Create User Document
       const userRef = await addDoc(collection(db, 'users'), {
         displayName: formData.name,
         email: formData.email,
@@ -1406,32 +1468,45 @@ function CoachRegisterClient() {
         points: 0,
         status: 'awaiting_login'
       });
+      
+      console.log(`[Registro Alumno] Alumno creado con ID: ${userRef.id}. Ejecutando acciones secundarias en paralelo...`);
+
+      const secondaryTasks: Promise<any>[] = [];
 
       // 2. Enroll in course if selected
       if (formData.courseId) {
-        await addDoc(collection(db, 'enrollments'), {
-          userId: userRef.id,
-          courseId: formData.courseId,
-          progress: 0,
-          enrolledAt: new Date()
-        });
+        console.log(`[Registro Alumno] Agregando inscripción para el curso: ${formData.courseId}...`);
+        secondaryTasks.push(
+          addDoc(collection(db, 'enrollments'), {
+            userId: userRef.id,
+            courseId: formData.courseId,
+            progress: 0,
+            enrolledAt: new Date()
+          })
+        );
       }
 
       // 3. Create initial notification
-      await addDoc(collection(db, 'notifications'), {
-        userId: userRef.id,
-        title: '¡Bienvenido a Kira Coach!',
-        message: `Has sido registrado por tu coach. Completa tu primer diario hoy.`,
-        read: false,
-        createdAt: new Date(),
-        type: 'system'
-      });
+      secondaryTasks.push(
+        addDoc(collection(db, 'notifications'), {
+          userId: userRef.id,
+          title: '¡Bienvenido a Kira Coach!',
+          message: `Has sido registrado por tu coach. Completa tu primer diario hoy.`,
+          read: false,
+          createdAt: new Date(),
+          type: 'system'
+        })
+      );
+
+      // Execute dependent tasks in parallel
+      await Promise.all(secondaryTasks);
+      console.log(`[Registro Alumno] Acciones secundarias completadas exitosamente.`);
 
       setSuccess(true);
       setFormData({ name: '', email: '', courseId: '' });
       setTimeout(() => setSuccess(false), 3000);
     } catch (e) {
-      console.error(e);
+      console.error('[Registro Alumno] Error al registrar alumno:', e);
       setError('Error registrando alumno.');
     } finally {
       setLoading(false);
@@ -1759,8 +1834,10 @@ function CoachProfileSettings({ profile }: any) {
     e.preventDefault();
     if (!user) return;
     
+    console.log("[Perfil Coach] Iniciando proceso de guardado de perfil...");
     const validationError = validate();
     if (validationError) {
+      console.warn("[Perfil Coach] Error de validación al guardar:", validationError);
       setError(validationError);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
@@ -1768,16 +1845,31 @@ function CoachProfileSettings({ profile }: any) {
     setError(null);
 
     setLoading(true);
+
+    // Debugging logs to analyze payload size
+    if (formData.photoURL && formData.photoURL.startsWith('data:image/')) {
+      const photoSizeKB = Math.round((formData.photoURL.length - 'data:image/jpeg;base64,'.length) * 3 / 4 / 1024);
+      console.log(`[Perfil Coach] Foto de perfil en formato Base64 detectada. Tamaño: ${photoSizeKB} KB`);
+      if (photoSizeKB > 500) {
+        console.warn(`[Perfil Coach] Alerta: La foto de perfil (${photoSizeKB} KB) supera el límite recomendado de 500KB para Firestore.`);
+      }
+    }
+
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
+      const payload = {
         ...formData,
         mediaItems,
         updatedAt: new Date()
-      });
+      };
+      
+      console.log("[Perfil Coach] Enviando payload a Firestore para el usuario:", user.uid);
+      await updateDoc(doc(db, 'users', user.uid), payload);
+      
+      console.log("[Perfil Coach] Perfil actualizado exitosamente en Firestore.");
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (e: any) {
-      console.error("Error al guardar el perfil:", e);
+      console.error("[Perfil Coach] Error fatal al guardar el perfil:", e);
       let errorMsg = e instanceof Error ? e.message : String(e);
       
       try {
@@ -1791,7 +1883,7 @@ function CoachProfileSettings({ profile }: any) {
 
       let userFriendlyError = "Error al guardar el perfil. Por favor, verifica tu conexión.";
       if (errorMsg.includes("permission-denied") || errorMsg.toLowerCase().includes("permission") || errorMsg.toLowerCase().includes("insufficient")) {
-        userFriendlyError = "Permiso denegado por las reglas de seguridad. Asegúrate de que la foto de perfil no sea excesivamente grande (límite aproximado de 100KB para carga directa en base64) o usa un enlace estándar.";
+        userFriendlyError = "Permiso denegado por las reglas de seguridad de Firestore. El documento excede los límites permitidos (comprime tu foto de perfil a menos de 500KB o reduce el tamaño de tus recursos adjuntos).";
       } else {
         userFriendlyError = errorMsg;
       }
