@@ -100,12 +100,11 @@ service cloud.firestore {
     
     function isValidUser() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'role', 'approvalStatus', 'points', 'theme', 'isEmailVerified', 'staffPermissions', 'lastLoginAt', 'lastActivityAt', 'createdAt', 'updatedAt', 'specialty', 'specialties', 'bio', 'aiFeedback', 'registeredByCoach', 'status', 'membershipStatus', 'membershipPaidAt', 'socialLinks', 'calendlyUrl', 'experienceLevel', 'languages', 'welcomeVideoUrl', 'rating', 'studentCount', 'mediaItems']) &&
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'role', 'approvalStatus', 'points', 'theme', 'isEmailVerified', 'staffPermissions', 'lastLoginAt', 'lastActivityAt', 'createdAt', 'specialty', 'bio', 'aiFeedback', 'registeredByCoach', 'status', 'membershipStatus', 'membershipPaidAt', 'socialLinks', 'specialties', 'calendlyUrl', 'experienceLevel', 'languages', 'welcomeVideoUrl', 'rating', 'studentCount', 'mediaItems', 'updatedAt', 'manualActiveStudents', 'manualAvgProgress', 'manualRecentSessions']) &&
              data.uid is string &&
              data.email is string &&
              data.role in ['admin', 'coach', 'alumno'] &&
              data.createdAt is timestamp &&
-             (!('updatedAt' in data) || data.updatedAt is timestamp) &&
              (!('approvalStatus' in data) || data.approvalStatus in ['pending', 'approved', 'rejected']) &&
              (!('points' in data) || data.points is number) &&
              (!('theme' in data) || data.theme is string) &&
@@ -114,19 +113,23 @@ service cloud.firestore {
              (!('lastLoginAt' in data) || data.lastLoginAt is timestamp) &&
              (!('lastActivityAt' in data) || data.lastActivityAt is timestamp) &&
              (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
-             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 100000)) &&
              (!('specialty' in data) || (data.specialty is string && data.specialty.size() < 200)) &&
-             (!('specialties' in data) || data.specialties is list) &&
              (!('bio' in data) || (data.bio is string && data.bio.size() < 10000)) &&
              (!('aiFeedback' in data) || data.aiFeedback is map) &&
              (!('socialLinks' in data) || data.socialLinks is map) &&
-             (!('calendlyUrl' in data) || (data.calendlyUrl is string && data.calendlyUrl.size() < 500)) &&
+             (!('specialties' in data) || data.specialties is list) &&
+             (!('calendlyUrl' in data) || data.calendlyUrl is string) &&
              (!('experienceLevel' in data) || data.experienceLevel is string) &&
              (!('languages' in data) || data.languages is string) &&
-             (!('welcomeVideoUrl' in data) || (data.welcomeVideoUrl is string && data.welcomeVideoUrl.size() < 1000)) &&
+             (!('welcomeVideoUrl' in data) || data.welcomeVideoUrl is string) &&
              (!('rating' in data) || data.rating is number) &&
              (!('studentCount' in data) || data.studentCount is number) &&
-             (!('mediaItems' in data) || data.mediaItems is list);
+             (!('mediaItems' in data) || data.mediaItems is list) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp) &&
+             (!('manualActiveStudents' in data) || data.manualActiveStudents is number) &&
+             (!('manualAvgProgress' in data) || data.manualAvgProgress is number) &&
+             (!('manualRecentSessions' in data) || data.manualRecentSessions is number);
     }
 
     function isValidMessage() {
@@ -385,15 +388,6 @@ service cloud.firestore {
     match /stats/{id} {
       allow read: if true;
       allow write: if isAdmin();
-    }
-
-    match /ai_metrics/{id} {
-      allow read, write: if isAdmin();
-    }
-
-    match /sales/{id} {
-      allow read: if isAdmin();
-      allow write: if true; // In a real app, this might be restricted to server or processed transactions
     }
 
     match /urgent_escalations/{id} {
