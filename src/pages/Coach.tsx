@@ -6,6 +6,7 @@ import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, orde
 import { Link, useSearchParams } from 'react-router-dom';
 import { MediaUpload } from '../components/MediaUpload';
 import { CoachAnalytics } from '../components/CoachAnalytics';
+import { useToast } from '../hooks/useToast';
 import { Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import ReactQuill from 'react-quill';
@@ -1423,7 +1424,7 @@ function CoachAutomationView() {
                        Detectamos que el 40% de las ventas ocurren tras la automatización de la "Bóveda Élite".
                     </p>
                   </div>
-                  <button className="w-full py-4 bg-white/10 hover:bg-white text-indigo-900 border border-white/20 hover:border-white rounded-2xll text-[10px] font-black uppercase tracking-widest transition-all">
+                  <button className="w-full py-4 bg-white/10 hover:bg-white text-white hover:text-indigo-900 border border-white/20 hover:border-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all">
                      Ver Reporte IA
                   </button>
                </div>
@@ -1706,6 +1707,7 @@ function AnalyticsStatCard({ icon, label, value, trend, color }: any) {
 
 function CoachProfileSettings({ profile }: any) {
   const { user } = useAuth();
+  const { success: toastSuccess, error: toastError } = useToast();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -1839,21 +1841,28 @@ function CoachProfileSettings({ profile }: any) {
     if (validationError) {
       console.warn("[Perfil Coach] Error de validación al guardar:", validationError);
       setError(validationError);
+      toastError(`Error de validación: ${validationError}`);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
     setError(null);
 
-    setLoading(true);
-
-    // Debugging logs to analyze payload size
+    // Secondary base64 image size guard before saving
     if (formData.photoURL && formData.photoURL.startsWith('data:image/')) {
-      const photoSizeKB = Math.round((formData.photoURL.length - 'data:image/jpeg;base64,'.length) * 3 / 4 / 1024);
-      console.log(`[Perfil Coach] Foto de perfil en formato Base64 detectada. Tamaño: ${photoSizeKB} KB`);
-      if (photoSizeKB > 500) {
-        console.warn(`[Perfil Coach] Alerta: La foto de perfil (${photoSizeKB} KB) supera el límite recomendado de 500KB para Firestore.`);
+      const photoSizeInBytes = Math.round((formData.photoURL.length - 'data:image/jpeg;base64,'.length) * 3 / 4);
+      const photoSizeKB = photoSizeInBytes / 1024;
+      console.log(`[Perfil Coach] Foto de perfil en formato Base64 detectada. Tamaño: ${photoSizeKB.toFixed(2)} KB`);
+      
+      if (photoSizeInBytes > 2 * 1024 * 1024) {
+        const sizeError = "La foto de perfil supera el límite absoluto de 2MB. Por favor, selecciona otra imagen o comp rímela antes de guardar.";
+        setError(sizeError);
+        toastError(sizeError);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
       }
     }
+
+    setLoading(true);
 
     try {
       const payload = {
@@ -1862,11 +1871,24 @@ function CoachProfileSettings({ profile }: any) {
         updatedAt: new Date()
       };
       
-      console.log("[Perfil Coach] Enviando payload a Firestore para el usuario:", user.uid);
-      await updateDoc(doc(db, 'users', user.uid), payload);
+      console.log("[Perfil Coach] Enviando payload a Firestore en paralelo con la notificación para el usuario:", user.uid);
       
-      console.log("[Perfil Coach] Perfil actualizado exitosamente en Firestore.");
+      // Parallel writes: 1) update the user document, 2) add a success notification
+      await Promise.all([
+        updateDoc(doc(db, 'users', user.uid), payload),
+        addDoc(collection(db, 'notifications'), {
+          userId: user.uid,
+          title: 'Perfil Sincronizado',
+          message: 'Tu perfil académico y portafolio de recursos fueron guardados exitosamente.',
+          read: false,
+          createdAt: new Date(),
+          type: 'system'
+        })
+      ]);
+      
+      console.log("[Perfil Coach] Escrituras paralelas de perfil completadas exitosamente.");
       setSuccess(true);
+      toastSuccess("¡Perfil y portafolio guardados exitosamente!");
       setTimeout(() => setSuccess(false), 3000);
     } catch (e: any) {
       console.error("[Perfil Coach] Error fatal al guardar el perfil:", e);
@@ -1888,6 +1910,7 @@ function CoachProfileSettings({ profile }: any) {
         userFriendlyError = errorMsg;
       }
       setError(userFriendlyError);
+      toastError(userFriendlyError);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setLoading(false);
@@ -1944,18 +1967,27 @@ function CoachProfileSettings({ profile }: any) {
 
     // If it is an image file (e.g. photo or infographic), convert directly to optimized Base64 to bypass storage upload
     if (file.type.startsWith('image/')) {
+      if (file.size > 2 * 1024 * 1024) {
+        toastError("La imagen excede el límite máximo de 2MB. Por favor, selecciona un archivo más pequeño.");
+        setUploading(null);
+        e.target.value = '';
+        return;
+      }
       try {
         const base64Url = await resizeAndConvertToBase64(file);
         if (type === 'photo') {
           setFormData(prev => ({ ...prev, photoURL: base64Url }));
+          toastSuccess("Foto de perfil optimizada y cargada.");
         } else if (type === 'resource') {
           setNewMedia(prev => ({ ...prev, url: base64Url, type: 'imagen' }));
+          toastSuccess("Imagen de recurso optimizada y cargada.");
         }
         setUploading(null);
         e.target.value = '';
         return;
-      } catch (err) {
+      } catch (err: any) {
         console.error("Error compressing image to base64, trying standard upload fallback:", err);
+        toastError("Error al comprimir la imagen. Intentando carga estándar...");
       }
     }
 
@@ -2027,7 +2059,20 @@ function CoachProfileSettings({ profile }: any) {
   };
 
   return (
-    <div className="flex flex-col gap-8 animate-in slide-in-from-bottom-2">
+    <div className="relative flex flex-col gap-8 animate-in slide-in-from-bottom-2">
+      {/* Global Loader Overlay to prevent user action while saving */}
+      {loading && (
+        <div className="fixed inset-0 z-[1000] flex flex-col items-center justify-center bg-slate-950/70 backdrop-blur-md">
+          <div className="bg-white border border-slate-100 p-8 rounded-3xl flex flex-col items-center gap-4 max-w-sm text-center shadow-2xl">
+            <Loader2 className="animate-spin text-kirateal" size={40} />
+            <h4 className="text-slate-900 font-black uppercase text-sm tracking-widest mt-2">Sincronizando Sistemas</h4>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Guardando tu perfil élite y portafolio académico en paralelo con la base de datos de Firestore. Por favor, no cierres esta ventana.
+            </p>
+          </div>
+        </div>
+      )}
+
        {/* Información Principal */}
       <div className="flex-1 bg-white rounded-2xl border border-slate-200 p-8">
         <div className="mb-8 flex justify-between items-start">
