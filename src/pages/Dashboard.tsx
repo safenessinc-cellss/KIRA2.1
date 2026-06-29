@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, getDocs, addDoc, onSnapshot, doc, updateDoc, setDoc, orderBy, limit } from 'firebase/firestore';
-import { GoogleGenAI } from "@google/genai";
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { MentorWidget } from '../components/MentorWidget';
@@ -29,8 +28,7 @@ export function Dashboard() {
   const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
 
   const [showCommunityModal, setShowCommunityModal] = useState(false);
-  // NUEVO ENLACE DE WHATSAPP ACTUALIZADO
-  const [whatsappUrl, setWhatsappUrl] = useState('https://chat.whatsapp.com/GpX9cVM0AOXGV6f56Sam6H');
+  const [whatsappUrl, setWhatsappUrl] = useState('');
   const [communityLinksArr, setCommunityLinksArr] = useState<any[]>([]);
   const [savingCommunity, setSavingCommunity] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -51,18 +49,6 @@ export function Dashboard() {
               setWhatsappUrl(data.links[0].url);
             }
           }
-        } else {
-          // Si no existe el documento en Firestore, crear uno con el enlace por defecto
-          const defaultLinks = [{
-            name: 'Comunidad WhatsApp',
-            description: 'Soporte estelar, networking y canal oficial de avisos de Kira Moreno.',
-            url: 'https://chat.whatsapp.com/GpX9cVM0AOXGV6f56Sam6H',
-            badge: 'Canal Oficial',
-            type: 'whatsapp'
-          }];
-          setDoc(docRef, { links: defaultLinks });
-          setCommunityLinksArr(defaultLinks);
-          setWhatsappUrl(defaultLinks[0].url);
         }
       }, (err) => {
         console.error("Error listening to community settings:", err);
@@ -606,7 +592,7 @@ export function Dashboard() {
                       
                       <button 
                         onClick={() => {
-                          alert(`Has adquirido o desbloqueado con éxito el libro: ${book.title}. ¡Busca su versión digital en tu correo u opción de lectura en tu perfil!`);
+                          alert(`Has adquirido o desbloqueado con éxito el libro: ${book.title}. ¡Busca su version digital en tu correo u opción de lectura en tu perfil!`);
                         }}
                         className="w-full mt-auto text-[11px] py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-2xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider"
                       >
@@ -886,12 +872,19 @@ export function Journal() {
         Si no hay entradas previas, dale una bienvenida inspiradora.
       `;
 
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-      const result = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: prompt
+      const response = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gemini-3.5-flash',
+          contents: prompt
+        })
       });
-      const text = result.text || '';
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      const text = data.text || '';
       setAiPrompt(text.trim());
     } catch (e) {
       console.error('Error generating predictive prompt:', e);
@@ -945,7 +938,7 @@ export function Journal() {
         </div>
 
         {aiPrompt && (
-          <div className="mb-10 p-8 bg-slate-50 border border-slate-100 rounded-[32px] flex items-start gap-5 relative overflow-hidden group">
+          <div className="mb-10 p-8 bg-slate-50 border border-slate-150 rounded-[32px] flex items-start gap-5 relative overflow-hidden group">
              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-100/50 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
              <div className="p-3 bg-white rounded-2xl shadow-sm text-violet-600 border border-slate-100 group-hover:scale-110 transition-transform">
                 <Sparkles size={20} />
