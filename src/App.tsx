@@ -14,15 +14,15 @@ import { HRDashboard } from './pages/HRDashboard';
 import { UserProfile } from './pages/UserProfile';
 import { Microlearning } from './pages/Microlearning';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { FloatingWhatsAppButton } from './components/FloatingWhatsAppButton';
 import { doc, onSnapshot } from 'firebase/firestore';
-// ✅ CORREGIDO - RUTA CORRECTA
 import { db } from './firebase';
+import { ToastProvider } from './hooks/useToast';
 
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<any>({ primaryColor: '', secondaryColor: '' });
 
   useEffect(() => {
+    // Only in browser and if db is initialized
     let unsub = () => {};
     try {
       unsub = onSnapshot(doc(db, 'settings', 'website'), (docSnap) => {
@@ -50,52 +50,56 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <ErrorBoundary>
-        <BrowserRouter>
-          <Routes>
-            <Route element={<CoreLayout />}>
-              <Route path="/" element={<Landing />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/microlearning" element={<Microlearning />} />
-              
-              <Route element={<ProtectedRoute allowedRoles={['alumno']} />}>
-                <Route element={<DashboardLayout title="Mi Aprendizaje" />}>
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/dashboard/journal" element={<Journal />} />
-                  <Route path="/dashboard/elite-library" element={<EliteLibrary />} />
-                  <Route path="/dashboard/community" element={<Community />} />
-                  <Route path="/dashboard/profile" element={<UserProfile />} />
+    <ToastProvider>
+      <ThemeProvider>
+        <ErrorBoundary>
+          <BrowserRouter>
+            <Routes>
+              <Route element={<CoreLayout />}>
+                <Route path="/" element={<Landing />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/microlearning" element={<Microlearning />} />
+                
+                {/* Alumnos */}
+                <Route element={<ProtectedRoute allowedRoles={['alumno']} />}>
+                  <Route element={<DashboardLayout title="Mi Aprendizaje" />}>
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/dashboard/journal" element={<Journal />} />
+                    <Route path="/dashboard/elite-library" element={<EliteLibrary />} />
+                    <Route path="/dashboard/community" element={<Community />} />
+                    <Route path="/dashboard/profile" element={<UserProfile />} />
+                  </Route>
                 </Route>
-              </Route>
-
-              <Route element={<ProtectedRoute allowedRoles={['coach']} />}>
-                <Route element={<DashboardLayout title="Panel de Coach" />}>
-                  <Route path="/coach" element={<CoachDashboard />} />
-                  <Route path="/coach/courses" element={<CoachCourses />} />
-                  <Route path="/coach/session" element={<SessionIntelligence />} />
-                  <Route path="/coach/profile" element={<UserProfile />} />
+  
+                {/* Coaches */}
+                <Route element={<ProtectedRoute allowedRoles={['coach']} />}>
+                  <Route element={<DashboardLayout title="Panel de Coach" />}>
+                    <Route path="/coach" element={<CoachDashboard />} />
+                    <Route path="/coach/courses" element={<CoachCourses />} />
+                    <Route path="/coach/session" element={<SessionIntelligence />} />
+                    <Route path="/coach/profile" element={<UserProfile />} />
+                  </Route>
                 </Route>
-              </Route>
-
-              <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-                <Route element={<DashboardLayout title="Control total" />}>
-                  <Route path="/admin" element={<AdminMonitor />} />
+  
+                {/* Admins */}
+                <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+                  <Route element={<DashboardLayout title="Control total" />}>
+                    <Route path="/admin" element={<AdminMonitor />} />
+                  </Route>
                 </Route>
-              </Route>
-
-              <Route element={<ProtectedRoute allowedRoles={['hr_admin']} />}>
-                <Route element={<DashboardLayout title="Portal Empresa" />}>
-                  <Route path="/hr" element={<HRDashboard />} />
+  
+                {/* HR B2B */}
+                <Route element={<ProtectedRoute allowedRoles={['hr_admin']} />}>
+                  <Route element={<DashboardLayout title="Portal Empresa" />}>
+                    <Route path="/hr" element={<HRDashboard />} />
+                  </Route>
                 </Route>
+  
               </Route>
-
-            </Route>
-          </Routes>
-          {/* Botón flotante de WhatsApp - aparece en todas las páginas */}
-          <FloatingWhatsAppButton />
-        </BrowserRouter>
-      </ErrorBoundary>
-    </ThemeProvider>
+            </Routes>
+          </BrowserRouter>
+        </ErrorBoundary>
+      </ThemeProvider>
+    </ToastProvider>
   );
 }
