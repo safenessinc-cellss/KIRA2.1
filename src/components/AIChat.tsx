@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI } from '@google/genai';
 import { X, Send, Sparkles } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
 import { useLocation } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import { generateGemini } from '../lib/gemini';
+import { useToast } from '../hooks/useToast';
 
 export function AIChat() {
   const [open, setOpen] = useState(false);
@@ -14,6 +15,7 @@ export function AIChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const location = useLocation();
+  const { error: toastError } = useToast();
 
   const getContextualPreamble = () => {
     const path = location.pathname;
@@ -58,14 +60,9 @@ export function AIChat() {
     setLoading(true);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) throw new Error("API key not found");
-
-      const ai = new GoogleGenAI({ apiKey });
-      
       const contextualContext = getContextualPreamble();
 
-      const response = await ai.models.generateContent({
+      const text = await generateGemini({
         model: "gemini-3.1-pro-preview",
         contents: newMsgs.map(m => ({
           role: m.role === 'user' ? 'user' : 'model',
@@ -93,12 +90,14 @@ export function AIChat() {
         }
       });
 
-      if (response.text) {
-        setMessages([...newMsgs, { role: 'ai', text: response.text }]);
+      if (text) {
+        setMessages([...newMsgs, { role: 'ai', text }]);
       }
     } catch (err: any) {
       console.error(err);
-      setMessages([...newMsgs, { role: 'ai', text: 'Sincronización interrumpida. Intuyo una anomalía en la red. Regresemos en unos minutos.' }]);
+      const userFriendlyMsg = err?.message || 'Sincronización interrumpida. Intuyo una anomalía en la red.';
+      toastError(userFriendlyMsg);
+      setMessages([...newMsgs, { role: 'ai', text: `**Error de Conectividad IA:** ${userFriendlyMsg}` }]);
     } finally {
       setLoading(false);
     }
