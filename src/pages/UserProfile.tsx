@@ -1,15 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { db } from '../firebase';
+import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, updateDoc } from 'firebase/firestore';
-import { User, Image as ImageIcon, Instagram, Linkedin, Twitter, Save, Loader2, Upload } from 'lucide-react';
+import { User, Image as ImageIcon, Instagram, Linkedin, Twitter, Save, Loader2, Upload, AlertCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { ImageUpload } from '../components/ImageUpload';
 
 export function UserProfile() {
   const { user } = useAuth();
-  const [photoURL, setPhotoURL] = useState(user?.photoURL || '');
-  const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [photoURL, setPhotoURL] = useState(user?.photoURL || user?.photoUrl || '');
+  const [displayName, setDisplayName] = useState(user?.displayName || user?.name || '');
   const [socialLinks, setSocialLinks] = useState({
     instagram: user?.socialLinks?.instagram || '',
     linkedin: user?.socialLinks?.linkedin || '',
@@ -17,6 +17,20 @@ export function UserProfile() {
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Sync state when user details load asynchronously
+  useEffect(() => {
+    if (user) {
+      setPhotoURL(user.photoURL || user.photoUrl || '');
+      setDisplayName(user.displayName || user.name || '');
+      setSocialLinks({
+        instagram: user.socialLinks?.instagram || '',
+        linkedin: user.socialLinks?.linkedin || '',
+        twitter: user.socialLinks?.twitter || '',
+      });
+    }
+  }, [user]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,27 +38,52 @@ export function UserProfile() {
     
     setSaving(true);
     setSuccess(false);
+    setError(null);
 
     try {
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, {
         displayName,
+        name: displayName,
         photoURL,
         photoUrl: photoURL,
         socialLinks
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
-    } catch (error) {
-      console.error('Error saving profile', error);
-      alert('Error updating profile.');
+    } catch (err: any) {
+      console.error('Error saving profile', err);
+      let errorMsg = err instanceof Error ? err.message : String(err);
+      
+      try {
+        const parsed = JSON.parse(errorMsg);
+        if (parsed && parsed.error) {
+          errorMsg = parsed.error;
+        }
+      } catch (e) {
+        // Not JSON
+      }
+
+      let userFriendlyError = "Error al guardar el perfil. Por favor, verifica tu conexión.";
+      if (errorMsg.includes("permission-denied") || errorMsg.toLowerCase().includes("permission") || errorMsg.toLowerCase().includes("insufficient")) {
+        userFriendlyError = "Permiso denegado por las reglas de seguridad. Asegúrate de que la foto de perfil no sea excesivamente grande (límite aproximado de 1MB) o usa un enlace estándar.";
+      } else {
+        userFriendlyError = errorMsg;
+      }
+      setError(userFriendlyError);
+      
+      try {
+        handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+      } catch (silencedError) {
+        // Logged, we keep displaying the user-friendly message
+      }
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="max-w-2xl mx-auto w-full">
+    <div className="max-w-2xl mx-auto w-full animate-in fade-in duration-300">
       <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-xl shadow-slate-200/20">
         <div className="flex items-center gap-3 mb-8">
           <div className="w-12 h-12 bg-kirateal/10 rounded-xl flex items-center justify-center text-kirateal">
@@ -55,6 +94,12 @@ export function UserProfile() {
             <p className="text-slate-500 text-sm">Gestiona tu identidad y conexiones en Kira.</p>
           </div>
         </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-xs font-bold flex items-center gap-2">
+            <AlertCircle size={16} /> {error}
+          </div>
+        )}
 
         <form onSubmit={handleSave} className="space-y-8">
           {/* Avatar Section */}
