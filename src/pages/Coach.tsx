@@ -4,7 +4,6 @@ import { storage, db, handleFirestoreError, OperationType } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { Link, useSearchParams } from 'react-router-dom';
-import { GoogleGenAI } from "@google/genai";
 import { MediaUpload } from '../components/MediaUpload';
 import { CoachAnalytics } from '../components/CoachAnalytics';
 import { Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight } from 'lucide-react';
@@ -29,7 +28,46 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '../lib/utils';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const resizeAndConvertToBase64 = (file: File, maxWidth = 300, maxHeight = 300, quality = 0.7): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error("No canvas 2D context"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+};
 
 type CoachTab = 'dashboard' | 'tracking' | 'nexus' | 'register' | 'automation' | 'profile' | 'analytics';
 
@@ -206,6 +244,45 @@ function CoachDashboardView({ profile, isApproved }: any) {
   const [topTopics, setTopTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [isEditingMetrics, setIsEditingMetrics] = useState(false);
+  const [editedMetrics, setEditedMetrics] = useState({
+    activeStudents: 0,
+    avgProgress: 0,
+    recentSessions: 0
+  });
+
+  useEffect(() => {
+    if (profile) {
+      setEditedMetrics({
+        activeStudents: profile.manualActiveStudents !== undefined ? profile.manualActiveStudents : stats.activeStudents,
+        avgProgress: profile.manualAvgProgress !== undefined ? profile.manualAvgProgress : stats.avgProgress,
+        recentSessions: profile.manualRecentSessions !== undefined ? profile.manualRecentSessions : stats.recentSessions
+      });
+    } else {
+      setEditedMetrics({
+        activeStudents: stats.activeStudents,
+        avgProgress: stats.avgProgress,
+        recentSessions: stats.recentSessions
+      });
+    }
+  }, [profile, stats]);
+
+  const handleSaveMetrics = async () => {
+    if (!user) return;
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        manualActiveStudents: Number(editedMetrics.activeStudents),
+        manualAvgProgress: Number(editedMetrics.avgProgress),
+        manualRecentSessions: Number(editedMetrics.recentSessions),
+        updatedAt: new Date()
+      });
+      setIsEditingMetrics(false);
+    } catch (e) {
+      console.error("Error saving manual metrics:", e);
+      alert("Error al guardar métricas.");
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
     const fetchDashboardStats = async () => {
@@ -333,12 +410,83 @@ function CoachDashboardView({ profile, isApproved }: any) {
   const neuPct = totalEmotions > 0 ? (stats.sentiment.neutral / totalEmotions) * 100 : 0;
   const negPct = totalEmotions > 0 ? (stats.sentiment.negative / totalEmotions) * 100 : 0;
 
+  const displayActiveStudents = profile?.manualActiveStudents !== undefined ? profile.manualActiveStudents : stats.activeStudents;
+  const displayAvgProgress = profile?.manualAvgProgress !== undefined ? profile.manualAvgProgress : stats.avgProgress;
+  const displayRecentSessions = profile?.manualRecentSessions !== undefined ? profile.manualRecentSessions : stats.recentSessions;
+
   return (
     <div className="flex flex-col gap-10 animate-in fade-in slide-in-from-bottom-2">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white/50 backdrop-blur-md px-8 py-5 rounded-[30px] border border-slate-200/50 shadow-sm gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-2.5 h-2.5 rounded-full bg-kirateal animate-pulse" />
+          <span className="text-sm font-black text-slate-800 tracking-tight uppercase">Métricas de Rendimiento</span>
+        </div>
+        <button 
+          onClick={() => setIsEditingMetrics(!isEditingMetrics)}
+          className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-wider hover:bg-black transition-all cursor-pointer active:scale-95 shadow-md shadow-slate-900/10"
+        >
+          {isEditingMetrics ? "Cancelar Edición" : "Editar Indicadores"}
+        </button>
+      </div>
+
+      {isEditingMetrics && (
+        <div className="bg-white rounded-[40px] border border-slate-200 p-8 shadow-xl animate-in zoom-in-95 duration-200">
+          <h3 className="text-lg font-black text-slate-900 tracking-tight mb-2">Personalizar Indicadores</h3>
+          <p className="text-xs text-slate-500 mb-6">Configura y publica manualmente los números que se muestran en tu panel de control.</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Alumnos Activos</label>
+              <input 
+                type="number"
+                min="0"
+                value={editedMetrics.activeStudents}
+                onChange={e => setEditedMetrics({...editedMetrics, activeStudents: parseInt(e.target.value) || 0})}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Promedio Progreso (%)</label>
+              <input 
+                type="number"
+                min="0"
+                max="100"
+                value={editedMetrics.avgProgress}
+                onChange={e => setEditedMetrics({...editedMetrics, avgProgress: Math.min(100, Math.max(0, parseInt(e.target.value) || 0))})}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Sesiones Recientes</label>
+              <input 
+                type="number"
+                min="0"
+                value={editedMetrics.recentSessions}
+                onChange={e => setEditedMetrics({...editedMetrics, recentSessions: parseInt(e.target.value) || 0})}
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <button 
+              onClick={() => setIsEditingMetrics(false)}
+              className="px-6 py-3 border border-slate-200 text-slate-600 rounded-2xl text-xs font-bold uppercase tracking-wider hover:bg-slate-50 transition-all"
+            >
+              Cancelar
+            </button>
+            <button 
+              onClick={handleSaveMetrics}
+              className="px-6 py-3 bg-kirateal text-white rounded-2xl text-xs font-black uppercase tracking-wider hover:bg-kirateal-dark transition-all shadow-lg shadow-kirateal/20"
+            >
+              Publicar Cambios
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Alumnos Activos" value={loading ? "..." : stats.activeStudents} icon={<Users className="text-indigo-600" />} />
-        <StatCard title="Promedio Progreso" value={loading ? "..." : `${stats.avgProgress}%`} icon={<BarChart3 className="text-emerald-600" />} />
-        <StatCard title="Sesiones Recientes" value={loading ? "..." : stats.recentSessions} icon={<Calendar className="text-amber-500" />} />
+        <StatCard title="Alumnos Activos" value={loading ? "..." : displayActiveStudents} icon={<Users className="text-indigo-600" />} />
+        <StatCard title="Promedio Progreso" value={loading ? "..." : `${displayAvgProgress}%`} icon={<BarChart3 className="text-emerald-600" />} />
+        <StatCard title="Sesiones Recientes" value={loading ? "..." : displayRecentSessions} icon={<Calendar className="text-amber-500" />} />
         <StatCard title="Ingresos Brutos" value="$0.00" icon={<CreditCard className="text-teal-600" />} />
       </div>
 
@@ -560,14 +708,20 @@ function CoachStudentsActivity() {
               "summary": un párrafo corto (máx 3 oraciones) resumiendo el estado emocional y actitud predominante del grupo.
               "mood": una sola palabra que los defina ("Positivo", "Neutral", "Estresado", "Frustrado", "Motivado").`;
               
-              const result = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-                config: { responseMimeType: "application/json" }
+              const res = await fetch('/api/gemini/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: 'gemini-3.5-flash',
+                  contents: prompt,
+                  config: { responseMimeType: "application/json" }
+                })
               });
+              const data = await res.json();
+              if (data.error) throw new Error(data.error);
 
-              if (result.text) {
-                 const parsed = JSON.parse(result.text);
+              if (data.text) {
+                 const parsed = JSON.parse(data.text);
                  setTeamSentiment(parsed);
               }
             } catch (error) {
@@ -1574,7 +1728,7 @@ function CoachProfileSettings({ profile }: any) {
     const bioText = formData.bio.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, '').trim();
     if (!bioText) return "La biografía es obligatoria para presentarte ante tus alumnos.";
     
-    if (formData.photoURL) {
+    if (formData.photoURL && !formData.photoURL.startsWith('data:image/')) {
       if (!urlRegex.test(formData.photoURL)) return "El formato de la URL de la foto no es válido.";
       if (!photoRegex.test(formData.photoURL) && !formData.photoURL.includes('firebasestorage.googleapis.com')) {
          return "La URL de la foto debe terminar en una extensión de imagen válida (jpg, png, etc.) o ser de Firebase Storage.";
@@ -1643,13 +1797,19 @@ function CoachProfileSettings({ profile }: any) {
       
       Responde estrictamente en JSON: {"type": "video|pdf|imagen", "pointCost": number, "explanation": "Breve razón"}`;
 
-      const result = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: "gemini-3.5-flash",
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        })
       });
+      const dataJson = await res.json();
+      if (dataJson.error) throw new Error(dataJson.error);
 
-      const data = JSON.parse(result.text || '{}');
+      const data = JSON.parse(dataJson.text || '{}');
       setNewMedia(prev => ({ 
         ...prev, 
         type: data.type || 'video', 
@@ -1670,6 +1830,48 @@ function CoachProfileSettings({ profile }: any) {
 
     setUploading(type);
     setError(null);
+
+    // If it is an image file (e.g. photo or infographic), convert directly to optimized Base64 to bypass storage upload
+    if (file.type.startsWith('image/')) {
+      try {
+        const base64Url = await resizeAndConvertToBase64(file);
+        if (type === 'photo') {
+          setFormData(prev => ({ ...prev, photoURL: base64Url }));
+        } else if (type === 'resource') {
+          setNewMedia(prev => ({ ...prev, url: base64Url, type: 'imagen' }));
+        }
+        setUploading(null);
+        e.target.value = '';
+        return;
+      } catch (err) {
+        console.error("Error compressing image to base64, trying standard upload fallback:", err);
+      }
+    }
+
+    // Detect if storage is empty, mock, or custom placeholder to simulate download immediately
+    const storageBucket = storage.app.options.storageBucket || '';
+    const isMock = !storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value';
+
+    if (isMock) {
+      setTimeout(() => {
+        let mockUrl = '';
+        if (file.type.startsWith('image/')) {
+          mockUrl = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=600';
+        } else if (file.type.startsWith('video/')) {
+          mockUrl = 'https://www.w3schools.com/html/mov_bbb.mp4';
+        } else {
+          mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+        }
+
+        if (type === 'photo') setFormData(prev => ({ ...prev, photoURL: mockUrl }));
+        else if (type === 'welcome') setFormData(prev => ({ ...prev, welcomeVideoUrl: mockUrl }));
+        else if (type === 'resource') setNewMedia(prev => ({ ...prev, url: mockUrl, type: file.type.includes('pdf') ? 'pdf' : file.type.includes('video') ? 'video' : 'imagen' }));
+
+        setUploading(null);
+        alert(`[Simulador] Archivo "${file.name}" cargado con éxito en modo de desarrollo.`);
+      }, 1000);
+      return;
+    }
 
     try {
       const storageRef = ref(storage, `coaches/${user.uid}/${type}_${Date.now()}_${file.name}`);
@@ -1714,7 +1916,7 @@ function CoachProfileSettings({ profile }: any) {
   };
 
   return (
-    <div className="flex flex-col xl:flex-row gap-8 animate-in slide-in-from-bottom-2">
+    <div className="flex flex-col gap-8 animate-in slide-in-from-bottom-2">
        {/* Información Principal */}
       <div className="flex-1 bg-white rounded-2xl border border-slate-200 p-8">
         <div className="mb-8 flex justify-between items-start">
@@ -2028,119 +2230,6 @@ function CoachProfileSettings({ profile }: any) {
             </button>
           </div>
         </form>
-      </div>
-
-      {/* Editor de Contenido / Espacio (Bóveda Externa) */}
-      <div className="w-full xl:w-[450px] bg-white rounded-2xl border border-slate-200 p-8 flex flex-col">
-          <div className="mb-6">
-            <h3 className="text-lg font-bold text-slate-800 tracking-tight flex items-center gap-2"><FolderTree size={20} className="text-emerald-500" /> Bóveda de Contenido</h3>
-            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-              Organiza tus recursos premium. Arrastra para reordenar cómo los verán tus estudiantes.
-            </p>
-          </div>
-
-          <div className="space-y-3 mb-6 flex-1 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-             <DndContext 
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext 
-                  items={mediaItems.map((_, idx) => `${mediaItems[idx].title}-${idx}`)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {mediaItems.map((item, idx) => (
-                    <SortableMediaItem 
-                      key={`${item.title}-${idx}`} 
-                      id={`${item.title}-${idx}`} 
-                      item={item} 
-                      index={idx}
-                      onRemove={handleRemoveMedia} 
-                    />
-                  ))}
-                </SortableContext>
-              </DndContext>
-
-             {mediaItems.length === 0 && (
-                <div className="p-12 border-2 border-dashed border-slate-100 rounded-3xl text-center flex flex-col items-center opacity-60">
-                   <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                      <FolderTree size={24} className="text-slate-300" />
-                   </div>
-                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest italic">Bóveda vacía</span>
-                </div>
-             )}
-          </div>
-
-          <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
-             <div className="flex justify-between items-center px-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.1em]">Nuevo Recurso</span>
-                <span className="text-[10px] font-bold text-slate-400">{mediaItems.length}/8</span>
-             </div>
-             
-             <div className="space-y-3">
-               <div className="relative">
-                 <input value={newMedia.title} onChange={e=>setNewMedia({...newMedia, title: e.target.value})} placeholder="Título descriptivo (ej: Guía de Meditación)" className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-kirateal/5 transition-all pr-12" />
-                 <button 
-                   type="button"
-                   onClick={handleAiMediaSuggestion}
-                   title="Kira sugiere Categoría y Costo"
-                   className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-kirateal hover:bg-kirateal/10 rounded-lg transition-all"
-                 >
-                   <Sparkles size={14} className={cn(uploading === 'resource' && "animate-spin")} />
-                 </button>
-               </div>
-               
-               <div className="grid grid-cols-2 gap-2">
-                 <div className="relative">
-                    <select value={newMedia.type} onChange={e=>setNewMedia({...newMedia, type: e.target.value})} className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs outline-none w-full appearance-none">
-                       <option value="video">🎥 Video Masterclass</option>
-                       <option value="pdf">📄 Workbook (PDF)</option>
-                       <option value="imagen">🖼️ Infografía Premium</option>
-                    </select>
-                 </div>
-                 <div className="relative">
-                    <input type="number" value={newMedia.pointCost} onChange={e=>setNewMedia({...newMedia, pointCost: parseInt(e.target.value)})} placeholder="Costo pts" className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-2 py-2.5 text-xs outline-none focus:ring-2 focus:ring-kirateal/5 transition-all" />
-                    <Zap size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-kiragold" />
-                 </div>
-               </div>
-               
-               <div className="flex gap-2">
-                 <div className="flex-1">
-                   <input 
-                     value={newMedia.url} 
-                     onChange={e=>setNewMedia({...newMedia, url: e.target.value})} 
-                     placeholder={uploading === 'resource' ? "Subiendo archivo..." : "URL o sube PDF/Video..."} 
-                     className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs outline-none focus:ring-2 focus:ring-kirateal/5 transition-all h-full" 
-                   />
-                 </div>
-                 <div className="relative">
-                   <input 
-                     type="file" 
-                     id="resource-upload" 
-                     className="hidden" 
-                     accept=".pdf,video/*,image/*"
-                     onChange={(e) => handleFileUpload(e, 'resource')} 
-                   />
-                   <label 
-                     htmlFor="resource-upload"
-                     className="flex items-center justify-center p-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-all cursor-pointer h-full shadow-lg shadow-slate-200"
-                   >
-                     {uploading === 'resource' ? <Loader2 size={16} className="animate-spin" /> : <UploadCloud size={16} />}
-                   </label>
-                 </div>
-               </div>
-               
-               <button 
-                 type="button"
-                 onClick={handleAddMedia} 
-                 disabled={mediaItems.length >= 8 || !newMedia.title || !newMedia.url} 
-                 className="w-full py-3 bg-kirateal hover:bg-kirateal-light text-white font-bold text-[11px] uppercase tracking-widest rounded-xl transition-all disabled:opacity-50 shadow-xl shadow-kirateal/10 flex items-center justify-center gap-2 active:scale-95"
-                >
-                   <PlusCircle size={16} /> Asegurar en Bóveda
-                </button>
-             </div>
-          </div>
-      </div>
     </div>
   );
 }
@@ -2272,13 +2361,19 @@ export function CoachCourses() {
       
       Devuelve la respuesta en formato JSON estrictamente válido con las llaves: "title", "description", "syllabus" (donde syllabus es un string formateado con los módulos).`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: "gemini-3.5-flash",
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        })
       });
+      const dataJson = await res.json();
+      if (dataJson.error) throw new Error(dataJson.error);
 
-      const data = JSON.parse(response.text || '{}');
+      const data = JSON.parse(dataJson.text || '{}');
 
       setTitle(data.title || title);
       setDescription((data.description || description) + "\n\n### Temario Propuesto:\n" + (data.syllabus || ""));
