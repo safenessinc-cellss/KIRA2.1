@@ -17,8 +17,8 @@ const Journal = React.lazy(() => import('./pages/Dashboard').then(m => ({ defaul
 const EliteLibrary = React.lazy(() => import('./pages/EliteLibrary').then(m => ({ default: m.EliteLibrary })));
 const Community = React.lazy(() => import('./pages/Community').then(m => ({ default: m.Community })));
 const AdminMonitor = React.lazy(() => import('./pages/Admin').then(m => ({ default: m.AdminMonitor })));
-const CoachDashboard = React.lazy(() => import('./pages/Coach.tsx').then(m => ({ default: m.CoachDashboard })));
-const CoachCourses = React.lazy(() => import('./pages/Coach.tsx').then(m => ({ default: m.CoachCourses })));
+const CoachDashboard = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachDashboard })));
+const CoachCourses = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachCourses })));
 const SessionIntelligence = React.lazy(() => import('./pages/SessionIntelligence'));
 const HRDashboard = React.lazy(() => import('./pages/HRDashboard').then(m => ({ default: m.HRDashboard })));
 const UserProfile = React.lazy(() => import('./pages/UserProfile').then(m => ({ default: m.UserProfile })));
