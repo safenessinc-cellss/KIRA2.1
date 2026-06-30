@@ -237,4 +237,330 @@ export const CoachStudents: React.FC = () => {
                 <h6 className="mb-0 text-dark-50">Pendientes</h6>
                 <h3 className="mb-0">{stats.pending}</h3>
               </div>
-              <Clock size={32
+              <Clock size={32} className="opacity-50" />
+            </div>
+          </div>
+        </div>
+        <div className="col-md-3">
+          <div className="card bg-success text-white">
+            <div className="card-body d-flex align-items-center justify-content-between">
+              <div>
+                <h6 className="mb-0 text-white-50">Aprobados</h6>
+                <h3 className="mb-0">{stats.approved}</h3>
+              </div>
+              <UserCheck size={32} className="opacity-50" />
+            </div>
+          </div>
+        </div>
+        <div className="col-md-3">
+          <div className="card bg-info text-white">
+            <div className="card-body d-flex align-items-center justify-content-between">
+              <div>
+                <h6 className="mb-0 text-white-50">Ingresos</h6>
+                <h3 className="mb-0">${stats.totalRevenue.toFixed(2)}</h3>
+              </div>
+              <DollarSign size={32} className="opacity-50" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div className="card mb-4">
+        <div className="card-body">
+          <div className="row g-3">
+            <div className="col-md-4">
+              <div className="input-group">
+                <span className="input-group-text bg-white border-end-0">
+                  <Search size={18} className="text-muted" />
+                </span>
+                <input
+                  type="text"
+                  className="form-control border-start-0"
+                  placeholder="Buscar alumno o curso..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="col-md-3">
+              <select
+                className="form-select"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as any)}
+              >
+                <option value="all">Todos los estados</option>
+                <option value="pending">Pendientes</option>
+                <option value="approved">Aprobados</option>
+                <option value="rejected">Rechazados</option>
+              </select>
+            </div>
+            <div className="col-md-3">
+              <select
+                className="form-select"
+                value={paymentFilter}
+                onChange={(e) => setPaymentFilter(e.target.value as any)}
+              >
+                <option value="all">Todos los pagos</option>
+                <option value="pending">Pendientes</option>
+                <option value="paid">Pagados</option>
+                <option value="free">Gratuitos</option>
+              </select>
+            </div>
+            <div className="col-md-2 text-md-end">
+              <span className="badge bg-secondary p-2">
+                {filteredStudents.length} alumnos
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Lista de alumnos */}
+      {filteredStudents.length === 0 ? (
+        <div className="alert alert-info d-flex align-items-center">
+          <AlertCircle size={24} className="me-3" />
+          <div>
+            <h6 className="mb-0">No hay alumnos inscritos</h6>
+            <p className="mb-0 small">
+              Los alumnos que se inscriban aparecerán aquí automáticamente.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="table-responsive">
+          <table className="table table-hover">
+            <thead className="table-light">
+              <tr>
+                <th>Alumno</th>
+                <th>Curso</th>
+                <th>Estado</th>
+                <th>Pago</th>
+                <th>Fecha</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredStudents.map((student) => (
+                <tr key={student.id}>
+                  <td>
+                    <div>
+                      <strong>{student.studentName}</strong>
+                      <div className="text-muted small">{student.studentEmail}</div>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="d-flex align-items-center gap-2">
+                      <BookOpen size={14} className="text-muted" />
+                      <span>{student.courseTitle}</span>
+                    </div>
+                  </td>
+                  <td>{getStatusBadge(student.status)}</td>
+                  <td>
+                    <div>
+                      {getPaymentBadge(student.paymentStatus)}
+                      {student.paymentStatus === 'paid' && student.paymentAmount > 0 && (
+                        <div className="text-success small">
+                          ${student.paymentAmount.toFixed(2)}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td>
+                    <div className="d-flex align-items-center gap-1">
+                      <Calendar size={14} className="text-muted" />
+                      <small>
+                        {format(student.enrolledAt.toDate(), 'dd/MM/yyyy', { locale: es })}
+                      </small>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="d-flex gap-2">
+                      {student.status === 'pending' && (
+                        <>
+                          <button
+                            className="btn btn-success btn-sm d-flex align-items-center gap-1"
+                            onClick={() => handleApprove(student.id)}
+                            disabled={processing === student.id}
+                          >
+                            <UserCheck size={14} />
+                            Aprobar
+                          </button>
+                          <button
+                            className="btn btn-outline-danger btn-sm d-flex align-items-center gap-1"
+                            onClick={() => handleReject(student.id)}
+                            disabled={processing === student.id}
+                          >
+                            <UserX size={14} />
+                          </button>
+                        </>
+                      )}
+                      {student.status === 'approved' && student.paymentStatus === 'pending' && (
+                        <button
+                          className="btn btn-info btn-sm d-flex align-items-center gap-1"
+                          onClick={() => {
+                            setSelectedStudent(student);
+                            setPaymentAmount(student.paymentAmount || 99);
+                            setShowPaymentModal(true);
+                          }}
+                          disabled={processing === student.id}
+                        >
+                          <DollarSign size={14} />
+                          Registrar Pago
+                        </button>
+                      )}
+                      <button
+                        className="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1"
+                        onClick={() => setSelectedStudent(student)}
+                      >
+                        <Eye size={14} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Modal de detalles del alumno */}
+      {selectedStudent && !showPaymentModal && (
+        <div
+          className="modal show d-block"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}
+        >
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Detalles del Alumno</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => setSelectedStudent(null)}
+                />
+              </div>
+              <div className="modal-body">
+                <div className="mb-3">
+                  <strong>Nombre:</strong> {selectedStudent.studentName}
+                </div>
+                <div className="mb-3">
+                  <strong>Email:</strong> {selectedStudent.studentEmail}
+                </div>
+                <div className="mb-3">
+                  <strong>Curso:</strong> {selectedStudent.courseTitle}
+                </div>
+                <div className="mb-3">
+                  <strong>Estado:</strong> {getStatusBadge(selectedStudent.status)}
+                </div>
+                <div className="mb-3">
+                  <strong>Pago:</strong> {getPaymentBadge(selectedStudent.paymentStatus)}
+                </div>
+                {selectedStudent.paymentStatus === 'paid' && (
+                  <div className="mb-3">
+                    <strong>Monto pagado:</strong> ${selectedStudent.paymentAmount?.toFixed(2)}
+                  </div>
+                )}
+                <div className="mb-3">
+                  <strong>Fecha de inscripción:</strong>{' '}
+                  {format(selectedStudent.enrolledAt.toDate(), 'dd/MM/yyyy HH:mm', { locale: es })}
+                </div>
+                {selectedStudent.progress !== undefined && (
+                  <div className="mb-3">
+                    <strong>Progreso:</strong> {selectedStudent.progress}%
+                    <div className="progress">
+                      <div
+                        className="progress-bar"
+                        style={{ width: `${selectedStudent.progress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setSelectedStudent(null)}
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de registro de pago */}
+      {showPaymentModal && selectedStudent && (
+        <div
+          className="modal show d-block"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}
+        >
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">💰 Registrar Pago</h5>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => {
+                    setShowPaymentModal(false);
+                    setPaymentAmount(0);
+                  }}
+                />
+              </div>
+              <div className="modal-body">
+                <p className="text-muted">
+                  Registra el pago del alumno <strong>{selectedStudent.studentName}</strong> para el curso <strong>{selectedStudent.courseTitle}</strong>
+                </p>
+                <div className="mb-3">
+                  <label className="form-label">Monto (USD)</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
+                    min="0"
+                    step="0.01"
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setShowPaymentModal(false);
+                    setPaymentAmount(0);
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="btn btn-success"
+                  onClick={handleRegisterPayment}
+                  disabled={processing === selectedStudent.id}
+                >
+                  {processing === selectedStudent.id ? (
+                    <span className="spinner-border spinner-border-sm" />
+                  ) : (
+                    'Registrar Pago'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        .spin {
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+};
