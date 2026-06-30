@@ -16,7 +16,11 @@ export function Logo({ className, size = 40, withText = false, variant = 'color'
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'website'), (docSnap) => {
       if (docSnap.exists() && docSnap.data().logoImage) {
-        setLogoUrl(docSnap.data().logoImage);
+        let url = docSnap.data().logoImage;
+        if (url && !url.startsWith('http') && !url.startsWith('data:') && !url.startsWith('/')) {
+          url = '/' + url;
+        }
+        setLogoUrl(url);
       }
     });
     return () => unsub();
@@ -40,7 +44,7 @@ export function Logo({ className, size = 40, withText = false, variant = 'color'
     <div className={cn("flex items-center gap-4", className)}>
       <div className="relative shrink-0 flex items-center justify-center rounded-full overflow-hidden" style={{ width: size, height: size }}>
         <img 
-          src={logoUrl || "/images/11.png"} 
+          src={logoUrl || "/assets/kira-logo.png"} 
           alt="Kira Coach Logo" 
           className={cn(
              "w-full h-full object-contain drop-shadow-md",
