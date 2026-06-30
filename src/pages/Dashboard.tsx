@@ -9,11 +9,9 @@ import { Seal } from '../components/Brand';
 import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut, MessageCircle, Globe, Copy, Check } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
-import { useToast } from '../hooks/useToast';
 
 export function Dashboard() {
   const { user, logout } = useAuth();
-  const { success: toastSuccess, error: toastError } = useToast();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [courseReviewing, setCourseReviewing] = useState<string | null>(null);
@@ -231,38 +229,14 @@ export function Dashboard() {
     if(!user) return;
     setCheckingOutId(course.id);
     try {
-      if (Number(course.price || 0) === 0) {
-        console.log(`[Inscripción] Curso gratuito detectado: ${course.title}. Procesando alta inmediata...`);
-        await addDoc(collection(db, 'enrollments'), {
-          userId: user.uid,
-          courseId: course.id,
-          progress: 0,
-          createdAt: new Date()
-        });
-
-        await addDoc(collection(db, 'notifications'), {
-          userId: user.uid,
-          title: 'Inscripción Exitosa',
-          message: `Te has inscrito correctamente al programa gratuito "${course.title}". ¡Comienza ahora tu aprendizaje!`,
-          read: false,
-          createdAt: new Date(),
-          type: 'system'
-        });
-
-        toastSuccess("¡Inscripción gratuita completada con éxito!");
-        fetchData();
-        setCheckingOutId(null);
-        return;
-      }
-
       const resp = await fetch('/api/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           courseId: course.id,
           userId: user.uid,
-          amount: course.price,
-          title: course.title
+          amount: typeof course.price === 'number' ? course.price : Number(course.price) || 0,
+          title: course.title || 'Curso de Kira'
         })
       });
       const data = await resp.json();
@@ -272,7 +246,8 @@ export function Dashboard() {
       window.location.href = data.url;
     } catch(e: any) {
       console.error('Stripe Redirect Error:', e);
-      toastError('Error al iniciar la inscripción: ' + (e.message || String(e)));
+      alert('Error al iniciar la inscripción: ' + (e.message || String(e)));
+    } finally {
       setCheckingOutId(null);
     }
   };
