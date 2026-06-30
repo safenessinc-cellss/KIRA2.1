@@ -1795,8 +1795,15 @@ function CoachProfileSettings({ profile }: any) {
   };
 
   const validate = () => {
-    // Robust URL regex
-    const urlRegex = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([\/\w .-]*)*\/?$/i;
+    // Robust URL check helper
+    const isValidUrl = (str: string) => {
+      try {
+        const u = new URL(str);
+        return u.protocol === 'http:' || u.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    };
     const photoRegex = /\.(jpeg|jpg|gif|png|webp|svg)((\?.*)?|$)/i;
     const calendlyRegex = /calendly\.com\/[a-zA-Z0-9_\-]+(\/[a-zA-Z0-9_\-]+)?/i;
     const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
@@ -1810,9 +1817,11 @@ function CoachProfileSettings({ profile }: any) {
     if (!bioText) return "La biografía es obligatoria para presentarte ante tus alumnos.";
     
     if (formData.photoURL && !formData.photoURL.startsWith('data:image/')) {
-      if (!urlRegex.test(formData.photoURL)) return "El formato de la URL de la foto no es válido.";
-      if (!photoRegex.test(formData.photoURL) && !formData.photoURL.includes('firebasestorage.googleapis.com')) {
-         return "La URL de la foto debe terminar en una extensión de imagen válida (jpg, png, etc.) o ser de Firebase Storage.";
+      if (!isValidUrl(formData.photoURL)) return "El formato de la URL de la foto no es válido.";
+      if (!photoRegex.test(formData.photoURL) && 
+          !formData.photoURL.includes('firebasestorage.googleapis.com') && 
+          !formData.photoURL.includes('unsplash.com')) {
+         return "La URL de la foto debe terminar en una extensión de imagen válida (jpg, png, etc.) o ser de Firebase Storage/Unsplash.";
       }
     }
     
@@ -1823,8 +1832,10 @@ function CoachProfileSettings({ profile }: any) {
     }
 
     if (formData.welcomeVideoUrl) {
-      const isDirectVideo = urlRegex.test(formData.welcomeVideoUrl) && 
-        (formData.welcomeVideoUrl.match(/\.(mp4|webm|ogg)$/i) || formData.welcomeVideoUrl.includes('firebasestorage.googleapis.com'));
+      const isDirectVideo = isValidUrl(formData.welcomeVideoUrl) && 
+        (formData.welcomeVideoUrl.match(/\.(mp4|webm|ogg)$/i) || 
+         formData.welcomeVideoUrl.includes('firebasestorage.googleapis.com') ||
+         formData.welcomeVideoUrl.includes('unsplash.com'));
       const isYoutube = youtubeRegex.test(formData.welcomeVideoUrl);
       const isVimeo = vimeoRegex.test(formData.welcomeVideoUrl);
 
@@ -2692,3 +2703,4 @@ export function CoachCourses() {
     </div>
   );
 }
+
