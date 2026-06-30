@@ -15,16 +15,15 @@ export function useAuth() {
       try {
         if (u) {
           const docRef = doc(db, 'users', u.uid);
-          const userData = {
-            uid: u.uid,
-            email: u.email,
-            displayName: u.displayName,
-            photoURL: u.photoURL,
-            emailVerified: u.emailVerified,
-          };
-
           try {
             const docSnap = await getDoc(docRef);
+            let userData = {
+              uid: u.uid,
+              email: u.email,
+              displayName: u.displayName,
+              photoURL: u.photoURL,
+              emailVerified: u.emailVerified,
+            };
 
             const requestedRole = sessionStorage.getItem('requestedRole');
             sessionStorage.removeItem('requestedRole');
@@ -33,9 +32,7 @@ export function useAuth() {
               const firestoreData = docSnap.data();
               
               let currentRole = firestoreData.role as UserRole;
-              const isAdminEmail = u.email === 'safeness.c.a@gmail.com' || u.email === 'deuwyrobert@gmail.com';
-              
-              if (isAdminEmail && currentRole !== 'admin') {
+              if (u.email === 'safeness.c.a@gmail.com' && currentRole !== 'admin') {
                 currentRole = 'admin';
                 try {
                   await updateDoc(docRef, { role: 'admin' });
@@ -63,7 +60,7 @@ export function useAuth() {
                 console.error('Failed to update metadata:', e);
               }
             } else {
-              const isWhitelistedAdmin = u.email === 'safeness.c.a@gmail.com' || u.email === 'deuwyrobert@gmail.com';
+              const isWhitelistedAdmin = u.email === 'safeness.c.a@gmail.com';
               const newRole = isWhitelistedAdmin ? 'admin' : (requestedRole === 'coach' ? 'coach' : 'alumno');
               const initialApprovalStatus = isWhitelistedAdmin ? 'approved' : 'pending';
               
@@ -90,10 +87,17 @@ export function useAuth() {
               }
             }
           } catch (e) {
-            console.error("Error fetching user document from Firestore:", e);
-            // Fallback to basic auth data so the user isn't immediately logged out/redirected
-            setRole('alumno'); // Default role as fallback
-            setUser({ ...userData, role: 'alumno', uid: u.uid });
+            console.warn("[useAuth] Failed to load Firestore user document, using auth fallback:", e);
+            // Safe fallback to prevent session-close or blank screen
+            setRole('alumno');
+            setUser({
+              uid: u.uid,
+              email: u.email,
+              displayName: u.displayName || u.email?.split('@')[0] || 'User',
+              photoURL: u.photoURL || '',
+              role: 'alumno',
+              approvalStatus: 'approved'
+            });
           }
         } else {
           setUser(null);
