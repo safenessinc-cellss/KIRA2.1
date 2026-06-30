@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../hooks/useAuth';
-import { storage, db, handleFirestoreError, OperationType } from '../firebase';
+import { useAuth } from '../../hooks/useAuth';
+import { storage, db, handleFirestoreError, OperationType } from '../../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, orderBy, limit, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { Link, useSearchParams } from 'react-router-dom';
-import { MediaUpload } from '../components/MediaUpload';
-import { CoachAnalytics } from '../components/CoachAnalytics';
-import { useToast } from '../hooks/useToast';
-import { ProfileLayout } from './CoachProfile/Profile/ProfileLayout';
+import { MediaUpload } from '../../components/MediaUpload';
+import { CoachAnalytics } from '../../components/CoachAnalytics';
+import { useToast } from '../../hooks/useToast';
+import { ProfileLayout } from './Profile/ProfileLayout';
 import { Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { RichTextEditor } from '../components/RichTextEditor';
+import { RichTextEditor } from '../../components/RichTextEditor';
 import {
   DndContext, 
   closestCenter,
@@ -27,7 +27,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { cn } from '../lib/utils';
+import { cn } from '../../lib/utils';
 
 const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.75): Promise<string> => {
   console.log(`[Compresión] Iniciando compresión para: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
