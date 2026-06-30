@@ -2490,6 +2490,7 @@ export function CoachCourses() {
   const [price, setPrice] = useState(0);
   const [bannerUrl, setBannerUrl] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<any | null>(null);
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -2515,6 +2516,24 @@ export function CoachCourses() {
 
   const isApproved = profile?.approvalStatus === 'approved';
 
+  const handleCancel = () => {
+    setIsCreating(false);
+    setEditingCourse(null);
+    setTitle('');
+    setDescription('');
+    setPrice(0);
+    setBannerUrl('');
+  };
+
+  const handleEditClick = (course: any) => {
+    setEditingCourse(course);
+    setTitle(course.title || '');
+    setDescription(course.description || '');
+    setPrice(course.price || 0);
+    setBannerUrl(course.bannerUrl || '');
+    setIsCreating(false);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !isApproved) return;
@@ -2528,15 +2547,33 @@ export function CoachCourses() {
         status: 'published',
         createdAt: new Date()
       });
-      setIsCreating(false);
-      setTitle('');
-      setDescription('');
-      setPrice(0);
-      setBannerUrl('');
+      handleCancel();
       fetchCourses();
+      toastSuccess("Curso creado exitosamente.");
     } catch(e) {
       console.error(e);
       setErrorMsg('Error creando curso. Asegúrate de estar aprobado.');
+      setTimeout(() => setErrorMsg(''), 5000);
+    }
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !isApproved || !editingCourse) return;
+    try {
+      await updateDoc(doc(db, 'courses', editingCourse.id), {
+        title,
+        description,
+        price: Number(price),
+        bannerUrl,
+        updatedAt: new Date()
+      });
+      handleCancel();
+      fetchCourses();
+      toastSuccess("Curso actualizado exitosamente.");
+    } catch(e) {
+      console.error(e);
+      setErrorMsg('Error actualizando curso.');
       setTimeout(() => setErrorMsg(''), 5000);
     }
   };
@@ -2599,15 +2636,21 @@ export function CoachCourses() {
           <p className="text-[13px] text-slate-500 mt-0.5">Gestiona tu contenido y material educativo.</p>
         </div>
         <button 
-          onClick={() => setIsCreating(!isCreating)}
+          onClick={() => {
+            if (isCreating || editingCourse) {
+              handleCancel();
+            } else {
+              setIsCreating(true);
+            }
+          }}
           className={cn(
             "px-6 py-2.5 rounded-xl text-[12px] font-bold shadow-md transition-all active:scale-95",
-            isCreating 
+            (isCreating || editingCourse)
               ? "bg-slate-100 text-slate-600 shadow-none" 
               : "bg-primary text-white shadow-primary/10 hover:shadow-primary/20"
           )}
         >
-          {isCreating ? 'Cancelar' : 'Crear Nuevo Curso'}
+          {(isCreating || editingCourse) ? 'Cancelar' : 'Crear Nuevo Curso'}
         </button>
       </div>
 
@@ -2617,10 +2660,12 @@ export function CoachCourses() {
         </div>
       )}
 
-      {isCreating && (
-        <form onSubmit={handleCreate} className="bg-white p-8 rounded-2xl border border-slate-200 shadow-lg animate-in slide-in-from-top-4 duration-300">
+      {(isCreating || editingCourse) && (
+        <form onSubmit={editingCourse ? handleUpdate : handleCreate} className="bg-white p-8 rounded-2xl border border-slate-200 shadow-lg animate-in slide-in-from-top-4 duration-300">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold text-slate-900 text-base tracking-tight">Diseño de Curriculum</h3>
+            <h3 className="font-bold text-slate-900 text-base tracking-tight">
+              {editingCourse ? 'Editar Curso' : 'Diseño de Curriculum'}
+            </h3>
             <button 
                type="button"
                disabled={isAiGenerating}
@@ -2656,9 +2701,16 @@ export function CoachCourses() {
               <textarea required value={description} onChange={e=>setDescription(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none h-32 resize-none" placeholder="¿Qué lograrán tus alumnos?" />
             </div>
           </div>
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-3">
+            <button 
+              type="button" 
+              onClick={handleCancel} 
+              className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all active:scale-95"
+            >
+              Cancelar
+            </button>
             <button type="submit" className="px-8 py-3 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-xl transition-all active:scale-95">
-              Publicar Programa
+              {editingCourse ? 'Guardar Cambios' : 'Publicar Programa'}
             </button>
           </div>
         </form>
@@ -2683,7 +2735,7 @@ export function CoachCourses() {
                   <span className="text-[11px] font-bold">12 Alumnos</span>
                 </div>
                 <button 
-                  onClick={() => toastSuccess("La edición avanzada del temario y recursos estará disponible próximamente.")}
+                  onClick={() => handleEditClick(c)}
                   className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
                 >
                    Editar <ChevronRight size={14} />
@@ -2692,7 +2744,7 @@ export function CoachCourses() {
             </div>
           </div>
         ))}
-        {courses.length === 0 && !isCreating && (
+        {courses.length === 0 && !isCreating && !editingCourse && (
           <div className="col-span-full text-center py-20 bg-slate-50/50 rounded-3xl border-2 border-dashed border-slate-200">
              <BookOpen size={48} className="mx-auto text-slate-200 mb-4" />
              <p className="text-slate-400 font-medium text-sm">Aún no has diseñado ningún curso.</p>
