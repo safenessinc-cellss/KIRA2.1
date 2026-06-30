@@ -9,8 +9,7 @@ import { CoachAnalytics } from '../components/CoachAnalytics';
 import { useToast } from '../hooks/useToast';
 import { Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
+import { RichTextEditor } from '../components/RichTextEditor';
 import {
   DndContext, 
   closestCenter,
@@ -2384,23 +2383,11 @@ function CoachProfileSettings({ profile }: any) {
 
           <div className="space-y-2">
             <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Biografía y Enfoque Profesional</label>
-            <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden">
-               <ReactQuill 
-                theme="snow"
-                value={formData.bio}
-                onChange={(val) => setFormData({...formData, bio: val})}
-                className="bg-white"
-                placeholder="Cuenta tu trayectoria y metodología..."
-                modules={{
-                  toolbar: [
-                    [{ 'header': [1, 2, 3, false] }],
-                    ['bold', 'italic', 'underline', 'strike'],
-                    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                    ['link', 'clean']
-                  ],
-                }}
-              />
-            </div>
+            <RichTextEditor 
+              value={formData.bio}
+              onChange={(val) => setFormData({...formData, bio: val})}
+              placeholder="Cuenta tu trayectoria y metodología..."
+            />
           </div>
 
           {/* BÓVEDA DE CONTENIDO PREMIUM */}
