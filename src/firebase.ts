@@ -23,12 +23,18 @@ const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 
+// Use custom environment variable VITE_FIREBASE_DATABASE_ID if defined,
+// or fallback to the appletConfig databaseId ONLY if we're not using a custom project override.
+const databaseId = import.meta.env.VITE_FIREBASE_DATABASE_ID || 
+  (import.meta.env.VITE_FIREBASE_PROJECT_ID ? undefined : appletConfig.firestoreDatabaseId) || 
+  undefined;
+
 // Use the modern cache-persistent initializer (replaces enableIndexedDbPersistence)
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager(),
   }),
-}, appletConfig.firestoreDatabaseId || undefined);
+}, databaseId);
 
 export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 export const storage = getStorage(app);
@@ -83,6 +89,10 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
+
+// Connection test removed to prevent false-positives when running in offline or sandbox environments.
+
+
 
 // Connection test removed to prevent false-positives when running in offline or sandbox environments.
 
