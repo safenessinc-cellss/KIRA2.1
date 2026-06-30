@@ -5,9 +5,34 @@ import { fileURLToPath } from "url";
 import Stripe from "stripe";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { WebSocketServer } from "ws";
+import compression from "compression";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Simple Memory Cache for backend optimizations
+interface CacheEntry {
+  data: any;
+  expiresAt: number;
+}
+const memoryCache = new Map<string, CacheEntry>();
+
+function getCache(key: string): any | null {
+  const entry = memoryCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    memoryCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCache(key: string, data: any, ttlMs: number = 120 * 1000) { // 2 minutes default
+  memoryCache.set(key, {
+    data,
+    expiresAt: Date.now() + ttlMs
+  });
+}
 
 // Lazy Stripe Initialization
 let stripeClient: Stripe | null = null;
@@ -41,7 +66,13 @@ function getGeminiAI() {
 }
 
 const app = express();
-app.use(express.json());
+app.use(compression({
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) return false;
+    return compression.filter(req, res);
+  }
+}));
+app.use(express.json({ limit: "5mb" })); // Increased limit for payloads
 
 // API Routes
 app.get("/api/health", (req, res) => {
@@ -53,7 +84,7 @@ app.get("/api/gemini/config", (req, res) => {
   res.json({ configured: !!process.env.GEMINI_API_KEY });
 });
 
-// Gemini Content Generation Proxy
+// Gemini Content Generation Proxy with Cache, Retry and Timeout logic
 app.post("/api/gemini/generate", async (req, res) => {
   try {
     const key = process.env.GEMINI_API_KEY;
@@ -66,6 +97,14 @@ app.post("/api/gemini/generate", async (req, res) => {
 
     const { model, contents, config } = req.body;
     
+    // Create cache key based on contents and config to avoid repeating identical AI calls
+    const cacheKey = JSON.stringify({ model, contents, config });
+    const cachedResponse = getCache(cacheKey);
+    if (cachedResponse) {
+      console.log("[Cache Backend] Sirviendo respuesta de Gemini desde caché en memoria.");
+      return res.json({ text: cachedResponse, cached: true });
+    }
+
     // Map models to ensure we use supported models
     let mappedModel = model || "gemini-3.5-flash";
     const deprecatedModels = [
@@ -83,13 +122,41 @@ app.post("/api/gemini/generate", async (req, res) => {
     }
 
     const ai = getGeminiAI();
-    const result = await ai.models.generateContent({
-      model: mappedModel,
-      contents,
-      config
-    });
 
-    res.json({ text: result.text || "" });
+    // Implement retry & timeout wrapper
+    const fetchWithTimeoutAndRetry = async (retries = 2, delay = 1000): Promise<any> => {
+      const apiCall = ai.models.generateContent({
+        model: mappedModel,
+        contents,
+        config
+      });
+
+      // 15 seconds timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Timeout: La API de Gemini tardó demasiado en responder (>15s).")), 15000);
+      });
+
+      try {
+        return await Promise.race([apiCall, timeoutPromise]);
+      } catch (err: any) {
+        if (retries > 0 && (!err.message || !err.message.includes("Timeout"))) {
+          console.warn(`[Gemini Retry] Error en llamada a Gemini. Reintentando en ${delay}ms... (${retries} intentos restantes). Error:`, err.message);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return fetchWithTimeoutAndRetry(retries - 1, delay * 2);
+        }
+        throw err;
+      }
+    };
+
+    const result = await fetchWithTimeoutAndRetry();
+    const textResult = result.text || "";
+
+    // Cache successful response for 3 minutes to optimize future duplicate hits
+    if (textResult) {
+      setCache(cacheKey, textResult, 180 * 1000);
+    }
+
+    res.json({ text: textResult, cached: false });
   } catch (error: any) {
     console.error("Gemini API server proxy error:", error);
     res.status(500).json({ error: error.message || "Un error ocurrió al llamar a la API de Gemini en el servidor." });
