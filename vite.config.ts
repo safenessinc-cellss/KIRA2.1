@@ -20,12 +20,12 @@ export default defineConfig(({mode}) => {
           theme_color: '#1B4D5D',
           icons: [
             {
-              src: '/images/11.png',
+              src: '/assets/kira-logo.png',
               sizes: '192x192',
               type: 'image/png'
             },
             {
-              src: '/images/11.png',
+              src: '/assets/kira-logo.png',
               sizes: '512x512',
               type: 'image/png'
             }
@@ -45,6 +45,38 @@ export default defineConfig(({mode}) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+    },
+    build: {
+      target: 'esnext',
+      minify: 'esbuild',
+      cssMinify: true,
+      cssCodeSplit: true,
+      chunkSizeWarningLimit: 1200,
+      sourcemap: false,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
+                return 'vendor-react';
+              }
+              if (id.includes('firebase')) {
+                return 'vendor-firebase';
+              }
+              if (id.includes('recharts') || id.includes('d3')) {
+                return 'vendor-charts';
+              }
+              if (id.includes('lucide-react')) {
+                return 'vendor-icons';
+              }
+              if (id.includes('motion')) {
+                return 'vendor-animations';
+              }
+              return 'vendor-libs';
+            }
+          }
+        }
+      }
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
