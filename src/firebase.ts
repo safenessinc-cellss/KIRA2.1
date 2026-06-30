@@ -9,14 +9,23 @@ import { getStorage } from 'firebase/storage';
 import { getMessaging } from 'firebase/messaging';
 import appletConfig from '../firebase-applet-config.json';
 
+// Safe helper to read environment variables from Vite (import.meta.env)
+const getEnv = (key: string): string | undefined => {
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    return import.meta.env[key];
+  }
+  return undefined;
+};
+
 // Combine Vercel environment variables and local applet config fallback
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || appletConfig.apiKey,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || appletConfig.authDomain || 'kira2-a6a20.firebaseapp.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || appletConfig.projectId || 'kira2-a6a20',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || appletConfig.storageBucket || 'kira2-a6a20.firebasestorage.app',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || appletConfig.messagingSenderId,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || appletConfig.appId,
+  apiKey: getEnv('VITE_FIREBASE_API_KEY') || appletConfig.apiKey,
+  authDomain: getEnv('VITE_FIREBASE_AUTH_DOMAIN') || appletConfig.authDomain || 'kira2-a6a20.firebaseapp.com',
+  projectId: getEnv('VITE_FIREBASE_PROJECT_ID') || appletConfig.projectId || 'kira2-a6a20',
+  storageBucket: getEnv('VITE_FIREBASE_STORAGE_BUCKET') || appletConfig.storageBucket || 'kira2-a6a20.firebasestorage.app',
+  messagingSenderId: getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID') || appletConfig.messagingSenderId,
+  appId: getEnv('VITE_FIREBASE_APP_ID') || appletConfig.appId,
+  measurementId: getEnv('VITE_FIREBASE_MEASUREMENT_ID') || appletConfig.measurementId,
 };
 
 const app = initializeApp(firebaseConfig);
@@ -25,8 +34,8 @@ export const auth = getAuth(app);
 
 // Use custom environment variable VITE_FIREBASE_DATABASE_ID if defined,
 // or fallback to the appletConfig databaseId ONLY if we're not using a custom project override.
-const databaseId = import.meta.env.VITE_FIREBASE_DATABASE_ID || 
-  (import.meta.env.VITE_FIREBASE_PROJECT_ID ? undefined : appletConfig.firestoreDatabaseId) || 
+const databaseId = getEnv('VITE_FIREBASE_DATABASE_ID') || 
+  (getEnv('VITE_FIREBASE_PROJECT_ID') ? undefined : appletConfig.firestoreDatabaseId) || 
   undefined;
 
 // Use the modern cache-persistent initializer (replaces enableIndexedDbPersistence)
@@ -91,8 +100,3 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 // Connection test removed to prevent false-positives when running in offline or sandbox environments.
-
-
-
-// Connection test removed to prevent false-positives when running in offline or sandbox environments.
-
