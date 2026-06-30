@@ -1500,7 +1500,7 @@ function CoachRegisterClient() {
             userId: userRef.id,
             courseId: formData.courseId,
             progress: 0,
-            enrolledAt: new Date()
+            createdAt: new Date()
           })
         );
       }
