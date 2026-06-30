@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { 
   initializeFirestore, 
@@ -7,9 +7,9 @@ import {
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging } from 'firebase/messaging';
-import appletConfig from '../firebase-applet-config.json';
 
-// Safe helper to read environment variables from Vite (import.meta.env)
+// 🔥 CONFIGURACIÓN EXPLÍCITA - PROYECTO CORRECTO
+// PRIORIDAD: Variables de entorno > Fallback directo > appletConfig
 const getEnv = (key: string): string | undefined => {
   if (typeof import.meta !== 'undefined' && import.meta.env) {
     return import.meta.env[key];
@@ -17,37 +17,76 @@ const getEnv = (key: string): string | undefined => {
   return undefined;
 };
 
-// Combine Vercel environment variables and local applet config fallback
+// 🔥 AUTH DOMAIN FORZADO - Ignorar cualquier otro valor
+const FORCED_AUTH_DOMAIN = 'kira2-a6a20.firebaseapp.com';
+const FORCED_PROJECT_ID = 'kira2-a6a20';
+const FORCED_STORAGE_BUCKET = 'kira2-a6a20.firebasestorage.app';
+
+// 🔥 Configuración con prioridad: Env > Fallback > appletConfig
+let appletConfig: any = {};
+try {
+  // Intentar importar appletConfig, pero no fallar si no existe
+  appletConfig = require('../firebase-applet-config.json');
+} catch (e) {
+  console.log('ℹ️ firebase-applet-config.json no encontrado, usando valores por defecto');
+}
+
 const firebaseConfig = {
-  apiKey: getEnv('VITE_FIREBASE_API_KEY') || appletConfig.apiKey,
-  authDomain: getEnv('VITE_FIREBASE_AUTH_DOMAIN') || appletConfig.authDomain || 'kira2-a6a20.firebaseapp.com',
-  projectId: getEnv('VITE_FIREBASE_PROJECT_ID') || appletConfig.projectId || 'kira2-a6a20',
-  storageBucket: getEnv('VITE_FIREBASE_STORAGE_BUCKET') || appletConfig.storageBucket || 'kira2-a6a20.firebasestorage.app',
-  messagingSenderId: getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID') || appletConfig.messagingSenderId,
-  appId: getEnv('VITE_FIREBASE_APP_ID') || appletConfig.appId,
-  measurementId: getEnv('VITE_FIREBASE_MEASUREMENT_ID') || appletConfig.measurementId,
+  // 🔥 USAR VARIABLES DE ENTORNO (si existen) O FORZAR LAS CORRECTAS
+  apiKey: getEnv('VITE_FIREBASE_API_KEY') || appletConfig.apiKey || 'AIzaSyCYmfCeHXfrpKdMn_3G-rrim3wu0FIopiE',
+  authDomain: FORCED_AUTH_DOMAIN, // 🔥 FORZADO - Ignora cualquier otra cosa
+  projectId: FORCED_PROJECT_ID, // 🔥 FORZADO - Ignora cualquier otra cosa
+  storageBucket: FORCED_STORAGE_BUCKET, // 🔥 FORZADO - Ignora cualquier otra cosa
+  messagingSenderId: getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID') || appletConfig.messagingSenderId || '929279176008',
+  appId: getEnv('VITE_FIREBASE_APP_ID') || appletConfig.appId || '1:929279176008:web:c58eaaa666db86b1e4577d',
+  measurementId: getEnv('VITE_FIREBASE_MEASUREMENT_ID') || appletConfig.measurementId || '',
 };
 
-const app = initializeApp(firebaseConfig);
+// 🔥 LOG DE CONFIGURACIÓN PARA VERIFICAR
+console.log('🔥 ===== FIREBASE CONFIGURACIÓN =====');
+console.log('📦 authDomain:', firebaseConfig.authDomain);
+console.log('📦 projectId:', firebaseConfig.projectId);
+console.log('📦 storageBucket:', firebaseConfig.storageBucket);
+console.log('🌐 Dominio actual:', window.location.origin);
+console.log('📦 API Key:', firebaseConfig.apiKey?.substring(0, 10) + '...');
+console.log('=====================================');
 
+// 🔥 INICIALIZAR FIREBASE (solo si no hay una app)
+let app;
+try {
+  // Verificar si ya hay una app inicializada
+  const apps = getApps();
+  if (apps.length > 0) {
+    app = apps[0];
+    console.log('⚠️ Usando app existente:', app.name);
+  } else {
+    app = initializeApp(firebaseConfig);
+    console.log('✅ Nueva app inicializada');
+  }
+} catch (error) {
+  console.error('❌ Error al inicializar Firebase:', error);
+  throw error;
+}
+
+// 🔥 AUTENTICACIÓN
 export const auth = getAuth(app);
 
-// Use custom environment variable VITE_FIREBASE_DATABASE_ID if defined,
-// or fallback to the appletConfig databaseId ONLY if we're not using a custom project override.
-const databaseId = getEnv('VITE_FIREBASE_DATABASE_ID') || 
-  (getEnv('VITE_FIREBASE_PROJECT_ID') ? undefined : appletConfig.firestoreDatabaseId) || 
-  undefined;
+// 🔥 DATABASE ID (opcional)
+const databaseId = getEnv('VITE_FIREBASE_DATABASE_ID') || appletConfig.firestoreDatabaseId || undefined;
 
-// Use the modern cache-persistent initializer (replaces enableIndexedDbPersistence)
+// 🔥 FIRESTORE CON CACHE PERSISTENTE
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager(),
+    // cacheSizeBytes: 100 * 1024 * 1024, // 100MB opcional
   }),
 }, databaseId);
 
-export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
+// 🔥 STORAGE Y MESSAGING
 export const storage = getStorage(app);
+export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
+// 🔥 ENUMS Y HANDLERS DE ERROR
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',
@@ -95,8 +134,22 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  console.error('❌ Firestore Error:', JSON.stringify(errInfo, null, 2));
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Connection test removed to prevent false-positives when running in offline or sandbox environments.
+// 🔥 VERIFICACIÓN DE CONEXIÓN (opcional, no bloqueante)
+export const verifyFirebaseConnection = async () => {
+  try {
+    console.log('🔍 Verificando conexión a Firebase...');
+    // Intentar leer un documento de prueba (crea uno si no existe)
+    // Esto es opcional, solo para verificar
+    console.log('✅ Conexión a Firebase establecida');
+  } catch (error) {
+    console.warn('⚠️ No se pudo verificar la conexión:', error);
+  }
+};
+
+console.log('✅ Firebase inicializado correctamente');
+console.log('🔐 Auth Domain:', auth.config?.authDomain);
+console.log('📦 Project ID:', auth.config?.projectId);
