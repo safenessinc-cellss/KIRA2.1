@@ -2703,4 +2703,3 @@ export function CoachCourses() {
     </div>
   );
 }
-
