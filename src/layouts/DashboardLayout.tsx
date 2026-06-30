@@ -39,7 +39,8 @@ export function DashboardLayout({ title }: { title: string }) {
         if (change.type === 'added') {
           const data = change.doc.data();
           // Only show toast if it's very recent (last 10 seconds) to avoid historical toasts
-          const isRecent = (new Date().getTime() - data.createdAt.toDate().getTime()) < 10000;
+          const notificationDate = data.createdAt?.toDate ? data.createdAt.toDate() : (data.createdAt instanceof Date ? data.createdAt : new Date());
+          const isRecent = (new Date().getTime() - notificationDate.getTime()) < 10000;
           if (isRecent) {
              setToast({ title: data.title, message: data.message });
              setTimeout(() => setToast(null), 5000);
