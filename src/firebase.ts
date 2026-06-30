@@ -1,25 +1,36 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer, enableIndexedDbPersistence } from 'firebase/firestore';
+import { 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager 
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getMessaging } from 'firebase/messaging';
-import firebaseConfig from '../firebase-applet-config.json';
+import appletConfig from '../firebase-applet-config.json';
+
+// Combine Vercel environment variables and local applet config fallback
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || appletConfig.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || appletConfig.authDomain || 'kira2-a6a20.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || appletConfig.projectId || 'kira2-a6a20',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || appletConfig.storageBucket || 'kira2-a6a20.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || appletConfig.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || appletConfig.appId,
+};
 
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Use the modern cache-persistent initializer (replaces enableIndexedDbPersistence)
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+  }),
+}, appletConfig.firestoreDatabaseId || undefined);
+
 export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
-
-// Enable offline persistence
-enableIndexedDbPersistence(db).catch((err) => {
-  if (err.code == 'failed-precondition') {
-    console.warn("Multiple tabs open, persistence can only be enabled in one tab at a a time.");
-  } else if (err.code == 'unimplemented') {
-    console.warn("The current browser does not support all of the features required to enable persistence");
-  }
-});
-
 export const storage = getStorage(app);
 
 export enum OperationType {
