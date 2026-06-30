@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { 
+  onAuthStateChanged, 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  signOut,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile
+} from 'firebase/auth';
 
 export type UserRole = 'admin' | 'coach' | 'alumno' | null;
 
@@ -27,6 +35,8 @@ export function useAuth() {
 
             const requestedRole = sessionStorage.getItem('requestedRole');
             sessionStorage.removeItem('requestedRole');
+            const requestedName = sessionStorage.getItem('requestedName');
+            sessionStorage.removeItem('requestedName');
 
             if (docSnap.exists()) {
               const firestoreData = docSnap.data();
@@ -67,7 +77,7 @@ export function useAuth() {
               const newUser = {
                 uid: u.uid,
                 email: u.email,
-                displayName: u.displayName || '',
+                displayName: u.displayName || requestedName || u.email?.split('@')[0] || '',
                 photoURL: u.photoURL || '',
                 role: newRole,
                 approvalStatus: initialApprovalStatus,
@@ -128,7 +138,34 @@ export function useAuth() {
         console.log('User closed the login popup.');
       } else {
         console.error('Authentication Error:', error);
+        throw error;
       }
+    }
+  };
+
+  const loginWithEmail = async (email: string, password: string) => {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error: any) {
+      console.error('Email login error:', error);
+      throw error;
+    }
+  };
+
+  const signUpWithEmail = async (email: string, password: string, name: string, requestedRole: UserRole) => {
+    if (requestedRole) {
+      sessionStorage.setItem('requestedRole', requestedRole);
+    }
+    sessionStorage.setItem('requestedName', name);
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      if (userCredential.user) {
+        await updateProfile(userCredential.user, { displayName: name });
+      }
+      return userCredential.user;
+    } catch (error: any) {
+      console.error('Email signup error:', error);
+      throw error;
     }
   };
   
@@ -136,5 +173,5 @@ export function useAuth() {
     await signOut(auth);
   };
 
-  return { user, role, loading, login, logout };
+  return { user, role, loading, login, loginWithEmail, signUpWithEmail, logout };
 }
