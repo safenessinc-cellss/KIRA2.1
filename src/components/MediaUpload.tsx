@@ -98,6 +98,13 @@ export function MediaUpload({ onUploadComplete, folderPath, className, label = "
     console.log(`[MediaUpload] Attempting to upload to Firebase Storage: ${folderPath}/${uniqueFileName}`);
     const uploadTask = uploadBytesResumable(storageRef, finalFileOrBlob);
 
+    let wasTimeout = false;
+    const timeoutId = setTimeout(() => {
+      wasTimeout = true;
+      console.warn("[MediaUpload] Upload timeout reached (4s). Canceling upload to fallback immediately.");
+      uploadTask.cancel();
+    }, 4000);
+
     uploadTask.on(
       'state_changed',
       (snapshot) => {
@@ -105,12 +112,17 @@ export function MediaUpload({ onUploadComplete, folderPath, className, label = "
         setProgress(Math.round(prog));
       },
       async (error) => {
+        clearTimeout(timeoutId);
         console.warn("[MediaUpload] Storage Upload Failed (e.g. CORS/permissions). Error:", error);
         
         // Check if we have a base64Fallback (for images)
         if (base64Fallback) {
           console.log("[MediaUpload] Falling back to compressed base64 data URL...");
-          toastWarning("Carga a la nube restringida por red o CORS. Guardando imagen en base local.");
+          if (wasTimeout) {
+            toastWarning("Carga lenta o bloqueada. Usando copia optimizada local.");
+          } else {
+            toastWarning("Carga a la nube restringida por red o CORS. Guardando imagen en base local.");
+          }
           onUploadComplete(base64Fallback);
         } else {
           // If we couldn't compress or it's a video, try to use a basic FileReader fallback
@@ -133,6 +145,7 @@ export function MediaUpload({ onUploadComplete, folderPath, className, label = "
         setIsUploading(false);
       },
       async () => {
+        clearTimeout(timeoutId);
         try {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           console.log("[MediaUpload] Upload to Firebase Storage succeeded:", downloadURL);
