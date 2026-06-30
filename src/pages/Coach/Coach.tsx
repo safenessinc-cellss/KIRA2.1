@@ -203,7 +203,7 @@ export function CoachDashboard() {
         <div className="relative z-10 flex flex-col lg:flex-row gap-6">
           {/* Logo Kira Image */}
           <div className="hidden lg:flex shrink-0 items-center justify-center bg-white/60 border border-white p-4 rounded-[32px] shadow-sm w-32 h-32 aspect-square">
-            <img src="/images/11.png" alt="Kira Logo" className="w-full h-full object-contain filter drop-shadow-md" onError={(e) => (e.currentTarget.style.display = 'none')} />
+            <img src="/assets/kira-logo.png" alt="Kira Logo" className="w-full h-full object-contain filter drop-shadow-md" onError={(e) => (e.currentTarget.style.display = 'none')} />
           </div>
           
           <div className="flex-1">
