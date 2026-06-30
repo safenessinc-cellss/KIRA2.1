@@ -4345,7 +4345,17 @@ function PromotionsManagerView() {
                 {prom.imageUrl ? (
                    <img src={prom.imageUrl} alt={prom.title} className="w-full h-full object-cover" />
                 ) : (
-                   <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageUpload onUploadComplete={(url) => {handleEdit(prom); setImageUrl(url);}} currentImage="" folderPath="promotions" label="Añadir Imagen" /></div>
+                   <div className="w-full h-full flex items-center justify-center text-slate-300">
+                      <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-slate-50">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider text-center">Sin Imagen / Banner</span>
+                        <button 
+                          onClick={() => handleEdit(prom)} 
+                          className="mt-1.5 px-3 py-1 bg-white border border-slate-200 hover:border-kirateal text-slate-600 hover:text-kirateal text-[9px] font-black uppercase tracking-wider rounded transition"
+                        >
+                          Definir URL
+                        </button>
+                      </div>
+                    </div>
                 )}
                 <div className="absolute top-2 left-2 flex flex-col gap-1">
                    <span className={cn("px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider backdrop-blur-md shadow-sm border", prom.status === 'active' ? "bg-emerald-500/90 text-white border-emerald-400" : "bg-slate-500/90 text-white border-slate-400")}>
