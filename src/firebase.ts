@@ -1,94 +1,26 @@
 import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged, 
-  GoogleAuthProvider, 
-  signInWithPopup 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  addDoc, 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  orderBy, 
-  limit, 
-  onSnapshot,
-  deleteDoc,
-  connectFirestoreEmulator 
-} from 'firebase/firestore';
-import { 
-  getStorage, 
-  ref, 
-  uploadBytes, 
-  getDownloadURL,
-  deleteObject
-} from 'firebase/storage';
+import { getAuth } from 'firebase/auth';
+import { getFirestore, doc, getDocFromServer, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import { getMessaging } from 'firebase/messaging';
+import firebaseConfig from '../firebase-applet-config.json';
 
-// Configuración CORRECTA de Firebase
-const firebaseConfig = {
-  apiKey: "AIzaSyAZ3rzWYvaXYv0Wbc061Hahz6yir-L8rw8",
-  authDomain: "kira2-a6a20.firebaseapp.com",
-  projectId: "kira2-a6a20",
-  storageBucket: "kira2-a6a20.firebasestorage.app",
-  messagingSenderId: "981129066179",
-  appId: "1:981129066179:web:568a570bb67402cfa01476",
-  measurementId: "G-HDF2RLJGHB"
-};
-
-// Inicializar Firebase
 const app = initializeApp(firebaseConfig);
 
-// Inicializar servicios
 export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
-// Exportar funciones de Auth
-export { 
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  GoogleAuthProvider,
-  signInWithPopup
-};
+// Enable offline persistence
+enableIndexedDbPersistence(db).catch((err) => {
+  if (err.code == 'failed-precondition') {
+    console.warn("Multiple tabs open, persistence can only be enabled in one tab at a a time.");
+  } else if (err.code == 'unimplemented') {
+    console.warn("The current browser does not support all of the features required to enable persistence");
+  }
+});
 
-// Exportar funciones de Firestore
-export { 
-  collection, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  addDoc, 
-  query, 
-  where, 
-  getDocs, 
-  orderBy, 
-  limit, 
-  onSnapshot,
-  deleteDoc,
-  connectFirestoreEmulator
-};
-
-// Exportar funciones de Storage
-export { 
-  ref, 
-  uploadBytes, 
-  getDownloadURL,
-  deleteObject
-};
+export const storage = getStorage(app);
 
 export enum OperationType {
   CREATE = 'create',
@@ -141,15 +73,5 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Connection test
-async function testConnection() {
-  try {
-    if (typeof window !== 'undefined') {
-      await getDoc(doc(db, 'test', 'connection'));
-      console.log("✅ Firebase connection established successfully.");
-    }
-  } catch (error) {
-    console.error("❌ Firebase connection error:", error);
-  }
-}
-testConnection();
+// Connection test removed to prevent false-positives when running in offline or sandbox environments.
+
