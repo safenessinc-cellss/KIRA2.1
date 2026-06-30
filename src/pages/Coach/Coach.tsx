@@ -7,7 +7,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { MediaUpload } from '../../components/MediaUpload';
 import { CoachAnalytics } from '../../components/CoachAnalytics';
 import { useToast } from '../../hooks/useToast';
-import { ProfileLayout } from './Profile/ProfileLayout';
+import { ProfileLayout } from './ProfileLayout';
 import { Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { RichTextEditor } from '../../components/RichTextEditor';
