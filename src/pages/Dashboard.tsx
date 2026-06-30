@@ -9,9 +9,11 @@ import { Seal } from '../components/Brand';
 import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut, MessageCircle, Globe, Copy, Check } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
+import { useToast } from '../hooks/useToast';
 
 export function Dashboard() {
   const { user, logout } = useAuth();
+  const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [courseReviewing, setCourseReviewing] = useState<string | null>(null);
@@ -155,25 +157,40 @@ export function Dashboard() {
 
     if (success === 'true' && courseId && user) {
       try {
-        await addDoc(collection(db, 'enrollments'), {
-          userId: user.uid,
-          courseId,
-          progress: 0,
-          createdAt: new Date()
-        });
+        // Evitar duplicaciones consultando directamente antes de escribir
+        const existingQ = query(
+          collection(db, 'enrollments'),
+          where('userId', '==', user.uid),
+          where('courseId', '==', courseId)
+        );
+        const existingSnap = await getDocs(existingQ);
+        
+        if (existingSnap.empty) {
+          await addDoc(collection(db, 'enrollments'), {
+            userId: user.uid,
+            courseId,
+            progress: 0,
+            createdAt: new Date()
+          });
 
-        await addDoc(collection(db, 'transactions'), {
-          userId: user.uid,
-          amount: Number(amount),
-          type: 'course_purchase',
-          courseId,
-          createdAt: new Date()
-        });
+          await addDoc(collection(db, 'transactions'), {
+            userId: user.uid,
+            amount: Number(amount) || 0,
+            type: 'course_purchase',
+            courseId,
+            createdAt: new Date()
+          });
+
+          toastSuccess('¡Inscripción completada exitosamente! Bienvenido al curso.');
+        } else {
+          toastInfo('Ya estás inscrito en este curso.');
+        }
 
         setSearchParams({});
         fetchData();
-      } catch (e) {
+      } catch (e: any) {
         console.error('Error recording payment success:', e);
+        toastError('No se pudo registrar la inscripción: ' + (e.message || String(e)));
       }
     }
   };
@@ -246,7 +263,7 @@ export function Dashboard() {
       window.location.href = data.url;
     } catch(e: any) {
       console.error('Stripe Redirect Error:', e);
-      alert('Error al iniciar la inscripción: ' + (e.message || String(e)));
+      toastError('Error al iniciar la inscripción: ' + (e.message || String(e)));
     } finally {
       setCheckingOutId(null);
     }
