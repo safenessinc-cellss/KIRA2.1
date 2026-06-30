@@ -1,48 +1,59 @@
 // src/pages/admin/PendingUsers.tsx
 import React, { useState, useEffect } from 'react';
-import { getPendingUsers, approveUser, rejectUser, UserData } from '../../services/adminService';
+import { getPendingUsers, approveUser, rejectUser, getUserStats, PendingUser } from '../../services/adminService';
 import { useAuth } from '../../hooks/useAuth';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { 
-  UserCheck, 
-  UserX, 
-  Clock, 
-  Mail, 
-  User as UserIcon,
-  Calendar,
+import {
+  Users,
+  UserCheck,
+  UserX,
+  Clock,
+  Mail,
   Search,
-  Filter
+  Filter,
+  CheckCircle,
+  XCircle,
+  UserPlus,
+  Calendar,
+  Award,
+  Shield,
+  RefreshCw,
 } from 'lucide-react';
 
 export const PendingUsers: React.FC = () => {
   const { user } = useAuth();
-  const [users, setUsers] = useState<UserData[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<UserData[]>([]);
+  const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<PendingUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'coach' | 'student' | 'admin'>('all');
+  const [stats, setStats] = useState<any>(null);
   const [showRejectModal, setShowRejectModal] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'coach' | 'student' | 'admin'>('all');
 
   useEffect(() => {
-    loadUsers();
+    loadData();
   }, []);
 
   useEffect(() => {
     filterUsers();
-  }, [users, searchTerm, roleFilter]);
+  }, [pendingUsers, searchTerm, roleFilter]);
 
-  const loadUsers = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const data = await getPendingUsers();
-      setUsers(data);
-      setFilteredUsers(data);
+      const [users, statsData] = await Promise.all([
+        getPendingUsers(),
+        getUserStats(),
+      ]);
+      setPendingUsers(users);
+      setFilteredUsers(users);
+      setStats(statsData);
     } catch (error) {
-      console.error('Error al cargar usuarios:', error);
+      console.error('Error al cargar datos:', error);
       toast.error('Error al cargar usuarios pendientes');
     } finally {
       setLoading(false);
@@ -50,18 +61,16 @@ export const PendingUsers: React.FC = () => {
   };
 
   const filterUsers = () => {
-    let filtered = [...users];
+    let filtered = [...pendingUsers];
 
-    // Filtro por término de búsqueda
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase().trim();
-      filtered = filtered.filter(u => 
+      filtered = filtered.filter(u =>
         u.displayName?.toLowerCase().includes(term) ||
         u.email?.toLowerCase().includes(term)
       );
     }
 
-    // Filtro por rol
     if (roleFilter !== 'all') {
       filtered = filtered.filter(u => u.role === roleFilter);
     }
@@ -70,13 +79,16 @@ export const PendingUsers: React.FC = () => {
   };
 
   const handleApprove = async (userId: string) => {
-    if (!user) return;
-    
+    if (!user) {
+      toast.error('No has iniciado sesión');
+      return;
+    }
+
     try {
       setProcessing(userId);
       await approveUser(userId, user.uid);
       toast.success('✅ Usuario aprobado correctamente');
-      await loadUsers();
+      await loadData();
     } catch (error: any) {
       console.error('Error al aprobar:', error);
       toast.error(error.message || 'Error al aprobar usuario');
@@ -87,14 +99,14 @@ export const PendingUsers: React.FC = () => {
 
   const handleReject = async (userId: string) => {
     if (!user) return;
-    
+
     try {
       setProcessing(userId);
       await rejectUser(userId, rejectionReason || 'Rechazado por el administrador', user.uid);
       toast.success('Usuario rechazado');
       setShowRejectModal(null);
       setRejectionReason('');
-      await loadUsers();
+      await loadData();
     } catch (error) {
       console.error('Error al rechazar:', error);
       toast.error('Error al rechazar usuario');
@@ -105,12 +117,18 @@ export const PendingUsers: React.FC = () => {
 
   const getRoleBadge = (role: string) => {
     const config = {
-      admin: { color: 'danger', label: 'Admin' },
-      coach: { color: 'info', label: 'Coach' },
-      student: { color: 'success', label: 'Alumno' },
+      admin: { color: 'danger', icon: Shield, label: 'Admin' },
+      coach: { color: 'info', icon: Award, label: 'Coach' },
+      student: { color: 'success', icon: Users, label: 'Alumno' },
     };
     const c = config[role as keyof typeof config] || config.student;
-    return <span className={`badge bg-${c.color}`}>{c.label}</span>;
+    const Icon = c.icon;
+    return (
+      <span className={`badge bg-${c.color} d-flex align-items-center gap-1`}>
+        <Icon size={12} />
+        {c.label}
+      </span>
+    );
   };
 
   if (loading) {
@@ -125,156 +143,203 @@ export const PendingUsers: React.FC = () => {
   }
 
   return (
-    <div className="pending-users">
-      <div className="d-flex flex-wrap justify-content-between align-items-center mb-4">
-        <div>
-          <h3 className="mb-1">👥 Usuarios Pendientes</h3>
-          <p className="text-muted small mb-0">
-            {users.length} usuarios esperando aprobación
-          </p>
-        </div>
-        <button
-          className="btn btn-outline-secondary btn-sm"
-          onClick={loadUsers}
-          disabled={loading}
-        >
-          <span className="me-1">🔄</span> Actualizar
-        </button>
-      </div>
-
-      {/* Filtros */}
-      <div className="row g-3 mb-4">
-        <div className="col-md-6">
-          <div className="input-group">
-            <span className="input-group-text bg-white border-end-0">
-              <Search size={18} className="text-muted" />
-            </span>
-            <input
-              type="text"
-              className="form-control border-start-0"
-              placeholder="Buscar por nombre o email..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+    <div className="pending-users-container">
+      {/* Estadísticas */}
+      {stats && (
+        <div className="row g-3 mb-4">
+          <div className="col-md-3">
+            <div className="card bg-primary text-white">
+              <div className="card-body d-flex align-items-center justify-content-between">
+                <div>
+                  <h6 className="mb-0 text-white-50">Total Usuarios</h6>
+                  <h3 className="mb-0">{stats.total}</h3>
+                </div>
+                <Users size={32} className="opacity-50" />
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3">
+            <div className="card bg-warning text-dark">
+              <div className="card-body d-flex align-items-center justify-content-between">
+                <div>
+                  <h6 className="mb-0 text-dark-50">Pendientes</h6>
+                  <h3 className="mb-0">{stats.pending}</h3>
+                </div>
+                <Clock size={32} className="opacity-50" />
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3">
+            <div className="card bg-success text-white">
+              <div className="card-body d-flex align-items-center justify-content-between">
+                <div>
+                  <h6 className="mb-0 text-white-50">Aprobados</h6>
+                  <h3 className="mb-0">{stats.approved}</h3>
+                </div>
+                <UserCheck size={32} className="opacity-50" />
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3">
+            <div className="card bg-danger text-white">
+              <div className="card-body d-flex align-items-center justify-content-between">
+                <div>
+                  <h6 className="mb-0 text-white-50">Rechazados</h6>
+                  <h3 className="mb-0">{stats.rejected}</h3>
+                </div>
+                <UserX size={32} className="opacity-50" />
+              </div>
+            </div>
           </div>
         </div>
-        <div className="col-md-3">
-          <select
-            className="form-select"
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value as any)}
-          >
-            <option value="all">Todos los roles</option>
-            <option value="coach">Coaches</option>
-            <option value="student">Alumnos</option>
-            <option value="admin">Administradores</option>
-          </select>
-        </div>
-        <div className="col-md-3 text-md-end">
-          <span className="badge bg-warning fs-6 p-2">
-            <Clock size={14} className="me-1" />
-            {filteredUsers.length} pendientes
-          </span>
+      )}
+
+      {/* Filtros */}
+      <div className="card mb-4">
+        <div className="card-body">
+          <div className="row g-3">
+            <div className="col-md-6">
+              <div className="input-group">
+                <span className="input-group-text bg-white border-end-0">
+                  <Search size={18} className="text-muted" />
+                </span>
+                <input
+                  type="text"
+                  className="form-control border-start-0"
+                  placeholder="Buscar por nombre o email..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="col-md-3">
+              <select
+                className="form-select"
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value as any)}
+              >
+                <option value="all">Todos los roles</option>
+                <option value="coach">Coaches</option>
+                <option value="student">Alumnos</option>
+                <option value="admin">Administradores</option>
+              </select>
+            </div>
+            <div className="col-md-3 text-md-end">
+              <button
+                className="btn btn-outline-secondary"
+                onClick={loadData}
+                disabled={loading}
+              >
+                <RefreshCw size={16} className={`me-1 ${loading ? 'spin' : ''}`} />
+                Actualizar
+              </button>
+              <span className="badge bg-warning ms-2 p-2">
+                <Clock size={14} className="me-1" />
+                {filteredUsers.length} pendientes
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
+      {/* Lista de usuarios */}
       {filteredUsers.length === 0 ? (
         <div className="alert alert-success d-flex align-items-center">
-          <UserCheck size={24} className="me-3" />
+          <CheckCircle size={24} className="me-3" />
           <div>
             <h6 className="mb-0">¡No hay usuarios pendientes!</h6>
             <p className="mb-0 small">Todos los usuarios han sido procesados.</p>
           </div>
         </div>
       ) : (
-        <div className="row g-3">
-          {filteredUsers.map((pendingUser) => (
-            <div key={pendingUser.id} className="col-md-6 col-lg-4">
-              <div className="card h-100 shadow-sm hover-shadow">
-                <div className="card-body">
-                  <div className="d-flex align-items-start justify-content-between">
-                    <div className="d-flex align-items-center gap-3">
+        <div className="table-responsive">
+          <table className="table table-hover">
+            <thead className="table-light">
+              <tr>
+                <th>Usuario</th>
+                <th>Email</th>
+                <th>Rol</th>
+                <th>Fecha de solicitud</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.map((pendingUser) => (
+                <tr key={pendingUser.id}>
+                  <td>
+                    <div className="d-flex align-items-center">
                       {pendingUser.photoURL ? (
                         <img
                           src={pendingUser.photoURL}
                           alt={pendingUser.displayName}
-                          className="rounded-circle border"
-                          style={{ width: '48px', height: '48px', objectFit: 'cover' }}
+                          className="rounded-circle me-2"
+                          style={{ width: '40px', height: '40px', objectFit: 'cover' }}
                         />
                       ) : (
                         <div
-                          className="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center"
-                          style={{ width: '48px', height: '48px', fontSize: '20px' }}
+                          className="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center me-2"
+                          style={{ width: '40px', height: '40px' }}
                         >
                           {pendingUser.displayName?.[0]?.toUpperCase() || '?'}
                         </div>
                       )}
                       <div>
-                        <h6 className="mb-0">{pendingUser.displayName || 'Sin nombre'}</h6>
-                        <div className="d-flex align-items-center gap-2 mt-1">
-                          {getRoleBadge(pendingUser.role)}
-                          <span className="badge bg-warning text-dark">
-                            <Clock size={12} className="me-1" />
-                            Pendiente
-                          </span>
-                        </div>
+                        <strong>{pendingUser.displayName || 'Sin nombre'}</strong>
+                        {pendingUser.specialty && (
+                          <div className="text-muted small">{pendingUser.specialty}</div>
+                        )}
                       </div>
                     </div>
-                  </div>
-
-                  <div className="mt-3 pt-3 border-top">
-                    <div className="d-flex align-items-center gap-2 text-muted small">
-                      <Mail size={14} />
-                      <span>{pendingUser.email}</span>
+                  </td>
+                  <td>{pendingUser.email}</td>
+                  <td>{getRoleBadge(pendingUser.role)}</td>
+                  <td>
+                    <div className="d-flex align-items-center gap-1">
+                      <Calendar size={14} className="text-muted" />
+                      {pendingUser.createdAt ? 
+                        format(pendingUser.createdAt.toDate(), 'dd/MM/yyyy HH:mm', { locale: es }) :
+                        'N/A'
+                      }
                     </div>
-                    {pendingUser.createdAt && (
-                      <div className="d-flex align-items-center gap-2 text-muted small mt-1">
-                        <Calendar size={14} />
-                        <span>Solicitado: {format(pendingUser.createdAt.toDate(), 'dd/MM/yyyy HH:mm', { locale: es })}</span>
-                      </div>
-                    )}
-                    {pendingUser.specialty && (
-                      <div className="mt-1">
-                        <span className="badge bg-light text-dark">
-                          {pendingUser.specialty}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-3 d-flex gap-2">
-                    <button
-                      className="btn btn-success btn-sm flex-grow-1"
-                      onClick={() => handleApprove(pendingUser.id)}
-                      disabled={processing === pendingUser.id}
-                    >
-                      {processing === pendingUser.id ? (
-                        <span className="spinner-border spinner-border-sm" />
-                      ) : (
-                        <>
-                          <UserCheck size={16} className="me-1" />
-                          Aprobar
-                        </>
-                      )}
-                    </button>
-                    <button
-                      className="btn btn-outline-danger btn-sm"
-                      onClick={() => setShowRejectModal(pendingUser.id)}
-                      disabled={processing === pendingUser.id}
-                    >
-                      <UserX size={16} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
+                  </td>
+                  <td>
+                    <div className="d-flex gap-2">
+                      <button
+                        className="btn btn-success btn-sm d-flex align-items-center gap-1"
+                        onClick={() => handleApprove(pendingUser.id)}
+                        disabled={processing === pendingUser.id}
+                      >
+                        {processing === pendingUser.id ? (
+                          <span className="spinner-border spinner-border-sm" />
+                        ) : (
+                          <>
+                            <UserCheck size={14} />
+                            Liberar
+                          </>
+                        )}
+                      </button>
+                      <button
+                        className="btn btn-outline-danger btn-sm d-flex align-items-center gap-1"
+                        onClick={() => setShowRejectModal(pendingUser.id)}
+                        disabled={processing === pendingUser.id}
+                      >
+                        <UserX size={14} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
       {/* Modal de rechazo */}
       {showRejectModal && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
+        <div
+          className="modal show d-block"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }}
+        >
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header">
@@ -322,12 +387,12 @@ export const PendingUsers: React.FC = () => {
       )}
 
       <style>{`
-        .hover-shadow {
-          transition: transform 0.2s, box-shadow 0.2s;
+        .spin {
+          animation: spin 1s linear infinite;
         }
-        .hover-shadow:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15) !important;
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>
