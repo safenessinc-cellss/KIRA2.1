@@ -1,170 +1,152 @@
-import React, { useState, useRef } from 'react';
-import { Bold, Italic, Heading2, Heading3, List, ListOrdered, Link2, Eraser, Eye, Edit3 } from 'lucide-react';
+import React, { useRef, useEffect } from 'react';
+import { Bold, Italic, Underline, Strikethrough, Heading1, Heading2, Heading3, List, ListOrdered, Link2, Eraser } from 'lucide-react';
 
 interface RichTextEditorProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  className?: string;
 }
 
-export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
-  const [activeTab, setActiveTab] = useState<'write' | 'preview'>('write');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+export function RichTextEditor({ value, onChange, placeholder = "Escribe aquí...", className }: RichTextEditorProps) {
+  const editorRef = useRef<HTMLDivElement>(null);
 
-  const insertTag = (openTag: string, closeTag: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
+  // Sync value from prop to editor (only if it differs from current innerHTML to prevent cursor jumping)
+  useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== value) {
+      editorRef.current.innerHTML = value || '';
+    }
+  }, [value]);
 
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-    const selectedText = text.substring(start, end);
-    const replacement = openTag + selectedText + closeTag;
-
-    const newValue = text.substring(0, start) + replacement + text.substring(end);
-    onChange(newValue);
-
-    // Refocus and restore selection
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + openTag.length, start + openTag.length + selectedText.length);
-    }, 0);
-  };
-
-  const handleClear = () => {
-    if (window.confirm('¿Estás seguro de que deseas limpiar todo el formato HTML?')) {
-      const clean = value.replace(/<[^>]*>/g, '');
-      onChange(clean);
+  const handleInput = () => {
+    if (editorRef.current) {
+      onChange(editorRef.current.innerHTML);
     }
   };
 
+  const execCommand = (command: string, arg: string = '') => {
+    document.execCommand(command, false, arg);
+    handleInput();
+  };
+
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden focus-within:ring-4 focus-within:ring-kirateal/5 focus-within:border-kirateal transition-all shadow-sm">
-      {/* Toolbar / Tabs header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 bg-slate-50 px-3 py-2 gap-2">
-        {/* Formatting Buttons */}
-        {activeTab === 'write' ? (
-          <div className="flex flex-wrap items-center gap-1">
-            <button
-              type="button"
-              onClick={() => insertTag('<strong>', '</strong>')}
-              className="p-1.5 hover:bg-slate-200 text-slate-600 rounded transition cursor-pointer"
-              title="Negrita"
-            >
-              <Bold size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertTag('<em>', '</em>')}
-              className="p-1.5 hover:bg-slate-200 text-slate-600 rounded transition cursor-pointer"
-              title="Cursiva"
-            >
-              <Italic size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertTag('<h2>', '</h2>')}
-              className="p-1.5 hover:bg-slate-200 text-slate-600 rounded text-xs font-bold transition cursor-pointer"
-              title="Título Grande"
-            >
-              <Heading2 size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertTag('<h3>', '</h3>')}
-              className="p-1.5 hover:bg-slate-200 text-slate-600 rounded text-xs font-bold transition cursor-pointer"
-              title="Título Mediano"
-            >
-              <Heading3 size={14} />
-            </button>
-            <div className="h-4 w-px bg-slate-200 mx-1"></div>
-            <button
-              type="button"
-              onClick={() => insertTag('<ul>\n  <li>', '</li>\n</ul>')}
-              className="p-1.5 hover:bg-slate-200 text-slate-600 rounded transition cursor-pointer"
-              title="Lista Desordenada"
-            >
-              <List size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertTag('<ol>\n  <li>', '</li>\n</ol>')}
-              className="p-1.5 hover:bg-slate-200 text-slate-600 rounded transition cursor-pointer"
-              title="Lista Numerada"
-            >
-              <ListOrdered size={14} />
-            </button>
-            <button
-              type="button"
-              onClick={() => insertTag('<a href="https://" target="_blank" class="text-kirateal hover:underline">', '</a>')}
-              className="p-1.5 hover:bg-slate-200 text-slate-600 rounded transition cursor-pointer"
-              title="Enlace"
-            >
-              <Link2 size={14} />
-            </button>
-            <div className="h-4 w-px bg-slate-200 mx-1"></div>
-            <button
-              type="button"
-              onClick={handleClear}
-              className="p-1.5 hover:bg-red-50 hover:text-red-500 text-slate-500 rounded transition cursor-pointer"
-              title="Limpiar Formato"
-            >
-              <Eraser size={14} />
-            </button>
-          </div>
-        ) : (
-          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1.5">
-            Vista Previa Activa
-          </div>
-        )}
+    <div className={`border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-sm flex flex-col ${className}`}>
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-1 bg-slate-50 border-b border-slate-200/60 p-2 text-slate-600 select-none">
+        <button
+          type="button"
+          onClick={() => execCommand('bold')}
+          className="p-1.5 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-all"
+          title="Negrita"
+        >
+          <Bold size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={() => execCommand('italic')}
+          className="p-1.5 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-all"
+          title="Cursiva"
+        >
+          <Italic size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={() => execCommand('underline')}
+          className="p-1.5 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-all"
+          title="Subrayado"
+        >
+          <Underline size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={() => execCommand('strikeThrough')}
+          className="p-1.5 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-all"
+          title="Tachado"
+        >
+          <Strikethrough size={16} />
+        </button>
 
-        {/* Mode Switcher */}
-        <div className="flex items-center bg-slate-200/60 p-0.5 rounded-lg self-end sm:self-auto">
-          <button
-            type="button"
-            onClick={() => setActiveTab('write')}
-            className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md transition-all ${
-              activeTab === 'write'
-                ? 'bg-white text-slate-800 shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Edit3 size={11} /> Editor
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('preview')}
-            className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md transition-all ${
-              activeTab === 'preview'
-                ? 'bg-white text-slate-800 shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Eye size={11} /> Previsualizar
-          </button>
-        </div>
+        <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+
+        <button
+          type="button"
+          onClick={() => execCommand('formatBlock', '<h1>')}
+          className="p-1.5 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-all"
+          title="Título Grande"
+        >
+          <Heading1 size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={() => execCommand('formatBlock', '<h2>')}
+          className="p-1.5 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-all"
+          title="Título Mediano"
+        >
+          <Heading2 size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={() => execCommand('formatBlock', '<h3>')}
+          className="p-1.5 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-all"
+          title="Título Pequeño"
+        >
+          <Heading3 size={16} />
+        </button>
+
+        <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+
+        <button
+          type="button"
+          onClick={() => execCommand('insertOrderedList')}
+          className="p-1.5 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-all"
+          title="Lista Numerada"
+        >
+          <ListOrdered size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={() => execCommand('insertUnorderedList')}
+          className="p-1.5 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-all"
+          title="Lista con Viñetas"
+        >
+          <List size={16} />
+        </button>
+
+        <div className="w-[1px] h-4 bg-slate-200 mx-1" />
+
+        <button
+          type="button"
+          onClick={() => {
+            const url = prompt('Ingresa la URL del enlace:');
+            if (url) {
+              const formattedUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
+              execCommand('createLink', formattedUrl);
+            }
+          }}
+          className="p-1.5 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-all"
+          title="Insertar Enlace"
+        >
+          <Link2 size={16} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => execCommand('removeFormat')}
+          className="p-1.5 hover:bg-slate-200 hover:text-slate-900 rounded-lg transition-all ml-auto"
+          title="Limpiar Formato"
+        >
+          <Eraser size={16} />
+        </button>
       </div>
 
-      {/* Editor Content Area */}
-      <div className="relative">
-        {activeTab === 'write' ? (
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            className="w-full min-h-[160px] max-h-[400px] p-4 text-xs font-mono text-slate-700 bg-white border-0 focus:ring-0 resize-y outline-none leading-relaxed"
-          />
-        ) : (
-          <div className="p-4 min-h-[160px] max-h-[400px] overflow-y-auto bg-slate-50/50 text-xs text-slate-700 leading-relaxed space-y-2 prose prose-sm max-w-none">
-            {value ? (
-              <div dangerouslySetInnerHTML={{ __html: value }} />
-            ) : (
-              <p className="text-slate-400 italic">No hay contenido que mostrar.</p>
-            )}
-          </div>
-        )}
-      </div>
+      {/* Editor Area */}
+      <div
+        ref={editorRef}
+        contentEditable
+        onInput={handleInput}
+        className="p-4 min-h-[160px] max-h-[400px] overflow-y-auto focus:outline-none prose max-w-none text-sm text-slate-800 outline-none select-text empty:before:content-[attr(data-placeholder)] empty:before:text-slate-400 empty:before:pointer-events-none empty:before:italic"
+        data-placeholder={placeholder}
+      />
     </div>
   );
 }
