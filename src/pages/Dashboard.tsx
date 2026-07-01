@@ -6,7 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { MentorWidget } from '../components/MentorWidget';
 import { Seal } from '../components/Brand';
-import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut, MessageCircle, Globe, Copy, Check, Clock, UserPlus } from 'lucide-react';
+import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut, MessageCircle, Globe, Copy, Check, Clock, UserPlus, Search, X, BadgeCheck, Instagram, Linkedin, User, Twitter, Heart } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
 import { useToast } from '../hooks/useToast';
@@ -28,6 +28,13 @@ export function Dashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
+
+  const [showDirectoryModal, setShowDirectoryModal] = useState(false);
+  const [directorySearchQuery, setDirectorySearchQuery] = useState('');
+  const [directorySpecialty, setDirectorySpecialty] = useState('Todos');
+  const [selectedDirectoryCoach, setSelectedDirectoryCoach] = useState<any | null>(null);
+  const [allCoaches, setAllCoaches] = useState<any[]>([]);
+  const [userFavorites, setUserFavorites] = useState<string[]>([]);
 
   const [showCommunityModal, setShowCommunityModal] = useState(false);
   const [whatsappUrl, setWhatsappUrl] = useState('');
@@ -135,6 +142,46 @@ export function Dashboard() {
     }
   };
 
+  useEffect(() => {
+    if (!user) {
+      setUserFavorites([]);
+      return;
+    }
+    const unsub = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+      if (snap.exists()) {
+        setUserFavorites(snap.data().favorites || []);
+      }
+    });
+    return () => unsub();
+  }, [user]);
+
+  useEffect(() => {
+    if (allCoaches.length > 0 && userFavorites.length > 0) {
+      const favs = allCoaches.filter(c => userFavorites.includes(c.id));
+      setFavoriteCoaches(favs);
+    } else {
+      setFavoriteCoaches([]);
+    }
+  }, [allCoaches, userFavorites]);
+
+  const toggleDirectoryFavorite = async (e: React.MouseEvent, coachId: string) => {
+    e.stopPropagation();
+    if (!user) return;
+    try {
+      const isFav = userFavorites.includes(coachId);
+      const updatedFavorites = isFav 
+        ? userFavorites.filter((id: string) => id !== coachId)
+        : [...userFavorites, coachId];
+      await updateDoc(doc(db, 'users', user.uid), {
+        favorites: updatedFavorites
+      });
+      toastSuccess(isFav ? 'Eliminado de favoritos' : 'Agregado a favoritos');
+    } catch (err) {
+      console.error("Error toggling favorite:", err);
+      toastError("Error al guardar favoritos");
+    }
+  };
+
   const getTier = (pts: number) => {
     if (pts <= 500) return { name: 'Bronce', next: 501, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-100', icon: <Zap size={14} /> };
     if (pts <= 1500) return { name: 'Plata', next: 1501, color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-200', icon: <ShieldCheck size={14} /> };
@@ -214,16 +261,16 @@ export function Dashboard() {
       const enrollSnap = await getDocs(enrollQ);
       setMyEnrollments(enrollSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-      // Fetch favorites
-      if (user.favorites && user.favorites.length > 0) {
-        const coachesQ = query(
-          collection(db, 'users'), 
-          where('__name__', 'in', user.favorites.slice(0, 10))
-        );
-        const coachesSnap = await getDocs(coachesQ);
-        setFavoriteCoaches(coachesSnap.docs.map(d => ({id: d.id, ...d.data()})));
-      } else {
-        setFavoriteCoaches([]);
+      // Fetch all coaches
+      try {
+        const allCoachesQ = query(collection(db, 'users'), where('role', '==', 'coach'));
+        const allCoachesSnap = await getDocs(allCoachesQ);
+        const approvedCoaches = allCoachesSnap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter((c: any) => c.approvalStatus === 'approved');
+        setAllCoaches(approvedCoaches);
+      } catch (err) {
+        console.warn("Error fetching all coaches:", err);
       }
 
       const historyQ = query(collection(db, 'unlockedHistory'), where('userId', '==', user.uid));
@@ -427,7 +474,7 @@ export function Dashboard() {
                     Escribir mi primer Diario
                   </button>
                   <button 
-                    onClick={() => { completeOnboarding(); navigate('/'); }}
+                    onClick={() => { completeOnboarding(); setShowDirectoryModal(true); }}
                     className="w-full py-3.5 bg-slate-50 text-slate-700 rounded-xl font-bold text-[13px] hover:bg-slate-100 transition border border-slate-200"
                   >
                     Explorar Mentores
