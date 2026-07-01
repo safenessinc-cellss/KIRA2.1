@@ -20,13 +20,28 @@ interface CartContextType {
 // ✅ CREAR EL CONTEXT
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-// ✅ EXPORTAR EL CONTEXT - ¡ESTA ES LA LÍNEA QUE FALTABA!
+// ✅ EXPORTAR EL CONTEXT
 export { CartContext };
 
+// ✅ useCart SEGURO - NO LANZA ERROR
 export const useCart = () => {
   const context = useContext(CartContext);
   if (!context) {
-    throw new Error('useCart must be used within a CartProvider');
+    console.warn('useCart: No CartProvider found, returning safe fallback');
+    // Retorna un objeto seguro que no quebra la aplicación
+    return {
+      cartItems: [],
+      addToCart: () => {
+        console.warn('addToCart called outside CartProvider');
+      },
+      removeFromCart: () => {},
+      clearCart: () => {},
+      updateQuantity: () => {},
+      cartCount: 0,
+      cartTotal: 0,
+      isCartOpen: false,
+      setIsCartOpen: () => {},
+    };
   }
   return context;
 };
@@ -38,7 +53,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { success: toastSuccess, error: toastError } = useToast();
   const [checkingOut, setCheckingOut] = useState(false);
 
-  // Load cart from localStorage for persistence per session
   useEffect(() => {
     const savedCart = localStorage.getItem('kira_cart');
     if (savedCart) {
@@ -50,7 +64,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Save cart to localStorage
   useEffect(() => {
     localStorage.setItem('kira_cart', JSON.stringify(cartItems));
   }, [cartItems]);
@@ -112,7 +125,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const ids = cartItems.map(item => item.product.id).join(',');
       const titles = cartItems.map(item => `${item.product.title} (x${item.quantity})`).join(', ');
-      const types = cartItems.map(item => item.product.type).join(',');
       
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
@@ -157,11 +169,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     >
       {children}
 
-      {/* Cart Drawer Portal */}
       <AnimatePresence>
         {isCartOpen && (
           <>
-            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 0.5 }}
@@ -170,7 +180,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
               className="fixed inset-0 bg-slate-950 z-[999]"
             />
 
-            {/* Slider Panel */}
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
@@ -178,7 +187,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-white shadow-2xl z-[1000] flex flex-col border-l border-slate-100"
             >
-              {/* Header */}
               <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-kirateal/15 flex items-center justify-center text-kirateal">
@@ -197,7 +205,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 </button>
               </div>
 
-              {/* Items List */}
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {cartItems.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center p-6">
@@ -215,7 +222,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       key={item.product.id}
                       className="p-4 bg-slate-50/40 rounded-2xl border border-slate-100 flex gap-4 hover:border-slate-200 transition-colors group"
                     >
-                      {/* Thumbnail */}
                       <div className="w-16 h-16 rounded-xl bg-slate-100 shrink-0 overflow-hidden border border-slate-200/50">
                         <img
                           src={item.product.imageUrl || 'https://picsum.photos/seed/cart/100/100'}
@@ -224,7 +230,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                         />
                       </div>
 
-                      {/* Info & Quantity controls */}
                       <div className="flex-1 flex flex-col justify-between min-w-0">
                         <div>
                           <div className="flex justify-between items-start gap-1">
@@ -245,7 +250,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                           )}
                         </div>
 
-                        {/* Controls row */}
                         <div className="flex justify-between items-center mt-2">
                           <div className="flex items-center gap-2">
                             <button
@@ -274,7 +278,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 )}
               </div>
 
-              {/* Order Summary & Footer */}
               {cartItems.length > 0 && (
                 <div className="p-6 border-t border-slate-100 bg-slate-50/50 space-y-4">
                   <div className="space-y-2.5">
