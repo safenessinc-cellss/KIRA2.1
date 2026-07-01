@@ -294,6 +294,7 @@ function TabBtn({ active, onClick, icon, label, disabled }: any) {
 
 function CoachDashboardView({ profile, isApproved }: any) {
   const { user } = useAuth();
+  const { success: toastSuccess, error: toastError } = useToast();
   const [stats, setStats] = useState({
     activeStudents: 0,
     avgProgress: 0,
@@ -303,6 +304,7 @@ function CoachDashboardView({ profile, isApproved }: any) {
   const [sessionsData, setSessionsData] = useState<any[]>([]);
   const [topTopics, setTopTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
 
   const [isEditingMetrics, setIsEditingMetrics] = useState(false);
   const [editedMetrics, setEditedMetrics] = useState({
@@ -310,6 +312,36 @@ function CoachDashboardView({ profile, isApproved }: any) {
     avgProgress: 0,
     recentSessions: 0
   });
+
+  const fetchPendingRequests = async () => {
+    if (!user) return;
+    try {
+      const q = query(collection(db, 'enrollments'), where('coachId', '==', user.uid));
+      const snap = await getDocs(q);
+      const pending = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter((e: any) => e.status === 'pending');
+      setPendingRequests(pending);
+    } catch (e) {
+      console.error("Error fetching pending in CoachDashboardView:", e);
+    }
+  };
+
+  const handleEnrollmentAction = async (enrollmentId: string, action: 'approved' | 'rejected') => {
+    try {
+      if (action === 'approved') {
+        await updateDoc(doc(db, 'enrollments', enrollmentId), { status: 'approved' });
+        toastSuccess("Inscripción autorizada correctamente.");
+      } else {
+        await deleteDoc(doc(db, 'enrollments', enrollmentId));
+        toastSuccess("Inscripción rechazada con éxito.");
+      }
+      fetchPendingRequests();
+    } catch (error: any) {
+      console.error("Error updating enrollment status:", error);
+      toastError("No se pudo procesar la acción: " + error.message);
+    }
+  };
 
   useEffect(() => {
     if (profile) {
@@ -332,7 +364,7 @@ function CoachDashboardView({ profile, isApproved }: any) {
     try {
       await updateDoc(doc(db, 'users', user.uid), {
         manualActiveStudents: Number(editedMetrics.activeStudents),
-        manualAvgProgress: Number(editedMetrics.avgProgress),
+        manualAvgProgress: Number(editedMetrics.manualAvgProgress !== undefined ? editedMetrics.avgProgress : editedMetrics.avgProgress),
         manualRecentSessions: Number(editedMetrics.recentSessions),
         updatedAt: new Date()
       });
@@ -463,6 +495,7 @@ function CoachDashboardView({ profile, isApproved }: any) {
       }
     };
     fetchDashboardStats();
+    fetchPendingRequests();
   }, [user]);
 
   const totalEmotions = stats.sentiment.positive + stats.sentiment.neutral + stats.sentiment.negative;
@@ -549,6 +582,63 @@ function CoachDashboardView({ profile, isApproved }: any) {
         <StatCard title="Sesiones Recientes" value={loading ? "..." : displayRecentSessions} icon={<Calendar className="text-amber-500" />} />
         <StatCard title="Ingresos Brutos" value="$0.00" icon={<CreditCard className="text-teal-600" />} />
       </div>
+
+      {/* SOLICITUDES DE INSCRIPCIÓN PENDIENTES */}
+      {pendingRequests.length > 0 && (
+        <div className="bg-amber-50/60 border border-amber-200/70 rounded-[32px] p-8 shadow-sm flex flex-col gap-6 animate-in fade-in duration-300">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-lg shadow-amber-500/20">
+                <Clock size={18} className="animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  Solicitudes de Alumnos Pendientes
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5 font-medium">Alumnos esperando tu autorización directa para acceder a tus contenidos.</p>
+              </div>
+            </div>
+            <span className="px-3.5 py-1.5 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+              {pendingRequests.length} Esperando
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {pendingRequests.map(req => (
+              <div key={req.id} className="bg-white border border-slate-150 rounded-2xl p-5 flex items-center justify-between shadow-sm hover:border-amber-200 transition-all">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-xs font-black text-slate-600 shrink-0 uppercase">
+                    {req.studentName?.[0] || 'U'}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-[13px] font-black text-slate-800 leading-tight truncate">{req.studentName}</h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5 leading-none truncate">{req.studentEmail}</p>
+                    <span className="inline-block mt-2 px-2.5 py-0.5 bg-slate-50 text-slate-600 text-[9px] font-bold rounded border border-slate-100 leading-none truncate max-w-full">
+                      {req.courseTitle}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0 ml-4">
+                  <button 
+                    onClick={() => handleEnrollmentAction(req.id, 'rejected')}
+                    className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition text-[11px] font-bold"
+                  >
+                    Rechazar
+                  </button>
+                  <button 
+                    onClick={() => handleEnrollmentAction(req.id, 'approved')}
+                    className="px-4 py-2 bg-slate-900 hover:bg-black text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition flex items-center gap-1 cursor-pointer"
+                  >
+                    <CheckCircle2 size={12} /> Autorizar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className={cn("lg:col-span-2 bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm", !isApproved && "opacity-50 pointer-events-none")}>
@@ -1110,10 +1200,12 @@ function CoachContractManager() {
   const { user } = useAuth();
   const [contracts, setContracts] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
-  const [activeSubTab, setActiveSubTab] = useState<'contracts' | 'templates'>('contracts');
+  const [courses, setCourses] = useState<any[]>([]);
+  const [activeSubTab, setActiveSubTab] = useState<'contracts' | 'templates' | 'course_contracts'>('contracts');
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState({ title: '', clientName: '', expiresAt: '', templateId: '' });
   const [templateFormData, setTemplateFormData] = useState({ name: '', terms: '', expirationRules: '' });
+  const [generatingForCourseId, setGeneratingForCourseId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -1138,12 +1230,71 @@ function CoachContractManager() {
       });
       setTemplates(list);
     });
+
+    const qCourses = query(collection(db, 'courses'), where('coachId', '==', user.uid));
+    getDocs(qCourses).then((snap) => {
+      setCourses(snap.docs.map(d => ({id: d.id, ...d.data()})));
+    }).catch(e => console.error(e));
     
     return () => {
       unsubC();
       unsubT();
     };
   }, [user]);
+
+  const generateAIContractForCourse = async (course: any) => {
+    if (!user) return;
+    setGeneratingForCourseId(course.id);
+    try {
+      const prompt = `Actúa como un abogado experto internacional especialista en servicios de coaching, e-learning y desarrollo conductual. 
+      Escribe un contrato de prestación de servicios educativos completo, formal, robusto y profesional en español para el curso titulado: "${course.title}".
+      
+      Atributos del curso:
+      - Título: ${course.title}
+      - Descripción: ${course.description || 'Formación de alto impacto de desarrollo integral.'}
+      - Precio: ${course.price || 'Establecido por el Coach'}
+      - Modalidad: ${course.modality || 'Online/Asincrónico'}
+      
+      Estructura el contrato con cláusulas claras de:
+      1. Objeto del Contrato (Prestación de servicio educativo y acceso a plataforma Kira Coach).
+      2. Obligaciones del Estudiante (Respeto mutuo, confidencialidad, propiedad intelectual).
+      3. Términos de Pago e Inscripción (Monto total, penalidades por mora si aplica, no-reembolsos).
+      4. Propiedad Intelectual (Los contenidos, videos, audios y textos pertenecen exclusivamente al Coach y no pueden ser redistribuidos).
+      5. Limitación de Responsabilidad (El progreso conductual y los resultados dependen del compromiso activo del estudiante).
+      6. Jurisdicción y Resolución de Conflictos.
+      
+      Escribe el contrato de manera que esté listo para ser personalizado con el nombre de cada alumno inscrito.`;
+
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3.5-flash',
+          contents: prompt
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      if (data.text) {
+        // Create a master template with this AI contract
+        await addDoc(collection(db, 'contract_templates'), {
+          name: `Contrato Inteligente: ${course.title}`,
+          terms: data.text,
+          courseId: course.id,
+          expirationRules: 'Acceso continuo durante el tiempo de vigencia del curso',
+          coachId: user.uid,
+          createdAt: new Date()
+        });
+        alert(`¡Contrato generado con IA exitosamente para el curso: ${course.title}!`);
+      }
+    } catch (e: any) {
+      console.error("Error generating contract with IA:", e);
+      alert("Error al generar el contrato con IA: " + e.message);
+    } finally {
+      setGeneratingForCourseId(null);
+    }
+  };
 
   const handleCreateContract = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1190,21 +1341,24 @@ function CoachContractManager() {
     <div className="flex flex-col gap-6 animate-in fade-in">
       <div className="flex gap-4 p-1 bg-slate-100 rounded-xl w-fit mb-2">
         <button onClick={() => setActiveSubTab('contracts')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeSubTab === 'contracts' ? "bg-white text-kirateal shadow-sm" : "text-slate-500")}>Mis Contratos</button>
-        <button onClick={() => setActiveSubTab('templates')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeSubTab === 'templates' ? "bg-white text-kirateal shadow-sm" : "text-slate-500")}>Plantillas</button>
+        <button onClick={() => setActiveSubTab('templates')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeSubTab === 'templates' ? "bg-white text-kirateal shadow-sm" : "text-slate-500")}>Plantillas de Contratos</button>
+        <button onClick={() => setActiveSubTab('course_contracts')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeSubTab === 'course_contracts' ? "bg-white text-kirateal shadow-sm" : "text-slate-500")}>Contratos de Cursos (IA)</button>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
           <h3 className="font-bold text-slate-800 tracking-tight flex items-center gap-2">
             <FileText size={18} className="text-primary" /> 
-            {activeSubTab === 'contracts' ? 'Gestión de Contratos' : 'Mis Plantillas Maestras'}
+            {activeSubTab === 'contracts' ? 'Gestión de Contratos' : activeSubTab === 'templates' ? 'Mis Plantillas Maestras' : 'Generador Automático de Contratos por Curso con IA'}
           </h3>
-          <button 
-            onClick={() => setIsCreating(!isCreating)}
-            className="px-3 py-1.5 bg-primary text-white text-[11px] font-bold rounded-xl shadow-md shadow-primary/10 active:scale-95 transition-all"
-          >
-            {isCreating ? 'Cancelar' : activeSubTab === 'contracts' ? 'Generar Contrato' : 'Crear Plantilla'}
-          </button>
+          {activeSubTab !== 'course_contracts' && (
+            <button 
+              onClick={() => setIsCreating(!isCreating)}
+              className="px-3 py-1.5 bg-primary text-white text-[11px] font-bold rounded-xl shadow-md shadow-primary/10 active:scale-95 transition-all"
+            >
+              {isCreating ? 'Cancelar' : activeSubTab === 'contracts' ? 'Generar Contrato' : 'Crear Plantilla'}
+            </button>
+          )}
         </div>
 
         {isCreating && activeSubTab === 'contracts' && (
@@ -1278,7 +1432,64 @@ function CoachContractManager() {
             </div>
           ))}
 
-          {((activeSubTab === 'contracts' && contracts.length === 0) || (activeSubTab === 'templates' && templates.length === 0)) && !isCreating && (
+          {activeSubTab === 'course_contracts' && courses.map(course => {
+            const hasTemplate = templates.some(t => t.courseId === course.id);
+            const isGenerating = generatingForCourseId === course.id;
+            return (
+              <div key={course.id} className="p-5 rounded-2xl border border-slate-200 bg-white hover:border-indigo-300 transition-all flex flex-col justify-between min-h-48 group shadow-sm">
+                <div>
+                  <div className="flex justify-between items-start gap-2 mb-2">
+                    <h4 className="font-bold text-slate-900 text-sm tracking-tight truncate max-w-[180px]">{course.title}</h4>
+                    <span className={cn(
+                      "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0",
+                      hasTemplate ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-amber-50 text-amber-600 border border-amber-100"
+                    )}>
+                      {hasTemplate ? "Contrato Listo ✓" : "Sin Contrato"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-relaxed">{course.description || "Sin descripción establecida."}</p>
+                  
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <span className="px-2 py-0.5 bg-slate-50 border border-slate-100 text-slate-500 text-[9px] font-bold rounded">
+                      ${course.price || "0.00"} USD
+                    </span>
+                    <span className="px-2 py-0.5 bg-slate-50 border border-slate-100 text-slate-500 text-[9px] font-bold rounded">
+                      {course.modality || "Online"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-4">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Kira AI Engine™</span>
+                  {hasTemplate ? (
+                    <button 
+                      onClick={() => {
+                        const t = templates.find(temp => temp.courseId === course.id);
+                        if (t) {
+                          alert(`Términos del Contrato para ${course.title}:\n\n${t.terms}`);
+                        }
+                      }}
+                      className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1"
+                    >
+                      Ver Términos
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => generateAIContractForCourse(course)}
+                      disabled={isGenerating}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm flex items-center gap-1 transition"
+                    >
+                      {isGenerating ? "Generando..." : "✨ Generar con IA"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {((activeSubTab === 'contracts' && contracts.length === 0) || 
+            (activeSubTab === 'templates' && templates.length === 0) ||
+            (activeSubTab === 'course_contracts' && courses.length === 0)) && !isCreating && (
             <div className="col-span-full py-20 flex flex-col items-center justify-center text-slate-300 gap-4 opacity-40">
               <FileText size={56} className="bg-slate-50 p-3 rounded-full" />
               <p className="text-[13px] font-medium italic">Todo listo para tus documentos legales.</p>
