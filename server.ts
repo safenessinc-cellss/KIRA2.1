@@ -205,7 +205,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
   
   const redirectUrl = type === 'coach_membership' 
     ? `/coach?success=true&type=coach_membership&amount=${amount}`
-    : `/dashboard?success=true&courseId=${courseId}&amount=${amount}&title=${encodeURIComponent(title)}`;
+    : `/dashboard?success=true&courseId=${courseId || ''}&amount=${amount}&title=${encodeURIComponent(title)}&type=${type}`;
 
   res.json({ 
     url: redirectUrl,
