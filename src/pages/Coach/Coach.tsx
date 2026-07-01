@@ -28,6 +28,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '../../lib/utils';
+import { StudentDetailedAnalytics } from '../../components/StudentDetailedAnalytics';
 
 const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.75): Promise<string> => {
   console.log(`[Compresión] Iniciando compresión para: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
@@ -1268,132 +1269,74 @@ function CoachStudentsActivity() {
       {/* MODAL DETALLE DE PROGRESO Y COMPORTAMIENTO DEL ALUMNO */}
       {selectedStudent && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
-          <div className="bg-white rounded-[40px] border border-slate-200 w-full max-w-4xl p-8 lg:p-10 shadow-2xl relative flex flex-col gap-8 animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-[40px] border border-slate-200 w-full max-w-5xl p-8 lg:p-10 shadow-2xl relative flex flex-col gap-8 animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
             
             {/* Cabecera del Perfil */}
-            <div className="flex justify-between items-start gap-4">
+            <div className="flex justify-between items-start gap-4 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 rounded-full bg-indigo-50 border-2 border-indigo-200 flex items-center justify-center text-lg font-black text-indigo-600 uppercase">
                   {selectedStudent.displayName?.[0] || 'U'}
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight leading-tight">{selectedStudent.displayName}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight leading-tight">{selectedStudent.displayName}</h3>
+                    <span className="px-2.5 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-full">
+                      {selectedStudent.courseTitle}
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-400 mt-1">{selectedStudent.email}</p>
                 </div>
               </div>
               <button 
                 onClick={() => setSelectedStudent(null)}
-                className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer"
+                className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer font-bold"
               >
                 ✕
               </button>
             </div>
 
-            {/* Grid Principal */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+            {/* Dashboard Analítico con Gráficos Recharts */}
+            <StudentDetailedAnalytics 
+              student={selectedStudent}
+              journals={selectedStudentJournals}
+              aiDiagnosis={aiDiagnosis}
+              loadingDiagnosis={loadingDiagnosis}
+            />
+
+            {/* Historial Completo de Bitácoras de Texto */}
+            <div className="pt-6 border-t border-slate-150">
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  Bitácoras Conductuales Recientes ({selectedStudentJournals.length})
+                </h4>
+                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
+                  Histórico de Entradas
+                </span>
+              </div>
               
-              {/* Columna Izquierda: Métricas e Información de Curso */}
-              <div className="md:col-span-5 flex flex-col gap-6">
-                <div className="p-6 bg-slate-50 border border-slate-150 rounded-3xl">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Información del Curso</h4>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <span className="text-[11px] font-bold text-slate-400">Curso</span>
-                      <p className="text-sm font-black text-slate-800 mt-0.5">{selectedStudent.courseTitle}</p>
-                    </div>
-
-                    <div>
-                      <span className="text-[11px] font-bold text-slate-400">Progreso de Contenido</span>
-                      <div className="flex items-center gap-3 mt-1.5">
-                        <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
-                          <div className="bg-emerald-500 h-full transition-all" style={{ width: `${selectedStudent.courseProgress}%` }} />
-                        </div>
-                        <span className="text-xs font-black text-slate-700 shrink-0">{selectedStudent.courseProgress}%</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[200px] overflow-y-auto pr-2">
+                {selectedStudentJournals.map((j) => {
+                  const journalDate = j.createdAt?.toDate ? j.createdAt.toDate().toLocaleDateString('es-MX', { dateStyle: 'medium' }) : j.createdAt ? new Date(j.createdAt).toLocaleDateString('es-MX', { dateStyle: 'medium' }) : 'N/A';
+                  return (
+                    <div key={j.id} className="p-4 bg-slate-50 border border-slate-150 rounded-2xl flex flex-col justify-between hover:border-violet-200 transition-colors">
+                      <p className="text-xs text-slate-700 leading-relaxed italic mb-3">"{j.content}"</p>
+                      <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
+                        <span>{journalDate}</span>
+                        {j.score && (
+                          <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100">
+                            Score Emocional: {j.score}
+                          </span>
+                        )}
                       </div>
                     </div>
-
-                    <div className="pt-3 border-t border-slate-200 grid grid-cols-2 gap-4">
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Puntos Energía</span>
-                        <p className="text-lg font-black text-slate-800 mt-0.5">{selectedStudent.points || 0} pts</p>
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Semáforo</span>
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <span className={cn("w-2.5 h-2.5 rounded-full", getStatus(selectedStudent.lastActivityAt).color)} />
-                          <span className="text-xs font-bold text-slate-700">{getStatus(selectedStudent.lastActivityAt).label}</span>
-                        </div>
-                      </div>
-                    </div>
+                  );
+                })}
+                {selectedStudentJournals.length === 0 && (
+                  <div className="col-span-full text-center py-8 text-slate-400 text-xs italic bg-slate-50 rounded-2xl border border-slate-150">
+                    El estudiante no ha completado entradas de diario todavía.
                   </div>
-                </div>
-
-                {/* Historial de Diarios en Columna Izquierda para mejor uso de espacio */}
-                <div className="p-6 bg-slate-50 border border-slate-150 rounded-3xl flex flex-col">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex justify-between items-center">
-                    Bitácoras Conductuales
-                    <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-bold">
-                      {selectedStudentJournals.length}
-                    </span>
-                  </h4>
-
-                  <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-                    {selectedStudentJournals.map((j) => {
-                      const journalDate = j.createdAt?.toDate ? j.createdAt.toDate().toLocaleDateString() : j.createdAt ? new Date(j.createdAt).toLocaleDateString() : 'N/A';
-                      return (
-                        <div key={j.id} className="p-4 bg-white border border-slate-100 rounded-2xl">
-                          <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1">
-                            <span>{journalDate}</span>
-                            {j.score && <span className="text-indigo-600">Score: {j.score}</span>}
-                          </div>
-                          <p className="text-[11px] text-slate-700 leading-relaxed italic">"{j.content}"</p>
-                        </div>
-                      );
-                    })}
-
-                    {selectedStudentJournals.length === 0 && (
-                      <div className="text-center py-10 text-slate-400 text-xs italic">
-                        El estudiante no ha completado entradas de diario todavía.
-                      </div>
-                    )}
-                  </div>
-                </div>
+                )}
               </div>
-
-              {/* Columna Derecha: Diagnóstico Conductual con IA */}
-              <div className="md:col-span-7 flex flex-col gap-6">
-                <div className="p-8 bg-indigo-950 text-white rounded-[32px] relative overflow-hidden shadow-xl shadow-indigo-900/10 min-h-[300px]">
-                  <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full blur-2xl -mr-16 -mt-16" />
-                  
-                  <div className="relative z-10">
-                    <div className="flex items-center gap-2 mb-6">
-                      <Sparkles className="text-amber-300 animate-pulse" size={20} />
-                      <h4 className="text-xs font-black uppercase tracking-widest text-indigo-200">Kira Flow™ AI Diagnóstico</h4>
-                    </div>
-
-                    {loadingDiagnosis ? (
-                      <div className="flex flex-col items-center justify-center py-16 gap-3 text-indigo-200">
-                        <Loader2 className="animate-spin" size={32} />
-                        <span className="text-xs font-bold">Procesando perfil conductual del alumno...</span>
-                      </div>
-                    ) : aiDiagnosis ? (
-                      <div className="space-y-6 animate-in fade-in">
-                        <div className="text-sm leading-relaxed text-indigo-50 font-medium">
-                          {aiDiagnosis}
-                        </div>
-                        <div className="pt-4 border-t border-white/10 flex justify-between items-center text-[10px] font-black text-indigo-300 uppercase tracking-widest">
-                          <span>Análisis en Tiempo Real</span>
-                          <span className="bg-white/10 text-white px-2.5 py-1 rounded-md">Gemini Flash</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-indigo-200 text-xs italic py-12 text-center">No se pudo procesar el perfil en este momento.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
             </div>
 
           </div>
@@ -2263,132 +2206,76 @@ function CoachAutomationView() {
       {/* MODAL INTERACTIVO DE PROGRESO Y FUNCIONALIDAD DEL ALUMNO */}
       {selectedStudent && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
-          <div className="bg-white rounded-[40px] border border-slate-200 w-full max-w-4xl p-8 lg:p-10 shadow-2xl relative flex flex-col gap-8 animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-[40px] border border-slate-200 w-full max-w-5xl p-8 lg:p-10 shadow-2xl relative flex flex-col gap-8 animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
             
             {/* Cabecera del Perfil */}
-            <div className="flex justify-between items-start gap-4">
+            <div className="flex justify-between items-start gap-4 pb-4 border-b border-slate-100">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-amber-50 border-2 border-amber-200 flex items-center justify-center text-lg font-black text-amber-600 uppercase">
-                  {selectedStudent.studentName?.[0] || 'U'}
+                <div className="w-14 h-14 rounded-full bg-indigo-50 border-2 border-indigo-200 flex items-center justify-center text-lg font-black text-indigo-600 uppercase">
+                  {(selectedStudent.studentName || selectedStudent.displayName)?.[0] || 'U'}
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight leading-tight">{selectedStudent.studentName || 'Alumno'}</h3>
-                  <p className="text-xs text-slate-400 mt-1">{selectedStudent.studentEmail}</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xl font-black text-slate-900 tracking-tight leading-tight">
+                      {selectedStudent.studentName || selectedStudent.displayName || 'Alumno'}
+                    </h3>
+                    <span className="px-2.5 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-full">
+                      {selectedStudent.courseTitle}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">{selectedStudent.studentEmail || selectedStudent.email}</p>
                 </div>
               </div>
               <button 
                 onClick={() => setSelectedStudent(null)}
-                className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer"
+                className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer font-bold"
               >
                 ✕
               </button>
             </div>
 
-            {/* Grid Principal */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+            {/* Dashboard Analítico con Gráficos Recharts */}
+            <StudentDetailedAnalytics 
+              student={selectedStudent}
+              journals={selectedStudentJournals}
+              aiDiagnosis={aiDiagnosis}
+              loadingDiagnosis={loadingDiagnosis}
+            />
+
+            {/* Historial Completo de Bitácoras de Texto */}
+            <div className="pt-6 border-t border-slate-150">
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  Bitácoras Conductuales Recientes ({selectedStudentJournals.length})
+                </h4>
+                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
+                  Histórico de Entradas
+                </span>
+              </div>
               
-              {/* Columna Izquierda: Métricas e Información de Curso */}
-              <div className="md:col-span-5 flex flex-col gap-6">
-                <div className="p-6 bg-slate-50 border border-slate-150 rounded-3xl">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Progreso del Alumno</h4>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <span className="text-[11px] font-bold text-slate-400">Curso Activo</span>
-                      <p className="text-sm font-black text-slate-800 mt-0.5">{selectedStudent.courseTitle}</p>
-                    </div>
-
-                    <div>
-                      <span className="text-[11px] font-bold text-slate-400">Progreso Registrado</span>
-                      <div className="flex items-center gap-3 mt-1.5">
-                        <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
-                          <div className="bg-amber-500 h-full transition-all" style={{ width: `${selectedStudent.progress || 0}%` }} />
-                        </div>
-                        <span className="text-xs font-black text-slate-700 shrink-0">{selectedStudent.progress || 0}%</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[200px] overflow-y-auto pr-2">
+                {selectedStudentJournals.map((j) => {
+                  const journalDate = j.createdAt?.toDate ? j.createdAt.toDate().toLocaleDateString('es-MX', { dateStyle: 'medium' }) : j.createdAt ? new Date(j.createdAt).toLocaleDateString('es-MX', { dateStyle: 'medium' }) : 'N/A';
+                  return (
+                    <div key={j.id} className="p-4 bg-slate-50 border border-slate-150 rounded-2xl flex flex-col justify-between hover:border-violet-200 transition-colors">
+                      <p className="text-xs text-slate-700 leading-relaxed italic mb-3">"{j.content}"</p>
+                      <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
+                        <span>{journalDate}</span>
+                        {j.score && (
+                          <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100">
+                            Score Emocional: {j.score}
+                          </span>
+                        )}
                       </div>
                     </div>
-
-                    <div className="pt-3 border-t border-slate-200 grid grid-cols-2 gap-4">
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Inscripción</span>
-                        <p className="text-xs font-black text-slate-800 mt-0.5">Manual / Aut.</p>
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Estado</span>
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <span className={cn("w-2 h-2 rounded-full", selectedStudent.status === 'approved' ? "bg-emerald-500" : "bg-amber-500")} />
-                          <span className="text-xs font-bold text-slate-700 capitalize">{selectedStudent.status || 'approved'}</span>
-                        </div>
-                      </div>
-                    </div>
+                  );
+                })}
+                {selectedStudentJournals.length === 0 && (
+                  <div className="col-span-full text-center py-8 text-slate-400 text-xs italic bg-slate-50 rounded-2xl border border-slate-150">
+                    El estudiante no ha completado entradas de diario todavía.
                   </div>
-                </div>
-
-                {/* Historial de Bitácoras Conductuales */}
-                <div className="p-6 bg-slate-50 border border-slate-150 rounded-3xl flex flex-col">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex justify-between items-center">
-                    Bitácoras Conductuales
-                    <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-bold">
-                      {selectedStudentJournals.length}
-                    </span>
-                  </h4>
-
-                  <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-                    {selectedStudentJournals.map((j) => {
-                      const journalDate = j.createdAt?.toDate ? j.createdAt.toDate().toLocaleDateString() : j.createdAt ? new Date(j.createdAt).toLocaleDateString() : 'N/A';
-                      return (
-                        <div key={j.id} className="p-4 bg-white border border-slate-100 rounded-2xl">
-                          <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1">
-                            <span>{journalDate}</span>
-                            {j.score && <span className="text-indigo-600">Score: {j.score}</span>}
-                          </div>
-                          <p className="text-[11px] text-slate-700 leading-relaxed italic">"{j.content}"</p>
-                        </div>
-                      );
-                    })}
-
-                    {selectedStudentJournals.length === 0 && (
-                      <div className="text-center py-10 text-slate-400 text-xs italic">
-                        El estudiante no ha completado entradas de diario todavía.
-                      </div>
-                    )}
-                  </div>
-                </div>
+                )}
               </div>
-
-              {/* Columna Derecha: Diagnóstico Conductual con IA */}
-              <div className="md:col-span-7 flex flex-col gap-6">
-                <div className="p-8 bg-indigo-950 text-white rounded-[32px] relative overflow-hidden shadow-xl shadow-indigo-900/10 min-h-[300px]">
-                  <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full blur-2xl -mr-16 -mt-16" />
-                  
-                  <div className="relative z-10">
-                    <div className="flex items-center gap-2 mb-6">
-                      <Sparkles className="text-amber-300 animate-pulse" size={20} />
-                      <h4 className="text-xs font-black uppercase tracking-widest text-indigo-200">Kira Flow™ AI Diagnóstico de Progreso</h4>
-                    </div>
-
-                    {loadingDiagnosis ? (
-                      <div className="flex flex-col items-center justify-center py-16 gap-3 text-indigo-200">
-                        <Loader2 className="animate-spin" size={32} />
-                        <span className="text-xs font-bold">Procesando perfil conductual del alumno...</span>
-                      </div>
-                    ) : aiDiagnosis ? (
-                      <div className="space-y-6 animate-in fade-in">
-                        <div className="text-sm leading-relaxed text-indigo-50 font-medium">
-                          {aiDiagnosis}
-                        </div>
-                        <div className="pt-4 border-t border-white/10 flex justify-between items-center text-[10px] font-black text-indigo-300 uppercase tracking-widest">
-                          <span>Análisis en Tiempo Real</span>
-                          <span className="bg-white/10 text-white px-2.5 py-1 rounded-md">Gemini Flash</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-indigo-200 text-xs italic py-12 text-center">No se pudo procesar el perfil en este momento.</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
             </div>
 
           </div>
