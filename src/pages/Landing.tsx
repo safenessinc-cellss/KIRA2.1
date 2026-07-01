@@ -202,10 +202,59 @@ export function Landing() {
     let bio = coach.bio || '';
     if (!bio) return '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>';
     
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(bio, 'text/html');
+      
+      const name = (coach.displayName || '').trim().toLowerCase();
+      const specs = (coach.specialties || [coach.specialty || ''])
+        .map((s: string) => s.trim().toLowerCase())
+        .filter(Boolean);
+      
+      const commonSpecs = ['life coaching', 'mindfulness', 'business coaching', 'art therapy', 'liderazgo', 'bienestar integral', 'coach', 'terapeuta'];
+      
+      let changed = true;
+      let iterations = 0;
+      
+      while (changed && iterations < 30) {
+        changed = false;
+        iterations++;
+        
+        const firstChild = doc.body.firstChild;
+        if (!firstChild) break;
+        
+        const text = (firstChild.textContent || '').trim().toLowerCase();
+        
+        // If empty text node, remove it
+        if (!text) {
+          firstChild.parentNode?.removeChild(firstChild);
+          changed = true;
+          continue;
+        }
+        
+        const matchesName = name && (text === name || text.includes(name) || name.includes(text));
+        const matchesSpec = specs.some(s => text === s || text.includes(s) || s.includes(text));
+        const matchesCommon = commonSpecs.some(s => text === s || text.includes(s));
+        
+        if (matchesName || matchesSpec || matchesCommon) {
+          firstChild.parentNode?.removeChild(firstChild);
+          changed = true;
+        }
+      }
+      
+      let resultHtml = doc.body.innerHTML.trim();
+      if (!resultHtml) {
+        return '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>';
+      }
+      return resultHtml;
+    } catch (e) {
+      console.error("DOMParser error cleaning bio:", e);
+    }
+    
+    // Fallback regex cleaning if DOMParser fails
+    let cleaned = bio;
     const name = coach.displayName || '';
     const specs = coach.specialties || [coach.specialty || ''];
-    
-    let cleaned = bio;
     const escapeRegex = (str: string) => str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
     
     let prevCleaned = '';
@@ -213,53 +262,22 @@ export function Landing() {
     while (cleaned !== prevCleaned && iterations < 15) {
       iterations++;
       prevCleaned = cleaned;
-      
-      // Trim spaces, breaks, and common container markers at start
       cleaned = cleaned.trim().replace(/^\s*(<br\s*\/?>|<p>\s*<\/p>|&nbsp;|\s)+\s*/gi, '');
-      
-      // Clean leading displayName (either plain text or wrapped in p/div)
       if (name) {
         const namePattern = escapeRegex(name.trim());
-        const regexes = [
-          new RegExp(`^${namePattern}`, 'i'),
-          new RegExp(`^<p>\\s*${namePattern}\\s*</p>`, 'i'),
-          new RegExp(`^<div>\\s*${namePattern}\\s*</div>`, 'i')
-        ];
-        for (const r of regexes) {
-          cleaned = cleaned.replace(r, '').trim();
-        }
+        cleaned = cleaned.replace(new RegExp(`^${namePattern}`, 'i'), '')
+                         .replace(new RegExp(`^<p>\\s*${namePattern}\\s*</p>`, 'i'), '')
+                         .replace(new RegExp(`^<div>\\s*${namePattern}\\s*</div>`, 'i'), '').trim();
       }
-      
-      // Clean leading specialties
       for (const spec of specs) {
         if (spec) {
           const specPattern = escapeRegex(spec.trim());
-          const regexes = [
-            new RegExp(`^${specPattern}`, 'i'),
-            new RegExp(`^<p>\\s*${specPattern}\\s*</p>`, 'i'),
-            new RegExp(`^<div>\\s*${specPattern}\\s*</div>`, 'i')
-          ];
-          for (const r of regexes) {
-            cleaned = cleaned.replace(r, '').trim();
-          }
-        }
-      }
-      
-      // Clean common specialties
-      const commonSpecs = ['Life Coaching', 'Mindfulness', 'Business Coaching', 'Art Therapy', 'Liderazgo', 'Bienestar Integral'];
-      for (const spec of commonSpecs) {
-        const specPattern = escapeRegex(spec);
-        const regexes = [
-          new RegExp(`^${specPattern}`, 'i'),
-          new RegExp(`^<p>\\s*${specPattern}\\s*</p>`, 'i'),
-          new RegExp(`^<div>\\s*${specPattern}\\s*</div>`, 'i')
-        ];
-        for (const r of regexes) {
-          cleaned = cleaned.replace(r, '').trim();
+          cleaned = cleaned.replace(new RegExp(`^${specPattern}`, 'i'), '')
+                           .replace(new RegExp(`^<p>\\s*${specPattern}\\s*</p>`, 'i'), '')
+                           .replace(new RegExp(`^<div>\\s*${specPattern}\\s*</div>`, 'i'), '').trim();
         }
       }
     }
-    
     return cleaned || '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>';
   };
 
