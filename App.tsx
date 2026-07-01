@@ -72,7 +72,7 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <ToastProvider>
-      <CartProvider>
+      <CartProvider>  {/* ✅ CartProvider no topo, envolvendo tudo que precisa do carrinho */}
         <ThemeProvider>
           <ErrorBoundary>
             <BrowserRouter>
@@ -117,9 +117,9 @@ export default function App() {
                         <Route path="/hr" element={<HRDashboard />} />
                       </Route>
                     </Route>
-      
                   </Route>
                 </Routes>
+                {/* ✅ PerformanceMonitor agora está DENTRO do CartProvider */}
                 <PerformanceMonitor />
               </Suspense>
             </BrowserRouter>
