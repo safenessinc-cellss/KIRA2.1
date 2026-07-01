@@ -6,12 +6,9 @@ import { LogIn, ArrowRight, ShieldCheck, Activity, Users, BrainCircuit, Globe, B
 import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, onSnapshot, addDoc, doc, updateDoc } from 'firebase/firestore';
-import { GoogleGenAI } from '@google/genai';
 import { cn } from '../lib/utils';
 
 import { useNavigate } from 'react-router-dom';
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export function Landing() {
   const { user, role } = useAuth();
@@ -199,6 +196,72 @@ export function Landing() {
       languages: 'Español'
     }
   ];
+
+  const getCleanedBio = (coach: any) => {
+    if (!coach) return '';
+    let bio = coach.bio || '';
+    if (!bio) return '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>';
+    
+    const name = coach.displayName || '';
+    const specs = coach.specialties || [coach.specialty || ''];
+    
+    let cleaned = bio;
+    const escapeRegex = (str: string) => str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    
+    let prevCleaned = '';
+    let iterations = 0;
+    while (cleaned !== prevCleaned && iterations < 15) {
+      iterations++;
+      prevCleaned = cleaned;
+      
+      // Trim spaces, breaks, and common container markers at start
+      cleaned = cleaned.trim().replace(/^\s*(<br\s*\/?>|<p>\s*<\/p>|&nbsp;|\s)+\s*/gi, '');
+      
+      // Clean leading displayName (either plain text or wrapped in p/div)
+      if (name) {
+        const namePattern = escapeRegex(name.trim());
+        const regexes = [
+          new RegExp(`^${namePattern}`, 'i'),
+          new RegExp(`^<p>\\s*${namePattern}\\s*</p>`, 'i'),
+          new RegExp(`^<div>\\s*${namePattern}\\s*</div>`, 'i')
+        ];
+        for (const r of regexes) {
+          cleaned = cleaned.replace(r, '').trim();
+        }
+      }
+      
+      // Clean leading specialties
+      for (const spec of specs) {
+        if (spec) {
+          const specPattern = escapeRegex(spec.trim());
+          const regexes = [
+            new RegExp(`^${specPattern}`, 'i'),
+            new RegExp(`^<p>\\s*${specPattern}\\s*</p>`, 'i'),
+            new RegExp(`^<div>\\s*${specPattern}\\s*</div>`, 'i')
+          ];
+          for (const r of regexes) {
+            cleaned = cleaned.replace(r, '').trim();
+          }
+        }
+      }
+      
+      // Clean common specialties
+      const commonSpecs = ['Life Coaching', 'Mindfulness', 'Business Coaching', 'Art Therapy', 'Liderazgo', 'Bienestar Integral'];
+      for (const spec of commonSpecs) {
+        const specPattern = escapeRegex(spec);
+        const regexes = [
+          new RegExp(`^${specPattern}`, 'i'),
+          new RegExp(`^<p>\\s*${specPattern}\\s*</p>`, 'i'),
+          new RegExp(`^<div>\\s*${specPattern}\\s*</div>`, 'i')
+        ];
+        for (const r of regexes) {
+          cleaned = cleaned.replace(r, '').trim();
+        }
+      }
+    }
+    
+    return cleaned || '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>';
+  };
 
   const displayCoaches = coaches.length > 0 ? coaches : demoCoachesReal;
   
@@ -586,13 +649,13 @@ export function Landing() {
         <section className="px-6 lg:px-12 py-24 bg-white border-t border-slate-200">
           <div className="mb-14 max-w-3xl mx-auto text-center flex flex-col items-center">
             <span className="text-kiragold font-bold tracking-widest uppercase text-xs mb-3 flex items-center gap-2">
-              <Star size={14} className="fill-kiragold" /> Directorio Élite
+              <Star size={14} className="fill-kiragold" /> Directorio de Mentores Kira Coach
             </span>
             <h3 className="text-4xl md:text-5xl font-serif text-slate-900 mb-6 tracking-tight">
-              Nuestros Terapeutas y Coaches
+              Directorio de Mentores Kira Coach
             </h3>
             <p className="text-slate-500 text-lg leading-relaxed mb-8">
-              En Kira Coach no solo encuentras cursos, encuentras un camino trazado por expertos que yo misma he seleccionado para tu crecimiento. Un espacio de autoridad humana y técnica.
+              Encuentra el guía ideal para tu transformación consciente e inscríbete a sus cursos.
             </p>
 
             {/* BARRA DE BÚSQUEDA SEMÁNTICA */}
@@ -602,7 +665,7 @@ export function Landing() {
                </div>
                <input 
                  type="text"
-                 placeholder="Busca por nombre, especialidad o palabras clave (ej: ansiedad, liderazgo)..."
+                 placeholder="Buscar por nombre, especialidad..."
                  value={searchQuery}
                  onChange={(e) => setSearchQuery(e.target.value)}
                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-14 pr-6 py-4 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 focus:border-kirateal/30 transition-all outline-none shadow-sm"
@@ -673,7 +736,7 @@ export function Landing() {
                 {/* Imagen Principal */}
                 <img 
                   src={coach.photoURL || `https://picsum.photos/seed/${coach.id}/800/1000`} 
-                  alt={coach.displayName} 
+                  alt="" 
                   className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
                   referrerPolicy="no-referrer"
                 />
@@ -701,9 +764,13 @@ export function Landing() {
 
                 {/* Contenido Inferior (Nombre y Especialidad) */}
                 <div className="absolute bottom-6 left-6 right-6 flex flex-col justify-end z-10">
-                  <p className="text-kiragold font-bold text-[10px] uppercase tracking-[0.2em] mb-1.5 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-500">
-                    {coach.specialty || 'Bienestar Integral'}
-                  </p>
+                  <div className="flex flex-wrap gap-1 mb-2 transform translate-y-2 group-hover:translate-y-0 transition-all duration-500">
+                    {(coach.specialties || [coach.specialty || 'Bienestar Integral']).map((s: string) => (
+                      <span key={s} className="text-kiragold font-bold text-[9px] uppercase tracking-[0.12em] bg-kiragold/20 px-2 py-0.5 rounded-full border border-kiragold/30 leading-none">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
                   <h4 className="text-white font-serif text-2xl font-bold flex items-center gap-2 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-500 delay-75">
                     {coach.displayName || 'Experto'} 
                     <BadgeCheck size={20} className="text-sky-400" />
@@ -723,7 +790,7 @@ export function Landing() {
                       onClick={() => setSelectedCoach(coach)}
                       className="px-5 py-2.5 bg-white text-slate-900 rounded-full text-[11px] font-black uppercase tracking-wider hover:bg-kiragold hover:text-white hover:scale-110 hover:shadow-[0_10px_25px_-5px_rgba(196,160,82,0.4)] transition-all duration-300 shadow-xl"
                     >
-                      Ver Perfil
+                      Ver Perfil & Servicios
                     </button>
                   </div>
                 </div>
@@ -1045,7 +1112,7 @@ export function Landing() {
               <div className="w-full md:w-2/5 md:max-w-sm shrink-0 bg-slate-950 relative min-h-[300px]">
                  <img 
                     src={selectedCoach.photoURL || `https://picsum.photos/seed/${selectedCoach.id}/800/1000`} 
-                    alt={selectedCoach.displayName} 
+                    alt="" 
                     className="absolute inset-0 w-full h-full object-cover"
                     referrerPolicy="no-referrer"
                  />
@@ -1142,7 +1209,7 @@ export function Landing() {
                     </div>
                     <div 
                        className="text-sm text-slate-300 leading-relaxed max-w-prose rich-text-content"
-                       dangerouslySetInnerHTML={{ __html: selectedCoach.bio || '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>' }}
+                       dangerouslySetInnerHTML={{ __html: getCleanedBio(selectedCoach) }}
                     />
                  </div>
 
@@ -1407,15 +1474,22 @@ Implementa las siguientes capas de lógica:
 5. REGLA DE ESCALAMIENTO MENTAL: Si detectas un estado de ánimo negativo, un nivel de estrés alto en el usuario, frustración, tristeza, o si notas necesidad de un diagnóstico profesional, debes incluir EXACTAMENTE la frase "[ESCALAR_HUMANO]" al final de tu respuesta secreta.
 `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-          temperature: 0.7,
-        }
+      const fetchResponse = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: "gemini-3-flash-preview",
+          contents: prompt,
+          config: {
+            temperature: 0.7,
+          }
+        })
       });
       
-      const aiTextRaw = response.text || 'Lo siento, en este momento no puedo procesar tu mensaje. Respira e inténtalo de nuevo.';
+      const data = await fetchResponse.json();
+      if (data.error) throw new Error(data.error);
+
+      const aiTextRaw = data.text || 'Lo siento, en este momento no puedo procesar tu mensaje. Respira e inténtalo de nuevo.';
       
       // Parse for human escalation
       const needsHuman = aiTextRaw.includes('[ESCALAR_HUMANO]');
