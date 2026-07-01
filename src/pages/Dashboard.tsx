@@ -359,43 +359,76 @@ export function Dashboard() {
     const success = searchParams.get('success');
     const courseId = searchParams.get('courseId');
     const amount = searchParams.get('amount');
+    const title = searchParams.get('title') || 'Producto';
+    const purchaseType = searchParams.get('type') || 'course_purchase';
 
     if (success === 'true' && courseId && user) {
       try {
-        // Evitar duplicaciones consultando directamente antes de escribir
-        const existingQ = query(
-          collection(db, 'enrollments'),
-          where('userId', '==', user.uid),
-          where('courseId', '==', courseId)
-        );
-        const existingSnap = await getDocs(existingQ);
-        
-        if (existingSnap.empty) {
-          await addDoc(collection(db, 'enrollments'), {
-            userId: user.uid,
-            courseId,
-            progress: 0,
-            createdAt: new Date()
-          });
+        if (purchaseType === 'book_purchase') {
+          const userRef = doc(db, 'users', user.uid);
+          const userSnap = await getDoc(userRef);
+          const userData = userSnap.data() || {};
+          const currentOwnedBooks = userData.ownedBooks || [];
 
-          await addDoc(collection(db, 'transactions'), {
-            userId: user.uid,
-            amount: Number(amount) || 0,
-            type: 'course_purchase',
-            courseId,
-            createdAt: new Date()
-          });
+          if (!currentOwnedBooks.includes(courseId)) {
+            const updatedOwnedBooks = [...currentOwnedBooks, courseId];
+            const currentPoints = userData.points || 0;
+            const newPoints = currentPoints + 50;
 
-          toastSuccess('¡Inscripción completada exitosamente! Bienvenido al curso.');
+            await updateDoc(userRef, {
+              ownedBooks: updatedOwnedBooks,
+              points: newPoints
+            });
+
+            await addDoc(collection(db, 'transactions'), {
+              userId: user.uid,
+              amount: Number(amount) || 0,
+              type: 'book_purchase',
+              bookId: courseId,
+              bookTitle: title,
+              createdAt: new Date()
+            });
+
+            toastSuccess(`¡Adquisición de libro completada! Has adquirido "${title}". Se han acreditado +50 Zaps de energía.`);
+          } else {
+            toastInfo('Ya has adquirido este libro.');
+          }
         } else {
-          toastInfo('Ya estás inscrito en este curso.');
+          // Evitar duplicaciones consultando directamente antes de escribir
+          const existingQ = query(
+            collection(db, 'enrollments'),
+            where('userId', '==', user.uid),
+            where('courseId', '==', courseId)
+          );
+          const existingSnap = await getDocs(existingQ);
+          
+          if (existingSnap.empty) {
+            await addDoc(collection(db, 'enrollments'), {
+              userId: user.uid,
+              courseId,
+              progress: 0,
+              createdAt: new Date()
+            });
+
+            await addDoc(collection(db, 'transactions'), {
+              userId: user.uid,
+              amount: Number(amount) || 0,
+              type: 'course_purchase',
+              courseId,
+              createdAt: new Date()
+            });
+
+            toastSuccess('¡Inscripción completada exitosamente! Bienvenido al curso.');
+          } else {
+            toastInfo('Ya estás inscrito en este curso.');
+          }
         }
 
         setSearchParams({});
         fetchData();
       } catch (e: any) {
         console.error('Error recording payment success:', e);
-        toastError('No se pudo registrar la inscripción: ' + (e.message || String(e)));
+        toastError('No se pudo registrar la adquisición: ' + (e.message || String(e)));
       }
     }
   };
@@ -469,6 +502,34 @@ export function Dashboard() {
     } catch(e: any) {
       console.error('Stripe Redirect Error:', e);
       toastError('Error al iniciar la inscripción: ' + (e.message || String(e)));
+    } finally {
+      setCheckingOutId(null);
+    }
+  };
+
+  const handleStripeBookCheckout = async (book: any) => {
+    if(!user) return;
+    setCheckingOutId(book.id);
+    try {
+      const resp = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId: book.id,
+          userId: user.uid,
+          amount: typeof book.price === 'number' ? book.price : Number(book.price) || 0,
+          title: book.title || 'Ebook de Kira',
+          type: 'book_purchase'
+        })
+      });
+      const data = await resp.json();
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      window.location.href = data.url;
+    } catch(e: any) {
+      console.error('Stripe Book Redirect Error:', e);
+      toastError('Error al iniciar la compra del libro: ' + (e.message || String(e)));
     } finally {
       setCheckingOutId(null);
     }
@@ -999,10 +1060,19 @@ export function Dashboard() {
                           </div>
                         ) : (
                           <button 
-                            onClick={() => setSelectedBookForPurchase(book)}
-                            className="w-full mt-auto text-[11px] py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-2xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"
+                            onClick={() => handleStripeBookCheckout(book)}
+                            disabled={checkingOutId === book.id}
+                            className="w-full mt-auto text-[11px] py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-2xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer disabled:opacity-50"
                           >
-                            <ShoppingCart size={13} /> Adquirir Libro
+                            {checkingOutId === book.id ? (
+                              <>
+                                <Loader2 size={13} className="animate-spin" /> Procesando...
+                              </>
+                            ) : (
+                              <>
+                                <ShoppingCart size={13} /> Adquirir Libro
+                              </>
+                            )}
                           </button>
                         )}
                       </div>
