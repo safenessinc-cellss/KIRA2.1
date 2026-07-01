@@ -212,7 +212,7 @@ export function Dashboard() {
 
       const enrollQ = query(collection(db, 'enrollments'), where('userId', '==', user.uid));
       const enrollSnap = await getDocs(enrollQ);
-      setMyEnrollments(enrollSnap.docs.map(d => d.data().courseId));
+      setMyEnrollments(enrollSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
       // Fetch favorites
       if (user.favorites && user.favorites.length > 0) {
@@ -264,6 +264,43 @@ export function Dashboard() {
     } catch(e: any) {
       console.error('Stripe Redirect Error:', e);
       toastError('Error al iniciar la inscripción: ' + (e.message || String(e)));
+    } finally {
+      setCheckingOutId(null);
+    }
+  };
+
+  const handleSimpleEnroll = async (course: any) => {
+    if (!user) return;
+    setCheckingOutId(course.id);
+    try {
+      const existingQ = query(
+        collection(db, 'enrollments'),
+        where('userId', '==', user.uid),
+        where('courseId', '==', course.id)
+      );
+      const existingSnap = await getDocs(existingQ);
+      if (!existingSnap.empty) {
+        toastInfo('Ya has solicitado la inscripción a este curso.');
+        return;
+      }
+
+      await addDoc(collection(db, 'enrollments'), {
+        userId: user.uid,
+        courseId: course.id,
+        courseTitle: course.title || 'Curso',
+        coachId: course.coachId || '',
+        studentName: user.displayName || user.email || 'Alumno',
+        studentEmail: user.email,
+        progress: 0,
+        status: 'pending',
+        createdAt: new Date()
+      });
+
+      toastSuccess('¡Solicitud de inscripción enviada exitosamente! Tu coach o administrador autorizará tu ingreso pronto.');
+      fetchData();
+    } catch (e: any) {
+      console.error('Error in simple enrollment:', e);
+      toastError('Error al enviar la solicitud: ' + (e.message || String(e)));
     } finally {
       setCheckingOutId(null);
     }
@@ -430,7 +467,7 @@ export function Dashboard() {
           </div>
           <div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cursos Activos</p>
-            <p className="text-4xl font-black text-slate-900 tracking-tight">{myEnrollments.length}</p>
+            <p className="text-4xl font-black text-slate-900 tracking-tight">{myEnrollments.filter(e => e.status === 'approved' || !e.status).length}</p>
           </div>
         </div>
 
@@ -515,7 +552,9 @@ export function Dashboard() {
                 style={{ transform: `translateX(-${currentSlide * 100}%)` }}
               >
                 {popularCourses.length > 0 ? popularCourses.map((course) => {
-                  const isEnrolled = myEnrollments.includes(course.id);
+                  const enrollment = myEnrollments.find(e => e.courseId === course.id);
+                  const isEnrolled = enrollment && (enrollment.status === 'approved' || !enrollment.status);
+                  const isPending = enrollment && enrollment.status === 'pending';
                   return (
                     <div key={course.id} className="w-full flex-shrink-0 px-1">
                       <div className="border border-slate-100 rounded-[32px] overflow-hidden bg-slate-50/40 hover:border-kirateal transition-all duration-500 flex flex-col md:flex-row h-72">
@@ -544,19 +583,26 @@ export function Dashboard() {
                                 >
                                   <Star size={16} /> Calificar
                                 </button>
+                              ) : isPending ? (
+                                <button 
+                                  disabled
+                                  className="w-full text-[13px] px-6 py-3.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-2xl font-black flex items-center justify-center gap-2"
+                                >
+                                  <Clock size={16} /> Pendiente
+                                </button>
                               ) : (
                                 <button 
-                                  onClick={() => handleStripeCheckout(course)} 
+                                  onClick={() => handleSimpleEnroll(course)} 
                                   disabled={checkingOutId !== null}
-                                  className="w-full text-[13px] px-6 py-3.5 bg-kirateal text-white rounded-2xl hover:bg-kirateal-light font-black transition flex items-center justify-center gap-2 shadow-xl shadow-teal-100 disabled:opacity-50"
+                                  className="w-full text-[12px] px-4 py-3.5 bg-kirateal text-white rounded-2xl hover:bg-kirateal-light font-black transition flex items-center justify-center gap-2 shadow-xl shadow-teal-100 disabled:opacity-50"
                                 >
                                   {checkingOutId === course.id ? (
                                     <>
-                                      <Loader2 size={16} className="animate-spin" /> Inscribiendo...
+                                      <Loader2 size={14} className="animate-spin" /> Procesando...
                                     </>
                                   ) : (
                                     <>
-                                      <ShoppingCart size={16} /> Inscribirse
+                                      <UserPlus size={14} /> Solicitar Cupo
                                     </>
                                   )}
                                 </button>
