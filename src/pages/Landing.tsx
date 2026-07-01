@@ -202,82 +202,122 @@ export function Landing() {
     let bio = coach.bio || '';
     if (!bio) return '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>';
     
+    // 1. Unescape HTML entities first so we can parse actual elements
+    bio = bio
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&')
+      .replace(/&nbsp;/g, ' ');
+
+    // 2. Remove common automated prefix sentences/phrases
+    const prefixesToRemove = [
+      /explora la biografía,? especialidades y los servicios evolutivos que ofrece este mentor\.?/gi,
+      /explora la biografía,? especialidades y servicios que ofrece este mentor\.?/gi,
+      /explora la biografía,? especialidades y servicios evolutivos\.?/gi,
+      /explora la biografía y especialidades de este mentor\.?/gi,
+      /explora la biografía y especialidades\.?/gi,
+      /explora la biografía de este mentor\.?/gi,
+      /explora la biografía\.?/gi,
+      /biografía y enfoque profesional\.?/gi
+    ];
+
+    let cleaned = bio;
+    for (const prefix of prefixesToRemove) {
+      cleaned = cleaned.replace(prefix, '');
+    }
+
+    // 3. Remove duplicate coach names and specialties from the beginning of the text
+    const name = (coach.displayName || '').trim();
+    const specs = (coach.specialties || [coach.specialty || ''])
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+
+    // Common terms we want to remove if they are duplicated at the start
+    const termsToRemove = [
+      name,
+      ...specs,
+      'Life Coaching',
+      'Mindfulness',
+      'Business Coaching',
+      'Art Therapy',
+      'Liderazgo',
+      'Bienestar Integral',
+      'Coach',
+      'Terapeuta'
+    ].filter(Boolean);
+
+    let termRemoved = true;
+    let iterations = 0;
+    while (termRemoved && iterations < 15) {
+      termRemoved = false;
+      iterations++;
+
+      // Trim leading spacing and empty tags
+      cleaned = cleaned.trim().replace(/^\s*(<br\s*\/?>|<p>\s*<\/p>|<div>\s*<\/div>|\s)+/gi, '');
+
+      for (const term of termsToRemove) {
+        const escapedTerm = term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        
+        // Regex to match the term at the start, either as plain text or wrapped in standard tags
+        const termRegexes = [
+          new RegExp(`^${escapedTerm}\\s*(<br\\s*\\/?>|\\s)*`, 'i'),
+          new RegExp(`^<p>\\s*${escapedTerm}\\s*<\\/p>\\s*`, 'i'),
+          new RegExp(`^<div>\\s*${escapedTerm}\\s*<\\/div>\\s*`, 'i'),
+          new RegExp(`^<h2>\\s*${escapedTerm}\\s*<\\/h2>\\s*`, 'i'),
+          new RegExp(`^<h3>\\s*${escapedTerm}\\s*<\\/h3>\\s*`, 'i')
+        ];
+
+        for (const regex of termRegexes) {
+          if (regex.test(cleaned)) {
+            cleaned = cleaned.replace(regex, '').trim();
+            termRemoved = true;
+            break;
+          }
+        }
+        if (termRemoved) break;
+      }
+    }
+
+    // 4. Clean up inline styles that can break theme colors and strip span tags
     try {
       const parser = new DOMParser();
-      const doc = parser.parseFromString(bio, 'text/html');
+      const doc = parser.parseFromString(cleaned, 'text/html');
       
-      const name = (coach.displayName || '').trim().toLowerCase();
-      const specs = (coach.specialties || [coach.specialty || ''])
-        .map((s: string) => s.trim().toLowerCase())
-        .filter(Boolean);
-      
-      const commonSpecs = ['life coaching', 'mindfulness', 'business coaching', 'art therapy', 'liderazgo', 'bienestar integral', 'coach', 'terapeuta'];
-      
-      let changed = true;
-      let iterations = 0;
-      
-      while (changed && iterations < 30) {
-        changed = false;
-        iterations++;
+      const allElements = doc.body.querySelectorAll('*');
+      allElements.forEach((el) => {
+        el.removeAttribute('style');
         
-        const firstChild = doc.body.firstChild;
-        if (!firstChild) break;
-        
-        const text = (firstChild.textContent || '').trim().toLowerCase();
-        
-        // If empty text node, remove it
-        if (!text) {
-          firstChild.parentNode?.removeChild(firstChild);
-          changed = true;
-          continue;
+        // If it's a span or a font tag, unwrap it (replace with its child nodes)
+        if (el.tagName.toLowerCase() === 'span' || el.tagName.toLowerCase() === 'font') {
+          const parent = el.parentNode;
+          if (parent) {
+            while (el.firstChild) {
+              parent.insertBefore(el.firstChild, el);
+            }
+            parent.removeChild(el);
+          }
         }
-        
-        const matchesName = name && (text === name || text.includes(name) || name.includes(text));
-        const matchesSpec = specs.some(s => text === s || text.includes(s) || s.includes(text));
-        const matchesCommon = commonSpecs.some(s => text === s || text.includes(s));
-        
-        if (matchesName || matchesSpec || matchesCommon) {
-          firstChild.parentNode?.removeChild(firstChild);
-          changed = true;
-        }
-      }
-      
+      });
+
       let resultHtml = doc.body.innerHTML.trim();
+      resultHtml = resultHtml.replace(/^\s*(<br\s*\/?>|<p>\s*<\/p>|\s)+/gi, '');
+
       if (!resultHtml) {
         return '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>';
       }
+
+      // Wrap in a paragraph if it doesn't start with an HTML tag
+      if (!resultHtml.startsWith('<')) {
+        resultHtml = `<p>${resultHtml}</p>`;
+      }
+
       return resultHtml;
     } catch (e) {
-      console.error("DOMParser error cleaning bio:", e);
+      console.error("DOMParser error during final clean:", e);
     }
-    
-    // Fallback regex cleaning if DOMParser fails
-    let cleaned = bio;
-    const name = coach.displayName || '';
-    const specs = coach.specialties || [coach.specialty || ''];
-    const escapeRegex = (str: string) => str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-    
-    let prevCleaned = '';
-    let iterations = 0;
-    while (cleaned !== prevCleaned && iterations < 15) {
-      iterations++;
-      prevCleaned = cleaned;
-      cleaned = cleaned.trim().replace(/^\s*(<br\s*\/?>|<p>\s*<\/p>|&nbsp;|\s)+\s*/gi, '');
-      if (name) {
-        const namePattern = escapeRegex(name.trim());
-        cleaned = cleaned.replace(new RegExp(`^${namePattern}`, 'i'), '')
-                         .replace(new RegExp(`^<p>\\s*${namePattern}\\s*</p>`, 'i'), '')
-                         .replace(new RegExp(`^<div>\\s*${namePattern}\\s*</div>`, 'i'), '').trim();
-      }
-      for (const spec of specs) {
-        if (spec) {
-          const specPattern = escapeRegex(spec.trim());
-          cleaned = cleaned.replace(new RegExp(`^${specPattern}`, 'i'), '')
-                           .replace(new RegExp(`^<p>\\s*${specPattern}\\s*</p>`, 'i'), '')
-                           .replace(new RegExp(`^<div>\\s*${specPattern}\\s*</div>`, 'i'), '').trim();
-        }
-      }
-    }
+
     return cleaned || '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>';
   };
 
