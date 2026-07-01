@@ -22,7 +22,6 @@ export function useSafeAddToCart() {
   // Retorna uma função segura que não faz nada
   return (product: Product) => {
     console.warn('addToCart called outside CartProvider - product:', product?.title);
-    // Em produção, você pode querer mostrar um toast ou redirecionar para login
   };
 }
 
