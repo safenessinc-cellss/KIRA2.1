@@ -1,51 +1,26 @@
 <!doctype html>
-<html lang="es"> <!-- Cambiar de "en" a "es" -->
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    
-    <!-- ✅ NUEVO: Theme color para PWA -->
-    <meta name="theme-color" content="#0f1115" />
-    
-    <!-- ✅ MEJORADO: Título más descriptivo -->
     <title>KIRA.COACH · Bienestar Proactivo con IA</title>
+    <meta name="theme-color" content="#1B4D5D" />
     
-    <!-- ✅ NUEVO: Meta description para SEO -->
-    <meta name="description" content="Kira es tu estratega de bienestar. Inteligencia anticipatoria, microaprendizaje y coaching adaptativo." />
-    <meta name="author" content="Kira Systems" />
-    
-    <!-- ✅ MEJORADO: Favicon con múltiples tamaños -->
+    <!-- Favicons -->
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     
-    <!-- ✅ NUEVO: Open Graph para redes sociales -->
-    <meta property="og:title" content="KIRA.COACH · Bienestar Proactivo con IA" />
-    <meta property="og:description" content="Libera el espacio mental que no sabías que tenías ocupado." />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://www.kira.coach/" />
-    <meta property="og:image" content="https://www.kira.coach/og-image.jpg" />
+    <!-- ✅ IMPORTANTE: NO hardcodees archivos del build -->
+    <!-- Vite inyectará automáticamente los archivos correctos -->
+    <!-- Solo necesitas estos modulepreload si sabes los nombres exactos -->
     
-    <!-- ✅ NUEVO: Twitter Cards -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="KIRA.COACH · Bienestar Proactivo con IA" />
-    <meta name="twitter:description" content="Libera el espacio mental que no sabías que tenías ocupado." />
-    <meta name="twitter:image" content="https://www.kira.coach/og-image.jpg" />
-    
-    <!-- ✅ NUEVO: Preconexión a fuentes externas -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    
-    <!-- Assets del build (se mantienen igual) -->
-    <script type="module" crossorigin src="/assets/index-DbRyIpuQ.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/vendor-libs-iZApNCPJ.js" />
-    <link rel="modulepreload" crossorigin href="/assets/vendor-react-Cdnrnr3d.js" />
-    <link rel="modulepreload" crossorigin href="/assets/vendor-firebase-CEsCtsAx.js" />
-    <link rel="modulepreload" crossorigin href="/assets/vendor-animations-4yjQAB8X.js" />
-    <link rel="stylesheet" crossorigin href="/assets/index-BsGaqrfR.css" />
+    <!-- Deja que Vite maneje los assets -->
   </head>
   <body>
     <div id="root"></div>
+    <!-- ✅ Vite inyectará los scripts aquí automáticamente -->
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
