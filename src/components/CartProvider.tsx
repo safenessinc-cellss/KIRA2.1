@@ -17,7 +17,11 @@ interface CartContextType {
   setIsCartOpen: (open: boolean) => void;
 }
 
+// ✅ CREAR EL CONTEXT
 const CartContext = createContext<CartContextType | undefined>(undefined);
+
+// ✅ EXPORTAR EL CONTEXT - ¡ESTA ES LA LÍNEA QUE FALTABA!
+export { CartContext };
 
 export const useCart = () => {
   const context = useContext(CartContext);
@@ -64,7 +68,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return [...prevItems, { product, quantity: 1 }];
       }
     });
-    setIsCartOpen(true); // Auto open cart drawer when adding item
+    setIsCartOpen(true);
   };
 
   const removeFromCart = (productId: string) => {
@@ -106,8 +110,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setCheckingOut(true);
     try {
-      // Build aggregate parameters for multi-product checkout
-      // We'll concatenate IDs, titles, and item types to parse them on successful redirect
       const ids = cartItems.map(item => item.product.id).join(',');
       const titles = cartItems.map(item => `${item.product.title} (x${item.quantity})`).join(', ');
       const types = cartItems.map(item => item.product.type).join(',');
@@ -120,7 +122,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           userId: user.uid,
           amount: cartTotal,
           title: titles.length > 80 ? `${cartItems.length} Productos de Kira` : titles,
-          type: 'cart_purchase' // Custom purchase type to trigger aggregate activation
+          type: 'cart_purchase'
         })
       });
 
@@ -129,7 +131,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error(data.error);
       }
       
-      // Clear cart before redirecting so they don't buy again
       clearCart();
       window.location.href = data.url;
     } catch (e: any) {
@@ -276,7 +277,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
               {/* Order Summary & Footer */}
               {cartItems.length > 0 && (
                 <div className="p-6 border-t border-slate-100 bg-slate-50/50 space-y-4">
-                  {/* Summary */}
                   <div className="space-y-2.5">
                     <div className="flex justify-between text-xs text-slate-500 font-medium">
                       <span>Subtotal</span>
@@ -294,7 +294,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     </div>
                   </div>
 
-                  {/* Checkout Button */}
                   <button
                     onClick={handleCheckout}
                     disabled={checkingOut}
