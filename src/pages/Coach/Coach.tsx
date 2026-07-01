@@ -2616,9 +2616,10 @@ function SortableMediaItem({ id, item, index, onRemove }: any) {
 
 export function CoachCourses() {
   const { user } = useAuth();
-  const { success: toastSuccess } = useToast();
+  const { success: toastSuccess, error: toastError } = useToast();
   const [profile, setProfile] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   
   // Form State
   const [title, setTitle] = useState('');
@@ -2636,8 +2637,40 @@ export function CoachCourses() {
         if(d.exists()) setProfile(d.data());
       });
       fetchCourses();
+      fetchPendingRequests();
     }
   }, [user]);
+
+  const fetchPendingRequests = async () => {
+    if (!user) return;
+    try {
+      const q = query(collection(db, 'enrollments'), where('coachId', '==', user.uid));
+      const snap = await getDocs(q);
+      const pending = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter((e: any) => e.status === 'pending');
+      setPendingRequests(pending);
+    } catch (e) {
+      console.error("Error fetching pending enrollments in CoachCourses:", e);
+    }
+  };
+
+  const handleEnrollmentAction = async (enrollmentId: string, action: 'approved' | 'rejected') => {
+    try {
+      if (action === 'approved') {
+        await updateDoc(doc(db, 'enrollments', enrollmentId), { status: 'approved' });
+        toastSuccess("Inscripción autorizada correctamente.");
+      } else {
+        await deleteDoc(doc(db, 'enrollments', enrollmentId));
+        toastSuccess("Inscripción rechazada con éxito.");
+      }
+      fetchPendingRequests();
+    } catch (error: any) {
+      console.error("Error updating enrollment status:", error);
+      setErrorMsg("No se pudo procesar la acción: " + error.message);
+      setTimeout(() => setErrorMsg(''), 5000);
+    }
+  };
 
   const fetchCourses = async () => {
     if(!user) return;
@@ -2793,6 +2826,68 @@ export function CoachCourses() {
       {errorMsg && (
         <div className="mb-4 p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-sm font-bold flex items-center gap-2">
           <AlertTriangle size={18} /> {errorMsg}
+        </div>
+      )}
+
+      {pendingRequests.length > 0 && (
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm animate-in fade-in">
+          <div className="flex items-center gap-2.5 mb-5">
+            <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold shadow-sm">
+              <Clock size={18} />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-900 text-base tracking-tight">Solicitudes de Inscripción Pendientes</h3>
+              <p className="text-[12px] text-slate-500 mt-0.5">Alumnos esperando tu autorización para acceder a tus programas.</p>
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100 max-h-[350px] overflow-y-auto pr-2">
+            {pendingRequests.map(req => {
+              const formattedDate = req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString() : req.createdAt ? new Date(req.createdAt).toLocaleDateString() : 'Reciente';
+              return (
+                <div key={req.id} className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 first:pt-0 last:pb-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-xs font-black text-slate-600 uppercase shadow-inner">
+                      {req.studentName?.[0] || 'U'}
+                    </div>
+                    <div>
+                      <div className="text-[13px] font-black text-slate-800 flex items-center gap-2">
+                        {req.studentName}
+                        <span className="px-2.5 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-bold rounded-lg border border-amber-100 uppercase tracking-wider">
+                          Pendiente
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-medium">{req.studentEmail}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-6">
+                    <div>
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Curso Solicitado</div>
+                      <div className="text-xs font-bold text-slate-800">{req.courseTitle}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fecha</div>
+                      <div className="text-xs font-medium text-slate-500">{formattedDate}</div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 md:ml-4">
+                      <button
+                        onClick={() => handleEnrollmentAction(req.id, 'rejected')}
+                        className="px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                      >
+                        Rechazar
+                      </button>
+                      <button
+                        onClick={() => handleEnrollmentAction(req.id, 'approved')}
+                        className="px-5 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        <CheckCircle2 size={13} /> Autorizar Ingreso
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
