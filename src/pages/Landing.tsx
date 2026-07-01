@@ -202,14 +202,28 @@ export function Landing() {
     let bio = coach.bio || '';
     if (!bio) return '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>';
     
-    // 1. Unescape HTML entities first so we can parse actual elements
-    bio = bio
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&amp;/g, '&')
-      .replace(/&nbsp;/g, ' ');
+    // 1. Unescape HTML entities recursively (up to 5 times) to ensure any double/triple escaping is fully resolved
+    let prevBio = '';
+    let iterations_decode = 0;
+    while (bio !== prevBio && iterations_decode < 5) {
+      prevBio = bio;
+      bio = bio
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/&nbsp;/gi, ' ');
+    }
+
+    // Strip redundant leading/trailing quotes if they wrap the entire HTML
+    bio = bio.trim();
+    if (bio.startsWith('"') && bio.endsWith('"') && bio.length > 1) {
+      bio = bio.substring(1, bio.length - 1).trim();
+    }
+    if (bio.startsWith("'") && bio.endsWith("'") && bio.length > 1) {
+      bio = bio.substring(1, bio.length - 1).trim();
+    }
 
     // 2. Remove common automated prefix sentences/phrases
     const prefixesToRemove = [
@@ -288,6 +302,8 @@ export function Landing() {
       const allElements = doc.body.querySelectorAll('*');
       allElements.forEach((el) => {
         el.removeAttribute('style');
+        el.removeAttribute('color');
+        el.removeAttribute('face');
         
         // If it's a span or a font tag, unwrap it (replace with its child nodes)
         if (el.tagName.toLowerCase() === 'span' || el.tagName.toLowerCase() === 'font') {
