@@ -974,62 +974,132 @@ function CoachStudentsActivity() {
             </button>
           </div>
         </div>
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b border-slate-100">
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estudiante</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Progreso Promedio</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Semáforo</th>
-              <th className="px-6 py-4 text-right"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {students.map(s => {
-              const status = getStatus(s.lastActivityAt);
-              return (
-                <tr key={s.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400">
-                        {s.displayName?.[0] || 'U'}
-                      </div>
-                      <div>
-                        <div className="text-[13px] font-bold text-slate-800">{s.displayName}</div>
-                        <div className="text-[10px] text-slate-400">{s.email}</div>
-                      </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 max-w-[100px] h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="bg-primary h-full transition-all" style={{ width: `${s.courseProgress}%` }} />
-                    </div>
-                    <span className="text-[11px] font-bold text-slate-600">{s.courseProgress}%</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    <div className={cn("w-2.5 h-2.5 rounded-full pulse-ping", status.color)} />
-                    <span className="text-[11px] font-medium text-slate-600">{status.label}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <button className="p-2 text-slate-400 hover:text-primary transition-colors">
-                    <ChevronRight size={16} />
-                  </button>
-                </td>
+        {activeSubView === 'approved' ? (
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-slate-100">
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estudiante</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Curso Inscrito</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Progreso</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Semáforo</th>
+                <th className="px-6 py-4 text-right"></th>
               </tr>
-            );
-          })}
-          {students.length === 0 && (
-            <tr>
-              <td colSpan={4} className="py-12 text-center text-slate-400 text-xs italic">
-                Aún no tienes alumnos inscritos en tus cursos.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {students.map(s => {
+                const status = getStatus(s.lastActivityAt);
+                return (
+                  <tr key={s.enrollmentId} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400">
+                          {s.displayName?.[0] || 'U'}
+                        </div>
+                        <div>
+                          <div className="text-[13px] font-bold text-slate-800">{s.displayName}</div>
+                          <div className="text-[10px] text-slate-400">{s.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg border border-slate-200">
+                        {s.courseTitle}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 max-w-[100px] h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="bg-primary h-full transition-all" style={{ width: `${s.courseProgress}%` }} />
+                        </div>
+                        <span className="text-[11px] font-bold text-slate-600">{s.courseProgress}%</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className={cn("w-2.5 h-2.5 rounded-full pulse-ping", status.color)} />
+                        <span className="text-[11px] font-medium text-slate-600">{status.label}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button className="p-2 text-slate-400 hover:text-primary transition-colors">
+                        <ChevronRight size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {students.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center text-slate-400 text-xs italic">
+                    Aún no tienes alumnos inscritos en tus cursos.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        ) : (
+          <table className="w-full text-left">
+            <thead>
+              <tr className="border-b border-slate-100">
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estudiante</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Curso Solicitado</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fecha Solicitud</th>
+                <th className="px-6 py-4 text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {pendingEnrollments.map(s => {
+                const formattedDate = s.createdAt?.toDate ? s.createdAt.toDate().toLocaleDateString() : s.createdAt ? new Date(s.createdAt).toLocaleDateString() : 'N/A';
+                return (
+                  <tr key={s.enrollmentId} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-[10px] font-bold text-amber-600">
+                          {s.displayName?.[0] || 'U'}
+                        </div>
+                        <div>
+                          <div className="text-[13px] font-bold text-slate-800">{s.displayName}</div>
+                          <div className="text-[10px] text-slate-400">{s.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="px-2.5 py-1 bg-amber-50/50 text-amber-800 text-xs font-bold rounded-lg border border-amber-200">
+                        {s.courseTitle}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-xs font-medium text-slate-500">
+                      {formattedDate}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleEnrollmentAction(s.enrollmentId, 'rejected')}
+                          className="px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                        >
+                          Rechazar
+                        </button>
+                        <button
+                          onClick={() => handleEnrollmentAction(s.enrollmentId, 'approved')}
+                          className="px-3 py-1.5 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow-sm transition-colors flex items-center gap-1"
+                        >
+                          <CheckCircle2 size={12} /> Autorizar
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {pendingEnrollments.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-12 text-center text-slate-400 text-xs italic">
+                    No hay solicitudes de inscripción pendientes para tus cursos.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
