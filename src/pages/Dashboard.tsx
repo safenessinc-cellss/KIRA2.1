@@ -10,6 +10,9 @@ import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, Shiel
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
 import { useToast } from '../hooks/useToast';
+import { useCart } from '../components/CartProvider';
+import { ProductDetailModal } from '../components/ProductDetailModal';
+import { Product } from '../types';
 
 // HELPER PARA OBTENER LOS CAPÍTULOS DE UN LIBRO INTERACTIVO
 const getChaptersForBook = (bookTitle: string) => {
@@ -145,6 +148,9 @@ export function Dashboard() {
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
   const [availableBooks, setAvailableBooks] = useState<any[]>([]);
+  const [selectedProductForDetail, setSelectedProductForDetail] = useState<Product | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const { addToCart } = useCart();
   const [myEnrollments, setMyEnrollments] = useState<any[]>([]);
   const [favoriteCoaches, setFavoriteCoaches] = useState<any[]>([]);
   const [unlockedHistory, setUnlockedHistory] = useState<any[]>([]);
@@ -364,7 +370,74 @@ export function Dashboard() {
 
     if (success === 'true' && courseId && user) {
       try {
-        if (purchaseType === 'book_purchase') {
+        if (purchaseType === 'cart_purchase') {
+          const itemIds = courseId.split(',');
+          const userRef = doc(db, 'users', user.uid);
+          const userSnap = await getDoc(userRef);
+          const userData = userSnap.data() || {};
+          let currentOwnedBooks = userData.ownedBooks || [];
+          let currentPoints = userData.points || 0;
+          let addedBooks = 0;
+          let addedCourses = 0;
+
+          for (const itemId of itemIds) {
+            const bookDoc = await getDoc(doc(db, 'books', itemId));
+            if (bookDoc.exists()) {
+              if (!currentOwnedBooks.includes(itemId)) {
+                currentOwnedBooks.push(itemId);
+                currentPoints += 50;
+                addedBooks++;
+
+                await addDoc(collection(db, 'transactions'), {
+                  userId: user.uid,
+                  amount: Number(bookDoc.data().price) || 0,
+                  type: 'book_purchase',
+                  bookId: itemId,
+                  bookTitle: bookDoc.data().title || 'Libro de Kira',
+                  createdAt: new Date()
+                });
+              }
+            } else {
+              const courseDoc = await getDoc(doc(db, 'courses', itemId));
+              if (courseDoc.exists()) {
+                const existingQ = query(
+                  collection(db, 'enrollments'),
+                  where('userId', '==', user.uid),
+                  where('courseId', '==', itemId)
+                );
+                const existingSnap = await getDocs(existingQ);
+                if (existingSnap.empty) {
+                  await addDoc(collection(db, 'enrollments'), {
+                    userId: user.uid,
+                    courseId: itemId,
+                    progress: 0,
+                    createdAt: new Date()
+                  });
+
+                  await addDoc(collection(db, 'transactions'), {
+                    userId: user.uid,
+                    amount: Number(courseDoc.data().price) || 0,
+                    type: 'course_purchase',
+                    courseId: itemId,
+                    createdAt: new Date()
+                  });
+                  addedCourses++;
+                }
+              }
+            }
+          }
+
+          await updateDoc(userRef, {
+            ownedBooks: currentOwnedBooks,
+            points: currentPoints
+          });
+
+          if (addedBooks > 0 || addedCourses > 0) {
+            toastSuccess(`¡Compra del carrito procesada con éxito! Desbloqueados: ${addedBooks} libros y ${addedCourses} cursos. +${addedBooks * 50} Zaps de energía acreditados.`);
+          } else {
+            toastInfo('Los productos del carrito ya habían sido adquiridos previamente.');
+          }
+        } else if (purchaseType === 'book_purchase') {
           const userRef = doc(db, 'users', user.uid);
           const userSnap = await getDoc(userRef);
           const userData = userSnap.data() || {};
@@ -920,15 +993,51 @@ export function Dashboard() {
                   return (
                     <div key={course.id} className="w-full flex-shrink-0 px-1">
                       <div className="border border-slate-100 rounded-[32px] overflow-hidden bg-slate-50/40 hover:border-kirateal transition-all duration-500 flex flex-col md:flex-row h-72">
-                        <div className="md:w-5/12 bg-slate-200 relative shrink-0">
-                          {course.bannerUrl && <img src={course.bannerUrl} alt={course.title} className="w-full h-full object-cover" />}
+                        <div 
+                          onClick={() => {
+                            setSelectedProductForDetail({
+                              id: course.id,
+                              title: course.title,
+                              price: Number(course.price) || 0,
+                              description: course.description || 'Programa de formación premium...',
+                              imageUrl: course.bannerUrl || '',
+                              type: 'course',
+                              author: course.coachName || 'Kira Coach'
+                            });
+                            setIsDetailModalOpen(true);
+                          }}
+                          className="md:w-5/12 bg-slate-200 relative shrink-0 cursor-pointer overflow-hidden group/thumb"
+                        >
+                          {course.bannerUrl && (
+                            <img 
+                              src={course.bannerUrl} 
+                              alt={course.title} 
+                              className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-500" 
+                            />
+                          )}
                           <div className="absolute top-5 left-5 bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-2xl text-[13px] font-black shadow-lg text-slate-900 border border-white/20">
                             ${course.price}
                           </div>
                         </div>
                         <div className="p-8 md:p-10 flex flex-col flex-1">
-                          <h4 className="font-black text-2xl text-slate-900 mb-3 tracking-tight">{course.title}</h4>
-                          <p className="text-[13px] text-slate-500 mb-6 flex-1 line-clamp-3 leading-relaxed font-medium">{course.description}</p>
+                          <div 
+                            onClick={() => {
+                              setSelectedProductForDetail({
+                                id: course.id,
+                                title: course.title,
+                                price: Number(course.price) || 0,
+                                description: course.description || 'Programa de formación premium...',
+                                imageUrl: course.bannerUrl || '',
+                                type: 'course',
+                                author: course.coachName || 'Kira Coach'
+                              });
+                              setIsDetailModalOpen(true);
+                            }}
+                            className="flex-1 flex flex-col cursor-pointer hover:opacity-90 transition-opacity"
+                          >
+                            <h4 className="font-black text-2xl text-slate-900 mb-3 tracking-tight">{course.title}</h4>
+                            <p className="text-[13px] text-slate-500 mb-6 flex-1 line-clamp-3 leading-relaxed font-medium">{course.description}</p>
+                          </div>
                           
                           <div className="flex gap-5 mt-auto items-center">
                             <div className="flex-1">
@@ -965,11 +1074,21 @@ export function Dashboard() {
                                 </button>
                               ) : (
                                 <button 
-                                  onClick={() => setSelectedCourseForEnroll(course)} 
+                                  onClick={() => {
+                                    addToCart({
+                                      id: course.id,
+                                      title: course.title,
+                                      price: Number(course.price) || 0,
+                                      description: course.description || '',
+                                      imageUrl: course.bannerUrl || '',
+                                      type: 'course',
+                                      author: course.coachName || 'Kira Coach'
+                                    });
+                                  }}
                                   disabled={checkingOutId !== null}
-                                  className="w-full text-[12px] px-4 py-3.5 bg-kirateal text-white rounded-2xl hover:bg-kirateal-light font-black transition flex items-center justify-center gap-2 shadow-xl shadow-teal-100 disabled:opacity-50 cursor-pointer"
+                                  className="w-full text-[12px] px-4 py-3.5 bg-kirateal text-white rounded-2xl hover:bg-kirateal-light font-black transition flex items-center justify-center gap-2 shadow-xl shadow-teal-100 disabled:opacity-50 cursor-pointer active:scale-95"
                                 >
-                                  <UserPlus size={14} /> Solicitar Cupo
+                                  <ShoppingCart size={14} /> Adquirir Curso
                                 </button>
                               )}
                             </div>
@@ -1008,8 +1127,29 @@ export function Dashboard() {
                   const bookReview = myReviews.find(r => r.bookId === book.id || (r.itemId === book.id && r.itemType === 'book'));
                   return (
                     <div key={book.id} className="border border-white/5 rounded-[32px] overflow-hidden bg-slate-950/60 hover:border-emerald-400/40 transition-all duration-500 flex flex-col h-[400px]">
-                      <div className="h-56 bg-slate-950 relative overflow-hidden shrink-0">
-                        {book.imageUrl && <img src={book.imageUrl} alt={book.title} className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />}
+                      <div 
+                        onClick={() => {
+                          setSelectedProductForDetail({
+                            id: book.id,
+                            title: book.title,
+                            price: Number(book.price) || 0,
+                            description: book.description || 'Un libro interactivo premium...',
+                            imageUrl: book.imageUrl || '',
+                            type: 'book',
+                            author: book.author || 'Kira Coach',
+                            pointCost: 50
+                          });
+                          setIsDetailModalOpen(true);
+                        }}
+                        className="h-56 bg-slate-950 relative overflow-hidden shrink-0 cursor-pointer group/book"
+                      >
+                        {book.imageUrl && (
+                          <img 
+                            src={book.imageUrl} 
+                            alt={book.title} 
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover/book:scale-105" 
+                          />
+                        )}
                         {userOwnedBooks.includes(book.id) ? (
                           <div className="absolute top-5 left-5 bg-emerald-500 text-slate-950 px-3.5 py-1.5 rounded-full text-xs font-black shadow-lg flex items-center gap-1">
                             <BadgeCheck size={12} className="text-slate-950" /> Desbloqueado
@@ -1021,11 +1161,28 @@ export function Dashboard() {
                         )}
                       </div>
                       <div className="p-6 flex flex-col flex-1">
-                        <h4 className="font-black text-lg text-slate-100 mb-1 line-clamp-1">{book.title}</h4>
-                        <p className="text-[11px] text-emerald-400 font-bold mb-4">Por {book.author || 'Kira Coach'}</p>
-                        <p className="text-xs text-slate-400 mb-5 flex-1 line-clamp-3 leading-relaxed font-medium">
-                          {book.description || 'Un libro canalizado y estructurado con herramientas prácticas de arteterapia, respiración consciente y autoconocimiento.'}
-                        </p>
+                        <div 
+                          onClick={() => {
+                            setSelectedProductForDetail({
+                              id: book.id,
+                              title: book.title,
+                              price: Number(book.price) || 0,
+                              description: book.description || 'Un libro interactivo premium...',
+                              imageUrl: book.imageUrl || '',
+                              type: 'book',
+                              author: book.author || 'Kira Coach',
+                              pointCost: 50
+                            });
+                            setIsDetailModalOpen(true);
+                          }}
+                          className="flex-1 flex flex-col cursor-pointer hover:opacity-90 transition-opacity"
+                        >
+                          <h4 className="font-black text-lg text-slate-100 mb-1 line-clamp-1">{book.title}</h4>
+                          <p className="text-[11px] text-emerald-400 font-bold mb-4">Por {book.author || 'Kira Coach'}</p>
+                          <p className="text-xs text-slate-400 mb-5 flex-1 line-clamp-3 leading-relaxed font-medium">
+                            {book.description || 'Un libro canalizado y estructurado con herramientas prácticas de arteterapia, respiración consciente y autoconocimiento.'}
+                          </p>
+                        </div>
                         
                         {userOwnedBooks.includes(book.id) ? (
                           <div className="mt-auto space-y-2">
@@ -1060,19 +1217,21 @@ export function Dashboard() {
                           </div>
                         ) : (
                           <button 
-                            onClick={() => handleStripeBookCheckout(book)}
-                            disabled={checkingOutId === book.id}
-                            className="w-full mt-auto text-[11px] py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-2xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer disabled:opacity-50"
+                            onClick={() => {
+                              addToCart({
+                                id: book.id,
+                                title: book.title,
+                                price: Number(book.price) || 0,
+                                description: book.description || '',
+                                imageUrl: book.imageUrl || '',
+                                type: 'book',
+                                author: book.author || 'Kira Coach',
+                                pointCost: 50
+                              });
+                            }}
+                            className="w-full mt-auto text-[11px] py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-2xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer active:scale-95"
                           >
-                            {checkingOutId === book.id ? (
-                              <>
-                                <Loader2 size={13} className="animate-spin" /> Procesando...
-                              </>
-                            ) : (
-                              <>
-                                <ShoppingCart size={13} /> Adquirir Libro
-                              </>
-                            )}
+                            <ShoppingCart size={13} /> Adquirir Libro
                           </button>
                         )}
                       </div>
@@ -1627,6 +1786,19 @@ export function Dashboard() {
           </motion.div>
         </div>
       )}
+
+      {/* Reusable Product Detail Modal */}
+      <ProductDetailModal
+        product={selectedProductForDetail}
+        isOpen={isDetailModalOpen}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setSelectedProductForDetail(null);
+        }}
+        onAddToCart={(product) => {
+          addToCart(product);
+        }}
+      />
     </div>
   );
 }
