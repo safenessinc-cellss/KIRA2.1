@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from '../components/Brand';
-import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles } from 'lucide-react';
+import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart } from 'lucide-react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { ChatWidget } from '../components/Chat';
 import { NotificationCenter } from '../components/Notifications';
+import { useCart } from '../components/CartProvider';
 import { auth, db } from '../firebase';
 import { doc, updateDoc, collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { sendEmailVerification } from 'firebase/auth';
 
 export function DashboardLayout({ title }: { title: string }) {
   const { user, logout, role, loading } = useAuth();
+  const { cartCount, setIsCartOpen } = useCart();
   const location = useLocation();
   const [toast, setToast] = useState<{ title: string; message: string } | null>(null);
 
@@ -39,8 +41,7 @@ export function DashboardLayout({ title }: { title: string }) {
         if (change.type === 'added') {
           const data = change.doc.data();
           // Only show toast if it's very recent (last 10 seconds) to avoid historical toasts
-          const notificationDate = data.createdAt?.toDate ? data.createdAt.toDate() : (data.createdAt instanceof Date ? data.createdAt : new Date());
-          const isRecent = (new Date().getTime() - notificationDate.getTime()) < 10000;
+          const isRecent = (new Date().getTime() - data.createdAt.toDate().getTime()) < 10000;
           if (isRecent) {
              setToast({ title: data.title, message: data.message });
              setTimeout(() => setToast(null), 5000);
@@ -191,6 +192,22 @@ export function DashboardLayout({ title }: { title: string }) {
           <div className="font-semibold text-slate-500">Bienvenido, {role === 'admin' ? 'Super Admin' : user?.displayName}</div>
           <div className="flex items-center gap-4">
             <NotificationCenter />
+            
+            {/* Shopping Cart Trigger Icon */}
+            <button
+              onClick={() => setIsCartOpen(true)}
+              className="relative w-10 h-10 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 transition-all cursor-pointer border border-slate-200/40 active:scale-95"
+              title="Ver Carrito"
+              id="header-cart-trigger"
+            >
+              <ShoppingCart size={18} />
+              {cartCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white font-black text-[9px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+
             {role === 'coach' && (
               <span className="text-xs px-2 py-1 bg-emerald-50 text-emerald-600 rounded-full font-semibold">
                 Membresía Activa
