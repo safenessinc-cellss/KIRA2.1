@@ -364,7 +364,7 @@ function CoachDashboardView({ profile, isApproved }: any) {
     try {
       await updateDoc(doc(db, 'users', user.uid), {
         manualActiveStudents: Number(editedMetrics.activeStudents),
-        manualAvgProgress: Number(editedMetrics.manualAvgProgress !== undefined ? editedMetrics.avgProgress : editedMetrics.avgProgress),
+        manualAvgProgress: Number(editedMetrics.avgProgress),
         manualRecentSessions: Number(editedMetrics.recentSessions),
         updatedAt: new Date()
       });
@@ -792,6 +792,75 @@ function CoachStudentsActivity() {
   const [sending, setSending] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
+  // Estados de Detalle Individual de Alumno
+  const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
+  const [selectedStudentJournals, setSelectedStudentJournals] = useState<any[]>([]);
+  const [aiDiagnosis, setAiDiagnosis] = useState<string>('');
+  const [loadingDiagnosis, setLoadingDiagnosis] = useState(false);
+
+  // Generador de Diagnóstico de Alumno con IA en tiempo real
+  const generateDiagnosis = async (student: any) => {
+    setLoadingDiagnosis(true);
+    setAiDiagnosis('');
+    try {
+      const statusLabel = getStatus(student.lastActivityAt).label;
+      const prompt = `Actúa como un psicólogo conductual de élite y tutor de alto rendimiento. 
+      Analiza el perfil conductual de este estudiante:
+      - Nombre: ${student.displayName}
+      - Curso: ${student.courseTitle}
+      - Progreso en el curso: ${student.courseProgress}%
+      - Puntos de racha / Energía acumulada: ${student.points || 0} pts
+      - Estado del Semáforo de Actividad: ${statusLabel}
+      
+      Escribe un diagnóstico conductual corto, incisivo y altamente accionable para el coach en español (máximo 150 palabras). 
+      Debe contener:
+      1. El estado motivacional y de constancia estimado.
+      2. Un consejo directo y empático de 1-2 oraciones para que el Coach le envíe hoy mismo para acelerar su transformación.
+      Tono formal, profesional, empático y profundamente analítico.`;
+
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3.5-flash',
+          contents: prompt
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.text) {
+        setAiDiagnosis(data.text);
+      }
+    } catch (e: any) {
+      console.error("Error generating diagnosis with IA:", e);
+      setAiDiagnosis('No se pudo generar el perfil conductual de IA en este momento.');
+    } finally {
+      setLoadingDiagnosis(false);
+    }
+  };
+
+  // Efecto secundario al seleccionar un alumno para cargar su historial
+  useEffect(() => {
+    if (!selectedStudent) {
+      setSelectedStudentJournals([]);
+      setAiDiagnosis('');
+      return;
+    }
+    // Fetch journals
+    const q = query(collection(db, 'journals'), where('userId', '==', selectedStudent.id));
+    getDocs(q).then(snap => {
+      const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
+      list.sort((a: any, b: any) => {
+        const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
+        const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
+        return tB - tA;
+      });
+      setSelectedStudentJournals(list);
+    }).catch(e => console.error("Error fetching student journals:", e));
+
+    generateDiagnosis(selectedStudent);
+  }, [selectedStudent]);
+
   const fetchStudentsAndJournals = async () => {
     if (!user) return;
     try {
@@ -1079,14 +1148,18 @@ function CoachStudentsActivity() {
               {students.map(s => {
                 const status = getStatus(s.lastActivityAt);
                 return (
-                  <tr key={s.enrollmentId} className="hover:bg-slate-50 transition-colors">
+                  <tr 
+                    key={s.enrollmentId} 
+                    className="hover:bg-slate-50 transition-colors cursor-pointer group"
+                    onClick={() => setSelectedStudent(s)}
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400">
+                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all">
                           {s.displayName?.[0] || 'U'}
                         </div>
                         <div>
-                          <div className="text-[13px] font-bold text-slate-800">{s.displayName}</div>
+                          <div className="text-[13px] font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{s.displayName}</div>
                           <div className="text-[10px] text-slate-400">{s.email}</div>
                         </div>
                       </div>
@@ -1191,6 +1264,141 @@ function CoachStudentsActivity() {
           </table>
         )}
       </div>
+
+      {/* MODAL DETALLE DE PROGRESO Y COMPORTAMIENTO DEL ALUMNO */}
+      {selectedStudent && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
+          <div className="bg-white rounded-[40px] border border-slate-200 w-full max-w-4xl p-8 lg:p-10 shadow-2xl relative flex flex-col gap-8 animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
+            
+            {/* Cabecera del Perfil */}
+            <div className="flex justify-between items-start gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-indigo-50 border-2 border-indigo-200 flex items-center justify-center text-lg font-black text-indigo-600 uppercase">
+                  {selectedStudent.displayName?.[0] || 'U'}
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight leading-tight">{selectedStudent.displayName}</h3>
+                  <p className="text-xs text-slate-400 mt-1">{selectedStudent.email}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedStudent(null)}
+                className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Grid Principal */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+              
+              {/* Columna Izquierda: Métricas e Información de Curso */}
+              <div className="md:col-span-5 flex flex-col gap-6">
+                <div className="p-6 bg-slate-50 border border-slate-150 rounded-3xl">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Información del Curso</h4>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-400">Curso</span>
+                      <p className="text-sm font-black text-slate-800 mt-0.5">{selectedStudent.courseTitle}</p>
+                    </div>
+
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-400">Progreso de Contenido</span>
+                      <div className="flex items-center gap-3 mt-1.5">
+                        <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+                          <div className="bg-emerald-500 h-full transition-all" style={{ width: `${selectedStudent.courseProgress}%` }} />
+                        </div>
+                        <span className="text-xs font-black text-slate-700 shrink-0">{selectedStudent.courseProgress}%</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-200 grid grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Puntos Energía</span>
+                        <p className="text-lg font-black text-slate-800 mt-0.5">{selectedStudent.points || 0} pts</p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Semáforo</span>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className={cn("w-2.5 h-2.5 rounded-full", getStatus(selectedStudent.lastActivityAt).color)} />
+                          <span className="text-xs font-bold text-slate-700">{getStatus(selectedStudent.lastActivityAt).label}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Historial de Diarios en Columna Izquierda para mejor uso de espacio */}
+                <div className="p-6 bg-slate-50 border border-slate-150 rounded-3xl flex flex-col">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex justify-between items-center">
+                    Bitácoras Conductuales
+                    <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-bold">
+                      {selectedStudentJournals.length}
+                    </span>
+                  </h4>
+
+                  <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
+                    {selectedStudentJournals.map((j) => {
+                      const journalDate = j.createdAt?.toDate ? j.createdAt.toDate().toLocaleDateString() : j.createdAt ? new Date(j.createdAt).toLocaleDateString() : 'N/A';
+                      return (
+                        <div key={j.id} className="p-4 bg-white border border-slate-100 rounded-2xl">
+                          <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1">
+                            <span>{journalDate}</span>
+                            {j.score && <span className="text-indigo-600">Score: {j.score}</span>}
+                          </div>
+                          <p className="text-[11px] text-slate-700 leading-relaxed italic">"{j.content}"</p>
+                        </div>
+                      );
+                    })}
+
+                    {selectedStudentJournals.length === 0 && (
+                      <div className="text-center py-10 text-slate-400 text-xs italic">
+                        El estudiante no ha completado entradas de diario todavía.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Columna Derecha: Diagnóstico Conductual con IA */}
+              <div className="md:col-span-7 flex flex-col gap-6">
+                <div className="p-8 bg-indigo-950 text-white rounded-[32px] relative overflow-hidden shadow-xl shadow-indigo-900/10 min-h-[300px]">
+                  <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full blur-2xl -mr-16 -mt-16" />
+                  
+                  <div className="relative z-10">
+                    <div className="flex items-center gap-2 mb-6">
+                      <Sparkles className="text-amber-300 animate-pulse" size={20} />
+                      <h4 className="text-xs font-black uppercase tracking-widest text-indigo-200">Kira Flow™ AI Diagnóstico</h4>
+                    </div>
+
+                    {loadingDiagnosis ? (
+                      <div className="flex flex-col items-center justify-center py-16 gap-3 text-indigo-200">
+                        <Loader2 className="animate-spin" size={32} />
+                        <span className="text-xs font-bold">Procesando perfil conductual del alumno...</span>
+                      </div>
+                    ) : aiDiagnosis ? (
+                      <div className="space-y-6 animate-in fade-in">
+                        <div className="text-sm leading-relaxed text-indigo-50 font-medium">
+                          {aiDiagnosis}
+                        </div>
+                        <div className="pt-4 border-t border-white/10 flex justify-between items-center text-[10px] font-black text-indigo-300 uppercase tracking-widest">
+                          <span>Análisis en Tiempo Real</span>
+                          <span className="bg-white/10 text-white px-2.5 py-1 rounded-md">Gemini Flash</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-indigo-200 text-xs italic py-12 text-center">No se pudo procesar el perfil en este momento.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1252,7 +1460,7 @@ function CoachContractManager() {
       Atributos del curso:
       - Título: ${course.title}
       - Descripción: ${course.description || 'Formación de alto impacto de desarrollo integral.'}
-      - Precio: ${course.price || 'Establecido por el Coach'}
+      - Precio: $${course.price || 'Establecido por el Coach'}
       - Modalidad: ${course.modality || 'Online/Asincrónico'}
       
       Estructura el contrato con cláusulas claras de:
@@ -1517,6 +1725,119 @@ function CoachAutomationView() {
     message: ''
   });
 
+  // Cursos vendidos y alumnos inscritos
+  const [courses, setCourses] = useState<any[]>([]);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
+  const [loadingData, setLoadingData] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
+  const [selectedStudentJournals, setSelectedStudentJournals] = useState<any[]>([]);
+  const [aiDiagnosis, setAiDiagnosis] = useState<string>('');
+  const [loadingDiagnosis, setLoadingDiagnosis] = useState(false);
+
+  const fetchSalesAndLogistics = async () => {
+    if (!user) return;
+    setLoadingData(true);
+    try {
+      const qCourses = query(collection(db, 'courses'), where('coachId', '==', user.uid));
+      const snapCourses = await getDocs(qCourses);
+      const coursesData = snapCourses.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      setCourses(coursesData);
+
+      if (coursesData.length > 0) {
+        const cIds = coursesData.map(d => d.id);
+        const courseMap = new Map<string, any>(coursesData.map(d => [d.id, d]));
+        
+        const enrollList: any[] = [];
+        for (const cid of cIds) {
+          const eq = query(collection(db, 'enrollments'), where('courseId', '==', cid));
+          const esnap = await getDocs(eq);
+          esnap.docs.forEach(ed => {
+            const data = ed.data();
+            enrollList.push({
+              id: ed.id,
+              ...data,
+              courseTitle: courseMap.get(data.courseId)?.title || 'Curso',
+              coursePrice: parseFloat(courseMap.get(data.courseId)?.price) || 0,
+            });
+          });
+        }
+        setEnrollments(enrollList);
+      } else {
+        setEnrollments([]);
+      }
+    } catch (e) {
+      console.error("Error fetching sales/logistics:", e);
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSalesAndLogistics();
+  }, [user]);
+
+  const generateDiagnosis = async (student: any) => {
+    setLoadingDiagnosis(true);
+    setAiDiagnosis('');
+    try {
+      const progress = student.progress || student.courseProgress || 0;
+      const prompt = `Actúa como un psicólogo conductual de élite y tutor de alto rendimiento. 
+      Analiza el progreso, involucramiento y funcionalidad de este alumno en el curso:
+      - Nombre: ${student.studentName || 'Alumno'}
+      - Curso: ${student.courseTitle}
+      - Progreso de contenido: ${progress}%
+      - Correo electrónico: ${student.studentEmail || 'N/A'}
+      - Estado: ${student.status || 'approved'}
+      
+      Escribe un diagnóstico conductual corto, incisivo y altamente accionable para el coach en español (máximo 150 palabras). 
+      Debe contener:
+      1. Su nivel de disciplina y funcionalidad dentro de la plataforma.
+      2. Un consejo directo de 1-2 oraciones para que el Coach interactúe hoy mismo para mantener su momentum o reactivarlo.
+      Tono formal, profesional, empático y profundamente analítico.`;
+
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3.5-flash',
+          contents: prompt
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.text) {
+        setAiDiagnosis(data.text);
+      }
+    } catch (e: any) {
+      console.error("Error generating diagnosis with IA:", e);
+      setAiDiagnosis('No se pudo generar el perfil conductual de IA en este momento.');
+    } finally {
+      setLoadingDiagnosis(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedStudent) {
+      setSelectedStudentJournals([]);
+      setAiDiagnosis('');
+      return;
+    }
+    const sUserId = selectedStudent.userId || selectedStudent.id;
+    if (sUserId) {
+      const q = query(collection(db, 'journals'), where('userId', '==', sUserId));
+      getDocs(q).then(snap => {
+        const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
+        list.sort((a: any, b: any) => {
+          const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
+          const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
+          return tB - tA;
+        });
+        setSelectedStudentJournals(list);
+      }).catch(e => console.error("Error fetching journals:", e));
+    }
+    generateDiagnosis(selectedStudent);
+  }, [selectedStudent]);
+
   useEffect(() => {
     if (!user) return;
     const q = query(collection(db, 'automations'), where('ownerId', '==', user.uid));
@@ -1607,9 +1928,9 @@ function CoachAutomationView() {
         </div>
 
         <div className="flex gap-4 p-1.5 bg-slate-100 rounded-[28px] w-fit mb-10 border border-transparent hover:border-slate-200 transition-all">
-          <button onClick={() => setActiveCategory('retencion')} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'retencion' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Retención</button>
-          <button onClick={() => setActiveCategory('ventas')} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'ventas' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Ventas</button>
-          <button onClick={() => setActiveCategory('logistica')} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'logistica' ? "bg-white text-amber-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Logística</button>
+          <button onClick={() => { setActiveCategory('retencion'); setIsAdding(false); }} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'retencion' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Retención</button>
+          <button onClick={() => { setActiveCategory('ventas'); setIsAdding(false); }} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'ventas' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Ventas</button>
+          <button onClick={() => { setActiveCategory('logistica'); setIsAdding(false); }} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'logistica' ? "bg-white text-amber-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Logística</button>
         </div>
 
         {isAdding ? (
@@ -1744,6 +2065,151 @@ function CoachAutomationView() {
             )}
           </div>
         )}
+
+        {/* VENTAS SECCIÓN: Cursos Vendidos */}
+        {activeCategory === 'ventas' && (
+          <div className="mt-12 pt-10 border-t border-slate-100 animate-in fade-in">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h4 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <CreditCard className="text-emerald-600" size={18} />
+                  Cursos Vendidos (Métricas de Facturación)
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">Monitoreo en tiempo real de ingresos generados por cada formación.</p>
+              </div>
+              <span className="px-3.5 py-1.5 bg-emerald-50 text-emerald-700 text-[10px] font-black rounded-full uppercase tracking-wider border border-emerald-100">
+                {courses.length} Cursos Activos
+              </span>
+            </div>
+
+            {loadingData ? (
+              <div className="flex items-center gap-2 py-8 justify-center text-slate-400">
+                <Loader2 className="animate-spin text-emerald-500" size={20} />
+                <span className="text-xs font-bold">Cargando métricas de ventas...</span>
+              </div>
+            ) : courses.length === 0 ? (
+              <div className="text-center py-10 bg-slate-50 rounded-2xl text-slate-400 text-xs italic">
+                Aún no has creado ningún curso en la plataforma.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {courses.map(course => {
+                  const courseSales = enrollments.filter(e => e.courseId === course.id);
+                  const revenue = courseSales.reduce((acc, curr) => acc + (parseFloat(course.price) || 0), 0);
+                  
+                  return (
+                    <div key={course.id} className="bg-slate-50 border border-slate-150 rounded-3xl p-6 shadow-sm hover:border-emerald-200 hover:bg-emerald-50/10 transition-all">
+                      <div className="flex justify-between items-start gap-2 mb-3">
+                        <span className="px-2.5 py-1 bg-white border border-slate-200 text-slate-500 text-[9px] font-bold rounded-xl uppercase">
+                          {course.modality || "Online"}
+                        </span>
+                        <span className="text-xs font-black text-emerald-600">${course.price || "0.00"} USD</span>
+                      </div>
+                      <h5 className="text-[13px] font-black text-slate-900 leading-snug line-clamp-2">{course.title}</h5>
+                      <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{course.description || "Sin descripción establecida."}</p>
+                      
+                      <div className="mt-5 pt-4 border-t border-slate-200/60 flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase">Ventas</span>
+                          <span className="text-xs font-black text-slate-800">{courseSales.length} Alumnos</span>
+                        </div>
+                        <div className="flex flex-col text-right">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase">Facturación</span>
+                          <span className="text-xs font-black text-emerald-600">${revenue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* LOGÍSTICA SECCIÓN: Alumnos Inscritos */}
+        {activeCategory === 'logistica' && (
+          <div className="mt-12 pt-10 border-t border-slate-100 animate-in fade-in">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h4 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <GraduationCap className="text-amber-600" size={18} />
+                  Logística de Alumnos: Progreso e Inscripciones
+                </h4>
+                <p className="text-xs text-slate-500 mt-1">Presiona sobre cualquier alumno para auditar su funcionalidad, progreso e IA Insights de Kira.</p>
+              </div>
+              <span className="px-3.5 py-1.5 bg-amber-50 text-amber-700 text-[10px] font-black rounded-full uppercase tracking-wider border border-amber-100">
+                {enrollments.length} Inscripciones
+              </span>
+            </div>
+
+            {loadingData ? (
+              <div className="flex items-center gap-2 py-8 justify-center text-slate-400">
+                <Loader2 className="animate-spin text-amber-500" size={20} />
+                <span className="text-xs font-bold">Cargando logística de alumnos...</span>
+              </div>
+            ) : enrollments.length === 0 ? (
+              <div className="text-center py-10 bg-slate-50 rounded-2xl text-slate-400 text-xs italic">
+                No hay alumnos inscritos en tus cursos actualmente.
+              </div>
+            ) : (
+              <div className="border border-slate-200 rounded-[28px] overflow-hidden bg-white shadow-sm">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Alumno</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Curso Adquirido</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Progreso de Contenido</th>
+                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado de Acceso</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {enrollments.map(st => (
+                      <tr 
+                        key={st.id} 
+                        onClick={() => setSelectedStudent(st)}
+                        className="hover:bg-amber-50/20 border-b border-slate-100 transition-colors cursor-pointer group"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400 group-hover:bg-amber-50 group-hover:text-amber-600 transition-all uppercase">
+                              {st.studentName?.[0] || 'U'}
+                            </div>
+                            <div>
+                              <div className="text-[13px] font-black text-slate-800 group-hover:text-amber-700 transition-colors">{st.studentName || 'Alumno'}</div>
+                              <div className="text-[10px] text-slate-400 leading-none mt-0.5">{st.studentEmail}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-xs font-bold text-slate-600">{st.courseTitle}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 h-1.5 bg-slate-150 rounded-full overflow-hidden max-w-[120px]">
+                              <div className="bg-amber-500 h-full transition-all" style={{ width: `${st.progress || 0}%` }} />
+                            </div>
+                            <span className="text-[11px] font-black text-slate-700">{st.progress || 0}%</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-between">
+                            <span className={cn(
+                              "px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
+                              st.status === 'approved' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-amber-50 text-amber-600 border border-amber-100"
+                            )}>
+                              {st.status === 'approved' ? "Acceso Listo" : "Pendiente"}
+                            </span>
+                            <span className="text-[11px] font-bold text-indigo-600 group-hover:underline opacity-0 group-hover:opacity-100 transition-opacity">Ver Detalles →</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -1785,7 +2251,7 @@ function CoachAutomationView() {
                   </div>
                   <button 
                     onClick={() => toastSuccess("Generando informe predictivo de comportamiento de alumnos de Kira AI... Listo en instantes.")}
-                    className="w-full py-4 bg-white/10 hover:bg-white text-white hover:text-indigo-900 border border-white/20 hover:border-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
+                    className="w-full py-4 bg-white/10 hover:bg-white text-white hover:text-indigo-900 border border-white/20 hover:border-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all animate-pulse"
                   >
                      Ver Reporte IA
                   </button>
@@ -1793,9 +2259,145 @@ function CoachAutomationView() {
             </div>
          </div>
       </div>
+
+      {/* MODAL INTERACTIVO DE PROGRESO Y FUNCIONALIDAD DEL ALUMNO */}
+      {selectedStudent && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
+          <div className="bg-white rounded-[40px] border border-slate-200 w-full max-w-4xl p-8 lg:p-10 shadow-2xl relative flex flex-col gap-8 animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
+            
+            {/* Cabecera del Perfil */}
+            <div className="flex justify-between items-start gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-full bg-amber-50 border-2 border-amber-200 flex items-center justify-center text-lg font-black text-amber-600 uppercase">
+                  {selectedStudent.studentName?.[0] || 'U'}
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight leading-tight">{selectedStudent.studentName || 'Alumno'}</h3>
+                  <p className="text-xs text-slate-400 mt-1">{selectedStudent.studentEmail}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedStudent(null)}
+                className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Grid Principal */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+              
+              {/* Columna Izquierda: Métricas e Información de Curso */}
+              <div className="md:col-span-5 flex flex-col gap-6">
+                <div className="p-6 bg-slate-50 border border-slate-150 rounded-3xl">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Progreso del Alumno</h4>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-400">Curso Activo</span>
+                      <p className="text-sm font-black text-slate-800 mt-0.5">{selectedStudent.courseTitle}</p>
+                    </div>
+
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-400">Progreso Registrado</span>
+                      <div className="flex items-center gap-3 mt-1.5">
+                        <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+                          <div className="bg-amber-500 h-full transition-all" style={{ width: `${selectedStudent.progress || 0}%` }} />
+                        </div>
+                        <span className="text-xs font-black text-slate-700 shrink-0">{selectedStudent.progress || 0}%</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-200 grid grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Inscripción</span>
+                        <p className="text-xs font-black text-slate-800 mt-0.5">Manual / Aut.</p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Estado</span>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className={cn("w-2 h-2 rounded-full", selectedStudent.status === 'approved' ? "bg-emerald-500" : "bg-amber-500")} />
+                          <span className="text-xs font-bold text-slate-700 capitalize">{selectedStudent.status || 'approved'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Historial de Bitácoras Conductuales */}
+                <div className="p-6 bg-slate-50 border border-slate-150 rounded-3xl flex flex-col">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex justify-between items-center">
+                    Bitácoras Conductuales
+                    <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full font-bold">
+                      {selectedStudentJournals.length}
+                    </span>
+                  </h4>
+
+                  <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
+                    {selectedStudentJournals.map((j) => {
+                      const journalDate = j.createdAt?.toDate ? j.createdAt.toDate().toLocaleDateString() : j.createdAt ? new Date(j.createdAt).toLocaleDateString() : 'N/A';
+                      return (
+                        <div key={j.id} className="p-4 bg-white border border-slate-100 rounded-2xl">
+                          <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1">
+                            <span>{journalDate}</span>
+                            {j.score && <span className="text-indigo-600">Score: {j.score}</span>}
+                          </div>
+                          <p className="text-[11px] text-slate-700 leading-relaxed italic">"{j.content}"</p>
+                        </div>
+                      );
+                    })}
+
+                    {selectedStudentJournals.length === 0 && (
+                      <div className="text-center py-10 text-slate-400 text-xs italic">
+                        El estudiante no ha completado entradas de diario todavía.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Columna Derecha: Diagnóstico Conductual con IA */}
+              <div className="md:col-span-7 flex flex-col gap-6">
+                <div className="p-8 bg-indigo-950 text-white rounded-[32px] relative overflow-hidden shadow-xl shadow-indigo-900/10 min-h-[300px]">
+                  <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full blur-2xl -mr-16 -mt-16" />
+                  
+                  <div className="relative z-10">
+                    <div className="flex items-center gap-2 mb-6">
+                      <Sparkles className="text-amber-300 animate-pulse" size={20} />
+                      <h4 className="text-xs font-black uppercase tracking-widest text-indigo-200">Kira Flow™ AI Diagnóstico de Progreso</h4>
+                    </div>
+
+                    {loadingDiagnosis ? (
+                      <div className="flex flex-col items-center justify-center py-16 gap-3 text-indigo-200">
+                        <Loader2 className="animate-spin" size={32} />
+                        <span className="text-xs font-bold">Procesando perfil conductual del alumno...</span>
+                      </div>
+                    ) : aiDiagnosis ? (
+                      <div className="space-y-6 animate-in fade-in">
+                        <div className="text-sm leading-relaxed text-indigo-50 font-medium">
+                          {aiDiagnosis}
+                        </div>
+                        <div className="pt-4 border-t border-white/10 flex justify-between items-center text-[10px] font-black text-indigo-300 uppercase tracking-widest">
+                          <span>Análisis en Tiempo Real</span>
+                          <span className="bg-white/10 text-white px-2.5 py-1 rounded-md">Gemini Flash</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-indigo-200 text-xs italic py-12 text-center">No se pudo procesar el perfil en este momento.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 function CoachRegisterClient() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -1803,15 +2405,47 @@ function CoachRegisterClient() {
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', courseId: '' });
   const [courses, setCourses] = useState<any[]>([]);
+  const [onboardingList, setOnboardingList] = useState<any[]>([]);
 
-  useEffect(() => {
+  const fetchOnboardingData = async () => {
     if (!user) return;
-    const fetch = async () => {
+    try {
       const q = query(collection(db, 'courses'), where('coachId', '==', user.uid));
       const snap = await getDocs(q);
-      setCourses(snap.docs.map(d => ({id: d.id, ...d.data()})));
-    };
-    fetch();
+      const coursesData = snap.docs.map(d => ({id: d.id, ...d.data()})) as any[];
+      setCourses(coursesData);
+
+      if (coursesData.length > 0) {
+        const cIds = coursesData.map(d => d.id);
+        const courseTitles = new Map<string, any>(coursesData.map(d => [d.id, d.title]));
+        
+        const enrollList: any[] = [];
+        for (const cid of cIds) {
+          const eq = query(collection(db, 'enrollments'), where('courseId', '==', cid));
+          const esnap = await getDocs(eq);
+          esnap.docs.forEach(ed => {
+            const data = ed.data();
+            enrollList.push({
+              id: ed.id,
+              ...data,
+              courseTitle: courseTitles.get(data.courseId) || 'Curso'
+            });
+          });
+        }
+        enrollList.sort((a, b) => {
+          const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
+          const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
+          return tB - tA;
+        });
+        setOnboardingList(enrollList);
+      }
+    } catch (e) {
+      console.error("Error fetching onboarding data:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchOnboardingData();
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1833,9 +2467,9 @@ function CoachRegisterClient() {
       });
       
       console.log(`[Registro Alumno] Alumno creado con ID: ${userRef.id}. Ejecutando acciones secundarias en paralelo...`);
-
+ 
       const secondaryTasks: Promise<any>[] = [];
-
+ 
       // 2. Enroll in course if selected
       if (formData.courseId) {
         console.log(`[Registro Alumno] Agregando inscripción para el curso: ${formData.courseId}...`);
@@ -1843,12 +2477,17 @@ function CoachRegisterClient() {
           addDoc(collection(db, 'enrollments'), {
             userId: userRef.id,
             courseId: formData.courseId,
+            coachId: user?.uid,
+            studentName: formData.name,
+            studentEmail: formData.email,
+            courseTitle: courses.find(c => c.id === formData.courseId)?.title || 'Curso',
             progress: 0,
+            status: 'approved', // Manual registers are auto-approved
             createdAt: new Date()
           })
         );
       }
-
+ 
       // 3. Create initial notification
       secondaryTasks.push(
         addDoc(collection(db, 'notifications'), {
@@ -1860,13 +2499,14 @@ function CoachRegisterClient() {
           type: 'system'
         })
       );
-
+ 
       // Execute dependent tasks in parallel
       await Promise.all(secondaryTasks);
       console.log(`[Registro Alumno] Acciones secundarias completadas exitosamente.`);
-
+ 
       setSuccess(true);
       setFormData({ name: '', email: '', courseId: '' });
+      fetchOnboardingData();
       setTimeout(() => setSuccess(false), 3000);
     } catch (e) {
       console.error('[Registro Alumno] Error al registrar alumno:', e);
@@ -1875,65 +2515,122 @@ function CoachRegisterClient() {
       setLoading(false);
     }
   };
-
+ 
   return (
-    <div className="max-w-xl bg-white rounded-2xl border border-slate-200 p-8 animate-in zoom-in-95 duration-200">
-      <div className="mb-6">
-        <h3 className="text-lg font-bold text-slate-800 tracking-tight">Registro Manual de Alumno</h3>
-        <p className="text-[13px] text-slate-500 mt-1">Registra a un cliente externo y otórgale acceso inmediato a tus planes.</p>
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in">
+      {/* FORMULARIO DE REGISTRO */}
+      <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
+        <div className="mb-6">
+          <h3 className="text-lg font-black text-slate-900 tracking-tight">Registro Manual de Alumno</h3>
+          <p className="text-xs text-slate-500 mt-1">Registra a un cliente de forma manual y asígnale un curso activo.</p>
+        </div>
+ 
+        {error && (
+          <div className="mb-6 p-3 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-xs font-bold text-center">
+            {error}
+          </div>
+        )}
+ 
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Nombre Completo</label>
+            <input 
+              required
+              value={formData.name}
+              onChange={e => setFormData({...formData, name: e.target.value})}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+              placeholder="Ej: Juan Pérez"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Correo Electrónico</label>
+            <input 
+              required
+              type="email"
+              value={formData.email}
+              onChange={e => setFormData({...formData, email: e.target.value})}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+              placeholder="juan@ejemplo.com"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Asignar a Curso (Opcional)</label>
+            <select 
+              value={formData.courseId}
+              onChange={e => setFormData({...formData, courseId: e.target.value})}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white"
+            >
+              <option value="">Ninguno</option>
+              {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+            </select>
+          </div>
+ 
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full py-3 bg-slate-900 hover:bg-black text-white rounded-xl font-bold shadow-lg text-xs uppercase tracking-widest flex items-center justify-center gap-2 mt-4 active:scale-95 disabled:opacity-50 transition-all cursor-pointer"
+          >
+            {loading ? "Procesando..." : success ? <><CheckCircle2 size={16}/> ¡Registrado!</> : "Dar de Alta"}
+          </button>
+        </form>
       </div>
 
-      {error && (
-        <div className="mb-6 p-3 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-xs font-bold text-center">
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Nombre Completo</label>
-          <input 
-            required
-            value={formData.name}
-            onChange={e => setFormData({...formData, name: e.target.value})}
-            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-            placeholder="Ej: Juan Pérez"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Correo Electrónico</label>
-          <input 
-            required
-            type="email"
-            value={formData.email}
-            onChange={e => setFormData({...formData, email: e.target.value})}
-            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-            placeholder="juan@ejemplo.com"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Asignar a Curso (Opcional)</label>
-          <select 
-            value={formData.courseId}
-            onChange={e => setFormData({...formData, courseId: e.target.value})}
-            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-          >
-            <option value="">Ninguno</option>
-            {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-          </select>
+      {/* LISTA DE ALUMNOS EN ONBOARDING */}
+      <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
+        <div className="mb-6 flex justify-between items-center">
+          <div>
+            <h3 className="text-lg font-black text-slate-900 tracking-tight">Onboarding Queue</h3>
+            <p className="text-xs text-slate-500 mt-1">Lista de alumnos asignados a tus respectivos cursos.</p>
+          </div>
+          <span className="px-3 py-1 bg-indigo-50 border border-indigo-100 text-indigo-600 text-[10px] font-black rounded-full uppercase tracking-wider">
+            {onboardingList.length} Alumnos
+          </span>
         </div>
 
-        <button 
-          type="submit" 
-          disabled={loading}
-          className="w-full py-3 bg-kirateal text-white rounded-xl font-bold shadow-lg shadow-kirateal/20 hover:bg-kirateal-dark hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 mt-4 active:scale-95 disabled:opacity-50"
-        >
-          {loading ? "Procesando..." : success ? <><CheckCircle2 size={18}/> ¡Registrado!</> : "Dar de Alta"}
-        </button>
-      </form>
+        <div className="space-y-3 max-h-[420px] overflow-y-auto pr-2">
+          {onboardingList.map((st) => {
+            const enrollDate = st.createdAt?.toDate ? st.createdAt.toDate().toLocaleDateString() : st.createdAt ? new Date(st.createdAt).toLocaleDateString() : 'N/A';
+            return (
+              <div key={st.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between gap-4 hover:border-indigo-100 transition">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center text-xs font-black text-slate-600 uppercase shrink-0">
+                    {st.studentName?.[0] || 'U'}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-black text-slate-800 leading-tight truncate">{st.studentName || 'Sin nombre'}</h4>
+                    <p className="text-[10px] text-slate-400 truncate">{st.studentEmail}</p>
+                    <div className="mt-1 flex items-center gap-2 flex-wrap">
+                      <span className="px-1.5 py-0.5 bg-white border border-slate-100 text-slate-500 text-[9px] font-bold rounded">
+                        {st.courseTitle}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <span className={cn(
+                    "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
+                    st.status === 'approved' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-amber-50 text-amber-600 border border-amber-100"
+                  )}>
+                    {st.status === 'approved' ? "Acceso Listo" : "Pendiente"}
+                  </span>
+                  <p className="text-[9px] text-slate-400 mt-1.5 font-medium">Registrado: {enrollDate}</p>
+                </div>
+              </div>
+            );
+          })}
+
+          {onboardingList.length === 0 && (
+            <div className="py-16 text-center text-slate-400 text-xs italic">
+              Aún no tienes alumnos registrados en Onboarding.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
+
 // --- COMPONENTE DE ANALÍTICAS ---
 function CoachAnalyticsOld({ coachId }: { coachId?: string }) {
   const [stats, setStats] = useState({
