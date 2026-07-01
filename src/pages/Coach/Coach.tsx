@@ -691,7 +691,10 @@ function QuickAction({ title, desc, icon }: any) {
 // --- MODULO: ACTIVIDAD DE ALUMNOS (PARA COACH) ---
 function CoachStudentsActivity() {
   const { user } = useAuth();
+  const { success: toastSuccess, error: toastError } = useToast();
   const [students, setStudents] = useState<any[]>([]);
+  const [pendingEnrollments, setPendingEnrollments] = useState<any[]>([]);
+  const [activeSubView, setActiveSubView] = useState<'approved' | 'pending'>('approved');
   const [teamSentiment, setTeamSentiment] = useState<{ summary: string, mood: string } | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [messageTemplate, setMessageTemplate] = useState('motivacion');
@@ -699,106 +702,143 @@ function CoachStudentsActivity() {
   const [sending, setSending] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
-  useEffect(() => {
+  const fetchStudentsAndJournals = async () => {
     if (!user) return;
-    
-    // Logic: Find students enrolled in THIS coach's courses
-    const fetchStudentsAndJournals = async () => {
-      try {
-        const coursesQ = query(collection(db, 'courses'), where('coachId', '==', user.uid));
-        const coursesSnap = await getDocs(coursesQ);
-        const courseIds = coursesSnap.docs.map(d => d.id);
+    try {
+      const coursesQ = query(collection(db, 'courses'), where('coachId', '==', user.uid));
+      const coursesSnap = await getDocs(coursesQ);
+      const courseIds = coursesSnap.docs.map(d => d.id);
+      const courseTitlesMap = new Map(coursesSnap.docs.map(d => [d.id, d.data().title || 'Curso']));
 
-        if (courseIds.length === 0) return;
+      if (courseIds.length === 0) {
+        setStudents([]);
+        setPendingEnrollments([]);
+        return;
+      }
 
-        const studentsMap = new Map();
-        for (const cid of courseIds) {
-          const enrollQ = query(collection(db, 'enrollments'), where('courseId', '==', cid));
-          const enrollSnap = await getDocs(enrollQ);
-          for (const eDoc of enrollSnap.docs) {
-            const sId = eDoc.data().userId;
-            if (!studentsMap.has(sId)) {
-              const sProfile = await getDoc(doc(db, 'users', sId));
-              if (sProfile.exists()) {
-                studentsMap.set(sId, { id: sId, ...sProfile.data(), courseProgress: eDoc.data().progress || 0 });
-              }
-            }
-          }
-        }
-        
-        const studentsList = Array.from(studentsMap.values());
-        setStudents(studentsList);
+      const approvedList: any[] = [];
+      const pendingList: any[] = [];
 
-        // Fetch Journals to analyze team sentiment
-        if (studentsList.length > 0) {
-          setAnalyzing(true);
-          const studentIds = studentsList.map(s => s.id);
-          
-          let allJournals: string[] = [];
-          
-          // Firestore 'in' query has a limit of 10, chunk if necessary
-          const fetchJournalsChunk = async (ids: string[]) => {
-            const q = query(
-              collection(db, 'journals'), 
-              where('userId', 'in', ids)
-            );
-            const snap = await getDocs(q);
-            const sorted = [...snap.docs].sort((a, b) => {
-              const tA = a.data().createdAt?.seconds || a.data().createdAt?.getTime?.() / 1000 || 0;
-              const tB = b.data().createdAt?.seconds || b.data().createdAt?.getTime?.() / 1000 || 0;
-              return tB - tA;
-            }).slice(0, 20);
-            return sorted.map(d => d.data().content);
+      for (const cid of courseIds) {
+        const enrollQ = query(collection(db, 'enrollments'), where('courseId', '==', cid));
+        const enrollSnap = await getDocs(enrollQ);
+        for (const eDoc of enrollSnap.docs) {
+          const enrollData = eDoc.data();
+          const sId = enrollData.userId;
+          const status = enrollData.status || 'approved'; // backward compatible
+
+          const sProfile = await getDoc(doc(db, 'users', sId));
+          const profileData = sProfile.exists() ? sProfile.data() : { displayName: enrollData.studentName || 'Alumno', email: enrollData.studentEmail || 'Sin email' };
+
+          const item = {
+            id: sId,
+            enrollmentId: eDoc.id,
+            courseId: cid,
+            courseTitle: courseTitlesMap.get(cid) || 'Curso',
+            courseProgress: enrollData.progress || 0,
+            createdAt: enrollData.createdAt,
+            lastActivityAt: profileData.lastActivityAt || null,
+            ...profileData
           };
 
-          // Simple chunking up to 10
-          if (studentIds.length <= 10) {
-              const j = await fetchJournalsChunk(studentIds);
-              allJournals = allJournals.concat(j);
+          if (status === 'pending') {
+            pendingList.push(item);
           } else {
-              const first10 = await fetchJournalsChunk(studentIds.slice(0, 10));
-              allJournals = allJournals.concat(first10);
+            approvedList.push(item);
           }
+        }
+      }
 
-          if (allJournals.length > 0) {
-            try {
-              const prompt = `Actúa como un psicólogo experto y coach de desempeño. Analiza las siguientes entradas de diario de mis estudiantes:
-              [${allJournals.join(" | ")}]
-              Devuelve un objeto JSON con dos claves: 
-              "summary": un párrafo corto (máx 3 oraciones) resumiendo el estado emocional y actitud predominante del grupo.
-              "mood": una sola palabra que los defina ("Positivo", "Neutral", "Estresado", "Frustrado", "Motivado").`;
-              
-              const res = await fetch('/api/gemini/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  model: 'gemini-3.5-flash',
-                  contents: prompt,
-                  config: { responseMimeType: "application/json" }
-                })
-              });
-              const data = await res.json();
-              if (data.error) throw new Error(data.error);
+      setStudents(approvedList);
+      setPendingEnrollments(pendingList);
 
-              if (data.text) {
-                 const parsed = JSON.parse(data.text);
-                 setTeamSentiment(parsed);
-              }
-            } catch (error) {
-              console.error("AI Analysis error:", error);
-            }
-          }
-          setAnalyzing(false);
+      // Fetch Journals to analyze team sentiment
+      if (approvedList.length > 0) {
+        setAnalyzing(true);
+        const studentIds = approvedList.map(s => s.id);
+        
+        let allJournals: string[] = [];
+        
+        // Firestore 'in' query has a limit of 10, chunk if necessary
+        const fetchJournalsChunk = async (ids: string[]) => {
+          const q = query(
+            collection(db, 'journals'), 
+            where('userId', 'in', ids)
+          );
+          const snap = await getDocs(q);
+          const sorted = [...snap.docs].sort((a, b) => {
+            const tA = a.data().createdAt?.seconds || a.data().createdAt?.getTime?.() / 1000 || 0;
+            const tB = b.data().createdAt?.seconds || b.data().createdAt?.getTime?.() / 1000 || 0;
+            return tB - tA;
+          }).slice(0, 20);
+          return sorted.map(d => d.data().content);
+        };
+
+        // Simple chunking up to 10
+        if (studentIds.length <= 10) {
+            const j = await fetchJournalsChunk(studentIds);
+            allJournals = allJournals.concat(j);
+        } else {
+            const first10 = await fetchJournalsChunk(studentIds.slice(0, 10));
+            allJournals = allJournals.concat(first10);
         }
 
-      } catch (e) {
-        console.error('Fetch Coach Students Error:', e);
+        if (allJournals.length > 0) {
+          try {
+            const prompt = `Actúa como un psicólogo experto y coach de desempeño. Analiza las siguientes entradas de diario de mis estudiantes:
+            [${allJournals.join(" | ")}]
+            Devuelve un objeto JSON con dos claves: 
+            "summary": un párrafo corto (máx 3 oraciones) resumiendo el estado emocional y actitud predominante del grupo.
+            "mood": una sola palabra que los defina ("Positivo", "Neutral", "Estresado", "Frustrado", "Motivado").`;
+            
+            const res = await fetch('/api/gemini/generate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'gemini-3.5-flash',
+                contents: prompt,
+                config: { responseMimeType: "application/json" }
+              })
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+
+            if (data.text) {
+               const parsed = JSON.parse(data.text);
+               setTeamSentiment(parsed);
+            }
+          } catch (error) {
+            console.error("AI Analysis error:", error);
+          }
+        }
         setAnalyzing(false);
       }
-    };
 
+    } catch (e) {
+      console.error('Fetch Coach Students Error:', e);
+      setAnalyzing(false);
+    }
+  };
+
+  useEffect(() => {
     fetchStudentsAndJournals();
   }, [user]);
+
+  const handleEnrollmentAction = async (enrollmentId: string, action: 'approved' | 'rejected') => {
+    try {
+      if (action === 'approved') {
+        await updateDoc(doc(db, 'enrollments', enrollmentId), { status: 'approved' });
+        toastSuccess("Inscripción autorizada correctamente.");
+      } else {
+        await deleteDoc(doc(db, 'enrollments', enrollmentId));
+        toastSuccess("Inscripción rechazada con éxito.");
+      }
+      fetchStudentsAndJournals();
+    } catch (error: any) {
+      console.error("Error updating enrollment status:", error);
+      toastError("No se pudo procesar la acción: " + error.message);
+    }
+  };
 
   const sendBulkMessage = async () => {
     if (!customMessage.trim() || students.length === 0 || !user) return;
@@ -906,10 +946,33 @@ function CoachStudentsActivity() {
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden animate-in fade-in">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <h3 className="font-bold text-slate-800 tracking-tight flex items-center gap-2">
-            <GraduationCap size={18} className="text-primary" /> Tracking de Alumnos ({students.length})
+            <GraduationCap size={18} className="text-primary" /> Alumnos & Inscripciones
           </h3>
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              onClick={() => setActiveSubView('approved')}
+              className={cn(
+                "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+                activeSubView === 'approved' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+              )}
+            >
+              Inscritos ({students.length})
+            </button>
+            <button
+              onClick={() => setActiveSubView('pending')}
+              className={cn(
+                "px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                activeSubView === 'pending' ? "bg-white text-amber-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
+              )}
+            >
+              Pendientes ({pendingEnrollments.length})
+              {pendingEnrollments.length > 0 && (
+                <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+              )}
+            </button>
+          </div>
         </div>
         <table className="w-full text-left">
           <thead>
