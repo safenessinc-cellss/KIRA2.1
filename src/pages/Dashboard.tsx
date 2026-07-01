@@ -10,7 +10,8 @@ import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, Shiel
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
 import { useToast } from '../hooks/useToast';
-import { useCart } from '../components/CartProvider';
+// ✅ IMPORT SEGURO - usa useSafeAddToCart em vez de useCart
+import { useSafeAddToCart } from '../components/SafeAddToCart';
 import { ProductDetailModal } from '../components/ProductDetailModal';
 import { Product } from '../types';
 
@@ -150,7 +151,10 @@ export function Dashboard() {
   const [availableBooks, setAvailableBooks] = useState<any[]>([]);
   const [selectedProductForDetail, setSelectedProductForDetail] = useState<Product | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const { addToCart } = useCart();
+  
+  // ✅ USO SEGURO DO CARRINHO - não quebra se o CartProvider não estiver disponível
+  const addToCart = useSafeAddToCart();
+  
   const [myEnrollments, setMyEnrollments] = useState<any[]>([]);
   const [favoriteCoaches, setFavoriteCoaches] = useState<any[]>([]);
   const [unlockedHistory, setUnlockedHistory] = useState<any[]>([]);
@@ -224,10 +228,10 @@ export function Dashboard() {
         updatedBy: user.uid
       });
       setShowCommunityModal(false);
-      alert('✅ Enlace de WhatsApp actualizado correctamente');
+      toastSuccess('✅ Enlace de WhatsApp actualizado correctamente');
     } catch (e) {
       console.error(e);
-      alert('❌ Error al guardar el enlace. Por favor, inténtalo de nuevo.');
+      toastError('❌ Error al guardar el enlace. Por favor, inténtalo de nuevo.');
     } finally {
       setSavingCommunity(false);
     }
@@ -1075,6 +1079,7 @@ export function Dashboard() {
                               ) : (
                                 <button 
                                   onClick={() => {
+                                    // ✅ USANDO addToCart SEGURO - não quebra se o provider não estiver disponível
                                     addToCart({
                                       id: course.id,
                                       title: course.title,
@@ -1218,6 +1223,7 @@ export function Dashboard() {
                         ) : (
                           <button 
                             onClick={() => {
+                              // ✅ USANDO addToCart SEGURO - não quebra se o provider não estiver disponível
                               addToCart({
                                 id: book.id,
                                 title: book.title,
@@ -1796,6 +1802,7 @@ export function Dashboard() {
           setSelectedProductForDetail(null);
         }}
         onAddToCart={(product) => {
+          // ✅ USANDO addToCart SEGURO
           addToCart(product);
         }}
       />
