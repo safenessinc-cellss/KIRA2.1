@@ -44,6 +44,10 @@ export default defineConfig(({ mode }) => {
         }
       })
     ],
+    // 🔧 IMPORTANTE: Remova qualquer referência ao CSS/PostCSS
+    css: {
+      // Não configure postcss aqui
+    },
     define: {
       'process.env': {
         GEMINI_API_KEY: JSON.stringify(env.GEMINI_API_KEY || ""),
@@ -61,9 +65,6 @@ export default defineConfig(({ mode }) => {
         '@services': path.resolve(__dirname, 'src/services'),
         '@styles': path.resolve(__dirname, 'src/styles')
       }
-    },
-    css: {
-      postcss: './postcss.config.js',
     },
     build: {
       target: 'esnext',
