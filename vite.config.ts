@@ -1,5 +1,6 @@
 cat > vite.config.ts << 'EOF'
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -11,15 +12,8 @@ export default defineConfig(({ mode }) => {
   return {
     base: '/',
     plugins: [
-      react({
-        // Configuração para evitar problemas com react-is
-        jsxRuntime: 'automatic',
-        babel: {
-          plugins: [
-            ['@babel/plugin-transform-react-jsx', { runtime: 'automatic' }]
-          ]
-        }
-      }),
+      react(),
+      tailwindcss(), // ✅ Plugin do Tailwind CSS
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'favicon-32x32.png', 'favicon-16x16.png', 'apple-touch-icon.png'],
@@ -70,7 +64,6 @@ export default defineConfig(({ mode }) => {
         '@services': path.resolve(__dirname, 'src/services'),
         '@styles': path.resolve(__dirname, 'src/styles')
       },
-      // Forzar resolución de react
       dedupe: ['react', 'react-dom', 'react-is']
     },
     build: {
@@ -86,13 +79,10 @@ export default defineConfig(({ mode }) => {
         requireReturnsDefault: 'auto'
       },
       rollupOptions: {
-        // No externalizar react-is para evitar problemas
-        external: [],
         output: {
           chunkFileNames: 'assets/[name]-[hash].js',
           entryFileNames: 'assets/[name]-[hash].js',
           assetFileNames: 'assets/[name]-[hash].[ext]',
-          // Forzar que react y react-is estén en el mismo chunk
           manualChunks: function(id) {
             if (id.includes('react') || id.includes('react-is') || id.includes('react-dom')) {
               return 'vendor-react';
@@ -123,9 +113,7 @@ export default defineConfig(({ mode }) => {
         'jspdf',
         'motion'
       ],
-      // Forzar re-optimización
       force: true,
-      // Deshabilitar auto-discovery
       entries: ['src/main.tsx']
     },
     server: {
