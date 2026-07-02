@@ -83,30 +83,7 @@ export default defineConfig(({ mode }) => {
           },
           chunkFileNames: 'assets/[name]-[hash].js',
           entryFileNames: 'assets/[name]-[hash].js',
-          assetFileNames: 'assets/[name]-[hash].[ext]',
-          manualChunks: function(id) {
-            if (id.includes('react-is')) {
-              return 'vendor-react-is';
-            }
-            if (id.includes('node_modules')) {
-              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
-                return 'vendor-react';
-              }
-              if (id.includes('firebase')) {
-                return 'vendor-firebase';
-              }
-              if (id.includes('recharts')) {
-                return 'vendor-charts';
-              }
-              if (id.includes('html2canvas') || id.includes('jspdf')) {
-                return 'vendor-pdf';
-              }
-              if (id.includes('motion')) {
-                return 'vendor-motion';
-              }
-              return 'vendor-libs';
-            }
-          }
+          assetFileNames: 'assets/[name]-[hash].[ext]'
         }
       }
     },
@@ -129,12 +106,6 @@ export default defineConfig(({ mode }) => {
       force: true
     },
     server: {
-      hmr: isProduction ? false : {
-        protocol: 'ws',
-        host: 'localhost',
-        port: 24678
-      },
-      ws: !isProduction,
       port: 5173,
       strictPort: false,
       open: false
