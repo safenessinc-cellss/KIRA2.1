@@ -1,3 +1,4 @@
+cat > vite.config.ts << 'EOF'
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
@@ -109,26 +110,23 @@ export default defineConfig(({ mode }) => {
         }
       }
     },
-   optimizeDeps: {
-  include: [
-    'react',
-    'react-dom',
-    'react-router-dom',
-    'react-is',
-    'firebase/app',
-    'firebase/auth',
-    'firebase/firestore',
-    '@google/generative-ai',
-    'lucide-react',
-    'recharts',
-    'html2canvas',
-    'jspdf',
-    // ✅ Escolha UMA das opções abaixo:
-    'motion',           // Se estiver usando motion
-    // 'framer-motion', // Se estiver usando framer-motion
-  ],
-  force: true
-}
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-router-dom',
+        'react-is',
+        'firebase/app',
+        'firebase/auth',
+        'firebase/firestore',
+        '@google/generative-ai',
+        'lucide-react',
+        'recharts',
+        'html2canvas',
+        'jspdf',
+        'motion'
+      ],
+      force: true
     },
     server: {
       hmr: isProduction ? false : {
@@ -148,3 +146,4 @@ export default defineConfig(({ mode }) => {
     }
   };
 });
+EOF
