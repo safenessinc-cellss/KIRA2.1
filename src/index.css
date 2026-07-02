@@ -1,59 +1,43 @@
+cat > src/index.css << 'EOF'
+@import "tailwindcss";
+
+/* Fontes do Google */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=JetBrains+Mono:wght@400;700&display=swap');
 
-/* ============================================
-   ESTILOS BASE (sem Tailwind)
-   ============================================ */
-
+/* Variáveis CSS */
 :root {
-  /* Fontes */
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Playfair Display", ui-serif, Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   
-  /* Cores KIRA */
   --color-kirateal: #14B8A6;
   --color-kirateal-light: #99F6E4;
   --color-kirateal-dark: #0D9488;
   --color-kiragold: #D4AF37;
   --color-kiragold-dark: #B8860B;
   
-  /* UX Luxury Palette */
   --color-tech-slate: #0F172A;
   --color-healing-teal: #14B8A6;
   --color-intel-indigo: #6366F1;
   --color-empathy-rose: #F43F5E;
 
-  /* Cores primárias */
   --color-primary: #1ec6b6;
   --color-secondary: #8b5cf6;
-  
-  /* Cores do tema */
   --primary: #1ec6b6;
   --primary-dark: #0d9488;
 }
 
-/* Tema Indigo */
 [data-theme='indigo'] {
   --primary: #6366f1;
   --primary-dark: #4338ca;
 }
 
-/* Tema Rose */
 [data-theme='rose'] {
   --primary: #f43f5e;
   --primary-dark: #be123c;
 }
 
-/* ============================================
-   ESTILOS GLOBAIS
-   ============================================ */
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
+/* Estilos globais */
 body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -62,10 +46,7 @@ body {
   color: #0F172A;
 }
 
-/* ============================================
-   RICH TEXT CONTENT
-   ============================================ */
-
+/* Rich Text Content */
 .rich-text-content p {
   margin-bottom: 0.75rem;
 }
@@ -89,103 +70,4 @@ body {
 .rich-text-content em {
   font-style: italic;
 }
-
-/* ============================================
-   UTILITÁRIOS CUSTOMIZADOS (substituem Tailwind)
-   ============================================ */
-
-/* Flexbox */
-.flex { display: flex; }
-.flex-col { flex-direction: column; }
-.items-center { align-items: center; }
-.justify-center { justify-content: center; }
-.justify-between { justify-content: space-between; }
-.gap-2 { gap: 0.5rem; }
-.gap-4 { gap: 1rem; }
-.gap-6 { gap: 1.5rem; }
-.gap-8 { gap: 2rem; }
-
-/* Grid */
-.grid { display: grid; }
-.grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
-.grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
-.grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
-
-/* Spacing */
-.m-0 { margin: 0; }
-.m-2 { margin: 0.5rem; }
-.m-4 { margin: 1rem; }
-.p-2 { padding: 0.5rem; }
-.p-4 { padding: 1rem; }
-.p-6 { padding: 1.5rem; }
-.p-8 { padding: 2rem; }
-
-/* Text */
-.text-center { text-align: center; }
-.text-left { text-align: left; }
-.text-right { text-align: right; }
-.font-bold { font-weight: 700; }
-.font-semibold { font-weight: 600; }
-.uppercase { text-transform: uppercase; }
-
-/* Colors */
-.text-kirateal { color: var(--color-kirateal); }
-.text-kiragold { color: var(--color-kiragold); }
-.text-primary { color: var(--color-primary); }
-.text-secondary { color: var(--color-secondary); }
-.text-slate-400 { color: #94A3B8; }
-.text-slate-500 { color: #64748B; }
-.text-slate-600 { color: #475569; }
-.text-slate-700 { color: #334155; }
-.text-slate-800 { color: #1E293B; }
-.text-slate-900 { color: #0F172A; }
-
-/* Backgrounds */
-.bg-white { background-color: #ffffff; }
-.bg-slate-50 { background-color: #F8FAFC; }
-.bg-slate-100 { background-color: #F1F5F9; }
-.bg-slate-200 { background-color: #E2E8F0; }
-.bg-kirateal { background-color: var(--color-kirateal); }
-.bg-primary { background-color: var(--color-primary); }
-
-/* Width / Height */
-.w-full { width: 100%; }
-.h-full { height: 100%; }
-.min-h-screen { min-height: 100vh; }
-.max-w-7xl { max-width: 80rem; }
-.mx-auto { margin-left: auto; margin-right: auto; }
-
-/* Animations */
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-.animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .5; }
-}
-
-/* Outros utilitários */
-.rounded { border-radius: 0.25rem; }
-.rounded-lg { border-radius: 0.5rem; }
-.rounded-xl { border-radius: 0.75rem; }
-.rounded-full { border-radius: 9999px; }
-
-.shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-.shadow-lg { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-
-.transition { transition: all 0.2s ease; }
-.hover\:scale-105:hover { transform: scale(1.05); }
-.hover\:shadow-xl:hover { box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
-
-/* Responsivo */
-@media (max-width: 768px) {
-  .grid-cols-2 { grid-template-columns: 1fr; }
-  .grid-cols-3 { grid-template-columns: 1fr; }
-  .grid-cols-4 { grid-template-columns: 1fr; }
-}
+EOF
