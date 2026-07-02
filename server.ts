@@ -106,7 +106,7 @@ app.post("/api/gemini/generate", async (req, res) => {
     }
 
     // Map models to ensure we use supported models
-    let mappedModel = model || "gemini-3.5-flash";
+    let mappedModel = model || "gemini-2.5-flash";
     const deprecatedModels = [
       "gemini-1.5-flash",
       "gemini-1.5-pro",
@@ -115,10 +115,10 @@ app.post("/api/gemini/generate", async (req, res) => {
       "gemini-2.0-pro",
       "gemini-2.0-flash-thinking",
       "gemini-3-flash-preview",
-      "gemini-2.5-flash"
+      "gemini-3.5-flash"
     ];
     if (deprecatedModels.includes(mappedModel)) {
-      mappedModel = "gemini-3.5-flash";
+      mappedModel = "gemini-2.5-flash";
     }
 
     const ai = getGeminiAI();
