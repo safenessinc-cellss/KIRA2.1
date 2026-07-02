@@ -110,22 +110,24 @@ export default defineConfig(({ mode }) => {
         }
       }
     },
-    optimizeDeps: {
-      include: [
-        'react',
-        'react-dom',
-        'react-router-dom',
-        'react-is',
-        'firebase/app',
-        'firebase/auth',
-        'firebase/firestore',
-        '@google/generative-ai',
-        'lucide-react',
-        'recharts',
-        'html2canvas',
-        'jspdf'
-      ],
-      force: true
+   optimizeDeps: {
+  include: [
+    'react',
+    'react-dom',
+    'react-router-dom',
+    'react-is',
+    'firebase/app',
+    'firebase/auth',
+    'firebase/firestore',
+    '@google/generative-ai',
+    'lucide-react',
+    'recharts',
+    'html2canvas',
+    'jspdf',
+    'motion/react'  // ✅ Adicione esta linha
+  ],
+  force: true
+}
     },
     server: {
       hmr: isProduction ? false : {
