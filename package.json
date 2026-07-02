@@ -20,13 +20,13 @@
     "recharts": "^2.8.0"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^1.0.0",
+    "@tailwindcss/vite": "^4.0.0-alpha.1",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/react-is": "^18.2.0",
     "@vitejs/plugin-react": "^4.0.0",
-    "tailwindcss": "^4.0.0",
+    "tailwindcss": "^4.0.0-alpha.1",
     "vite": "^4.0.0",
     "vite-plugin-pwa": "^0.17.0"
   }
-}
+}}
