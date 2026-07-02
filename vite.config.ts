@@ -109,23 +109,26 @@ export default defineConfig(({ mode }) => {
         }
       }
     },
-    optimizeDeps: {
-      include: [
-        'react',
-        'react-dom',
-        'react-router-dom',
-        'react-is',
-        'firebase/app',
-        'firebase/auth',
-        'firebase/firestore',
-        '@google/generative-ai',
-        'lucide-react',
-        'recharts',
-        'html2canvas',
-        'jspdf',
-        'motion'
-      ],
-      force: true
+   optimizeDeps: {
+  include: [
+    'react',
+    'react-dom',
+    'react-router-dom',
+    'react-is',
+    'firebase/app',
+    'firebase/auth',
+    'firebase/firestore',
+    '@google/generative-ai',
+    'lucide-react',
+    'recharts',
+    'html2canvas',
+    'jspdf',
+    // ✅ Escolha UMA das opções abaixo:
+    'motion',           // Se estiver usando motion
+    // 'framer-motion', // Se estiver usando framer-motion
+  ],
+  force: true
+}
     },
     server: {
       hmr: isProduction ? false : {
