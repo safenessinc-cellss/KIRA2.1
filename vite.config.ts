@@ -44,15 +44,11 @@ export default defineConfig(({ mode }) => {
         }
       })
     ],
-    // 🔧 IMPORTANTE: Remova qualquer referência ao CSS/PostCSS
-    css: {
-      // Não configure postcss aqui
-    },
     define: {
       'process.env': {
-        GEMINI_API_KEY: JSON.stringify(env.GEMINI_API_KEY || ""),
-        FIREBASE_API_KEY: JSON.stringify(env.FIREBASE_API_KEY || ""),
-        FIREBASE_PROJECT_ID: JSON.stringify(env.FIREBASE_PROJECT_ID || "")
+        GEMINI_API_KEY: JSON.stringify(env.GEMINI_API_KEY || ''),
+        FIREBASE_API_KEY: JSON.stringify(env.FIREBASE_API_KEY || ''),
+        FIREBASE_PROJECT_ID: JSON.stringify(env.FIREBASE_PROJECT_ID || '')
       }
     },
     resolve: {
@@ -87,7 +83,7 @@ export default defineConfig(({ mode }) => {
           chunkFileNames: 'assets/[name]-[hash].js',
           entryFileNames: 'assets/[name]-[hash].js',
           assetFileNames: 'assets/[name]-[hash].[ext]',
-          manualChunks(id) {
+          manualChunks: function(id) {
             if (id.includes('react-is')) {
               return 'vendor-react-is';
             }
@@ -104,30 +100,32 @@ export default defineConfig(({ mode }) => {
               if (id.includes('html2canvas') || id.includes('jspdf')) {
                 return 'vendor-pdf';
               }
+              if (id.includes('motion')) {
+                return 'vendor-motion';
+              }
               return 'vendor-libs';
             }
           }
         }
       }
     },
-   optimizeDeps: {
-  include: [
-    'react',
-    'react-dom',
-    'react-router-dom',
-    'react-is',
-    'firebase/app',
-    'firebase/auth',
-    'firebase/firestore',
-    '@google/generative-ai',
-    'lucide-react',
-    'recharts',
-    'html2canvas',
-    'jspdf',
-    'motion/react'  // ✅ Adicione esta linha
-  ],
-  force: true
-}
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-router-dom',
+        'react-is',
+        'firebase/app',
+        'firebase/auth',
+        'firebase/firestore',
+        '@google/generative-ai',
+        'lucide-react',
+        'recharts',
+        'html2canvas',
+        'jspdf',
+        'motion'
+      ],
+      force: true
     },
     server: {
       hmr: isProduction ? false : {
