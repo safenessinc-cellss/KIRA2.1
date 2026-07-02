@@ -1,12 +1,16 @@
-echo '<!DOCTYPE html>' > index.html
-echo '<html lang="pt-BR">' >> index.html
-echo '  <head>' >> index.html
-echo '    <meta charset="UTF-8" />' >> index.html
-echo '    <meta name="viewport" content="width=device-width, initial-scale=1.0" />' >> index.html
-echo '    <title>KIRA 2.1</title>' >> index.html
-echo '  </head>' >> index.html
-echo '  <body>' >> index.html
-echo '    <div id="root"></div>' >> index.html
-echo '    <script type="module" src="/src/main.tsx"></script>' >> index.html
-echo '  </body>' >> index.html
-echo '</html>' >> index.html
+cat > index.html << 'EOFHTML'
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KIRA.COACH · Bienestar Proactivo con IA</title>
+    <meta name="description" content="Libera el espacio mental con inteligencia anticipatoria y coaching adaptativo." />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+EOFHTML
