@@ -7,8 +7,8 @@ import {
   FileText, Award, Download, Printer, UserPlus, Trash2, Edit2, Check, X, 
   Search, Eye, Share2, Star, Calendar, RefreshCw, FileSpreadsheet, Layers, Image as ImageIcon, Loader2
 } from 'lucide-react';
-// @ts-ignore
-import html2pdf from 'html2pdf.js';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 interface Certificate {
   id?: string;
@@ -31,6 +31,7 @@ export default function CertificateGenerator() {
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   
   // Form fields
   const [participantName, setParticipantName] = useState('');
@@ -44,7 +45,6 @@ export default function CertificateGenerator() {
   const [selectedCertificate, setSelectedCertificate] = useState<Certificate | null>(null);
   const [editModeId, setEditModeId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isGeneratingSerial, setIsGeneratingSerial] = useState(false);
   const [selectedCourseFilter, setSelectedCourseFilter] = useState('Todos');
 
   const certificateRef = useRef<HTMLDivElement>(null);
@@ -252,29 +252,54 @@ export default function CertificateGenerator() {
     toastSuccess("Lista de certificados exportada en CSV");
   };
 
-  // Export PDF via html2pdf.js
-  const handleDownloadPDF = (cert: Certificate) => {
+  // Export PDF via html2canvas + jsPDF
+  const handleDownloadPDF = async (cert: Certificate) => {
+    const uniqueId = cert.id || 'preview';
+    setDownloadingId(uniqueId);
+
     // Create temporary hidden container designed precisely with landscape dimensions for high quality print resolution
     const element = document.createElement('div');
+    element.style.position = 'absolute';
+    element.style.left = '-9999px';
+    element.style.top = '-9999px';
+    element.style.width = '11in';
+    element.style.height = '8.5in';
     element.innerHTML = generateCertificateHTML(cert);
     document.body.appendChild(element);
 
-    const opt = {
-      margin:       0,
-      filename:     `certificado_${cert.serialNumber}_${cert.participantName.toLowerCase().replace(/\s+/g, '_')}.pdf`,
-      image:        { type: 'jpeg' as const, quality: 1.0 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false },
-      jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' as const }
-    };
+    try {
+      // Allow slight delay for custom fonts and images to load
+      await new Promise((resolve) => setTimeout(resolve, 600));
 
-    html2pdf().from(element).set(opt).save().then(() => {
+      const canvas = await html2canvas(element, {
+        scale: 2, // Retains high crisp premium resolution
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#F0F4FA'
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 1.0);
+      
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'in',
+        format: 'letter'
+      });
+
+      pdf.addImage(imgData, 'JPEG', 0, 0, 11, 8.5);
+      pdf.save(`certificado_${cert.serialNumber}_${cert.participantName.toLowerCase().replace(/\s+/g, '_')}.pdf`);
+      
       document.body.removeChild(element);
       toastSuccess("PDF descargado correctamente");
-    }).catch((err: any) => {
-      console.error("PDF error:", err);
-      document.body.removeChild(element);
+    } catch (err: any) {
+      console.error("PDF generation error:", err);
+      if (document.body.contains(element)) {
+        document.body.removeChild(element);
+      }
       toastError("No se pudo exportar a PDF");
-    });
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   // Standard Web Printing
@@ -794,9 +819,18 @@ export default function CertificateGenerator() {
               <div className="flex flex-wrap gap-2">
                 <button 
                   onClick={() => handleDownloadPDF(selectedCertificate)}
-                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer"
+                  disabled={downloadingId === (selectedCertificate.id || 'preview')}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
-                  <Download size={14} /> Descargar PDF
+                  {downloadingId === (selectedCertificate.id || 'preview') ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" /> Procesando...
+                    </>
+                  ) : (
+                    <>
+                      <Download size={14} /> Descargar PDF
+                    </>
+                  )}
                 </button>
                 <button 
                   onClick={() => handlePrint(selectedCertificate)}
@@ -817,7 +851,7 @@ export default function CertificateGenerator() {
             <div className="w-full overflow-x-auto p-4 bg-slate-950 rounded-2xl shadow-inner flex justify-center">
               <div 
                 ref={certificateRef}
-                className="transform scale-75 sm:scale-90 md:scale-100 origin-center shrink-0 shadow-2xl border"
+                className="transform scale-75 sm:scale-90 md:scale-100 origin-center shrink-0 shadow-2xl border animate-in zoom-in-95 duration-300"
                 style={{ width: '11in', height: '8.5in' }}
                 dangerouslySetInnerHTML={{ __html: generateCertificateHTML(selectedCertificate) }}
               />
