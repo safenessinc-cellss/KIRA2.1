@@ -62,6 +62,9 @@ export default defineConfig(({ mode }) => {
         '@styles': path.resolve(__dirname, 'src/styles')
       }
     },
+    css: {
+      postcss: './postcss.config.js',
+    },
     build: {
       target: 'esnext',
       minify: 'esbuild',
