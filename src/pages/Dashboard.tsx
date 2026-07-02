@@ -10,8 +10,7 @@ import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, Shiel
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
 import { useToast } from '../hooks/useToast';
-// ✅ IMPORT SEGURO - usa useSafeAddToCart em vez de useCart
-import { useSafeAddToCart } from '../components/SafeAddToCart';
+import { useCart } from '../components/CartProvider';
 import { ProductDetailModal } from '../components/ProductDetailModal';
 import { Product } from '../types';
 
@@ -122,6 +121,11 @@ const getChaptersForBook = (bookTitle: string) => {
   ];
 };
 
+function stripHtml(html: string) {
+  if (!html) return '';
+  return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+}
+
 export function Dashboard() {
   const { user, logout } = useAuth();
   const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
@@ -151,10 +155,7 @@ export function Dashboard() {
   const [availableBooks, setAvailableBooks] = useState<any[]>([]);
   const [selectedProductForDetail, setSelectedProductForDetail] = useState<Product | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  
-  // ✅ USO SEGURO DO CARRINHO - não quebra se o CartProvider não estiver disponível
-  const addToCart = useSafeAddToCart();
-  
+  const { addToCart } = useCart();
   const [myEnrollments, setMyEnrollments] = useState<any[]>([]);
   const [favoriteCoaches, setFavoriteCoaches] = useState<any[]>([]);
   const [unlockedHistory, setUnlockedHistory] = useState<any[]>([]);
@@ -228,10 +229,10 @@ export function Dashboard() {
         updatedBy: user.uid
       });
       setShowCommunityModal(false);
-      toastSuccess('✅ Enlace de WhatsApp actualizado correctamente');
+      alert('✅ Enlace de WhatsApp actualizado correctamente');
     } catch (e) {
       console.error(e);
-      toastError('❌ Error al guardar el enlace. Por favor, inténtalo de nuevo.');
+      alert('❌ Error al guardar el enlace. Por favor, inténtalo de nuevo.');
     } finally {
       setSavingCommunity(false);
     }
@@ -1079,7 +1080,6 @@ export function Dashboard() {
                               ) : (
                                 <button 
                                   onClick={() => {
-                                    // ✅ USANDO addToCart SEGURO - não quebra se o provider não estiver disponível
                                     addToCart({
                                       id: course.id,
                                       title: course.title,
@@ -1223,7 +1223,6 @@ export function Dashboard() {
                         ) : (
                           <button 
                             onClick={() => {
-                              // ✅ USANDO addToCart SEGURO - não quebra se o provider não estiver disponível
                               addToCart({
                                 id: book.id,
                                 title: book.title,
@@ -1520,19 +1519,30 @@ export function Dashboard() {
                       src={selectedDirectoryCoach.photoURL || `https://picsum.photos/seed/${selectedDirectoryCoach.displayName}/150/150`} 
                       alt={selectedDirectoryCoach.displayName} 
                       className="w-full h-full object-cover" 
+                      onError={(e) => {
+                        e.currentTarget.src = `https://picsum.photos/seed/${selectedDirectoryCoach.displayName}/150/150`;
+                      }}
                     />
                   </div>
                   <h3 className="text-2xl font-black text-slate-900 mb-2 flex items-center gap-2">
                     {selectedDirectoryCoach.displayName}
                     <BadgeCheck className="text-kirateal shrink-0" size={20} />
                   </h3>
-                  <span className="px-4 py-1.5 bg-kirateal/10 text-kirateal rounded-full text-xs font-black uppercase tracking-widest mb-6">
-                    {selectedDirectoryCoach.specialty || "Mentor General"}
-                  </span>
+                  <div className="flex flex-wrap gap-1.5 justify-center lg:justify-start mb-6 w-full">
+                    {(selectedDirectoryCoach.specialties && selectedDirectoryCoach.specialties.length > 0
+                      ? selectedDirectoryCoach.specialties
+                      : [selectedDirectoryCoach.specialty || "Mentor General"]
+                    ).map((spec: string, i: number) => (
+                      <span key={i} className="px-3 py-1 bg-kirateal/10 text-kirateal rounded-full text-[10px] font-black uppercase tracking-widest border border-kirateal/10">
+                        {spec}
+                      </span>
+                    ))}
+                  </div>
 
-                  <p className="text-slate-600 text-sm leading-relaxed mb-6 whitespace-pre-line font-medium">
-                    {selectedDirectoryCoach.bio || "Este mentor está dedicado a guiar a las almas en su despertar de consciencia y desarrollo del ser."}
-                  </p>
+                  <div 
+                    className="text-slate-600 text-sm leading-relaxed mb-6 font-medium w-full prose prose-slate max-w-none text-left"
+                    dangerouslySetInnerHTML={{ __html: selectedDirectoryCoach.bio || "Este mentor está dedicado a guiar a las almas en su despertar de consciencia y desarrollo del ser." }}
+                  />
 
                   {/* Social media contact mockups/real and Favorites Toggle */}
                   <div className="w-full border-t border-slate-150 pt-6 mt-auto">
@@ -1763,16 +1773,26 @@ export function Dashboard() {
                                 src={coach.photoURL || `https://picsum.photos/seed/${coach.displayName}/150/150`} 
                                 alt={coach.displayName} 
                                 className="w-full h-full object-cover" 
+                                onError={(e) => {
+                                  e.currentTarget.src = `https://picsum.photos/seed/${coach.displayName}/150/150`;
+                                }}
                               />
                             </div>
                             
                             <h4 className="text-lg font-black text-slate-900 mb-1 group-hover:text-kirateal transition-colors">{coach.displayName}</h4>
-                            <p className="text-[10px] text-kirateal font-black uppercase tracking-widest mb-4 bg-kirateal/5 px-3 py-1 rounded-full border border-kirateal/10">
-                              {coach.specialty || "Mentor General"}
-                            </p>
+                            <div className="flex flex-wrap gap-1.5 justify-center mb-4 max-w-full">
+                              {(coach.specialties && coach.specialties.length > 0
+                                ? coach.specialties
+                                : [coach.specialty || "Mentor General"]
+                              ).slice(0, 3).map((spec: string, i: number) => (
+                                <span key={i} className="text-[9px] text-kirateal font-black uppercase tracking-wider bg-kirateal/5 px-2.5 py-1 rounded-full border border-kirateal/10 whitespace-nowrap">
+                                  {spec}
+                                </span>
+                              ))}
+                            </div>
                             
-                            <p className="text-slate-500 text-xs leading-relaxed mb-6 line-clamp-3">
-                              {coach.bio || "Este mentor está dedicado a guiar a las almas en su despertar de consciencia y desarrollo del ser."}
+                            <p className="text-slate-500 text-xs leading-relaxed mb-6 line-clamp-3 font-medium">
+                              {stripHtml(coach.bio) || "Este mentor está dedicado a guiar a las almas en su despertar de consciencia y desarrollo del ser."}
                             </p>
 
                             <button 
@@ -1802,7 +1822,6 @@ export function Dashboard() {
           setSelectedProductForDetail(null);
         }}
         onAddToCart={(product) => {
-          // ✅ USANDO addToCart SEGURO
           addToCart(product);
         }}
       />

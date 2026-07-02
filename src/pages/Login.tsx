@@ -297,22 +297,13 @@ export function Login() {
 
         {/* Social Authentication */}
         <div className="w-full space-y-2.5">
-          <div className="grid grid-cols-2 gap-2">
-            <button 
-              onClick={() => handleGoogleLogin('alumno')}
-              disabled={loading}
-              className="px-4 py-3 rounded-xl bg-slate-900/80 border border-slate-700/50 text-white font-bold tracking-wider uppercase text-[9px] hover:bg-slate-900 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
-            >
-              <LogIn size={12} className="text-kiragold" /> Alumno Google
-            </button>
-            <button 
-              onClick={() => handleGoogleLogin('coach')}
-              disabled={loading}
-              className="px-4 py-3 rounded-xl bg-slate-900/80 border border-slate-700/50 text-white font-bold tracking-wider uppercase text-[9px] hover:bg-slate-900 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
-            >
-              Postular Coach <ArrowRight size={12} className="text-kiragold" />
-            </button>
-          </div>
+          <button 
+            onClick={() => handleGoogleLogin('alumno')}
+            disabled={loading}
+            className="w-full px-4 py-3.5 rounded-xl bg-slate-900/80 border border-slate-700/50 text-white font-bold tracking-wider uppercase text-[11px] hover:bg-slate-900 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer active:scale-95 shadow-md"
+          >
+            <LogIn size={14} className="text-kiragold" /> Login con Google
+          </button>
           <p className="text-[10px] text-slate-500 text-center leading-normal italic px-2">
             Nota: Google Sign-In requiere que el dominio actual esté autorizado en Firebase. Si recibes error de dominio, utiliza el formulario de Correo arriba.
           </p>
