@@ -1,35 +1,45 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { User, Image as ImageIcon, Instagram, Linkedin, Twitter, Save, Loader2, Upload, AlertCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { ImageUpload } from '../components/ImageUpload';
+import { useToast } from '../hooks/useToast';
 
 export function UserProfile() {
   const { user } = useAuth();
-  const [photoURL, setPhotoURL] = useState(user?.photoURL || user?.photoUrl || '');
-  const [displayName, setDisplayName] = useState(user?.displayName || user?.name || '');
+  const { success: toastSuccess, error: toastError } = useToast();
+  const [photoURL, setPhotoURL] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [socialLinks, setSocialLinks] = useState({
-    instagram: user?.socialLinks?.instagram || '',
-    linkedin: user?.socialLinks?.linkedin || '',
-    twitter: user?.socialLinks?.twitter || '',
+    instagram: '',
+    linkedin: '',
+    twitter: '',
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Sync state when user details load asynchronously
+  // Sync state in real-time from Firestore to handle updates instantly
   useEffect(() => {
-    if (user) {
-      setPhotoURL(user.photoURL || user.photoUrl || '');
-      setDisplayName(user.displayName || user.name || '');
-      setSocialLinks({
-        instagram: user.socialLinks?.instagram || '',
-        linkedin: user.socialLinks?.linkedin || '',
-        twitter: user.socialLinks?.twitter || '',
-      });
-    }
+    if (!user) return;
+    const userRef = doc(db, 'users', user.uid);
+    const unsubscribe = onSnapshot(userRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setDisplayName(data.displayName || data.name || '');
+        setPhotoURL(data.photoURL || data.photoUrl || '');
+        setSocialLinks({
+          instagram: data.socialLinks?.instagram || '',
+          linkedin: data.socialLinks?.linkedin || '',
+          twitter: data.socialLinks?.twitter || '',
+        });
+      }
+    }, (err) => {
+      console.warn("Error loading real-time profile:", err);
+    });
+    return () => unsubscribe();
   }, [user]);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -50,6 +60,7 @@ export function UserProfile() {
         socialLinks
       });
       setSuccess(true);
+      toastSuccess("¡Tu perfil de usuario ha sido guardado con éxito!");
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
       console.error('Error saving profile', err);
@@ -71,6 +82,7 @@ export function UserProfile() {
         userFriendlyError = errorMsg;
       }
       setError(userFriendlyError);
+      toastError(userFriendlyError);
       
       try {
         handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
@@ -103,29 +115,37 @@ export function UserProfile() {
 
         <form onSubmit={handleSave} className="space-y-8">
           {/* Avatar Section */}
-          <div className="flex items-center gap-6 p-6 border border-slate-100 rounded-2xl bg-slate-50/50">
+          <div className="flex flex-col sm:flex-row items-center gap-6 p-6 border border-slate-100 rounded-2xl bg-slate-50/50">
             <div className="relative w-24 h-24 rounded-full overflow-hidden bg-slate-200 shrink-0 border-4 border-white shadow-md">
               {photoURL ? (
-                <img src={photoURL} alt="Profile" className="w-full h-full object-cover" />
+                <img referrerPolicy="no-referrer" src={photoURL} alt="Profile" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-100">
                   <User size={32} />
                 </div>
               )}
             </div>
-            <div className="flex-1 space-y-2">
+            <div className="flex-1 w-full space-y-3">
               <label className="text-sm font-bold text-slate-700">Foto de Perfil</label>
-              <div className="relative">
-                <input 
-                  type="url" 
-                  value={photoURL} 
-                  onChange={(e) => setPhotoURL(e.target.value)} 
-                  placeholder="URL de la imagen" 
-                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kirateal/20"
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <input 
+                    type="url" 
+                    value={photoURL} 
+                    onChange={(e) => setPhotoURL(e.target.value)} 
+                    placeholder="URL de la imagen" 
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-kirateal/20"
+                  />
+                  <ImageIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                </div>
+                <ImageUpload 
+                  onUploadComplete={(url) => setPhotoURL(url)} 
+                  folderPath={`users/${user?.uid || 'avatars'}`}
+                  className="sm:w-auto w-full cursor-pointer"
+                  label="Subir Foto"
                 />
-                <ImageIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               </div>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">O ingresa un link directo a tu avatar.</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Sube una imagen optimizada o ingresa un enlace directo a tu avatar.</p>
             </div>
           </div>
 
