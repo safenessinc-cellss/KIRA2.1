@@ -115,16 +115,21 @@ export function useAuth() {
               }
             } catch (err) {
               console.error('Error handling doc snapshot:', err);
+            } finally {
+              setLoading(false);
             }
+          }, (err) => {
+            console.error('onSnapshot error:', err);
+            setLoading(false);
           });
         } else {
           unsubDoc();
           setUser(null);
           setRole(null);
+          setLoading(false);
         }
       } catch (err) {
         console.error('Auth handler error:', err);
-      } finally {
         setLoading(false);
       }
     });
