@@ -617,7 +617,13 @@ export function Landing() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {books.slice(0, 6).map((book) => {
                   const cover = book.coverUrl || book.imageUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400';
-                  const author = book.publisherName || book.author || 'Kira Coach';
+                  let author = book.publisherName || book.author || 'Kira Coach';
+                  const authorLower = author.toLowerCase().trim();
+                  if (authorLower === 'safeness' || authorLower === 'safeness.c.a' || authorLower === 'safeness.c.a@gmail.com') {
+                    author = 'Kira Coach';
+                  } else if (!author || author.toLowerCase() === 'usuario') {
+                    author = book.publisherRole === 'admin' ? 'Administrador' : 'Kira Coach';
+                  }
                   const dateStr = book.createdAt ? new Date(book.createdAt.seconds * 1000).toLocaleDateString() : 'Reciente';
 
                   return (

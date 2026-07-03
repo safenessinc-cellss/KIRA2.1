@@ -1137,7 +1137,13 @@ export function Dashboard() {
                 {availableBooks.map((book) => {
                   const bookReview = myReviews.find(r => r.bookId === book.id || (r.itemId === book.id && r.itemType === 'book'));
                   const cover = book.coverUrl || book.imageUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400';
-                  const author = book.publisherName || book.author || 'Kira Coach';
+                  let author = book.publisherName || book.author || 'Kira Coach';
+                  const authorLower = author.toLowerCase().trim();
+                  if (authorLower === 'safeness' || authorLower === 'safeness.c.a' || authorLower === 'safeness.c.a@gmail.com') {
+                    author = 'Kira Coach';
+                  } else if (!author || author.toLowerCase() === 'usuario') {
+                    author = book.publisherRole === 'admin' ? 'Administrador' : 'Kira Coach';
+                  }
 
                   return (
                     <div key={book.id} className="border border-white/5 rounded-[32px] overflow-hidden bg-slate-950/60 hover:border-emerald-400/40 transition-all duration-500 flex flex-col h-[400px]">

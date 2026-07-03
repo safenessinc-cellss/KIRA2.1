@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { BookOpen, FileText, Link as LinkIcon, Trash2, Plus, Loader2, UploadCloud, CheckCircle2, ShieldAlert, Sparkles, BookMarked, Eye, Search, Filter, Pencil } from 'lucide-react';
@@ -134,6 +134,36 @@ export function AdminBooksView() {
 
     setPublishing(true);
     try {
+      // Fetch the latest administrator's name from Firestore profile to ensure we never use "Usuario"
+      let finalName = 'Administrador';
+      try {
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          const uData = userDoc.data();
+          const profileName = uData.displayName || uData.name || user.displayName || user.name;
+          if (profileName && profileName.toLowerCase() !== 'usuario') {
+            finalName = profileName;
+          }
+        } else {
+          const profileName = user.displayName || user.name;
+          if (profileName && profileName.toLowerCase() !== 'usuario') {
+            finalName = profileName;
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch fresh user profile name, using fallback:", err);
+        const profileName = user.displayName || user.name;
+        if (profileName && profileName.toLowerCase() !== 'usuario') {
+          finalName = profileName;
+        }
+      }
+
+      // Convert "safeness" usernames to "Kira Coach"
+      const finalNameLower = finalName.toLowerCase().trim();
+      if (finalNameLower === 'safeness' || finalNameLower === 'safeness.c.a' || finalNameLower === 'safeness.c.a@gmail.com') {
+        finalName = 'Kira Coach';
+      }
+
       if (editingBook) {
         // Edit mode
         await updateDoc(doc(db, 'books', editingBook.id), {
@@ -142,6 +172,7 @@ export function AdminBooksView() {
           type,
           url: finalUrl,
           coverUrl: coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400',
+          publisherName: finalName,
           updatedAt: serverTimestamp()
         });
         toastSuccess("¡Libro actualizado con éxito!");
@@ -155,7 +186,7 @@ export function AdminBooksView() {
           url: finalUrl,
           coverUrl: coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400',
           publisherId: user.uid,
-          publisherName: user.displayName || user.name || 'Administrador',
+          publisherName: finalName,
           publisherRole: 'admin',
           createdAt: serverTimestamp()
         });

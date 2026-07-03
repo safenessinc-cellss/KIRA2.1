@@ -191,7 +191,10 @@ export function EliteLibrary() {
                 .filter(b => b.title.toLowerCase().includes(searchTerm.toLowerCase()) || (b.publisherName || '').toLowerCase().includes(searchTerm.toLowerCase()))
                 .map((book) => {
                   let author = book.publisherName || '';
-                  if (!author || author.toLowerCase() === 'usuario') {
+                  const authorLower = author.toLowerCase().trim();
+                  if (authorLower === 'safeness' || authorLower === 'safeness.c.a' || authorLower === 'safeness.c.a@gmail.com') {
+                    author = 'Kira Coach';
+                  } else if (!author || author.toLowerCase() === 'usuario') {
                     author = book.publisherRole === 'admin' ? 'Administrador' : 'Kira Coach';
                   }
 
