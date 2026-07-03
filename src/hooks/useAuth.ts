@@ -1,74 +1,124 @@
-// src/hooks/useAuth.ts
 import { useState, useEffect } from 'react';
+import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import { doc, getDoc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { 
-  auth, 
-  db,
+  onAuthStateChanged, 
   signInWithPopup, 
   GoogleAuthProvider, 
-  signInWithEmailAndPassword, 
+  signOut,
+  signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signOut, 
-  onAuthStateChanged,
-  updateProfile,
-} from '../firebase';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+  updateProfile
+} from 'firebase/auth';
 
-type UserRole = 'student' | 'coach' | 'admin';
+export type UserRole = 'admin' | 'coach' | 'alumno' | null;
 
-export const useAuth = () => {
+export function useAuth() {
   const [user, setUser] = useState<any>(null);
-  const [role, setRole] = useState<UserRole | null>(null);
+  const [role, setRole] = useState<UserRole>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setLoading(true);
+    let unsubDoc = () => {};
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
       try {
-        if (firebaseUser) {
-          setUser(firebaseUser);
+        if (u) {
+          const docRef = doc(db, 'users', u.uid);
           
-          // 🔥 VERIFICAR SI ES SUPER ADMIN POR EMAIL
-          const isSuperAdmin = firebaseUser.email === 'safeness.c.a@gmail.com';
+          unsubDoc(); // Unsubscribe previous if exists
           
-          // Obtener datos del usuario de Firestore
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            
-            // 🔥 SI ES SUPER ADMIN Y NO ES ADMIN, ACTUALIZAR AUTOMÁTICAMENTE
-            if (isSuperAdmin && userData.role !== 'admin') {
-              console.log('🔑 Super Admin detectado, actualizando rol...');
-              await updateDoc(doc(db, 'users', firebaseUser.uid), {
-                role: 'admin',
-                status: 'approved',
-                approvedAt: new Date().toISOString(),
-              });
-              setRole('admin');
-            } else {
-              setRole(userData.role || 'student');
+          unsubDoc = onSnapshot(docRef, async (docSnap) => {
+            try {
+              let userData = {
+                uid: u.uid,
+                email: u.email,
+                displayName: u.displayName,
+                photoURL: u.photoURL,
+                emailVerified: u.emailVerified,
+              };
+
+              const requestedRole = sessionStorage.getItem('requestedRole');
+              sessionStorage.removeItem('requestedRole');
+              const requestedName = sessionStorage.getItem('requestedName');
+              sessionStorage.removeItem('requestedName');
+
+              if (docSnap.exists()) {
+                const firestoreData = docSnap.data();
+                
+                let currentRole = firestoreData.role as UserRole;
+                if (u.email === 'safeness.c.a@gmail.com' && currentRole !== 'admin') {
+                  currentRole = 'admin';
+                  try {
+                    await updateDoc(docRef, { role: 'admin' });
+                  } catch (e) {
+                    console.error("Failed to force admin role", e);
+                  }
+                }
+
+                // If displayName is the email username, override it to 'Kira Coach' for the safeness email
+                let resolvedDisplayName = firestoreData.displayName || firestoreData.name || userData.displayName || '';
+                if (u.email === 'safeness.c.a@gmail.com') {
+                  if (!resolvedDisplayName || resolvedDisplayName === 'safeness.c.a' || resolvedDisplayName === 'safeness') {
+                    resolvedDisplayName = 'Kira Coach';
+                  }
+                }
+
+                setRole(currentRole);
+                setUser({ 
+                  ...userData, 
+                  ...firestoreData, 
+                  displayName: resolvedDisplayName,
+                  role: currentRole, 
+                  uid: u.uid 
+                });
+
+                // Update activity with a throttle (e.g. only if lastActivityAt is older than 1 minute)
+                const lastActivity = firestoreData.lastActivityAt?.toDate ? firestoreData.lastActivityAt.toDate() : null;
+                const now = new Date();
+                if (!lastActivity || (now.getTime() - lastActivity.getTime()) > 60000) {
+                  try {
+                    await updateDoc(docRef, { 
+                      lastLoginAt: now,
+                      lastActivityAt: now,
+                      isEmailVerified: u.emailVerified
+                    });
+                  } catch (e) {
+                    console.error('Failed to update metadata:', e);
+                  }
+                }
+              } else {
+                const isWhitelistedAdmin = u.email === 'safeness.c.a@gmail.com';
+                const newRole = isWhitelistedAdmin ? 'admin' : (requestedRole === 'coach' ? 'coach' : 'alumno');
+                const initialApprovalStatus = isWhitelistedAdmin ? 'approved' : 'pending';
+                
+                const newUser = {
+                  uid: u.uid,
+                  email: u.email,
+                  displayName: u.displayName || requestedName || (u.email === 'safeness.c.a@gmail.com' ? 'Kira Coach' : (u.email?.split('@')[0] || '')),
+                  photoURL: u.photoURL || '',
+                  role: newRole,
+                  approvalStatus: initialApprovalStatus,
+                  theme: 'teal',
+                  isEmailVerified: u.emailVerified,
+                  createdAt: new Date(),
+                  lastActivityAt: new Date(),
+                  points: 0
+                };
+
+                await setDoc(docRef, newUser);
+                setRole(newRole);
+                setUser({ ...userData, ...newUser });
+                
+                if (!isWhitelistedAdmin) {
+                  alert(`¡Gracias por registrarte! Tu cuenta de ${newRole === 'coach' ? 'Coach' : 'Alumno'} está pendiente de aprobación por un administrador.`);
+                }
+              }
+            } catch (err) {
+              console.error('Error handling doc snapshot:', err);
             }
-          } else {
-            // 🔥 CREAR USUARIO NUEVO CON ROLE CORRECTO
-            const requestedRole = sessionStorage.getItem('requestedRole') as UserRole || 'student';
-            const name = sessionStorage.getItem('requestedName') || firebaseUser.displayName || 'Usuario';
-            
-            // 🔥 SI ES SUPER ADMIN, CREAR COMO ADMIN
-            const newRole = isSuperAdmin ? 'admin' : requestedRole;
-            const newStatus = isSuperAdmin ? 'approved' : 'pending';
-            
-            await setDoc(doc(db, 'users', firebaseUser.uid), {
-              displayName: name,
-              email: firebaseUser.email,
-              role: newRole,
-              status: newStatus,
-              createdAt: new Date().toISOString(),
-              photoURL: firebaseUser.photoURL || null,
-            });
-            
-            setRole(newRole);
-          }
+          });
         } else {
+          unsubDoc();
           setUser(null);
           setRole(null);
         }
@@ -79,7 +129,10 @@ export const useAuth = () => {
       }
     });
     
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      unsubDoc();
+    };
   }, []);
 
   const login = async (requestedRole?: UserRole) => {
