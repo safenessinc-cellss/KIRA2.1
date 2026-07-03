@@ -271,7 +271,7 @@ export function CoachBooksView() {
                 />
                 <ImageUpload
                   onUploadComplete={(url) => setCoverUrl(url)}
-                  folderPath={`covers/${user.uid}`}
+                  folderPath={`covers/${user?.uid || 'coaches'}`}
                   className="shrink-0"
                   label="Subir Portada"
                 />
