@@ -8,6 +8,7 @@ import { MediaUpload } from '../../components/MediaUpload';
 import { CoachAnalytics } from '../../components/CoachAnalytics';
 import { useToast } from '../../hooks/useToast';
 import { ProfileLayout } from './ProfileLayout';
+import { CoachBooksView } from './CoachBooksView';
 import { Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight, Award } from 'lucide-react';
 import CertificateGenerator from '../../components/CertificateGenerator';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -127,7 +128,7 @@ const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000,
   });
 };
 
-type CoachTab = 'dashboard' | 'tracking' | 'nexus' | 'register' | 'automation' | 'profile' | 'analytics' | 'certificates';
+type CoachTab = 'dashboard' | 'tracking' | 'nexus' | 'register' | 'automation' | 'profile' | 'analytics' | 'certificates' | 'books';
 
 export function CoachDashboard() {
   const { user } = useAuth();
@@ -259,6 +260,7 @@ export function CoachDashboard() {
         <TabBtn active={activeTab === 'automation'} onClick={() => setActiveTab('automation')} icon={<Zap size={16}/>} label="Kira Flow™" disabled={!isApproved} />
         <TabBtn active={activeTab === 'register'} onClick={() => setActiveTab('register')} icon={<UserPlus size={16}/>} label="Onboarding" disabled={!isApproved} />
         <TabBtn active={activeTab === 'certificates'} onClick={() => setActiveTab('certificates')} icon={<Award size={16}/>} label="Certificados" disabled={!isApproved} />
+        <TabBtn active={activeTab === 'books'} onClick={() => setActiveTab('books')} icon={<BookOpen size={16}/>} label="Libros" disabled={!isApproved} />
         <TabBtn active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<Sliders size={16}/>} label="Configuración" />
         <TabBtn active={activeTab === 'analytics'} onClick={() => setActiveTab('analytics')} icon={<BarChart3 size={16}/>} label="Performance" disabled={!isApproved} />
       </div>
@@ -270,6 +272,7 @@ export function CoachDashboard() {
         {activeTab === 'automation' && <CoachAutomationView />}
         {activeTab === 'register' && <CoachRegisterClient />}
         {activeTab === 'certificates' && <CertificateGenerator />}
+        {activeTab === 'books' && <CoachBooksView />}
         {activeTab === 'profile' && <ProfileLayout initialProfile={profile} />}
         {activeTab === 'analytics' && <CoachAnalytics coachId={user?.uid} />}
       </div>
