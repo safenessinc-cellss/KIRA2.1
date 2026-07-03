@@ -54,7 +54,8 @@ export function AdminBooksView() {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    if (type === 'pdf' && !file.type.includes('pdf')) {
+    const isPdfFile = file.type.includes('pdf') || file.name.toLowerCase().endsWith('.pdf');
+    if (type === 'pdf' && !isPdfFile) {
       toastError("Por favor, selecciona un archivo PDF válido.");
       return;
     }
@@ -65,21 +66,19 @@ export function AdminBooksView() {
       const isMock = !storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value';
 
       if (isMock) {
-        setTimeout(() => {
-          const mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-          setUrl(mockUrl);
-          setUploadingFile(false);
-          toastSuccess("Archivo cargado en modo simulación administrativa.");
-        }, 1200);
-        return;
+        // Wait 1.2 seconds for simulation
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        const mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+        setUrl(mockUrl);
+        toastSuccess("Archivo cargado en modo simulación administrativa.");
+      } else {
+        const storageRef = ref(storage, `books/admin/${Date.now()}_${file.name}`);
+        const uploadResult = await uploadBytes(storageRef, file);
+        const downloadUrl = await getDownloadURL(uploadResult.ref);
+        
+        setUrl(downloadUrl);
+        toastSuccess("Libro administrativo cargado con éxito.");
       }
-
-      const storageRef = ref(storage, `books/admin/${Date.now()}_${file.name}`);
-      const uploadResult = await uploadBytes(storageRef, file);
-      const downloadUrl = await getDownloadURL(uploadResult.ref);
-      
-      setUrl(downloadUrl);
-      toastSuccess("Libro administrativo cargado con éxito.");
     } catch (err: any) {
       console.warn("Storage upload failed, using simulation mode fallback:", err);
       const mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
@@ -100,9 +99,17 @@ export function AdminBooksView() {
       return;
     }
 
-    if (!url.trim()) {
+    let finalUrl = url.trim();
+    if (!finalUrl) {
       toastError("Debes cargar un archivo o ingresar un enlace.");
       return;
+    }
+
+    // Auto prepend https:// if it looks like an external domain link and is missing protocol
+    if (type === 'link' && !finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+      if (!finalUrl.startsWith('/') && !finalUrl.startsWith('data:')) {
+        finalUrl = 'https://' + finalUrl;
+      }
     }
 
     setPublishing(true);
@@ -111,7 +118,7 @@ export function AdminBooksView() {
         title: title.trim(),
         description: description.trim(),
         type,
-        url: url.trim(),
+        url: finalUrl,
         coverUrl: coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400',
         publisherId: user.uid,
         publisherName: user.displayName || user.name || 'Administrador',
@@ -266,7 +273,7 @@ export function AdminBooksView() {
               ) : (
                 <div className="relative">
                   <input
-                    type="url"
+                    type="text"
                     placeholder="https://ejemplo.com/mi-libro"
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
