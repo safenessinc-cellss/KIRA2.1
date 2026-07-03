@@ -6,7 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { MentorWidget } from '../components/MentorWidget';
 import { Seal } from '../components/Brand';
-import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut, MessageCircle, Globe, Copy, Check, Clock, UserPlus, Search, X, BadgeCheck, Instagram, Linkedin, User, Twitter, Heart } from 'lucide-react';
+import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut, MessageCircle, Globe, Copy, Check, Clock, UserPlus, Search, X, BadgeCheck, Instagram, Linkedin, User, Twitter, Heart, ExternalLink, FileText } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
 import { useToast } from '../hooks/useToast';
@@ -519,9 +519,15 @@ export function Dashboard() {
       setAvailableCourses(coursesSnap.docs.map(d => ({id: d.id, ...d.data()})));
 
       try {
-        const booksQ = query(collection(db, 'books'), where('status', '==', 'published'));
+        const booksQ = collection(db, 'books');
         const booksSnap = await getDocs(booksQ);
-        setAvailableBooks(booksSnap.docs.map(d => ({id: d.id, ...d.data()})));
+        const fetchedBooks = booksSnap.docs.map(d => ({id: d.id, ...d.data()}));
+        fetchedBooks.sort((a: any, b: any) => {
+          const t1 = a.createdAt?.seconds || 0;
+          const t2 = b.createdAt?.seconds || 0;
+          return t2 - t1;
+        });
+        setAvailableBooks(fetchedBooks);
       } catch (booksErr) {
         console.warn("Dynamic books fetch failed:", booksErr);
       }
@@ -1121,75 +1127,131 @@ export function Dashboard() {
                 <div>
                   <h3 className="text-2xl font-black text-slate-100 tracking-tight flex items-center gap-3">
                     <BookOpen className="text-emerald-400" size={24} />
-                    Librería Premium: Ebooks Recomendados
+                    Biblioteca y Ebooks de la Plataforma
                   </h3>
-                  <p className="text-sm text-slate-400 mt-1 font-medium">Lecturas concisas seleccionadas por coaches para tu desarrollo holístico.</p>
+                  <p className="text-sm text-slate-400 mt-1 font-medium">Lecturas, guías y ebooks publicados por nuestros Coaches y Administradores oficiales de Kira.</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 relative z-10">
                 {availableBooks.map((book) => {
                   const bookReview = myReviews.find(r => r.bookId === book.id || (r.itemId === book.id && r.itemType === 'book'));
+                  const cover = book.coverUrl || book.imageUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400';
+                  const author = book.publisherName || book.author || 'Kira Coach';
+
                   return (
                     <div key={book.id} className="border border-white/5 rounded-[32px] overflow-hidden bg-slate-950/60 hover:border-emerald-400/40 transition-all duration-500 flex flex-col h-[400px]">
                       <div 
                         onClick={() => {
-                          setSelectedProductForDetail({
-                            id: book.id,
-                            title: book.title,
-                            price: Number(book.price) || 0,
-                            description: book.description || 'Un libro interactivo premium...',
-                            imageUrl: book.imageUrl || '',
-                            type: 'book',
-                            author: book.author || 'Kira Coach',
-                            pointCost: 50
-                          });
-                          setIsDetailModalOpen(true);
-                        }}
-                        className="h-56 bg-slate-950 relative overflow-hidden shrink-0 cursor-pointer group/book"
-                      >
-                        {book.imageUrl && (
-                          <img 
-                            src={book.imageUrl} 
-                            alt={book.title} 
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover/book:scale-105" 
-                          />
-                        )}
-                        {userOwnedBooks.includes(book.id) ? (
-                          <div className="absolute top-5 left-5 bg-emerald-500 text-slate-950 px-3.5 py-1.5 rounded-full text-xs font-black shadow-lg flex items-center gap-1">
-                            <BadgeCheck size={12} className="text-slate-950" /> Desbloqueado
-                          </div>
-                        ) : (
-                          <div className="absolute top-5 left-5 bg-emerald-500 text-white px-3.5 py-1.5 rounded-full text-xs font-black shadow-lg">
-                            ${book.price} USD
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-6 flex flex-col flex-1">
-                        <div 
-                          onClick={() => {
+                          if (book.url) {
+                            window.open(book.url, '_blank');
+                          } else {
                             setSelectedProductForDetail({
                               id: book.id,
                               title: book.title,
                               price: Number(book.price) || 0,
                               description: book.description || 'Un libro interactivo premium...',
-                              imageUrl: book.imageUrl || '',
+                              imageUrl: cover,
                               type: 'book',
-                              author: book.author || 'Kira Coach',
+                              author: author,
                               pointCost: 50
                             });
                             setIsDetailModalOpen(true);
+                          }
+                        }}
+                        className="h-56 bg-slate-950 relative overflow-hidden shrink-0 cursor-pointer group/book"
+                      >
+                        {cover && (
+                          <img 
+                            src={cover} 
+                            alt={book.title} 
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover/book:scale-105" 
+                            referrerPolicy="no-referrer"
+                          />
+                        )}
+                        <div className="absolute top-5 left-5 flex flex-col gap-1.5 z-10">
+                          {book.url ? (
+                            <span className="px-3 py-1 bg-slate-950/90 backdrop-blur text-teal-400 text-[10px] font-black uppercase tracking-wider rounded-xl shadow-md border border-slate-800">
+                              {book.type || 'Recurso'}
+                            </span>
+                          ) : userOwnedBooks.includes(book.id) ? (
+                            <div className="bg-emerald-500 text-slate-950 px-3.5 py-1.5 rounded-full text-xs font-black shadow-lg flex items-center gap-1">
+                              <BadgeCheck size={12} className="text-slate-950" /> Desbloqueado
+                            </div>
+                          ) : (
+                            <div className="bg-emerald-500 text-white px-3.5 py-1.5 rounded-full text-xs font-black shadow-lg">
+                              ${book.price} USD
+                            </div>
+                          )}
+                          {book.publisherRole && (
+                            <span className={cn(
+                              "px-3 py-0.5 text-[8px] font-black uppercase tracking-widest rounded-lg shadow-md self-start text-white",
+                              book.publisherRole === 'admin' ? "bg-indigo-600" : "bg-teal-600"
+                            )}>
+                              {book.publisherRole === 'admin' ? 'Oficial' : 'Coach'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="p-6 flex flex-col flex-1">
+                        <div 
+                          onClick={() => {
+                            if (book.url) {
+                              window.open(book.url, '_blank');
+                            } else {
+                              setSelectedProductForDetail({
+                                id: book.id,
+                                title: book.title,
+                                price: Number(book.price) || 0,
+                                description: book.description || 'Un libro interactivo premium...',
+                                imageUrl: cover,
+                                type: 'book',
+                                author: author,
+                                pointCost: 50
+                              });
+                              setIsDetailModalOpen(true);
+                            }
                           }}
                           className="flex-1 flex flex-col cursor-pointer hover:opacity-90 transition-opacity"
                         >
                           <h4 className="font-black text-lg text-slate-100 mb-1 line-clamp-1">{book.title}</h4>
-                          <p className="text-[11px] text-emerald-400 font-bold mb-4">Por {book.author || 'Kira Coach'}</p>
+                          <p className="text-[11px] text-emerald-400 font-bold mb-4">Por {author}</p>
                           <p className="text-xs text-slate-400 mb-5 flex-1 line-clamp-3 leading-relaxed font-medium">
-                            {book.description || 'Un libro canalizado y estructurado con herramientas prácticas de arteterapia, respiración consciente y autoconocimiento.'}
+                            {book.description || 'Un libro canalizado y estructurado con herramientas de autoconocimiento, meditación y crecimiento.'}
                           </p>
                         </div>
                         
-                        {userOwnedBooks.includes(book.id) ? (
+                        {book.url ? (
+                          <div className="mt-auto space-y-2">
+                            <a 
+                              href={book.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full text-[11px] py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl transition flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer text-center"
+                            >
+                              {book.type === 'pdf' ? <FileText size={13} /> : <ExternalLink size={13} />}
+                              Leer {book.type === 'pdf' ? 'PDF' : 'Enlace'}
+                            </a>
+                            {bookReview ? (
+                              <div className="w-full text-center py-2 bg-emerald-950/40 text-emerald-400 rounded-xl text-[10px] font-bold uppercase tracking-wider border border-emerald-500/20 flex items-center justify-center gap-1">
+                                <Check size={12} /> Calificado ★ {bookReview.rating}.0
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setCourseReviewing(book.id);
+                                  setReviewType('book');
+                                  setReviewName(book.title);
+                                  setRating(5);
+                                  setComment('');
+                                }}
+                                className="w-full text-[10px] py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition flex items-center justify-center gap-1 uppercase tracking-wider cursor-pointer border border-white/5"
+                              >
+                                <Star size={11} /> Calificar Libro
+                              </button>
+                            )}
+                          </div>
+                        ) : userOwnedBooks.includes(book.id) ? (
                           <div className="mt-auto space-y-2">
                             <button 
                               onClick={() => {
@@ -1228,9 +1290,9 @@ export function Dashboard() {
                                 title: book.title,
                                 price: Number(book.price) || 0,
                                 description: book.description || '',
-                                imageUrl: book.imageUrl || '',
+                                imageUrl: cover,
                                 type: 'book',
-                                author: book.author || 'Kira Coach',
+                                author: author,
                                 pointCost: 50
                               });
                             }}
