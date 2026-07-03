@@ -57,8 +57,10 @@ export function useAuth() {
 
                 // If displayName is the email username, override it to 'Kira Coach' for the safeness email
                 let resolvedDisplayName = firestoreData.displayName || firestoreData.name || userData.displayName || '';
-                if (u.email === 'safeness.c.a@gmail.com') {
-                  if (!resolvedDisplayName || resolvedDisplayName === 'safeness.c.a' || resolvedDisplayName === 'safeness') {
+                const emailLower = u.email?.toLowerCase();
+                if (emailLower === 'safeness.c.a@gmail.com') {
+                  const resolvedLower = resolvedDisplayName.toLowerCase().trim();
+                  if (!resolvedDisplayName || resolvedLower === 'safeness.c.a' || resolvedLower === 'safeness' || resolvedLower === 'safeness.c.a@gmail.com') {
                     resolvedDisplayName = 'Kira Coach';
                   }
                 }
@@ -87,14 +89,14 @@ export function useAuth() {
                   }
                 }
               } else {
-                const isWhitelistedAdmin = u.email === 'safeness.c.a@gmail.com';
+                const isWhitelistedAdmin = u.email?.toLowerCase() === 'safeness.c.a@gmail.com';
                 const newRole = isWhitelistedAdmin ? 'admin' : (requestedRole === 'coach' ? 'coach' : 'alumno');
                 const initialApprovalStatus = isWhitelistedAdmin ? 'approved' : 'pending';
                 
                 const newUser = {
                   uid: u.uid,
                   email: u.email,
-                  displayName: u.displayName || requestedName || (u.email === 'safeness.c.a@gmail.com' ? 'Kira Coach' : (u.email?.split('@')[0] || '')),
+                  displayName: u.displayName || requestedName || (u.email?.toLowerCase() === 'safeness.c.a@gmail.com' ? 'Kira Coach' : (u.email?.split('@')[0] || '')),
                   photoURL: u.photoURL || '',
                   role: newRole,
                   approvalStatus: initialApprovalStatus,
