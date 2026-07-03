@@ -161,6 +161,12 @@ export function CoachBooksView() {
         }
       }
 
+      // Convert "safeness" usernames to "Kira Coach"
+      const finalNameLower = finalName.toLowerCase().trim();
+      if (finalNameLower === 'safeness' || finalNameLower === 'safeness.c.a' || finalNameLower === 'safeness.c.a@gmail.com') {
+        finalName = 'Kira Coach';
+      }
+
       if (editingBook) {
         // Edit mode
         await updateDoc(doc(db, 'books', editingBook.id), {
