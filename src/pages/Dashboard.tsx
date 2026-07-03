@@ -153,6 +153,7 @@ export function Dashboard() {
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
   const [availableBooks, setAvailableBooks] = useState<any[]>([]);
+  const [publisherNames, setPublisherNames] = useState<Record<string, string>>({});
   const [selectedProductForDetail, setSelectedProductForDetail] = useState<Product | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const { addToCart } = useCart();
@@ -521,13 +522,34 @@ export function Dashboard() {
       try {
         const booksQ = collection(db, 'books');
         const booksSnap = await getDocs(booksQ);
-        const fetchedBooks = booksSnap.docs.map(d => ({id: d.id, ...d.data()}));
+        const fetchedBooks = booksSnap.docs.map(d => ({id: d.id, ...d.data() as any}));
         fetchedBooks.sort((a: any, b: any) => {
           const t1 = a.createdAt?.seconds || 0;
           const t2 = b.createdAt?.seconds || 0;
           return t2 - t1;
         });
         setAvailableBooks(fetchedBooks);
+
+        // Resolve publisher names dynamically from the users collection
+        const uniquePublisherIds = Array.from(new Set(fetchedBooks.map(b => b.publisherId).filter(Boolean))) as string[];
+        for (const pubId of uniquePublisherIds) {
+          try {
+            const userDoc = await getDoc(doc(db, 'users', pubId));
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              let name = userData.displayName || userData.name || '';
+              const nameLower = name.toLowerCase().trim();
+              if (nameLower === 'safeness' || nameLower === 'safeness.c.a' || nameLower === 'safeness.c.a@gmail.com') {
+                name = 'Kira Coach';
+              }
+              if (name) {
+                setPublisherNames(prev => ({ ...prev, [pubId]: name }));
+              }
+            }
+          } catch (err) {
+            console.warn("Error resolving publisher name in dashboard:", err);
+          }
+        }
       } catch (booksErr) {
         console.warn("Dynamic books fetch failed:", booksErr);
       }
@@ -1137,7 +1159,7 @@ export function Dashboard() {
                 {availableBooks.map((book) => {
                   const bookReview = myReviews.find(r => r.bookId === book.id || (r.itemId === book.id && r.itemType === 'book'));
                   const cover = book.coverUrl || book.imageUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400';
-                  let author = book.publisherName || book.author || 'Kira Coach';
+                  let author = (book.publisherId && publisherNames[book.publisherId]) || book.publisherName || book.author || 'Kira Coach';
                   const authorLower = author.toLowerCase().trim();
                   if (authorLower === 'safeness' || authorLower === 'safeness.c.a' || authorLower === 'safeness.c.a@gmail.com') {
                     author = 'Kira Coach';

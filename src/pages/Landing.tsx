@@ -5,7 +5,7 @@ import { Logo } from '../components/Brand';
 import { LogIn, ArrowRight, ShieldCheck, Activity, Users, BrainCircuit, Globe, BarChart3, Star, DownloadCloud, Award, User, Instagram, Linkedin, Twitter, BadgeCheck, MessageCircleHeart, X, Send, Loader2, HeartPulse, FileText, Search, Zap, Wind, Heart, Target, Tag, Calendar, Ticket, Sparkles, Trophy, BookOpen, ExternalLink } from 'lucide-react';
 import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, onSnapshot, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 
 import { useNavigate } from 'react-router-dom';
@@ -16,6 +16,7 @@ export function Landing() {
   const [coaches, setCoaches] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<any[]>([]);
   const [books, setBooks] = useState<any[]>([]);
+  const [publisherNames, setPublisherNames] = useState<Record<string, string>>({});
   const [selectedPromotion, setSelectedPromotion] = useState<any | null>(null);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('Todos');
   const [selectedExperience, setSelectedExperience] = useState<string>('Todos');
@@ -131,14 +132,35 @@ export function Landing() {
   }, []);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'books'), (snap) => {
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const unsub = onSnapshot(collection(db, 'books'), async (snap) => {
+      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
       list.sort((a: any, b: any) => {
         const t1 = a.createdAt?.seconds || 0;
         const t2 = b.createdAt?.seconds || 0;
         return t2 - t1;
       });
       setBooks(list);
+
+      // Resolve publisher names dynamically from the users collection
+      const uniquePublisherIds = Array.from(new Set(list.map(b => b.publisherId).filter(Boolean))) as string[];
+      for (const pubId of uniquePublisherIds) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', pubId));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            let name = userData.displayName || userData.name || '';
+            const nameLower = name.toLowerCase().trim();
+            if (nameLower === 'safeness' || nameLower === 'safeness.c.a' || nameLower === 'safeness.c.a@gmail.com') {
+              name = 'Kira Coach';
+            }
+            if (name) {
+              setPublisherNames(prev => ({ ...prev, [pubId]: name }));
+            }
+          }
+        } catch (err) {
+          console.warn("Error resolving publisher name:", err);
+        }
+      }
     }, (error) => {
       console.warn("Error fetching books on landing:", error);
     });
@@ -617,7 +639,7 @@ export function Landing() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {books.slice(0, 6).map((book) => {
                   const cover = book.coverUrl || book.imageUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400';
-                  let author = book.publisherName || book.author || 'Kira Coach';
+                  let author = (book.publisherId && publisherNames[book.publisherId]) || book.publisherName || book.author || 'Kira Coach';
                   const authorLower = author.toLowerCase().trim();
                   if (authorLower === 'safeness' || authorLower === 'safeness.c.a' || authorLower === 'safeness.c.a@gmail.com') {
                     author = 'Kira Coach';

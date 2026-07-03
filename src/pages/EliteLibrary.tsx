@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, updateDoc, doc, arrayUnion, onSnapshot, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, arrayUnion, onSnapshot, addDoc, getDoc } from 'firebase/firestore';
 import { Zap, Lock, Unlock, FileText, Video, Image as ImageIcon, Search, Filter, Loader2, Sparkles, X, PlayCircle, GripHorizontal, BookOpen, ExternalLink } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Reorder } from 'motion/react';
@@ -17,12 +17,13 @@ export function EliteLibrary() {
   const [displayItems, setDisplayItems] = useState<any[]>([]);
   const [libraryMode, setLibraryMode] = useState<'vault' | 'books'>('vault');
   const [books, setBooks] = useState<any[]>([]);
+  const [publisherNames, setPublisherNames] = useState<Record<string, string>>({});
   const [booksLoading, setBooksLoading] = useState(true);
 
   useEffect(() => {
     const q = collection(db, 'books');
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const unsub = onSnapshot(q, async (snap) => {
+      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
       list.sort((a: any, b: any) => {
         const t1 = a.createdAt?.seconds || 0;
         const t2 = b.createdAt?.seconds || 0;
@@ -30,6 +31,27 @@ export function EliteLibrary() {
       });
       setBooks(list);
       setBooksLoading(false);
+
+      // Resolve publisher names dynamically from the users collection
+      const uniquePublisherIds = Array.from(new Set(list.map(b => b.publisherId).filter(Boolean))) as string[];
+      for (const pubId of uniquePublisherIds) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', pubId));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            let name = userData.displayName || userData.name || '';
+            const nameLower = name.toLowerCase().trim();
+            if (nameLower === 'safeness' || nameLower === 'safeness.c.a' || nameLower === 'safeness.c.a@gmail.com') {
+              name = 'Kira Coach';
+            }
+            if (name) {
+              setPublisherNames(prev => ({ ...prev, [pubId]: name }));
+            }
+          }
+        } catch (err) {
+          console.warn("Error resolving publisher name in elite library:", err);
+        }
+      }
     }, (err) => {
       console.error("Error loading books:", err);
       setBooksLoading(false);
@@ -188,9 +210,12 @@ export function EliteLibrary() {
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {books
-                .filter(b => b.title.toLowerCase().includes(searchTerm.toLowerCase()) || (b.publisherName || '').toLowerCase().includes(searchTerm.toLowerCase()))
+                .filter(b => {
+                  const resolvedAuthor = (b.publisherId && publisherNames[b.publisherId]) || b.publisherName || '';
+                  return b.title.toLowerCase().includes(searchTerm.toLowerCase()) || resolvedAuthor.toLowerCase().includes(searchTerm.toLowerCase());
+                })
                 .map((book) => {
-                  let author = book.publisherName || '';
+                  let author = (book.publisherId && publisherNames[book.publisherId]) || book.publisherName || '';
                   const authorLower = author.toLowerCase().trim();
                   if (authorLower === 'safeness' || authorLower === 'safeness.c.a' || authorLower === 'safeness.c.a@gmail.com') {
                     author = 'Kira Coach';

@@ -12,6 +12,7 @@ export function AdminBooksView() {
   const { user } = useAuth();
   const { success: toastSuccess, error: toastError } = useToast();
   const [books, setBooks] = useState<any[]>([]);
+  const [publisherNames, setPublisherNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -30,10 +31,10 @@ export function AdminBooksView() {
     // Fetch ALL books in the entire ecosystem
     const q = collection(db, 'books');
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
       const list = snapshot.docs.map(doc => ({
         id: doc.id,
-        ...doc.data()
+        ...doc.data() as any
       }));
       // Sort client-side
       list.sort((a: any, b: any) => {
@@ -43,6 +44,27 @@ export function AdminBooksView() {
       });
       setBooks(list);
       setLoading(false);
+
+      // Resolve publisher names dynamically from the users collection
+      const uniquePublisherIds = Array.from(new Set(list.map(b => b.publisherId).filter(Boolean))) as string[];
+      for (const pubId of uniquePublisherIds) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', pubId));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            let name = userData.displayName || userData.name || '';
+            const nameLower = name.toLowerCase().trim();
+            if (nameLower === 'safeness' || nameLower === 'safeness.c.a' || nameLower === 'safeness.c.a@gmail.com') {
+              name = 'Kira Coach';
+            }
+            if (name) {
+              setPublisherNames(prev => ({ ...prev, [pubId]: name }));
+            }
+          }
+        } catch (err) {
+          console.warn("Error resolving publisher name in admin books:", err);
+        }
+      }
     }, (err) => {
       console.error("Error loading books for admin:", err);
       setLoading(false);
@@ -517,7 +539,9 @@ export function AdminBooksView() {
                   <div className="p-5 flex-1 flex flex-col">
                     <div className="flex items-center gap-1.5 mb-2">
                       <span className="text-[10px] uppercase font-bold text-slate-400">Publicado por:</span>
-                      <span className="text-[10px] font-bold text-slate-600">{book.publisherName}</span>
+                      <span className="text-[10px] font-bold text-slate-600">
+                        {(book.publisherId && publisherNames[book.publisherId]) || book.publisherName || 'Kira Coach'}
+                      </span>
                     </div>
                     <h4 className="font-bold text-slate-900 text-sm leading-tight mb-2">{book.title}</h4>
                     {book.description && (
