@@ -17,6 +17,13 @@ export function DashboardLayout({ title }: { title: string }) {
   const location = useLocation();
   const [toast, setToast] = useState<{ title: string; message: string } | null>(null);
 
+  const emailLower = user?.email?.toLowerCase();
+  const rawDisplayName = user?.displayName || '';
+  const isSafeness = emailLower === 'safeness.c.a@gmail.com' || rawDisplayName.toLowerCase() === 'safeness' || rawDisplayName.toLowerCase() === 'safeness.c.a';
+  
+  const displayProfileName = isSafeness ? 'Kira Coach' : (user?.displayName || 'Usuario');
+  const displayProfileInitial = isSafeness ? 'K' : (user?.displayName?.charAt(0).toUpperCase() || 'U');
+
   useEffect(() => {
     if (user?.theme) {
       document.documentElement.setAttribute('data-theme', user.theme);
@@ -147,12 +154,12 @@ export function DashboardLayout({ title }: { title: string }) {
               />
             ) : (
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                {user?.displayName?.charAt(0).toUpperCase() || 'U'}
+                {displayProfileInitial}
               </div>
             )}
             <div className="text-sm truncate">
               <p className="font-semibold text-slate-600 truncate">
-                {user?.displayName || 'Usuario'}
+                {displayProfileName}
               </p>
             </div>
           </div>
@@ -192,7 +199,7 @@ export function DashboardLayout({ title }: { title: string }) {
 
         <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between">
           <div className="font-semibold text-slate-500">
-            Bienvenido, {user?.displayName || (role === 'admin' ? 'Super Admin' : 'Usuario')}
+            Bienvenido, {displayProfileName}
           </div>
           <div className="flex items-center gap-4">
             <NotificationCenter />
