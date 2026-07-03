@@ -189,39 +189,45 @@ export function EliteLibrary() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {books
                 .filter(b => b.title.toLowerCase().includes(searchTerm.toLowerCase()) || (b.publisherName || '').toLowerCase().includes(searchTerm.toLowerCase()))
-                .map((book) => (
-                  <div key={book.id} className="group bg-white rounded-3xl border border-slate-200 overflow-hidden flex flex-col h-full hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-                    <div className="relative h-48 bg-slate-50 overflow-hidden shrink-0">
-                      <img 
-                        referrerPolicy="no-referrer"
-                        src={book.coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400'} 
-                        alt={book.title} 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                      />
-                      <div className="absolute top-3 left-3 flex flex-col gap-1.5">
-                        <span className="px-2 py-1 bg-white/95 backdrop-blur rounded-lg text-[9px] font-black text-slate-800 uppercase tracking-wider shadow-sm flex items-center gap-1">
-                          {book.type === 'pdf' ? <FileText size={10} className="text-red-500" /> : <ExternalLink size={10} className="text-blue-500" />}
-                          {book.type}
-                        </span>
-                        {book.publisherRole === 'admin' ? (
-                          <span className="px-2 py-0.5 bg-indigo-600 text-white rounded-lg text-[8px] font-black uppercase tracking-wider shadow-sm">
-                            Oficial
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 bg-teal-600 text-white rounded-lg text-[8px] font-black uppercase tracking-wider shadow-sm">
-                            Coach
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                .map((book) => {
+                  let author = book.publisherName || '';
+                  if (!author || author.toLowerCase() === 'usuario') {
+                    author = book.publisherRole === 'admin' ? 'Administrador' : 'Kira Coach';
+                  }
 
-                    <div className="p-6 flex-1 flex flex-col">
-                      <div className="flex items-center gap-1.5 mb-2.5">
-                        <div className="w-5 h-5 rounded-full bg-slate-100 overflow-hidden shrink-0">
-                          <img src={`https://ui-avatars.com/api/?name=${book.publisherName}&background=random`} alt={book.publisherName} className="w-full h-full object-cover" />
+                  return (
+                    <div key={book.id} className="group bg-white rounded-3xl border border-slate-200 overflow-hidden flex flex-col h-full hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+                      <div className="relative h-48 bg-slate-50 overflow-hidden shrink-0">
+                        <img 
+                          referrerPolicy="no-referrer"
+                          src={book.coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400'} 
+                          alt={book.title} 
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                        />
+                        <div className="absolute top-3 left-3 flex flex-col gap-1.5">
+                          <span className="px-2 py-1 bg-white/95 backdrop-blur rounded-lg text-[9px] font-black text-slate-800 uppercase tracking-wider shadow-sm flex items-center gap-1">
+                            {book.type === 'pdf' ? <FileText size={10} className="text-red-500" /> : <ExternalLink size={10} className="text-blue-500" />}
+                            {book.type}
+                          </span>
+                          {book.publisherRole === 'admin' ? (
+                            <span className="px-2 py-0.5 bg-indigo-600 text-white rounded-lg text-[8px] font-black uppercase tracking-wider shadow-sm">
+                              Oficial
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-teal-600 text-white rounded-lg text-[8px] font-black uppercase tracking-wider shadow-sm">
+                              Coach
+                            </span>
+                          )}
                         </div>
-                        <span className="text-[10px] font-bold text-slate-500">{book.publisherName}</span>
                       </div>
+
+                      <div className="p-6 flex-1 flex flex-col">
+                        <div className="flex items-center gap-1.5 mb-2.5">
+                          <div className="w-5 h-5 rounded-full bg-slate-100 overflow-hidden shrink-0">
+                            <img src={`https://ui-avatars.com/api/?name=${author}&background=random`} alt={author} className="w-full h-full object-cover" />
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-500">{author}</span>
+                        </div>
                       <h4 className="font-bold text-slate-900 text-sm leading-tight mb-2">{book.title}</h4>
                       {book.description && (
                         <p className="text-xs text-slate-500 line-clamp-3 mb-4 leading-relaxed">{book.description}</p>
@@ -242,7 +248,8 @@ export function EliteLibrary() {
                       </div>
                     </div>
                   </div>
-                ))}
+                );
+              })}
             </div>
 
             {books.filter(b => b.title.toLowerCase().includes(searchTerm.toLowerCase()) || (b.publisherName || '').toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
