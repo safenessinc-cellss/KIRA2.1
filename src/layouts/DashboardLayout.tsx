@@ -147,11 +147,13 @@ export function DashboardLayout({ title }: { title: string }) {
               />
             ) : (
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                {user?.displayName?.charAt(0).toUpperCase() || 'U'}
+                {user?.email === 'safeness.c.a@gmail.com' || user?.displayName === 'safeness.c.a' ? 'K' : (user?.displayName?.charAt(0).toUpperCase() || 'U')}
               </div>
             )}
             <div className="text-sm truncate">
-              <p className="font-semibold text-slate-600 truncate">{user?.displayName || 'Usuario'}</p>
+              <p className="font-semibold text-slate-600 truncate">
+                {user?.email === 'safeness.c.a@gmail.com' || user?.displayName === 'safeness.c.a' ? 'Kira Coach' : (user?.displayName || 'Usuario')}
+              </p>
             </div>
           </div>
           <button 
@@ -189,7 +191,9 @@ export function DashboardLayout({ title }: { title: string }) {
         )}
 
         <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between">
-          <div className="font-semibold text-slate-500">Bienvenido, {role === 'admin' ? 'Super Admin' : user?.displayName}</div>
+          <div className="font-semibold text-slate-500">
+            Bienvenido, {user?.email === 'safeness.c.a@gmail.com' || user?.displayName === 'safeness.c.a' ? 'Kira Coach' : (role === 'admin' ? 'Super Admin' : (user?.displayName || 'Usuario'))}
+          </div>
           <div className="flex items-center gap-4">
             <NotificationCenter />
             
