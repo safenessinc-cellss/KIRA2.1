@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { db, storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, query, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { BookOpen, FileText, Link as LinkIcon, Trash2, Plus, Loader2, UploadCloud, CheckCircle2, ShieldAlert, Sparkles, BookMarked, Eye, Search, Filter } from 'lucide-react';
+import { BookOpen, FileText, Link as LinkIcon, Trash2, Plus, Loader2, UploadCloud, CheckCircle2, ShieldAlert, Sparkles, BookMarked, Eye, Search, Filter, Pencil } from 'lucide-react';
 import { ImageUpload } from '../components/ImageUpload';
 import { cn } from '../lib/utils';
 
@@ -17,6 +17,7 @@ export function AdminBooksView() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'pdf' | 'link'>('all');
+  const [editingBook, setEditingBook] = useState<any | null>(null);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -90,6 +91,25 @@ export function AdminBooksView() {
     }
   };
 
+  const startEdit = (book: any) => {
+    setEditingBook(book);
+    setTitle(book.title);
+    setDescription(book.description || '');
+    setType(book.type || 'pdf');
+    setUrl(book.url || '');
+    setCoverUrl(book.coverUrl || '');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEdit = () => {
+    setEditingBook(null);
+    setTitle('');
+    setDescription('');
+    setType('pdf');
+    setUrl('');
+    setCoverUrl('');
+  };
+
   const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -114,19 +134,33 @@ export function AdminBooksView() {
 
     setPublishing(true);
     try {
-      await addDoc(collection(db, 'books'), {
-        title: title.trim(),
-        description: description.trim(),
-        type,
-        url: finalUrl,
-        coverUrl: coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400',
-        publisherId: user.uid,
-        publisherName: user.displayName || user.name || 'Administrador',
-        publisherRole: 'admin',
-        createdAt: serverTimestamp()
-      });
-
-      toastSuccess("¡Libro oficial publicado con éxito!");
+      if (editingBook) {
+        // Edit mode
+        await updateDoc(doc(db, 'books', editingBook.id), {
+          title: title.trim(),
+          description: description.trim(),
+          type,
+          url: finalUrl,
+          coverUrl: coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400',
+          updatedAt: serverTimestamp()
+        });
+        toastSuccess("¡Libro actualizado con éxito!");
+        setEditingBook(null);
+      } else {
+        // Create mode
+        await addDoc(collection(db, 'books'), {
+          title: title.trim(),
+          description: description.trim(),
+          type,
+          url: finalUrl,
+          coverUrl: coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400',
+          publisherId: user.uid,
+          publisherName: user.displayName || user.name || 'Administrador',
+          publisherRole: 'admin',
+          createdAt: serverTimestamp()
+        });
+        toastSuccess("¡Libro oficial publicado con éxito!");
+      }
       
       // Reset form
       setTitle('');
@@ -134,8 +168,8 @@ export function AdminBooksView() {
       setUrl('');
       setCoverUrl('');
     } catch (err: any) {
-      console.error("Error publishing admin book:", err);
-      toastError("Error al publicar el libro.");
+      console.error("Error saving admin book:", err);
+      toastError(editingBook ? "Error al actualizar el libro." : "Error al publicar el libro.");
     } finally {
       setPublishing(false);
     }
@@ -182,13 +216,29 @@ export function AdminBooksView() {
         {/* Publicar Libro Oficial */}
         <div className="w-full lg:w-1/2 bg-white rounded-3xl border border-slate-200 p-8 shadow-sm h-fit">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
-              <Plus size={20} />
+            <div className={cn(
+              "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+              editingBook ? "bg-amber-50 text-amber-600" : "bg-indigo-50 text-indigo-600"
+            )}>
+              {editingBook ? <Pencil size={20} /> : <Plus size={20} />}
             </div>
-            <div>
-              <h3 className="text-lg font-black text-slate-900 tracking-tight">Publicar Libro Oficial (Admin)</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Lanza un recurso bibliográfico oficial de Kira.</p>
+            <div className="flex-1">
+              <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                {editingBook ? "Editar Libro (Admin)" : "Publicar Libro Oficial (Admin)"}
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {editingBook ? "Modifica los detalles del libro seleccionado." : "Lanza un recurso bibliográfico oficial de Kira."}
+              </p>
             </div>
+            {editingBook && (
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold transition-all"
+              >
+                Cancelar
+              </button>
+            )}
           </div>
 
           <form onSubmit={handlePublish} className="space-y-5">
@@ -303,13 +353,31 @@ export function AdminBooksView() {
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={publishing || uploadingFile}
-              className="w-full px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/20 hover:-translate-y-0.5 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {publishing ? "Publicando..." : <><BookOpen size={16} /> Publicar Libro Oficial</>}
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="submit"
+                disabled={publishing || uploadingFile}
+                className={cn(
+                  "flex-1 px-8 py-4 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-lg transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer",
+                  editingBook 
+                    ? "bg-amber-600 shadow-amber-600/10 hover:shadow-amber-600/20 hover:-translate-y-0.5" 
+                    : "bg-indigo-600 shadow-indigo-600/10 hover:shadow-indigo-600/20 hover:-translate-y-0.5"
+                )}
+              >
+                {publishing 
+                  ? (editingBook ? "Guardando..." : "Publicando...") 
+                  : (editingBook ? <><CheckCircle2 size={16} /> Guardar Cambios</> : <><BookOpen size={16} /> Publicar Libro Oficial</>)}
+              </button>
+              {editingBook && (
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  className="px-6 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
           </form>
         </div>
 
@@ -395,12 +463,24 @@ export function AdminBooksView() {
                         </span>
                       )}
                     </div>
-                    <button
-                      onClick={() => handleDelete(book.id)}
-                      className="absolute top-3 right-3 p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all shadow-sm opacity-0 group-hover:opacity-100"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div className="absolute top-3 right-3 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={() => startEdit(book)}
+                        className="p-2 bg-white/95 backdrop-blur hover:bg-amber-50 text-amber-600 rounded-xl transition-all shadow-sm border border-slate-100 cursor-pointer"
+                        title="Editar Libro"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(book.id)}
+                        className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all shadow-sm cursor-pointer"
+                        title="Eliminar Libro"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="p-5 flex-1 flex flex-col">
