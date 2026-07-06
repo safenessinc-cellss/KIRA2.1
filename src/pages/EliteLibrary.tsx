@@ -6,6 +6,14 @@ import { Zap, Lock, Unlock, FileText, Video, Image as ImageIcon, Search, Filter,
 import { cn } from '../lib/utils';
 import { Reorder } from 'motion/react';
 
+const isExternalLink = (url: string) => {
+  if (!url) return false;
+  const l = url.toLowerCase();
+  const rawExtensions = ['.mp4', '.mp3', '.m4a', '.wav', '.mov', '.ogg', '.webm', '.pdf', '.png', '.jpg', '.jpeg', '.gif'];
+  const hasRawExtension = rawExtensions.some(ext => l.endsWith(ext) || l.includes(ext + '?') || l.includes(ext + '#'));
+  return l.startsWith('http') && !hasRawExtension;
+};
+
 export function EliteLibrary() {
   const { user } = useAuth();
   const [coaches, setCoaches] = useState<any[]>([]);
@@ -349,7 +357,19 @@ export function EliteLibrary() {
                     
                     <div className="mt-auto relative z-10" onPointerDown={e => e.stopPropagation()}>
                       {isUnlocked ? (
-                        item.type === 'video' ? (
+                        isExternalLink(item.url) ? (
+                          <a 
+                            href={item.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors"
+                          >
+                            <ExternalLink size={14} /> 
+                            <span>
+                              {item.url.toLowerCase().includes('spotify') ? 'Abrir en Spotify' : item.url.toLowerCase().includes('youtube') || item.url.toLowerCase().includes('youtu.be') ? 'Ver en YouTube' : 'Acceder Recurso'}
+                            </span>
+                          </a>
+                        ) : item.type === 'video' ? (
                           <button 
                             onClick={() => setPlayingVideo(item.url)}
                             className="w-full py-2.5 bg-slate-800 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 hover:bg-slate-900 transition-colors cursor-pointer"
