@@ -1151,7 +1151,7 @@ export function Dashboard() {
                     <BookOpen className="text-emerald-400" size={24} />
                     Biblioteca y Ebooks de la Plataforma
                   </h3>
-                  <p className="text-sm text-slate-400 mt-1 font-medium">Lecturas, guías y ebooks publicados por nuestros Coaches y Administradores oficiales de Kira.</p>
+                  <p className="text-[11px] md:text-xs text-slate-400 mt-1 font-medium">Lecturas, guías y ebooks publicados por nuestros Coaches y Administradores oficiales de Kira.</p>
                 </div>
               </div>
 
