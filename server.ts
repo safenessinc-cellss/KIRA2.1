@@ -49,8 +49,8 @@ let geminiClient: GoogleGenAI | null = null;
 function getGeminiAI() {
   if (!geminiClient) {
     const key = process.env.GEMINI_API_KEY;
-    if (!key) {
-      throw new Error("GEMINI_API_KEY is not defined in environment variables. Please check Settings > Secrets.");
+    if (!key || key === "MY_GEMINI_API_KEY" || key.trim() === "" || key.includes("YOUR_")) {
+      throw new Error("La clave de API de Gemini (GEMINI_API_KEY) no está configurada. Por favor, agrégala en el panel de Settings > Secrets de AI Studio.");
     }
     geminiClient = new GoogleGenAI({
       apiKey: key,
@@ -80,14 +80,16 @@ app.get("/api/health", (req, res) => {
 
 // Endpoint to verify Gemini configuration
 app.get("/api/gemini/config", (req, res) => {
-  res.json({ configured: !!process.env.GEMINI_API_KEY });
+  const key = process.env.GEMINI_API_KEY;
+  const configured = !!key && key !== "MY_GEMINI_API_KEY" && key.trim() !== "" && !key.includes("YOUR_");
+  res.json({ configured });
 });
 
 // Gemini Content Generation Proxy with Cache, Retry and Timeout logic
 app.post("/api/gemini/generate", async (req, res) => {
   try {
     const key = process.env.GEMINI_API_KEY;
-    if (!key) {
+    if (!key || key === "MY_GEMINI_API_KEY" || key.trim() === "" || key.includes("YOUR_")) {
       return res.status(412).json({
         error: "GEMINI_API_KEY_MISSING",
         message: "La clave de API de Gemini no está configurada en las variables de entorno del servidor. Por favor, añádela en Settings > Secrets."
