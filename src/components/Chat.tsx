@@ -68,6 +68,9 @@ export function ChatWidget() {
 
     const fetchContacts = async () => {
       try {
+        const contactsMap = new Map<string, any>();
+
+        // 1. Fetch by academic relationship (enrollments)
         if (role === 'alumno') {
           // Get my enrollments to find my coaches
           const enrollQ = query(collection(db, 'enrollments'), where('userId', '==', user.uid));
@@ -75,20 +78,18 @@ export function ChatWidget() {
           const courseIds = enrollSnap.docs.map(d => d.data().courseId);
           
           if (courseIds.length > 0) {
-            const coachesMap = new Map();
             for (const cid of courseIds) {
               const cDoc = await getDoc(doc(db, 'courses', cid));
               if (cDoc.exists()) {
                 const cData = cDoc.data();
-                if (!coachesMap.has(cData.coachId)) {
+                if (!contactsMap.has(cData.coachId)) {
                   const coachProfile = await getDoc(doc(db, 'users', cData.coachId));
                   if (coachProfile.exists()) {
-                    coachesMap.set(cData.coachId, { uid: cData.coachId, ...coachProfile.data() });
+                    contactsMap.set(cData.coachId, { uid: cData.coachId, ...coachProfile.data() });
                   }
                 }
               }
             }
-            setContacts(Array.from(coachesMap.values()));
           }
         } else if (role === 'coach') {
           // Get my courses to find my students
@@ -97,23 +98,65 @@ export function ChatWidget() {
           const courseIds = coursesSnap.docs.map(d => d.id);
 
           if (courseIds.length > 0) {
-            const studentsMap = new Map();
             for (const cid of courseIds) {
               const enrollQ = query(collection(db, 'enrollments'), where('courseId', '==', cid));
               const enrollSnap = await getDocs(enrollQ);
               for (const eDoc of enrollSnap.docs) {
                 const sId = eDoc.data().userId;
-                if (!studentsMap.has(sId)) {
+                if (!contactsMap.has(sId)) {
                   const studentProfile = await getDoc(doc(db, 'users', sId));
                   if (studentProfile.exists()) {
-                    studentsMap.set(sId, { uid: sId, ...studentProfile.data() });
+                    contactsMap.set(sId, { uid: sId, ...studentProfile.data() });
                   }
                 }
               }
             }
-            setContacts(Array.from(studentsMap.values()));
           }
         }
+
+        // 2. Fallback/Enhancement: Scan existing chats/messages for reciprocal communication
+        const contactIdsFromMessages = new Set<string>();
+
+        // Query by participants array containing current user
+        try {
+          const partQ = query(collection(db, 'messages'), where('participants', 'array-contains', user.uid));
+          const partSnap = await getDocs(partQ);
+          partSnap.docs.forEach(d => {
+            const data = d.data();
+            const otherId = data.participants?.find((p: string) => p !== user.uid);
+            if (otherId) contactIdsFromMessages.add(otherId);
+          });
+        } catch (e) {
+          console.warn("Could not fetch contacts by participants array:", e);
+        }
+
+        // Query by senderId (as fallback)
+        try {
+          const sentQ = query(collection(db, 'messages'), where('senderId', '==', user.uid));
+          const sentSnap = await getDocs(sentQ);
+          sentSnap.docs.forEach(d => {
+            const data = d.data();
+            if (data.chatId) {
+              const parts = data.chatId.split('_');
+              const otherId = parts.find((p: string) => p !== user.uid);
+              if (otherId) contactIdsFromMessages.add(otherId);
+            }
+          });
+        } catch (e) {
+          console.warn("Could not fetch contacts by senderId:", e);
+        }
+
+        // Resolve profile information for any message contacts that aren't loaded yet
+        for (const otherId of contactIdsFromMessages) {
+          if (!contactsMap.has(otherId)) {
+            const uDoc = await getDoc(doc(db, 'users', otherId));
+            if (uDoc.exists()) {
+              contactsMap.set(otherId, { uid: otherId, ...uDoc.data() });
+            }
+          }
+        }
+
+        setContacts(Array.from(contactsMap.values()));
       } catch (err) {
         console.error('Fetch Contacts Error:', err);
       }
@@ -195,6 +238,7 @@ export function ChatWidget() {
           senderName: 'Mediador Kira',
           type: 'contact_warning',
           content: '⚠️ Alto ahí. Has intentado compartir un dato de contacto externo. Por tu seguridad y la del otro usuario, Kira Coach no permite compartir datos personales hasta que la transacción (sesión) esté completada. Si deseas compartirlo después, usa el botón de \'Compartir contacto seguro\' que aparecerá al finalizar el pago.',
+          participants: [user.uid, selectedContact.uid],
           createdAt: new Date()
         });
       } catch (err) {
@@ -226,6 +270,7 @@ export function ChatWidget() {
         senderId: user.uid,
         senderName: user.displayName,
         content,
+        participants: [user.uid, selectedContact.uid],
         createdAt: new Date()
       });
     } catch (err) {
@@ -246,6 +291,7 @@ export function ChatWidget() {
         senderId: user.uid,
         senderName: user.displayName || 'Coach',
         content: `Propuesta de Sesión para el ${new Date(proposedDate).toLocaleString()}`,
+        participants: [user.uid, selectedContact.uid],
         createdAt: new Date(),
         type: 'session_offer',
         offerData: {
@@ -314,6 +360,7 @@ export function ChatWidget() {
         senderName: 'Mediador Kira',
         type: 'system',
         content: `🎉 ¡Pago confirmado! Sesión programada con éxito para el ${new Date(offer.date).toLocaleString()}. La transacción por ${price} puntos ha sido completada de manera segura por Kira Pay. Ahora es seguro compartir información de contacto si lo desean.`,
+        participants: [user.uid, selectedContact.uid],
         createdAt: new Date()
       });
 
@@ -352,6 +399,7 @@ export function ChatWidget() {
         senderName: 'Mediador Kira',
         type: 'session_review',
         content: `Calificación de la sesión de ${selectedContact.displayName}`,
+        participants: [user!.uid, selectedContact.uid],
         createdAt: new Date(),
         reviewData: {
           coachId: selectedContact.uid,
