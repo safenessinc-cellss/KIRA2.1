@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
-import { db, storage } from '../../firebase';
+import { db, storage } from '@/src/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { RichTextEditor } from '../../components/RichTextEditor';
-import { useToast } from '../../hooks/useToast';
+import { RichTextEditor } from '@/src/components/RichTextEditor';
+import { useToast } from '@/src/hooks/useToast';
 import { 
   Sparkles, Star, Users, Upload, Video, Loader2, Trash2, 
   FileText, Play, Image as ImageIcon, Plus, ExternalLink 
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/src/lib/utils';
 
 interface ProfileFormProps {
   formData: any;

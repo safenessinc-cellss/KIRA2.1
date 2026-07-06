@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../hooks/useAuth';
-import { db, handleFirestoreError, OperationType } from '../../firebase';
+import { useAuth } from '@/src/hooks/useAuth';
+import { db, handleFirestoreError, OperationType } from '@/src/firebase';
 import { doc, getDoc, updateDoc, addDoc, collection } from 'firebase/firestore';
 import { ProfileForm } from './ProfileForm';
 import { SocialConnections } from './SocialConnections';
-import { useToast } from '../../hooks/useToast';
+import { useToast } from '@/src/hooks/useToast';
 import { 
   AlertTriangle, CheckCircle2, Loader2, ExternalLink, RefreshCw 
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { cn } from '@/src/lib/utils';
 
 interface ProfileLayoutProps {
   initialProfile: any;

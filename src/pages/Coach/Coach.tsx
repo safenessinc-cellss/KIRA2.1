@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../hooks/useAuth';
-import { storage, db, handleFirestoreError, OperationType } from '../../firebase';
+import { useAuth } from '@/src/hooks/useAuth';
+import { storage, db, handleFirestoreError, OperationType } from '@/src/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, orderBy, limit, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { Link, useSearchParams } from 'react-router-dom';
-import { MediaUpload } from '../../components/MediaUpload';
-import { CoachAnalytics } from '../../components/CoachAnalytics';
-import { useToast } from '../../hooks/useToast';
+import { MediaUpload } from '@/src/components/MediaUpload';
+import { CoachAnalytics } from '@/src/components/CoachAnalytics';
+import { useToast } from '@/src/hooks/useToast';
 import { ProfileLayout } from './ProfileLayout';
 import { CoachBooksView } from './CoachBooksView';
-import { Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight, Award } from 'lucide-react';
-import CertificateGenerator from '../../components/CertificateGenerator';
+import { MessageSquare, Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight, Award } from 'lucide-react';
+import CertificateGenerator from '@/src/components/CertificateGenerator';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { RichTextEditor } from '../../components/RichTextEditor';
+import { RichTextEditor } from '@/src/components/RichTextEditor';
 import {
   DndContext, 
   closestCenter,
@@ -29,8 +29,8 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { cn } from '../../lib/utils';
-import { StudentDetailedAnalytics } from '../../components/StudentDetailedAnalytics';
+import { cn } from '@/src/lib/utils';
+import { StudentDetailedAnalytics } from '@/src/components/StudentDetailedAnalytics';
 
 const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.75): Promise<string> => {
   console.log(`[Compresión] Iniciando compresión para: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
@@ -2229,7 +2229,25 @@ function CoachAutomationView() {
                       {selectedStudent.courseTitle}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 mt-1">{selectedStudent.studentEmail || selectedStudent.email}</p>
+                  <div className="flex items-center gap-4 mt-1.5">
+                    <p className="text-xs text-slate-400">{selectedStudent.studentEmail || selectedStudent.email}</p>
+                    <button 
+                      onClick={() => {
+                        const studentUser = {
+                          uid: selectedStudent.userId || selectedStudent.id,
+                          displayName: selectedStudent.studentName || selectedStudent.displayName || 'Alumno',
+                          email: selectedStudent.studentEmail || selectedStudent.email,
+                        };
+                        window.dispatchEvent(new CustomEvent('open-kira-chat', { detail: { coach: studentUser } }));
+                        setSelectedStudent(null);
+                      }}
+                      className="px-3 py-1 bg-[#1B4D5D] hover:bg-[#153b47] text-white text-[11px] font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                      title="Chatear con Alumno"
+                    >
+                      <MessageSquare size={12} />
+                      Iniciar Chat Privado Protegido
+                    </button>
+                  </div>
                 </div>
               </div>
               <button 
@@ -2500,14 +2518,30 @@ function CoachRegisterClient() {
                   </div>
                 </div>
 
-                <div className="text-right shrink-0">
-                  <span className={cn(
-                    "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
-                    st.status === 'approved' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-amber-50 text-amber-600 border border-amber-100"
-                  )}>
-                    {st.status === 'approved' ? "Acceso Listo" : "Pendiente"}
-                  </span>
-                  <p className="text-[9px] text-slate-400 mt-1.5 font-medium">Registrado: {enrollDate}</p>
+                <div className="flex items-center gap-4 shrink-0">
+                  <div className="text-right shrink-0">
+                    <span className={cn(
+                      "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
+                      st.status === 'approved' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-amber-50 text-amber-600 border border-amber-100"
+                    )}>
+                      {st.status === 'approved' ? "Acceso Listo" : "Pendiente"}
+                    </span>
+                    <p className="text-[9px] text-slate-400 mt-1.5 font-medium">Registrado: {enrollDate}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const studentUser = {
+                        uid: st.userId || st.id,
+                        displayName: st.studentName || st.displayName || 'Alumno',
+                        email: st.studentEmail || st.email,
+                      };
+                      window.dispatchEvent(new CustomEvent('open-kira-chat', { detail: { coach: studentUser } }));
+                    }}
+                    className="p-2 bg-slate-100 hover:bg-[#1B4D5D] text-slate-600 hover:text-white rounded-xl transition-all cursor-pointer"
+                    title="Chatear con Alumno"
+                  >
+                    <MessageSquare size={14} />
+                  </button>
                 </div>
               </div>
             );

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { db, storage } from '../../firebase';
+import { db, storage } from '@/src/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { useAuth } from '../../hooks/useAuth';
-import { useToast } from '../../hooks/useToast';
+import { useAuth } from '@/src/hooks/useAuth';
+import { useToast } from '@/src/hooks/useToast';
 import { BookOpen, FileText, Link as LinkIcon, Trash2, Plus, Loader2, UploadCloud, CheckCircle2, AlertCircle, Sparkles, BookMarked, Eye, Pencil } from 'lucide-react';
-import { ImageUpload } from '../../components/ImageUpload';
-import { cn } from '../../lib/utils';
+import { ImageUpload } from '@/src/components/ImageUpload';
+import { cn } from '@/src/lib/utils';
 
 export function CoachBooksView() {
   const { user } = useAuth();
