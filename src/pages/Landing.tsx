@@ -2,10 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Navigate } from 'react-router-dom';
 import { Logo } from '../components/Brand';
-import { LogIn, ArrowRight, ShieldCheck, Activity, Users, BrainCircuit, Globe, BarChart3, Star, DownloadCloud, Award, User, Instagram, Linkedin, Twitter, BadgeCheck, MessageCircleHeart, X, Send, Loader2, HeartPulse, FileText, Search, Zap, Wind, Heart, Target, Tag, Calendar, Ticket, Sparkles, Trophy, BookOpen, ExternalLink } from 'lucide-react';
+import { LogIn, ArrowRight, ShieldCheck, Activity, Users, BrainCircuit, Globe, BarChart3, Star, DownloadCloud, Award, User, Instagram, Linkedin, Twitter, BadgeCheck, MessageCircleHeart, X, Send, Loader2, HeartPulse, FileText, Search, Zap, Wind, Heart, Target, Tag, Calendar, Ticket, Sparkles, Trophy, BookOpen, MessageSquare } from 'lucide-react';
 import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { cn } from '../lib/utils';
 
 import { useNavigate } from 'react-router-dom';
@@ -15,8 +15,6 @@ export function Landing() {
   const navigate = useNavigate();
   const [coaches, setCoaches] = useState<any[]>([]);
   const [promotions, setPromotions] = useState<any[]>([]);
-  const [books, setBooks] = useState<any[]>([]);
-  const [publisherNames, setPublisherNames] = useState<Record<string, string>>({});
   const [selectedPromotion, setSelectedPromotion] = useState<any | null>(null);
   const [selectedSpecialty, setSelectedSpecialty] = useState<string>('Todos');
   const [selectedExperience, setSelectedExperience] = useState<string>('Todos');
@@ -132,42 +130,6 @@ export function Landing() {
   }, []);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'books'), async (snap) => {
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-      list.sort((a: any, b: any) => {
-        const t1 = a.createdAt?.seconds || 0;
-        const t2 = b.createdAt?.seconds || 0;
-        return t2 - t1;
-      });
-      setBooks(list);
-
-      // Resolve publisher names dynamically from the users collection
-      const uniquePublisherIds = Array.from(new Set(list.map(b => b.publisherId).filter(Boolean))) as string[];
-      for (const pubId of uniquePublisherIds) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', pubId));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            let name = userData.displayName || userData.name || '';
-            const nameLower = name.toLowerCase().trim();
-            if (nameLower === 'safeness' || nameLower === 'safeness.c.a' || nameLower === 'safeness.c.a@gmail.com') {
-              name = 'Kira Coach';
-            }
-            if (name) {
-              setPublisherNames(prev => ({ ...prev, [pubId]: name }));
-            }
-          }
-        } catch (err) {
-          console.warn("Error resolving publisher name:", err);
-        }
-      }
-    }, (error) => {
-      console.warn("Error fetching books on landing:", error);
-    });
-    return () => unsub();
-  }, []);
-
-  useEffect(() => {
     if (!user) {
       setUserFavorites([]);
       return;
@@ -234,6 +196,146 @@ export function Landing() {
       languages: 'Español'
     }
   ];
+
+  const getCleanedBio = (coach: any) => {
+    if (!coach) return '';
+    let bio = coach.bio || '';
+    if (!bio) return '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>';
+    
+    // 1. Unescape HTML entities recursively (up to 5 times) to ensure any double/triple escaping is fully resolved
+    let prevBio = '';
+    let iterations_decode = 0;
+    while (bio !== prevBio && iterations_decode < 5) {
+      prevBio = bio;
+      bio = bio
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/&nbsp;/gi, ' ');
+    }
+
+    // Strip redundant leading/trailing quotes if they wrap the entire HTML
+    bio = bio.trim();
+    if (bio.startsWith('"') && bio.endsWith('"') && bio.length > 1) {
+      bio = bio.substring(1, bio.length - 1).trim();
+    }
+    if (bio.startsWith("'") && bio.endsWith("'") && bio.length > 1) {
+      bio = bio.substring(1, bio.length - 1).trim();
+    }
+
+    // 2. Remove common automated prefix sentences/phrases
+    const prefixesToRemove = [
+      /explora la biografía,? especialidades y los servicios evolutivos que ofrece este mentor\.?/gi,
+      /explora la biografía,? especialidades y servicios que ofrece este mentor\.?/gi,
+      /explora la biografía,? especialidades y servicios evolutivos\.?/gi,
+      /explora la biografía y especialidades de este mentor\.?/gi,
+      /explora la biografía y especialidades\.?/gi,
+      /explora la biografía de este mentor\.?/gi,
+      /explora la biografía\.?/gi,
+      /biografía y enfoque profesional\.?/gi
+    ];
+
+    let cleaned = bio;
+    for (const prefix of prefixesToRemove) {
+      cleaned = cleaned.replace(prefix, '');
+    }
+
+    // 3. Remove duplicate coach names and specialties from the beginning of the text
+    const name = (coach.displayName || '').trim();
+    const specs = (coach.specialties || [coach.specialty || ''])
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+
+    // Common terms we want to remove if they are duplicated at the start
+    const termsToRemove = [
+      name,
+      ...specs,
+      'Life Coaching',
+      'Mindfulness',
+      'Business Coaching',
+      'Art Therapy',
+      'Liderazgo',
+      'Bienestar Integral',
+      'Coach',
+      'Terapeuta'
+    ].filter(Boolean);
+
+    let termRemoved = true;
+    let iterations = 0;
+    while (termRemoved && iterations < 15) {
+      termRemoved = false;
+      iterations++;
+
+      // Trim leading spacing and empty tags
+      cleaned = cleaned.trim().replace(/^\s*(<br\s*\/?>|<p>\s*<\/p>|<div>\s*<\/div>|\s)+/gi, '');
+
+      for (const term of termsToRemove) {
+        const escapedTerm = term.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        
+        // Regex to match the term at the start, either as plain text or wrapped in standard tags
+        const termRegexes = [
+          new RegExp(`^${escapedTerm}\\s*(<br\\s*\\/?>|\\s)*`, 'i'),
+          new RegExp(`^<p>\\s*${escapedTerm}\\s*<\\/p>\\s*`, 'i'),
+          new RegExp(`^<div>\\s*${escapedTerm}\\s*<\\/div>\\s*`, 'i'),
+          new RegExp(`^<h2>\\s*${escapedTerm}\\s*<\\/h2>\\s*`, 'i'),
+          new RegExp(`^<h3>\\s*${escapedTerm}\\s*<\\/h3>\\s*`, 'i')
+        ];
+
+        for (const regex of termRegexes) {
+          if (regex.test(cleaned)) {
+            cleaned = cleaned.replace(regex, '').trim();
+            termRemoved = true;
+            break;
+          }
+        }
+        if (termRemoved) break;
+      }
+    }
+
+    // 4. Clean up inline styles that can break theme colors and strip span tags
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(cleaned, 'text/html');
+      
+      const allElements = doc.body.querySelectorAll('*');
+      allElements.forEach((el) => {
+        el.removeAttribute('style');
+        el.removeAttribute('color');
+        el.removeAttribute('face');
+        
+        // If it's a span or a font tag, unwrap it (replace with its child nodes)
+        if (el.tagName.toLowerCase() === 'span' || el.tagName.toLowerCase() === 'font') {
+          const parent = el.parentNode;
+          if (parent) {
+            while (el.firstChild) {
+              parent.insertBefore(el.firstChild, el);
+            }
+            parent.removeChild(el);
+          }
+        }
+      });
+
+      let resultHtml = doc.body.innerHTML.trim();
+      resultHtml = resultHtml.replace(/^\s*(<br\s*\/?>|<p>\s*<\/p>|\s)+/gi, '');
+
+      if (!resultHtml) {
+        return '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>';
+      }
+
+      // Wrap in a paragraph if it doesn't start with an HTML tag
+      if (!resultHtml.startsWith('<')) {
+        resultHtml = `<p>${resultHtml}</p>`;
+      }
+
+      return resultHtml;
+    } catch (e) {
+      console.error("DOMParser error during final clean:", e);
+    }
+
+    return cleaned || '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>';
+  };
 
   const displayCoaches = coaches.length > 0 ? coaches : demoCoachesReal;
   
@@ -617,128 +719,17 @@ export function Landing() {
           </section>
         )}
 
-        {/* SECCIÓN: BIBLIOTECA ACADÉMICA DE LA PLATAFORMA */}
-        {books.length > 0 && (
-          <section className="px-6 lg:px-12 py-24 bg-[#0f172a] text-white border-t border-slate-800 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-96 h-96 bg-indigo-500/10 rounded-full filter blur-3xl pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-96 h-96 bg-teal-500/10 rounded-full filter blur-3xl pointer-events-none" />
-            
-            <div className="max-w-7xl mx-auto relative z-10">
-              <div className="mb-14 text-center flex flex-col items-center">
-                <span className="text-teal-400 font-bold tracking-widest uppercase text-xs mb-3 flex items-center gap-2">
-                  <BookOpen size={14} className="text-teal-400" /> Biblioteca de la Plataforma
-                </span>
-                <h3 className="text-4xl md:text-5xl font-serif text-slate-100 mb-6 tracking-tight">
-                  Publicaciones Académicas y Ebooks
-                </h3>
-                <p className="text-slate-400 text-base leading-relaxed max-w-2xl">
-                  Explora las últimas guías, investigaciones y libros publicados por nuestros Coaches y Administradores para expandir tu consciencia y aprendizaje.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {books.slice(0, 6).map((book) => {
-                  const cover = book.coverUrl || book.imageUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400';
-                  let author = (book.publisherId && publisherNames[book.publisherId]) || book.publisherName || book.author || 'Kira Coach';
-                  const authorLower = author.toLowerCase().trim();
-                  if (authorLower === 'safeness' || authorLower === 'safeness.c.a' || authorLower === 'safeness.c.a@gmail.com') {
-                    author = 'Kira Coach';
-                  } else if (!author || author.toLowerCase() === 'usuario') {
-                    author = book.publisherRole === 'admin' ? 'Administrador' : 'Kira Coach';
-                  }
-                  const dateStr = book.createdAt ? new Date(book.createdAt.seconds * 1000).toLocaleDateString() : 'Reciente';
-
-                  return (
-                    <div 
-                      key={book.id} 
-                      className="bg-slate-950/60 border border-slate-800 rounded-[2.5rem] overflow-hidden hover:border-teal-500/30 shadow-xl transition-all duration-300 flex flex-col h-[420px] group"
-                    >
-                      <div className="h-52 bg-slate-900 relative overflow-hidden shrink-0">
-                        <img 
-                          src={cover} 
-                          alt={book.title} 
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="absolute top-4 left-4 flex flex-col gap-1.5 z-10">
-                          <span className="px-3 py-1 bg-slate-950/90 backdrop-blur text-teal-400 text-[10px] font-black uppercase tracking-wider rounded-xl shadow-md border border-slate-800">
-                            {book.type || 'Ebook'}
-                          </span>
-                          {book.publisherRole && (
-                            <span className={cn(
-                              "px-3 py-0.5 text-[8px] font-black uppercase tracking-widest rounded-lg shadow-md self-start text-white",
-                              book.publisherRole === 'admin' ? "bg-indigo-600" : "bg-teal-600"
-                            )}>
-                              {book.publisherRole === 'admin' ? 'Oficial' : 'Coach'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="p-6 flex flex-col flex-1">
-                        <div className="flex items-center gap-2 mb-3">
-                          <div className="w-5 h-5 rounded-full bg-slate-800 overflow-hidden shrink-0 border border-slate-700">
-                            <img 
-                              src={`https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=random`} 
-                              alt={author} 
-                              className="w-full h-full object-cover" 
-                            />
-                          </div>
-                          <span className="text-[11px] text-slate-400 font-bold">{author}</span>
-                        </div>
-
-                        <h4 className="font-bold text-slate-100 text-base leading-snug mb-2 line-clamp-2">
-                          {book.title}
-                        </h4>
-                        
-                        {book.description && (
-                          <p className="text-slate-400 text-xs line-clamp-3 mb-4 leading-relaxed flex-1 font-medium">
-                            {book.description}
-                          </p>
-                        )}
-
-                        <div className="mt-auto pt-4 border-t border-slate-800 flex items-center justify-between">
-                          <span className="text-[10px] text-slate-500 font-bold">
-                            {dateStr}
-                          </span>
-                          {book.url ? (
-                            <a
-                              href={book.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-4 py-2 bg-slate-900 hover:bg-teal-500 hover:text-slate-950 text-teal-400 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 flex items-center gap-1.5 cursor-pointer border border-slate-800"
-                            >
-                              Leer Recurso
-                            </a>
-                          ) : (
-                            <button
-                              onClick={() => navigate('/login')}
-                              className="px-4 py-2 bg-slate-900 hover:bg-indigo-600 text-slate-300 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 cursor-pointer border border-slate-800"
-                            >
-                              Ver Interactivo
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-        )}
-
         {/* MARKETPLACE PREVIEW - DIRECTORIO ÉLITE */}
         <section className="px-6 lg:px-12 py-24 bg-white border-t border-slate-200">
           <div className="mb-14 max-w-3xl mx-auto text-center flex flex-col items-center">
             <span className="text-kiragold font-bold tracking-widest uppercase text-xs mb-3 flex items-center gap-2">
-              <Star size={14} className="fill-kiragold" /> Directorio Élite
+              <Star size={14} className="fill-kiragold" /> Directorio de Mentores Kira Coach
             </span>
             <h3 className="text-4xl md:text-5xl font-serif text-slate-900 mb-6 tracking-tight">
-              Nuestros Terapeutas y Coaches
+              Directorio de Mentores Kira Coach
             </h3>
             <p className="text-slate-500 text-lg leading-relaxed mb-8">
-              En Kira Coach no solo encuentras cursos, encuentras un camino trazado por expertos que yo misma he seleccionado para tu crecimiento. Un espacio de autoridad humana y técnica.
+              Encuentra el guía ideal para tu transformación consciente e inscríbete a sus cursos.
             </p>
 
             {/* BARRA DE BÚSQUEDA SEMÁNTICA */}
@@ -748,7 +739,7 @@ export function Landing() {
                </div>
                <input 
                  type="text"
-                 placeholder="Busca por nombre, especialidad o palabras clave (ej: ansiedad, liderazgo)..."
+                 placeholder="Buscar por nombre, especialidad..."
                  value={searchQuery}
                  onChange={(e) => setSearchQuery(e.target.value)}
                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-14 pr-6 py-4 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 focus:border-kirateal/30 transition-all outline-none shadow-sm"
@@ -819,7 +810,7 @@ export function Landing() {
                 {/* Imagen Principal */}
                 <img 
                   src={coach.photoURL || `https://picsum.photos/seed/${coach.id}/800/1000`} 
-                  alt={coach.displayName} 
+                  alt="" 
                   className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
                   referrerPolicy="no-referrer"
                 />
@@ -847,9 +838,13 @@ export function Landing() {
 
                 {/* Contenido Inferior (Nombre y Especialidad) */}
                 <div className="absolute bottom-6 left-6 right-6 flex flex-col justify-end z-10">
-                  <p className="text-kiragold font-bold text-[10px] uppercase tracking-[0.2em] mb-1.5 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-500">
-                    {coach.specialty || 'Bienestar Integral'}
-                  </p>
+                  <div className="flex flex-wrap gap-1 mb-2 transform translate-y-2 group-hover:translate-y-0 transition-all duration-500">
+                    {(coach.specialties || [coach.specialty || 'Bienestar Integral']).map((s: string) => (
+                      <span key={s} className="text-kiragold font-bold text-[9px] uppercase tracking-[0.12em] bg-kiragold/20 px-2 py-0.5 rounded-full border border-kiragold/30 leading-none">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
                   <h4 className="text-white font-serif text-2xl font-bold flex items-center gap-2 transform translate-y-2 group-hover:translate-y-0 transition-transform duration-500 delay-75">
                     {coach.displayName || 'Experto'} 
                     <BadgeCheck size={20} className="text-sky-400" />
@@ -869,7 +864,7 @@ export function Landing() {
                       onClick={() => setSelectedCoach(coach)}
                       className="px-5 py-2.5 bg-white text-slate-900 rounded-full text-[11px] font-black uppercase tracking-wider hover:bg-kiragold hover:text-white hover:scale-110 hover:shadow-[0_10px_25px_-5px_rgba(196,160,82,0.4)] transition-all duration-300 shadow-xl"
                     >
-                      Ver Perfil
+                      Ver Perfil & Servicios
                     </button>
                   </div>
                 </div>
@@ -1191,7 +1186,7 @@ export function Landing() {
               <div className="w-full md:w-2/5 md:max-w-sm shrink-0 bg-slate-950 relative min-h-[300px]">
                  <img 
                     src={selectedCoach.photoURL || `https://picsum.photos/seed/${selectedCoach.id}/800/1000`} 
-                    alt={selectedCoach.displayName} 
+                    alt="" 
                     className="absolute inset-0 w-full h-full object-cover"
                     referrerPolicy="no-referrer"
                  />
@@ -1288,7 +1283,7 @@ export function Landing() {
                     </div>
                     <div 
                        className="text-sm text-slate-300 leading-relaxed max-w-prose rich-text-content"
-                       dangerouslySetInnerHTML={{ __html: selectedCoach.bio || '<p>Coach especialista en desarrollo integral acreditado por la plataforma Elíte.</p>' }}
+                       dangerouslySetInnerHTML={{ __html: getCleanedBio(selectedCoach) }}
                     />
                  </div>
 
@@ -1405,12 +1400,32 @@ export function Landing() {
                  })()}
 
                  <div className="pt-6 border-t border-slate-800 mt-auto">
-                    <button 
-                      onClick={() => navigate('/login')}
-                      className="w-full py-4 bg-kirateal text-white rounded-2xl font-black text-[13px] uppercase tracking-widest hover:bg-kirateal-light transition-colors shadow-xl shadow-kirateal/20 flex items-center justify-center gap-3"
-                    >
-                      Inscribirse con {selectedCoach.displayName} <ArrowRight size={18} />
-                    </button>
+                    {user ? (
+                      <button 
+                        onClick={() => {
+                          setSelectedCoach(null);
+                          window.dispatchEvent(new CustomEvent('open-mentor-chat', { 
+                            detail: { 
+                              id: selectedCoach.id, 
+                              displayName: selectedCoach.displayName, 
+                              photoURL: selectedCoach.photoURL, 
+                              specialty: selectedCoach.specialty,
+                              role: selectedCoach.role || 'coach'
+                            } 
+                          }));
+                        }}
+                        className="w-full py-4 bg-kirateal text-white rounded-2xl font-black text-[13px] uppercase tracking-widest hover:bg-kirateal-light transition-colors shadow-xl shadow-kirateal/20 flex items-center justify-center gap-3"
+                      >
+                        Chatear con {selectedCoach.displayName} <MessageSquare size={18} />
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={() => navigate('/login')}
+                        className="w-full py-4 bg-kirateal text-white rounded-2xl font-black text-[13px] uppercase tracking-widest hover:bg-kirateal-light transition-colors shadow-xl shadow-kirateal/20 flex items-center justify-center gap-3"
+                      >
+                        Inscribirse con {selectedCoach.displayName} <ArrowRight size={18} />
+                      </button>
+                    )}
                  </div>
               </div>
            </div>

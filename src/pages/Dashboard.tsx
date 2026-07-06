@@ -910,7 +910,17 @@ export function Dashboard() {
                        <h4 className="text-base font-black text-slate-900 mb-1">{coach.displayName}</h4>
                        <p className="text-[11px] text-slate-400 mb-6 line-clamp-1 w-full font-bold uppercase tracking-tight">{coach.specialty}</p>
                        <button 
-                        onClick={() => navigate('/')}
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('open-mentor-chat', { 
+                            detail: { 
+                              id: coach.id, 
+                              displayName: coach.displayName, 
+                              photoURL: coach.photoURL, 
+                              specialty: coach.specialty,
+                              role: coach.role || 'coach'
+                            } 
+                          }));
+                        }}
                         className="mt-auto px-6 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm w-full"
                        >
                          Chat Mentor
