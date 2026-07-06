@@ -161,6 +161,11 @@ export function DashboardLayout({ title }: { title: string }) {
               <p className="font-semibold text-slate-600 truncate">
                 {displayProfileName}
               </p>
+              {user?.email && (
+                <p className="text-[11px] text-slate-400 truncate mt-0.5" title={user.email}>
+                  {user.email}
+                </p>
+              )}
             </div>
           </div>
           <button 
