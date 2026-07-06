@@ -14,7 +14,7 @@ export function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [courseReviewing, setCourseReviewing] = useState<string | null>(null);
+  const [reviewingItem, setReviewingItem] = useState<{ id: string; type: 'course' | 'book'; title: string } | null>(null);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
@@ -330,17 +330,20 @@ export function Dashboard() {
   };
 
   const submitReview = async () => {
-    if (!user) return;
+    if (!user || !reviewingItem) return;
     try {
       await addDoc(collection(db, 'reviews'), {
-        courseId: courseReviewing,
+        itemId: reviewingItem.id,
+        itemType: reviewingItem.type,
+        courseId: reviewingItem.type === 'course' ? reviewingItem.id : null,
+        bookId: reviewingItem.type === 'book' ? reviewingItem.id : null,
         userId: user.uid,
         rating,
         comment,
         status: 'published',
         createdAt: new Date()
       });
-      setCourseReviewing(null);
+      setReviewingItem(null);
       setComment('');
       setRating(5);
     } catch(e) {
@@ -621,7 +624,7 @@ export function Dashboard() {
                                 if (isEnrolled) {
                                   return (
                                     <button 
-                                      onClick={() => setCourseReviewing(course.id)} 
+                                      onClick={() => setReviewingItem({ id: course.id, type: 'course', title: course.title })} 
                                       className="w-full text-[13px] px-6 py-3.5 bg-white text-slate-700 border border-slate-200 rounded-2xl hover:bg-slate-50 font-black transition flex items-center justify-center gap-2 shadow-sm"
                                     >
                                       <Star size={16} /> Calificar
@@ -697,61 +700,100 @@ export function Dashboard() {
                 <div>
                   <h3 className="text-2xl font-black text-slate-100 tracking-tight flex items-center gap-3">
                     <BookOpen className="text-emerald-400" size={24} />
-                    Librería Premium: Ebooks Recomendados
+                    Biblioteca y Ebooks de la Plataforma
                   </h3>
-                  <p className="text-sm text-slate-400 mt-1 font-medium">Lecturas concisas seleccionadas por coaches para tu desarrollo holístico.</p>
+                  <p className="text-sm text-slate-400 mt-1 font-medium">Lecturas, guías y ebooks publicados por nuestros Coaches y Administradores oficiales de Kira.</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 relative z-10">
                 {availableBooks.map((book) => (
-                  <div key={book.id} className="border border-white/5 rounded-[32px] overflow-hidden bg-slate-950/60 hover:border-emerald-400/40 transition-all duration-500 flex flex-col h-[400px]">
-                    <div className="h-56 bg-slate-950 relative overflow-hidden shrink-0">
-                      {book.imageUrl && <img src={book.imageUrl} alt={book.title} className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" />}
-                      <div className="absolute top-5 left-5 bg-emerald-500 text-white px-3.5 py-1.5 rounded-full text-xs font-black shadow-lg">
+                  <div key={book.id} className="border border-white/5 rounded-[32px] overflow-hidden bg-slate-950/60 hover:border-emerald-400/40 transition-all duration-500 flex flex-col min-h-[460px] justify-between">
+                    <div className="h-44 bg-slate-950/80 relative overflow-hidden shrink-0 flex items-center justify-center p-4 border-b border-white/5">
+                      {book.imageUrl && (
+                        <div 
+                          className="absolute inset-0 bg-cover bg-center opacity-20 blur-md scale-110 pointer-events-none"
+                          style={{ backgroundImage: `url(${book.imageUrl})` }}
+                        />
+                      )}
+                      
+                      {book.imageUrl ? (
+                        <img 
+                          src={book.imageUrl} 
+                          alt={book.title} 
+                          className="h-full max-w-[120px] object-contain transition-transform duration-500 hover:scale-105 drop-shadow-2xl z-10 rounded-lg" 
+                        />
+                      ) : (
+                        <div className="h-full aspect-[3/4] bg-slate-800 rounded-lg flex items-center justify-center text-slate-500 text-xs font-black border border-slate-700 z-10 shadow-xl">
+                          NO COVER
+                        </div>
+                      )}
+                      
+                      <div className="absolute top-4 left-4 bg-emerald-500/95 text-slate-950 px-2.5 py-1 rounded-full text-[10px] font-black shadow-lg z-20 uppercase tracking-wider">
                         ${book.price} USD
                       </div>
-                    </div>
-                    <div className="p-6 flex flex-col flex-1">
-                      <h4 className="font-black text-lg text-slate-100 mb-1 line-clamp-1">{book.title}</h4>
-                      <p className="text-[11px] text-emerald-400 font-bold mb-4">Por {book.author || 'Kira Coach'}</p>
-                      <p className="text-xs text-slate-400 mb-5 flex-1 line-clamp-3 leading-relaxed font-medium">
-                        {book.description || 'Un libro canalizado y estructurado con herramientas prácticas de arteterapia, respiración consciente y autoconocimiento.'}
-                      </p>
                       
-                      {(() => {
-                        const bookPurchase = purchases.find(p => p.itemId === book.id);
-                        if (bookPurchase) {
-                          if (bookPurchase.status === 'pending_release') {
-                            return (
-                              <button 
-                                disabled
-                                className="w-full mt-auto text-[11px] py-3 bg-slate-800 text-slate-500 rounded-2xl font-black flex items-center justify-center gap-2 uppercase tracking-wider cursor-not-allowed border border-slate-700"
-                              >
-                                ⏳ Pendiente
-                              </button>
-                            );
-                          } else {
-                            return (
-                              <button 
-                                onClick={() => alert(`Lectura del Ebook: "${book.title}". ¡Excelente decisión! Hemos habilitado el material interactivo y PDF en tu correo corporativo o personal.`)}
-                                className="w-full mt-auto text-[11px] py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-violet-900/20"
-                              >
-                                <BookOpen size={13} /> Leer Ebook
-                              </button>
-                            );
+                      <div className="absolute top-4 right-4 flex gap-1.5 z-20">
+                        <span className="px-2 py-0.5 bg-violet-600/90 backdrop-blur rounded text-[8px] font-black text-white uppercase tracking-wider shadow-sm flex items-center gap-1">
+                          pdf
+                        </span>
+                        <span className="px-2 py-0.5 bg-kiragold/90 backdrop-blur rounded text-[8px] font-black text-slate-950 uppercase tracking-wider shadow-sm flex items-center gap-1">
+                          {book.authorType === 'admin' || book.author?.toLowerCase().includes('zurita') || book.role === 'admin' ? 'Oficial' : 'Coach'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="p-5 flex flex-col flex-1 justify-between">
+                      <div>
+                        <h4 className="font-black text-base text-slate-100 mb-1 line-clamp-1" title={book.title}>{book.title}</h4>
+                        <p className="text-[10px] text-emerald-400 font-bold mb-3 uppercase tracking-wider">Por {book.author || 'Kira Coach'}</p>
+                        <p className="text-xs text-slate-400 mb-4 line-clamp-3 leading-relaxed font-medium">
+                          {book.description || 'Un libro canalizado y estructurado con herramientas prácticas de arteterapia, respiración consciente y autoconocimiento.'}
+                        </p>
+                      </div>
+                      
+                      <div className="mt-auto pt-2">
+                        {(() => {
+                          const bookPurchase = purchases.find(p => p.itemId === book.id);
+                          if (bookPurchase) {
+                            if (bookPurchase.status === 'pending_release') {
+                              return (
+                                <button 
+                                  disabled
+                                  className="w-full text-[10px] py-2.5 bg-slate-800 text-slate-500 rounded-xl font-black flex items-center justify-center gap-2 uppercase tracking-wider cursor-not-allowed border border-slate-700"
+                                >
+                                  ⏳ Pendiente de liberación
+                                </button>
+                              );
+                            } else {
+                              return (
+                                <div className="flex flex-col gap-2 w-full">
+                                  <button 
+                                    onClick={() => alert(`Lectura del Ebook: "${book.title}". ¡Excelente decisión! Hemos habilitado el material interactivo y PDF en tu correo corporativo o personal.`)}
+                                    className="w-full text-[10px] py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-violet-900/20 active:scale-[0.98]"
+                                  >
+                                    <BookOpen size={12} /> Leer PDF
+                                  </button>
+                                  <button 
+                                    onClick={() => setReviewingItem({ id: book.id, type: 'book', title: book.title })}
+                                    className="w-full text-[10px] py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider active:scale-[0.98]"
+                                  >
+                                    <Star size={12} className="text-kiragold" /> Calificar Libro
+                                  </button>
+                                </div>
+                              );
+                            }
                           }
-                        }
-                        const isInCart = cartItems.some(item => item.id === book.id);
-                        return (
-                          <button 
-                            onClick={() => addToCart(book, 'book')}
-                            className="w-full mt-auto text-[11px] py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-2xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-emerald-500/10"
-                          >
-                            <ShoppingCart size={13} /> {isInCart ? 'En Carrito' : 'Adquirir Libro'}
-                          </button>
-                        );
-                      })()}
+                          const isInCart = cartItems.some(item => item.id === book.id);
+                          return (
+                            <button 
+                              onClick={() => addToCart(book, 'book')}
+                              className="w-full text-[10px] py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-emerald-500/10 active:scale-[0.98]"
+                            >
+                              <ShoppingCart size={12} /> {isInCart ? 'En Carrito' : 'Adquirir Libro'}
+                            </button>
+                          );
+                        })()}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -942,16 +984,21 @@ export function Dashboard() {
       </div>
 
       {/* Review Section */}
-      {courseReviewing && (
+      {reviewingItem && (
          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setCourseReviewing(null)} />
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setReviewingItem(null)} />
            <div className="bg-white rounded-[40px] w-full max-w-xl p-10 relative z-10 shadow-2xl animate-in zoom-in-95 duration-500 border border-slate-100">
              <div className="flex justify-between items-start mb-8">
                <div>
                  <h4 className="text-2xl font-black text-slate-900 tracking-tight mb-1">Feedback de Transformación</h4>
+                 {reviewingItem && (
+                   <p className="text-xs text-kirateal font-extrabold uppercase tracking-widest mt-1 mb-2">
+                     {reviewingItem.type === 'course' ? 'Curso' : 'Libro'}: {reviewingItem.title}
+                   </p>
+                 )}
                  <p className="text-sm text-slate-500 font-medium">Ayúdanos a elevar el estándar de Kira Coach.</p>
                </div>
-               <button onClick={() => setCourseReviewing(null)} className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors">✕</button>
+               <button onClick={() => setReviewingItem(null)} className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors">✕</button>
              </div>
              
              <div className="flex gap-3 mb-8 justify-center bg-slate-50 p-6 rounded-3xl border border-slate-100">
@@ -974,7 +1021,7 @@ export function Dashboard() {
              />
              
              <div className="flex gap-4">
-               <button onClick={() => setCourseReviewing(null)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs hover:bg-slate-200 transition-colors uppercase tracking-widest">
+               <button onClick={() => setReviewingItem(null)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs hover:bg-slate-200 transition-colors uppercase tracking-widest">
                  Cancelar
                </button>
                <button onClick={submitReview} className="flex-[2] py-4 bg-kirateal text-white rounded-2xl font-black text-xs hover:bg-kirateal-light transition-all shadow-lg shadow-teal-100 uppercase tracking-widest">
