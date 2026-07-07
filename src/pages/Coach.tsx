@@ -151,6 +151,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '../lib/utils';
+import { CoachChat } from '../components/CoachChat';
+import { MessageSquare } from 'lucide-react';
 
 const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.75): Promise<string> => {
   console.log(`[Compresión] Iniciando compresión para: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
@@ -248,7 +250,7 @@ const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000,
   });
 };
 
-type CoachTab = 'dashboard' | 'tracking' | 'nexus' | 'register' | 'automation' | 'profile' | 'analytics';
+type CoachTab = 'dashboard' | 'tracking' | 'nexus' | 'register' | 'automation' | 'profile' | 'analytics' | 'chat';
 
 export function CoachDashboard() {
   const { user } = useAuth();
@@ -376,6 +378,7 @@ export function CoachDashboard() {
       <div className="flex flex-wrap gap-2 p-1.5 bg-slate-100 rounded-[32px] w-fit shadow-sm border border-slate-200/50">
         <TabBtn active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<Layout size={16}/>} label="Panel de Control" />
         <TabBtn active={activeTab === 'tracking'} onClick={() => setActiveTab('tracking')} icon={<BadgeCheck size={16}/>} label="Academic Tracking" disabled={!isApproved} />
+        <TabBtn active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} icon={<MessageSquare size={16}/>} label="Chat Privado" disabled={!isApproved} />
         <TabBtn active={activeTab === 'nexus'} onClick={() => setActiveTab('nexus')} icon={<FolderKanban size={16}/>} label="Legal & Revenue" disabled={!isApproved} />
         <TabBtn active={activeTab === 'automation'} onClick={() => setActiveTab('automation')} icon={<Zap size={16}/>} label="Kira Flow™" disabled={!isApproved} />
         <TabBtn active={activeTab === 'register'} onClick={() => setActiveTab('register')} icon={<UserPlus size={16}/>} label="Onboarding" disabled={!isApproved} />
@@ -386,6 +389,7 @@ export function CoachDashboard() {
       <div className="flex-1">
         {activeTab === 'dashboard' && <CoachDashboardView profile={profile} isApproved={isApproved} />}
         {activeTab === 'tracking' && <CoachStudentsActivity />}
+        {activeTab === 'chat' && <CoachChat />}
         {activeTab === 'nexus' && <CoachContractManager />}
         {activeTab === 'automation' && <CoachAutomationView />}
         {activeTab === 'register' && <CoachRegisterClient />}
