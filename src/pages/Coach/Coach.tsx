@@ -697,6 +697,9 @@ function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
             </Link>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Link to="/coach/courses" className="group block">
+              <QuickAction title="Studio de Cursos" desc="Diseña programas y gestiona alumnos" icon={<GraduationCap size={24} className="text-violet-600" />} />
+            </Link>
             <Link to="/coach/session" className="group block">
               <QuickAction title="Sesión Inteligente" desc="Transcripción y análisis IA" icon={<Brain size={24} className="text-indigo-600" />} />
             </Link>
