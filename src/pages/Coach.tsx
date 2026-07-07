@@ -389,7 +389,7 @@ export function CoachDashboard() {
       <div className="flex-1">
         {activeTab === 'dashboard' && <CoachDashboardView profile={profile} isApproved={isApproved} />}
         {activeTab === 'tracking' && <CoachStudentsActivity />}
-        {activeTab === 'chat' && <CoachChat className="h-[500px] max-w-4xl mx-auto rounded-3xl" />}
+        {activeTab === 'chat' && <CoachChat className="h-[440px] max-w-3xl mx-auto rounded-3xl" />}
         {activeTab === 'nexus' && <CoachContractManager />}
         {activeTab === 'automation' && <CoachAutomationView />}
         {activeTab === 'register' && <CoachRegisterClient />}

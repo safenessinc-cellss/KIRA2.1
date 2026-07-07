@@ -166,7 +166,7 @@ export function AdminMonitor() {
 
         {activeTab === 'coaches' && hasPerm(navItems.find(i=>i.id==='coaches')) && <CoachCuratorView />}
         {activeTab === 'students' && hasPerm(navItems.find(i=>i.id==='students')) && <StudentManagementView />}
-        {activeTab === 'chat' && hasPerm(navItems.find(i=>i.id==='chat')) && <CoachChat className="h-[500px] max-w-4xl mx-auto rounded-3xl" />}
+        {activeTab === 'chat' && hasPerm(navItems.find(i=>i.id==='chat')) && <CoachChat className="h-[440px] max-w-3xl mx-auto rounded-3xl" />}
         {activeTab === 'content' && hasPerm(navItems.find(i=>i.id==='content')) && <CMSView />}
         {activeTab === 'promotions' && hasPerm(navItems.find(i=>i.id==='promotions')) && <PromotionsManagerView />}
 
