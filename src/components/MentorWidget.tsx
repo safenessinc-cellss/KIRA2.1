@@ -125,7 +125,7 @@ export function MentorWidget() {
         data = await res.json().catch(() => ({}));
       } else {
         if (!res.ok) {
-          throw new Error(`Error de conexión con el backend (Estado HTTP ${res.status}). Por favor, asegúrate de haber configurado tu backend de Vercel.`);
+          throw new Error(`Error de conexión con el servidor de IA (Estado HTTP ${res.status}). Por favor, asegúrate de haber agregado tu clave de API de Gemini (GEMINI_API_KEY) en el panel de 'Settings > Secrets' (en la esquina superior derecha de AI Studio).`);
         }
       }
 

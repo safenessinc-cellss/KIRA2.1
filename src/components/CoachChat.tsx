@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, addDoc, onSnapshot, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, addDoc, onSnapshot, getDocs, doc, getDoc, orderBy, limit } from 'firebase/firestore';
 import { MessageSquare, Send, User, Users, Search, ChevronRight, GraduationCap, Sparkles, MessageCircle, Clock, BookOpen } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
@@ -14,6 +14,7 @@ export function CoachChat() {
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [loadingStudents, setLoadingStudents] = useState(true);
+  const [lastMessages, setLastMessages] = useState<Record<string, { content: string; createdAt: Date; senderId: string }>>({});
 
   // Quick reply templates for coaches
   const quickReplies = [
@@ -24,27 +25,77 @@ export function CoachChat() {
     "¡Hola! Paso a saludarte y recordarte que la constancia es la clave del éxito. ✨"
   ];
 
-  // Fetch all students (role === 'alumno')
+  // Fetch all students (role === 'alumno') in real-time
   useEffect(() => {
     if (!user) return;
 
-    const fetchStudents = async () => {
-      try {
-        setLoadingStudents(true);
-        const usersSnap = await getDocs(collection(db, 'users'));
-        const allAlumnos = usersSnap.docs
-          .map(d => ({ uid: d.id, ...d.data() } as any))
-          .filter(u => u.uid !== user.uid && u.role === 'alumno');
-        
-        setStudents(allAlumnos);
-      } catch (err) {
-        console.error('Fetch Students Error:', err);
-      } finally {
-        setLoadingStudents(false);
-      }
-    };
+    setLoadingStudents(true);
+    const q = query(
+      collection(db, 'users'),
+      where('role', '==', 'alumno')
+    );
 
-    fetchStudents();
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const allAlumnos = snap.docs
+        .map(d => ({ uid: d.id, ...d.data() } as any))
+        .filter(u => u.uid !== user.uid);
+      
+      setStudents(allAlumnos);
+      setLoadingStudents(false);
+    }, (err) => {
+      console.error('Fetch Students Realtime Error:', err);
+      setLoadingStudents(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Real-time listener for recent messages to display last message previews, unread badges, and sort students
+  useEffect(() => {
+    if (!user) return;
+
+    const q = query(
+      collection(db, 'messages'),
+      orderBy('createdAt', 'desc'),
+      limit(300)
+    );
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const updates: Record<string, { content: string; createdAt: Date; senderId: string }> = {};
+      
+      snap.docs.forEach((doc) => {
+        const data = doc.data();
+        if (data.chatId && data.chatId.includes(user.uid)) {
+          const studentUid = data.chatId.replace(user.uid, '').replace('_', '');
+          
+          let createdAtDate = new Date();
+          if (data.createdAt) {
+            if (data.createdAt.toDate) {
+              createdAtDate = data.createdAt.toDate();
+            } else if (data.createdAt.seconds) {
+              createdAtDate = new Date(data.createdAt.seconds * 1000);
+            } else {
+              createdAtDate = new Date(data.createdAt);
+            }
+          }
+
+          // Since the query is ordered by createdAt desc, the first message we find for a studentUid is the latest one
+          if (!updates[studentUid]) {
+            updates[studentUid] = {
+              content: data.content,
+              createdAt: createdAtDate,
+              senderId: data.senderId
+            };
+          }
+        }
+      });
+
+      setLastMessages(updates);
+    }, (err) => {
+      console.error('Last messages listener error:', err);
+    });
+
+    return () => unsubscribe();
   }, [user]);
 
   // Fetch Messages for selected student in real-time
@@ -145,6 +196,17 @@ export function CoachChat() {
     return nameMatch || emailMatch;
   });
 
+  const sortedStudents = [...filteredStudents].sort((a, b) => {
+    const lastA = lastMessages[a.uid];
+    const lastB = lastMessages[b.uid];
+    if (lastA && lastB) {
+      return lastB.createdAt.getTime() - lastA.createdAt.getTime();
+    }
+    if (lastA) return -1;
+    if (lastB) return 1;
+    return 0;
+  });
+
   return (
     <div className="bg-white/60 backdrop-blur-xl border border-white/80 rounded-[40px] shadow-xl overflow-hidden h-[750px] flex flex-col md:flex-row">
       
@@ -175,18 +237,22 @@ export function CoachChat() {
               <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Cargando alumnos...</p>
             </div>
-          ) : filteredStudents.length > 0 ? (
-            filteredStudents.map((s) => {
+          ) : sortedStudents.length > 0 ? (
+            sortedStudents.map((s) => {
               const isSelected = selectedStudent?.uid === s.uid;
+              const lastMsg = lastMessages[s.uid];
+              const hasNewMessage = lastMsg && lastMsg.senderId !== user?.uid && !isSelected;
               return (
                 <button
                   key={s.uid}
                   onClick={() => setSelectedStudent(s)}
                   className={cn(
-                    "w-full flex items-center gap-3.5 p-3.5 rounded-3xl transition-all text-left group border",
+                    "w-full flex items-center gap-3.5 p-3.5 rounded-3xl transition-all text-left group border relative",
                     isSelected 
                       ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-600/10" 
-                      : "bg-white/50 border-slate-100 hover:bg-white hover:border-slate-200 hover:shadow-md"
+                      : hasNewMessage 
+                        ? "bg-indigo-50/80 border-indigo-100/80 hover:bg-indigo-50 hover:border-indigo-200 shadow-sm"
+                        : "bg-white/50 border-slate-100 hover:bg-white hover:border-slate-200 hover:shadow-md"
                   )}
                 >
                   <div className="w-11 h-11 rounded-2xl overflow-hidden shrink-0 bg-slate-100 border border-slate-200/50 shadow-sm relative">
@@ -199,19 +265,35 @@ export function CoachChat() {
                     {/* Active Indicator Accent */}
                     <span className={cn(
                       "absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white",
-                      isSelected ? "bg-emerald-400" : "bg-slate-300"
+                      isSelected ? "bg-emerald-400" : hasNewMessage ? "bg-indigo-500 animate-pulse" : "bg-slate-300"
                     )}></span>
                   </div>
                   
                   <div className="flex-1 min-w-0">
-                    <p className={cn(
-                      "text-xs font-black truncate",
-                      isSelected ? "text-white" : "text-slate-800"
-                    )}>{s.displayName || 'Alumno de Kira'}</p>
-                    <p className={cn(
-                      "text-[10px] truncate font-medium",
-                      isSelected ? "text-indigo-200" : "text-slate-400"
-                    )}>{s.email}</p>
+                    <div className="flex items-center justify-between gap-1">
+                      <p className={cn(
+                        "text-xs font-black truncate",
+                        isSelected ? "text-white" : "text-slate-800"
+                      )}>{s.displayName || 'Alumno de Kira'}</p>
+                      {hasNewMessage && (
+                        <span className="text-[8px] font-black uppercase tracking-wider text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded shrink-0">
+                          Nuevo
+                        </span>
+                      )}
+                    </div>
+                    {lastMsg ? (
+                      <p className={cn(
+                        "text-[11px] truncate mt-0.5 font-medium",
+                        isSelected ? "text-indigo-100" : hasNewMessage ? "text-indigo-700 font-bold" : "text-slate-500"
+                      )}>
+                        {lastMsg.senderId === user?.uid ? 'Tú: ' : ''}{lastMsg.content}
+                      </p>
+                    ) : (
+                      <p className={cn(
+                        "text-[10px] truncate font-medium",
+                        isSelected ? "text-indigo-200" : "text-slate-400"
+                      )}>{s.email}</p>
+                    )}
                     {s.points !== undefined && (
                       <span className={cn(
                         "inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider mt-1 px-2 py-0.5 rounded-full",
