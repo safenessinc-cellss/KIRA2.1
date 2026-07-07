@@ -49,16 +49,33 @@ export async function generateGemini(payload: GeminiPayload): Promise<string> {
     });
 
     if (response.status === 412) {
-      const data = await response.json();
-      throw new Error(data.message || 'La clave de API de Gemini no está configurada en el servidor.');
+      const text = await response.text().catch(() => "");
+      let message = 'La clave de API de Gemini no está configurada en el servidor.';
+      try {
+        const data = JSON.parse(text);
+        message = data.message || message;
+      } catch (e) {}
+      throw new Error(message);
     }
 
     if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new Error(data.error || `Error del servidor de IA (Status ${response.status})`);
+      const text = await response.text().catch(() => "");
+      let errorMsg = `Error del servidor de IA (Status ${response.status})`;
+      try {
+        const data = JSON.parse(text);
+        errorMsg = data.error || errorMsg;
+      } catch (e) {}
+      throw new Error(errorMsg);
     }
 
-    const data = await response.json();
+    const text = await response.text();
+    let data: any = {};
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      throw new Error("La respuesta del servidor no es un JSON válido. Por favor, asegúrate de que el backend se haya desplegado correctamente en Vercel.");
+    }
+
     if (data.error) {
       if (data.error === 'GEMINI_API_KEY_MISSING') {
         throw new Error('Configuración faltante: La Clave de API de Gemini no está disponible. Agrégala en Settings > Secrets.');
