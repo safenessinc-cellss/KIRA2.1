@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { MessageCircle, Send, Globe, Sparkles, ExternalLink, ShieldCheck } from 'lucide-react';
+import { MessageCircle, Send, Globe, Sparkles, ExternalLink, ShieldCheck, Facebook, Instagram, Youtube } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
@@ -10,7 +10,7 @@ interface CommunityLink {
   description: string;
   url: string;
   badge: string;
-  type: 'whatsapp' | 'telegram' | 'other';
+  type: 'whatsapp' | 'telegram' | 'facebook' | 'instagram' | 'youtube' | 'other';
 }
 
 export function Community() {
@@ -57,6 +57,27 @@ export function Community() {
       url: 'https://t.me/KiraCoachCommunity',
       badge: 'Contenido Exclusivo',
       type: 'telegram'
+    },
+    {
+      name: 'Facebook Oficial',
+      description: 'Sigue nuestras publicaciones, transmisiones en vivo y eventos especiales.',
+      url: 'https://facebook.com/KiraMorenoCoach',
+      badge: 'Red de Apoyo',
+      type: 'facebook'
+    },
+    {
+      name: 'Instagram Inspiracional',
+      description: 'Historias diarias, reflexiones cortas y material estético de alta consciencia.',
+      url: 'https://instagram.com/KiraMoreno',
+      badge: 'Espacio Visual',
+      type: 'instagram'
+    },
+    {
+      name: 'YouTube Canal de Sabiduría',
+      description: 'Vídeos guiados, meditaciones profundas y clases maestras de crecimiento.',
+      url: 'https://youtube.com/KiraMoreno',
+      badge: 'Clases Maestras',
+      type: 'youtube'
     }
   ];
 
@@ -89,6 +110,9 @@ export function Community() {
         {links.map((link, idx) => {
           const isWhatsApp = link.type === 'whatsapp';
           const isTelegram = link.type === 'telegram';
+          const isFacebook = link.type === 'facebook';
+          const isInstagram = link.type === 'instagram';
+          const isYoutube = link.type === 'youtube';
           
           return (
             <motion.div
@@ -100,7 +124,19 @@ export function Community() {
               id={`community-card-${idx}`}
             >
               {/* Backglow ornament */}
-              <div className={`absolute top-0 right-0 w-40 h-40 ${isWhatsApp ? 'bg-emerald-500/5' : isTelegram ? 'bg-blue-500/5' : 'bg-primary/5'} rounded-full filter blur-3xl pointer-events-none`} />
+              <div className={`absolute top-0 right-0 w-40 h-40 ${
+                isWhatsApp 
+                  ? 'bg-emerald-500/5' 
+                  : isTelegram 
+                    ? 'bg-blue-500/5' 
+                    : isFacebook 
+                      ? 'bg-indigo-500/5' 
+                      : isInstagram 
+                        ? 'bg-pink-500/5' 
+                        : isYoutube 
+                          ? 'bg-red-500/5' 
+                          : 'bg-primary/5'
+              } rounded-full filter blur-3xl pointer-events-none`} />
 
               <div className="flex items-start justify-between gap-4 mb-6 relative z-10">
                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-md ${
@@ -108,9 +144,27 @@ export function Community() {
                     ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-emerald-500/10' 
                     : isTelegram 
                       ? 'bg-gradient-to-br from-blue-400 to-indigo-600 shadow-blue-500/10' 
-                      : 'bg-gradient-to-br from-teal-500 to-cyan-600 shadow-cyan-500/10'
+                      : isFacebook
+                        ? 'bg-gradient-to-br from-blue-500 to-blue-700 shadow-blue-600/10'
+                        : isInstagram
+                          ? 'bg-gradient-to-br from-pink-500 to-purple-600 shadow-pink-500/10'
+                          : isYoutube
+                            ? 'bg-gradient-to-br from-red-500 to-red-600 shadow-red-500/10'
+                            : 'bg-gradient-to-br from-teal-500 to-cyan-600 shadow-cyan-500/10'
                 }`}>
-                  {isWhatsApp ? <MessageCircle size={28} /> : isTelegram ? <Send size={24} className="-translate-x-0.5" /> : <Globe size={26} />}
+                  {isWhatsApp ? (
+                    <MessageCircle size={28} />
+                  ) : isTelegram ? (
+                    <Send size={24} className="-translate-x-0.5" />
+                  ) : isFacebook ? (
+                    <Facebook size={26} />
+                  ) : isInstagram ? (
+                    <Instagram size={26} />
+                  ) : isYoutube ? (
+                    <Youtube size={26} />
+                  ) : (
+                    <Globe size={26} />
+                  )}
                 </div>
 
                 {link.badge && (
@@ -137,7 +191,13 @@ export function Community() {
                       ? 'bg-[#128c7e] hover:bg-[#075e54] text-white shadow-lg shadow-emerald-600/10' 
                       : isTelegram 
                         ? 'bg-[#0088cc] hover:bg-[#006699] text-white shadow-lg shadow-blue-600/10' 
-                        : 'bg-slate-800 hover:bg-slate-900 text-white'
+                        : isFacebook
+                          ? 'bg-[#1877f2] hover:bg-[#166fe5] text-white shadow-lg shadow-indigo-600/10'
+                          : isInstagram
+                            ? 'bg-gradient-to-r from-pink-500 to-purple-600 hover:opacity-90 text-white shadow-lg shadow-pink-500/10'
+                            : isYoutube
+                              ? 'bg-[#ff0000] hover:bg-[#cc0000] text-white shadow-lg shadow-red-600/10'
+                              : 'bg-slate-800 hover:bg-slate-900 text-white'
                   }`}
                 >
                   Entrar a la Comunidad <ExternalLink size={14} />

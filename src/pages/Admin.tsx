@@ -166,7 +166,7 @@ export function AdminMonitor() {
 
         {activeTab === 'coaches' && hasPerm(navItems.find(i=>i.id==='coaches')) && <CoachCuratorView />}
         {activeTab === 'students' && hasPerm(navItems.find(i=>i.id==='students')) && <StudentManagementView />}
-        {activeTab === 'chat' && hasPerm(navItems.find(i=>i.id==='chat')) && <CoachChat className="h-[440px] max-w-3xl mx-auto rounded-3xl" />}
+        {activeTab === 'chat' && hasPerm(navItems.find(i=>i.id==='chat')) && <CoachChat className="h-[500px] max-w-3xl mx-auto rounded-3xl" />}
         {activeTab === 'content' && hasPerm(navItems.find(i=>i.id==='content')) && <CMSView />}
         {activeTab === 'promotions' && hasPerm(navItems.find(i=>i.id==='promotions')) && <PromotionsManagerView />}
 
@@ -2137,6 +2137,27 @@ function CommunityAdminView() {
       url: 'https://t.me/KiraCoachCommunity',
       badge: 'Contenido Exclusivo',
       type: 'telegram'
+    },
+    {
+      name: 'Facebook Oficial',
+      description: 'Sigue nuestras publicaciones, transmisiones en vivo y eventos especiales.',
+      url: 'https://facebook.com/KiraMorenoCoach',
+      badge: 'Red de Apoyo',
+      type: 'facebook'
+    },
+    {
+      name: 'Instagram Inspiracional',
+      description: 'Historias diarias, reflexiones cortas y material estético de alta consciencia.',
+      url: 'https://instagram.com/KiraMoreno',
+      badge: 'Espacio Visual',
+      type: 'instagram'
+    },
+    {
+      name: 'YouTube Canal de Sabiduría',
+      description: 'Vídeos guiados, meditaciones profundas y clases maestras de crecimiento.',
+      url: 'https://youtube.com/KiraMoreno',
+      badge: 'Clases Maestras',
+      type: 'youtube'
     }
   ];
 
@@ -2234,7 +2255,10 @@ function CommunityAdminView() {
                   className="w-full text-xs font-semibold border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-kirateal/20 focus:border-kirateal bg-white transition cursor-pointer font-sans"
                 >
                   <option value="whatsapp">WhatsApp</option>
-                  <option value="telegram font-sans">Telegram</option>
+                  <option value="telegram">Telegram</option>
+                  <option value="facebook">Facebook</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="youtube">YouTube</option>
                   <option value="other">Otro (Sitio Web/Foro)</option>
                 </select>
               </div>
