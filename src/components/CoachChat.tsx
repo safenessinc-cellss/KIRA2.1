@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, addDoc, onSnapshot, getDocs, doc, getDoc, orderBy, limit } from 'firebase/firestore';
-import { MessageSquare, Send, User, Users, Search, ChevronRight, GraduationCap, Sparkles, MessageCircle, Clock, BookOpen } from 'lucide-react';
+import { MessageSquare, Send, User, Users, Search, ChevronRight, GraduationCap, Sparkles, MessageCircle, Clock, BookOpen, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 
@@ -208,10 +208,10 @@ export function CoachChat({ className }: { className?: string }) {
   });
 
   return (
-    <div className={cn("bg-white/60 backdrop-blur-xl border border-white/80 rounded-[40px] shadow-xl overflow-hidden h-[580px] flex flex-col md:flex-row", className)}>
+    <div className={cn("bg-white/60 backdrop-blur-xl border border-white/80 rounded-[40px] shadow-xl overflow-hidden h-[480px] flex flex-col md:flex-row", className)}>
       
       {/* LEFT COLUMN: Student Roster */}
-      <div className="w-full md:w-[350px] border-r border-slate-200/60 flex flex-col bg-slate-50/30">
+      <div className={cn("w-full md:w-[350px] border-r border-slate-200/60 flex flex-col bg-slate-50/30 h-full", selectedStudent ? "hidden md:flex" : "flex")}>
         {/* Search Header */}
         <div className="p-6 border-b border-slate-200/60 bg-white/40">
           <h2 className="text-xl font-black text-slate-900 tracking-tight mb-4 flex items-center gap-2">
@@ -325,12 +325,22 @@ export function CoachChat({ className }: { className?: string }) {
       </div>
 
       {/* RIGHT COLUMN: Chat Area */}
-      <div className="flex-1 flex flex-col bg-white">
+      <div className={cn("flex-1 flex flex-col bg-white h-full", selectedStudent ? "flex" : "hidden md:flex")}>
         {selectedStudent ? (
           <>
             {/* Chat Pane Header */}
-            <div className="p-6 border-b border-slate-200/60 bg-slate-50/50 flex items-center justify-between">
+            <div className="p-4 md:p-6 border-b border-slate-200/60 bg-slate-50/50 flex items-center justify-between">
               <div className="flex items-center gap-3.5">
+                {/* Back button shown on mobile/tablet */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedStudent(null)}
+                  className="md:hidden p-2 -ml-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all flex items-center gap-1 font-bold text-xs shrink-0"
+                  aria-label="Volver a la lista"
+                >
+                  <ArrowLeft size={16} />
+                  <span>Volver</span>
+                </button>
                 <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 border border-slate-200/60 bg-slate-100 shadow-sm">
                   <img 
                     src={selectedStudent.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${selectedStudent.displayName || 'U'}`} 
