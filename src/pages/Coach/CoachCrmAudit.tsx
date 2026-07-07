@@ -261,4 +261,272 @@ export function CoachCrmAudit() {
             ) : (
               <Sparkles size={18} />
             )}
-            {is
+            {isGenerating ? 'Analizando...' : 'Ejecutar Auditoría'}
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 p-1 bg-slate-100 rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab('overview')}
+          className={cn(
+            "px-4 py-2 rounded-lg text-xs font-bold transition-all",
+            activeTab === 'overview' ? "bg-white text-kirateal shadow-sm" : "text-slate-500 hover:text-slate-800"
+          )}
+        >
+          <BarChart3 size={14} className="inline mr-2" />
+          Visión General
+        </button>
+        <button
+          onClick={() => setActiveTab('audit')}
+          className={cn(
+            "px-4 py-2 rounded-lg text-xs font-bold transition-all",
+            activeTab === 'audit' ? "bg-white text-kirateal shadow-sm" : "text-slate-500 hover:text-slate-800"
+          )}
+        >
+          <Brain size={14} className="inline mr-2" />
+          Auditoría IA
+        </button>
+        <button
+          onClick={() => setActiveTab('recovery')}
+          className={cn(
+            "px-4 py-2 rounded-lg text-xs font-bold transition-all",
+            activeTab === 'recovery' ? "bg-white text-kirateal shadow-sm" : "text-slate-500 hover:text-slate-800"
+          )}
+        >
+          <Mail size={14} className="inline mr-2" />
+          Recuperación
+        </button>
+      </div>
+
+      {/* Tab: Visión General */}
+      {activeTab === 'overview' && (
+        <>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Prospectos</p>
+                  <p className="text-3xl font-black text-slate-900 mt-1">{stats.prospects}</p>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <Users size={20} />
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Visitas al Studio</p>
+                  <p className="text-3xl font-black text-slate-900 mt-1">{stats.studioViews}</p>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <Eye size={20} />
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Checkouts</p>
+                  <p className="text-3xl font-black text-slate-900 mt-1">{stats.checkouts}</p>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <ShoppingCart size={20} />
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Matrículas</p>
+                  <p className="text-3xl font-black text-slate-900 mt-1">{stats.enrollments}</p>
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <CheckCircle2 size={20} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Gráfico de Ingresos */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-slate-900">Histórico de Ingresos (6 meses)</h3>
+              <span className="text-sm font-bold text-kirateal">${stats.revenue.toLocaleString()}</span>
+            </div>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={revenueHistory}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="month" fontSize={12} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                  <YAxis fontSize={12} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0'}}
+                    formatter={(value) => [`$${value}`, 'Ingresos']}
+                  />
+                  <Line type="monotone" dataKey="ingresos" stroke="#1ec6b6" strokeWidth={3} dot={{fill: '#1ec6b6', strokeWidth: 2}} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Embudo de Conversión */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <h3 className="font-bold text-slate-900 mb-6">Embudo de Conversión</h3>
+            <div className="space-y-4">
+              {funnelData.map((stage, index) => (
+                <div key={index} className="relative">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-slate-700">{stage.stage}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-bold text-slate-900">{stage.count}</span>
+                      <span className={cn("text-xs font-bold", getConversionColor(stage.conversion))}>
+                        {stage.conversion}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                    <div 
+                      className={cn(
+                        "h-full rounded-full transition-all duration-1000",
+                        index === 0 ? "bg-indigo-500" :
+                        index === 1 ? "bg-blue-500" :
+                        index === 2 ? "bg-amber-500" :
+                        "bg-emerald-500"
+                      )}
+                      style={{ width: `${Math.min((stage.count / funnelData[0].count) * 100, 100)}%` }}
+                    />
+                  </div>
+                  {index < funnelData.length - 1 && (
+                    <div className="flex justify-center my-1">
+                      <ArrowRight size={16} className="text-slate-300" />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Tab: Auditoría IA */}
+      {activeTab === 'audit' && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+          {isGenerating ? (
+            <div className="text-center py-12">
+              <Loader2 className="animate-spin text-kirateal mx-auto mb-4" size={48} />
+              <p className="text-slate-600 font-medium">Kira AI está analizando tu embudo...</p>
+              <p className="text-xs text-slate-400 mt-1">Esto puede tomar unos segundos</p>
+            </div>
+          ) : auditResult ? (
+            <div className="animate-in slide-in-from-bottom-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-8 h-8 rounded-full bg-kirateal/10 text-kirateal flex items-center justify-center">
+                  <Sparkles size={18} />
+                </div>
+                <h3 className="font-black text-slate-900">Diagnóstico de Kira AI</h3>
+                <span className="text-xs text-slate-400 ml-auto">
+                  Generado el {new Date().toLocaleDateString()}
+                </span>
+              </div>
+              <div className="prose prose-sm max-w-none bg-slate-50 rounded-xl p-6 border border-slate-100">
+                <div className="whitespace-pre-wrap text-slate-700 leading-relaxed">
+                  {auditResult}
+                </div>
+              </div>
+              <div className="flex gap-3 mt-4">
+                <button className="px-4 py-2 bg-kirateal text-white rounded-xl font-bold text-sm hover:bg-kirateal-dark transition-all flex items-center gap-2">
+                  <FileText size={16} />
+                  Exportar PDF
+                </button>
+                <button className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all flex items-center gap-2">
+                  <Share2 size={16} />
+                  Compartir
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12 text-slate-400">
+              <Brain size={48} className="mx-auto mb-4 opacity-30" />
+              <p className="font-medium">Ejecuta una auditoría para obtener insights</p>
+              <p className="text-sm">Kira AI analizará tu embudo y te dará recomendaciones</p>
+              <button
+                onClick={runAudit}
+                className="mt-4 px-6 py-2 bg-kirateal text-white rounded-xl font-bold hover:bg-kirateal-dark transition-all"
+              >
+                Ejecutar Auditoría
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Recuperación */}
+      {activeTab === 'recovery' && (
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-3 mb-4">
+            <Mail className="text-kirateal" size={24} />
+            <div>
+              <h3 className="font-bold text-slate-900">Campaña de Recuperación</h3>
+              <p className="text-xs text-slate-500">
+                {stats.checkouts} prospectos abandonaron el checkout
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
+              <div className="flex items-center gap-2 text-amber-700">
+                <AlertCircle size={16} />
+                <span className="text-sm font-medium">Los mensajes de recuperación con descuento tienen 40% más de conversión</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                Mensaje de Recuperación
+              </label>
+              <textarea
+                value={recoveryEmail}
+                onChange={(e) => setRecoveryEmail(e.target.value)}
+                className="w-full h-40 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm resize-none focus:ring-2 focus:ring-kirateal/20 outline-none transition-all"
+                placeholder="Escribe tu mensaje de recuperación...\n\nEjemplo:\nHola [nombre],\n\nVeo que comenzaste el proceso de inscripción en [curso]. ¿Tuviste algún problema?\n\nTe ofrezco un 20% de descuento si completas tu registro hoy.\n\n¡Te espero! 🚀"
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-slate-400">
+                <span className="font-bold">{stats.checkouts}</span> prospectos recibirán este mensaje
+              </div>
+              <button
+                onClick={sendRecoveryCampaign}
+                disabled={isSendingRecovery || !recoveryEmail.trim()}
+                className="px-6 py-3 bg-kirateal text-white rounded-xl font-bold hover:bg-kirateal-dark transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {isSendingRecovery ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Send size={18} />
+                )}
+                {isSendingRecovery ? 'Enviando...' : 'Enviar Campaña'}
+              </button>
+            </div>
+
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+              <div className="flex items-center gap-2 text-slate-500">
+                <Clock size={14} />
+                <span className="text-xs">La campaña se enviará en segundo plano y los prospectos recibirán un correo personalizado</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
