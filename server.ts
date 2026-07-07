@@ -329,7 +329,9 @@ async function startLocalServer() {
   });
 }
 
-startLocalServer();
+if (!process.env.VERCEL) {
+  startLocalServer();
+}
 
 // Export the Express API for Vercel
 export default app;
