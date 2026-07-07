@@ -500,4 +500,216 @@ export function CoachCloudSupport() {
                     <td className="px-6 py-4">
                       <span className={cn(
                         "px-2 py-1 rounded-full text-[10px] font-bold uppercase",
-                        ticket.priority === '
+                        ticket.priority === 'critical' ? "text-rose-600" :
+                        ticket.priority === 'high' ? "text-orange-600" :
+                        ticket.priority === 'medium' ? "text-amber-600" :
+                        "text-emerald-600"
+                      )}>
+                        {ticket.priority}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={cn(
+                        "px-2 py-1 rounded-full text-[10px] font-bold inline-flex items-center gap-1",
+                        getStatusColor(ticket.status)
+                      )}>
+                        {getStatusIcon(ticket.status)}
+                        {getStatusLabel(ticket.status)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-slate-500">
+                      {ticket.createdAt?.toDate ? 
+                        ticket.createdAt.toDate().toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) : 
+                        'N/A'}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {ticket.status !== 'resolved' && ticket.status !== 'closed' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleResolve(ticket.id);
+                            }}
+                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                          >
+                            <CheckCircle2 size={16} />
+                          </button>
+                        )}
+                        {ticket.status === 'resolved' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleReopen(ticket.id);
+                            }}
+                            className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                          >
+                            <RefreshCw size={16} />
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(ticket.id);
+                          }}
+                          className="p-2 text-rose-400 hover:bg-rose-50 rounded-lg transition-all"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                        <ChevronRight size={16} className="text-slate-300" />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Detalle del Ticket */}
+      {selectedTicket && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-3xl p-8 shadow-2xl animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h2 className="text-2xl font-black text-slate-900">{selectedTicket.subject}</h2>
+                <div className="flex items-center gap-3 mt-1">
+                  <span className={cn(
+                    "px-2 py-1 rounded-full text-[10px] font-bold",
+                    getStatusColor(selectedTicket.status)
+                  )}>
+                    {getStatusLabel(selectedTicket.status)}
+                  </span>
+                  <span className={cn(
+                    "px-2 py-1 rounded-full text-[10px] font-bold",
+                    getPriorityColor(selectedTicket.priority)
+                  )}>
+                    {selectedTicket.priority}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    {selectedTicket.category}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedTicket(null)}
+                className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Descripción */}
+              <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Descripción</h4>
+                <p className="text-sm text-slate-700 leading-relaxed">{selectedTicket.description}</p>
+              </div>
+
+              {/* Diagnóstico de IA */}
+              {selectedTicket.aiDiagnosis ? (
+                <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-4 border border-indigo-100">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles size={16} className="text-indigo-600" />
+                    <h4 className="text-xs font-bold text-indigo-600 uppercase tracking-widest">Diagnóstico de Kira AI</h4>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Resumen</p>
+                      <p className="text-sm text-slate-700">{selectedTicket.aiDiagnosis.summary}</p>
+                    </div>
+                    
+                    {selectedTicket.aiDiagnosis.steps && (
+                      <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Pasos Técnicos Sugeridos</p>
+                        <ul className="space-y-1.5">
+                          {selectedTicket.aiDiagnosis.steps.map((step, idx) => (
+                            <li key={idx} className="flex items-start gap-2 text-sm text-slate-600">
+                              <span className="text-indigo-500 font-bold">{idx + 1}.</span>
+                              {step}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {selectedTicket.aiDiagnosis.estimatedResolution && (
+                      <div className="flex items-center gap-2 text-xs font-medium text-indigo-600 bg-white/50 rounded-lg px-3 py-1.5 border border-indigo-100">
+                        <Clock size={14} />
+                        Tiempo estimado: {selectedTicket.aiDiagnosis.estimatedResolution}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => generateAIDiagnosis(selectedTicket.id, selectedTicket.description)}
+                  disabled={isGeneratingAI}
+                  className="w-full py-3 bg-slate-100 hover:bg-slate-200 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isGeneratingAI ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={16} />
+                  )}
+                  Generar Diagnóstico con IA
+                </button>
+              )}
+
+              {/* Acciones del Ticket */}
+              <div className="flex flex-wrap gap-3 pt-4 border-t border-slate-100">
+                {selectedTicket.status !== 'resolved' && selectedTicket.status !== 'closed' && (
+                  <button
+                    onClick={() => {
+                      handleResolve(selectedTicket.id);
+                      setSelectedTicket(null);
+                    }}
+                    className="px-6 py-2 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all flex items-center gap-2"
+                  >
+                    <CheckCircle2 size={16} />
+                    Marcar como Resuelto
+                  </button>
+                )}
+                
+                {selectedTicket.status === 'resolved' && (
+                  <button
+                    onClick={() => {
+                      handleReopen(selectedTicket.id);
+                      setSelectedTicket(null);
+                    }}
+                    className="px-6 py-2 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 transition-all flex items-center gap-2"
+                  >
+                    <RefreshCw size={16} />
+                    Reabrir Ticket
+                  </button>
+                )}
+                
+                <button
+                  onClick={() => {
+                    handleDelete(selectedTicket.id);
+                    setSelectedTicket(null);
+                  }}
+                  className="px-6 py-2 bg-rose-50 text-rose-600 rounded-xl font-bold text-sm hover:bg-rose-100 transition-all flex items-center gap-2"
+                >
+                  <Trash2 size={16} />
+                  Eliminar
+                </button>
+              </div>
+
+              {/* Metadatos */}
+              <div className="text-xs text-slate-400 flex items-center gap-4 pt-2 border-t border-slate-100">
+                <span>Creado: {selectedTicket.createdAt?.toDate ? 
+                  selectedTicket.createdAt.toDate().toLocaleString() : 
+                  'N/A'}</span>
+                {selectedTicket.resolvedAt && (
+                  <span>Resuelto: {selectedTicket.resolvedAt.toDate().toLocaleString()}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
