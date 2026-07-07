@@ -2,10 +2,31 @@
 import { useState, useEffect, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, orderBy, addDoc, onSnapshot, limit, getDoc, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { MessageSquare, Send, X, User, Users, ArrowLeft, Shield, ShieldAlert, ShieldCheck, Calendar, Sparkles, Star, CreditCard, ExternalLink, Heart } from 'lucide-react';
+import { MessageSquare, Send, X, User, Users, ArrowLeft, Shield, ShieldAlert, ShieldCheck, Calendar, Sparkles, Star, CreditCard, Heart } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { cn } from '../lib/utils';
+
+// Low profile clock icon helper
+function ClockIcon({ size = 16, className = '' }: { size?: number, className?: string }) {
+  return (
+    <svg 
+      xmlns="http://www.w3.org/2000/svg" 
+      width={size} 
+      height={size} 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      strokeWidth="2" 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+      className={className}
+    >
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
 
 export function ChatWidget() {
   const { user, role } = useAuth();
@@ -32,10 +53,9 @@ export function ChatWidget() {
   const [submittingReview, setSubmittingReview] = useState<Record<string, boolean>>({});
   const [showContactInfo, setShowContactInfo] = useState<Record<string, boolean>>({});
 
-  // ESCUCHAR AMBOS EVENTOS: open-kira-chat Y open-mentor-chat
+  // Listen to open-kira-chat custom event
   useEffect(() => {
-    // Handler para 'open-kira-chat' (existente)
-    const handleOpenKiraChat = (e: Event) => {
+    const handleOpenChat = (e: Event) => {
       const customEvent = e as CustomEvent;
       const coach = customEvent.detail?.coach;
       if (coach) {
@@ -80,18 +100,14 @@ export function ChatWidget() {
       }
     };
 
-    window.addEventListener('open-kira-chat', handleOpenKiraChat);
+    window.addEventListener('open-kira-chat', handleOpenChat);
     window.addEventListener('open-mentor-chat', handleOpenMentorChat);
-
+    
     return () => {
-      window.removeEventListener('open-kira-chat', handleOpenKiraChat);
+      window.removeEventListener('open-kira-chat', handleOpenChat);
       window.removeEventListener('open-mentor-chat', handleOpenMentorChat);
     };
   }, []);
-
-  // Resto del código del ChatWidget (fetchContacts, sendMessage, etc.)
-  // ... (mantén todo el código existente de tu ChatWidget)
-  // Asegúrate de que el resto del archivo esté intacto
 
   const allContacts = [...manualContacts, ...contacts].filter((item, index, self) =>
     index === self.findIndex((t) => t.uid === item.uid)
@@ -481,6 +497,7 @@ export function ChatWidget() {
 
   return (
     <>
+      {/* Botón flotante para abrir el chat */}
       <button 
         onClick={() => setIsOpen(true)}
         className="fixed bottom-6 right-6 p-4 bg-kirateal text-white rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all z-50 flex items-center justify-center border-2 border-white/20"
@@ -783,8 +800,6 @@ export function ChatWidget() {
                   if (m.type === 'session_review') {
                     const review = m.reviewData || {};
                     const isPendingReview = review.status === 'pending';
-                    const isCompletedReview = review.status === 'completed';
-
                     const isAuthor = role === 'alumno' && user?.uid === review.studentId;
 
                     return (
@@ -885,7 +900,7 @@ export function ChatWidget() {
                   placeholder="Escribe un mensaje privado..."
                   className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-kirateal/20"
                 />
-                <button className="p-2.5 bg-kirateal text-white rounded-xl hover:bg-kirateal-dark transition-all active:scale-95 flex items-center justify-center">
+                <button type="submit" className="p-2.5 bg-kirateal text-white rounded-xl hover:bg-kirateal-dark transition-all active:scale-95 flex items-center justify-center">
                   <Send size={18} />
                 </button>
               </form>
@@ -894,26 +909,5 @@ export function ChatWidget() {
         </div>
       )}
     </>
-  );
-}
-
-// Low profile clock icon helper
-function ClockIcon({ size = 16, className = '' }: { size?: number, className?: string }) {
-  return (
-    <svg 
-      xmlns="http://www.w3.org/2000/svg" 
-      width={size} 
-      height={size} 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round" 
-      className={className}
-    >
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
   );
 }
