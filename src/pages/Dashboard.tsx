@@ -721,10 +721,10 @@ export function Dashboard() {
                         <img 
                           src={book.imageUrl} 
                           alt={book.title} 
-                          className="h-28 max-w-[85px] object-contain transition-transform duration-500 hover:scale-105 drop-shadow-2xl z-10 rounded-lg shadow-lg border border-white/10" 
+                          className="h-full max-w-[120px] object-contain transition-transform duration-500 hover:scale-105 drop-shadow-2xl z-10 rounded-lg" 
                         />
                       ) : (
-                        <div className="h-28 aspect-[3/4] bg-slate-800 rounded-lg flex items-center justify-center text-slate-500 text-[10px] font-black border border-slate-700 z-10 shadow-xl">
+                        <div className="h-full aspect-[3/4] bg-slate-800 rounded-lg flex items-center justify-center text-slate-500 text-xs font-black border border-slate-700 z-10 shadow-xl">
                           NO COVER
                         </div>
                       )}
@@ -910,17 +910,7 @@ export function Dashboard() {
                        <h4 className="text-base font-black text-slate-900 mb-1">{coach.displayName}</h4>
                        <p className="text-[11px] text-slate-400 mb-6 line-clamp-1 w-full font-bold uppercase tracking-tight">{coach.specialty}</p>
                        <button 
-                        onClick={() => {
-                          window.dispatchEvent(new CustomEvent('open-mentor-chat', { 
-                            detail: { 
-                              id: coach.id, 
-                              displayName: coach.displayName, 
-                              photoURL: coach.photoURL, 
-                              specialty: coach.specialty,
-                              role: coach.role || 'coach'
-                            } 
-                          }));
-                        }}
+                        onClick={() => navigate('/')}
                         className="mt-auto px-6 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm w-full"
                        >
                          Chat Mentor
