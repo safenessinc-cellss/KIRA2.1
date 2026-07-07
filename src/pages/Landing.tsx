@@ -1457,12 +1457,34 @@ export function Landing() {
 // --- VIDEO PLAYER COMPONENT ---
 function VideoPlayer({ url, poster }: { url: string; poster?: string }) {
   const getEmbedUrl = (url: string) => {
+    if (!url) return null;
+
+    // Check if it's a Spotify link (including spotify.app.link redirection wrappers)
+    let targetUrl = url;
+    if (url.includes('spotify.app.link')) {
+      try {
+        const parsed = new URL(url);
+        const fullUrl = parsed.searchParams.get('$full_url') || parsed.searchParams.get('full_url');
+        if (fullUrl) {
+          targetUrl = decodeURIComponent(fullUrl);
+        }
+      } catch (e) {
+        console.warn("Failed to parse spotify.app.link URL:", e);
+      }
+    }
+
+    // Spotify Embed Parser
+    const spotifyMatch = targetUrl.match(/(?:https?:\/\/)?(?:open\.)?spotify\.com\/(track|playlist|episode|album|show)\/([a-zA-Z0-9]+)/);
+    if (spotifyMatch) {
+      return `https://open.spotify.com/embed/${spotifyMatch[1]}/${spotifyMatch[2]}`;
+    }
+
     // YouTube
-    const ytMatch = url.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?(.+)/);
+    const ytMatch = targetUrl.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=|embed\/|shorts\/)?([a-zA-Z0-9_-]+)/);
     if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}`;
     
     // Vimeo
-    const vimeoMatch = url.match(/(?:https?:\/\/)?(?:www\.)?(?:vimeo\.com)\/(.+)/);
+    const vimeoMatch = targetUrl.match(/(?:https?:\/\/)?(?:www\.)?(?:vimeo\.com)\/([a-zA-Z0-9]+)/);
     if (vimeoMatch) return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
     
     return null;

@@ -1,17 +1,43 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, updateDoc, doc, arrayUnion, onSnapshot, addDoc, getDoc } from 'firebase/firestore';
-import { Zap, Lock, Unlock, FileText, Video, Image as ImageIcon, Search, Filter, Loader2, Sparkles, X, PlayCircle, GripHorizontal, BookOpen, ExternalLink } from 'lucide-react';
+import { collection, query, where, getDocs, updateDoc, doc, arrayUnion, onSnapshot, addDoc } from 'firebase/firestore';
+import { Zap, Lock, Unlock, FileText, Video, Image as ImageIcon, Search, Filter, Loader2, Sparkles, X, PlayCircle, GripHorizontal } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Reorder } from 'motion/react';
 
-const isExternalLink = (url: string) => {
-  if (!url) return false;
-  const l = url.toLowerCase();
-  const rawExtensions = ['.mp4', '.mp3', '.m4a', '.wav', '.mov', '.ogg', '.webm', '.pdf', '.png', '.jpg', '.jpeg', '.gif'];
-  const hasRawExtension = rawExtensions.some(ext => l.endsWith(ext) || l.includes(ext + '?') || l.includes(ext + '#'));
-  return l.startsWith('http') && !hasRawExtension;
+const getEmbedUrl = (url: string) => {
+  if (!url) return null;
+
+  // Check if it's a Spotify link (including spotify.app.link redirection wrappers)
+  let targetUrl = url;
+  if (url.includes('spotify.app.link')) {
+    try {
+      const parsed = new URL(url);
+      const fullUrl = parsed.searchParams.get('$full_url') || parsed.searchParams.get('full_url');
+      if (fullUrl) {
+        targetUrl = decodeURIComponent(fullUrl);
+      }
+    } catch (e) {
+      console.warn("Failed to parse spotify.app.link URL:", e);
+    }
+  }
+
+  // Spotify Embed Parser
+  const spotifyMatch = targetUrl.match(/(?:https?:\/\/)?(?:open\.)?spotify\.com\/(track|playlist|episode|album|show)\/([a-zA-Z0-9]+)/);
+  if (spotifyMatch) {
+    return `https://open.spotify.com/embed/${spotifyMatch[1]}/${spotifyMatch[2]}`;
+  }
+
+  // YouTube
+  const ytMatch = targetUrl.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=|embed\/|shorts\/)?([a-zA-Z0-9_-]+)/);
+  if (ytMatch) return `https://www.youtube.com/embed/${ytMatch[1]}`;
+  
+  // Vimeo
+  const vimeoMatch = targetUrl.match(/(?:https?:\/\/)?(?:www\.)?(?:vimeo\.com)\/([a-zA-Z0-9]+)/);
+  if (vimeoMatch) return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+  
+  return null;
 };
 
 export function EliteLibrary() {
@@ -23,49 +49,6 @@ export function EliteLibrary() {
   const [unlocking, setUnlocking] = useState<string | null>(null);
   const [playingVideo, setPlayingVideo] = useState<string | null>(null);
   const [displayItems, setDisplayItems] = useState<any[]>([]);
-  const [libraryMode, setLibraryMode] = useState<'vault' | 'books'>('vault');
-  const [books, setBooks] = useState<any[]>([]);
-  const [publisherNames, setPublisherNames] = useState<Record<string, string>>({});
-  const [booksLoading, setBooksLoading] = useState(true);
-
-  useEffect(() => {
-    const q = collection(db, 'books');
-    const unsub = onSnapshot(q, async (snap) => {
-      const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
-      list.sort((a: any, b: any) => {
-        const t1 = a.createdAt?.seconds || 0;
-        const t2 = b.createdAt?.seconds || 0;
-        return t2 - t1;
-      });
-      setBooks(list);
-      setBooksLoading(false);
-
-      // Resolve publisher names dynamically from the users collection
-      const uniquePublisherIds = Array.from(new Set(list.map(b => b.publisherId).filter(Boolean))) as string[];
-      for (const pubId of uniquePublisherIds) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', pubId));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            let name = userData.displayName || userData.name || '';
-            const nameLower = name.toLowerCase().trim();
-            if (nameLower === 'safeness' || nameLower === 'safeness.c.a' || nameLower === 'safeness.c.a@gmail.com') {
-              name = 'Kira Coach';
-            }
-            if (name) {
-              setPublisherNames(prev => ({ ...prev, [pubId]: name }));
-            }
-          }
-        } catch (err) {
-          console.warn("Error resolving publisher name in elite library:", err);
-        }
-      }
-    }, (err) => {
-      console.error("Error loading books:", err);
-      setBooksLoading(false);
-    });
-    return () => unsub();
-  }, []);
 
   useEffect(() => {
     // Fetch all coaches to get their mediaItems
@@ -161,269 +144,138 @@ export function EliteLibrary() {
         </div>
       </div>
 
-      {/* Selector de Sección Académica */}
-      <div className="flex gap-4 p-1.5 bg-slate-100 rounded-3xl border border-slate-200 w-fit shrink-0">
-        <button
-          onClick={() => { setLibraryMode('vault'); setSearchTerm(''); }}
-          className={cn(
-            "flex items-center gap-2.5 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
-            libraryMode === 'vault' 
-              ? "bg-white text-indigo-600 shadow-sm border border-indigo-50" 
-              : "text-slate-500 hover:text-slate-800"
-          )}
-        >
-          <Sparkles size={16} className="text-indigo-600" /> Recursos de Bóveda
-        </button>
-        <button
-          onClick={() => { setLibraryMode('books'); setSearchTerm(''); }}
-          className={cn(
-            "flex items-center gap-2.5 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer",
-            libraryMode === 'books' 
-              ? "bg-white text-indigo-600 shadow-sm border border-indigo-50" 
-              : "text-slate-500 hover:text-slate-800"
-          )}
-        >
-          <BookOpen size={16} className="text-indigo-600" /> Biblioteca de Libros
-        </button>
-      </div>
-
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="relative w-full md:w-96">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input 
             type="text" 
-            placeholder={libraryMode === 'books' ? "Buscar libros..." : "Buscar plantillas, videos..."} 
+            placeholder="Buscar plantillas, videos..." 
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all shadow-sm"
           />
         </div>
         
-        {libraryMode === 'vault' && (
-          <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl overflow-x-auto w-full md:w-auto">
-            <FilterBtn active={filterType === 'all'} onClick={() => setFilterType('all')} label="Todos" />
-            <FilterBtn active={filterType === 'pdf'} onClick={() => setFilterType('pdf')} label="PDFs" icon={<FileText size={14}/>} />
-            <FilterBtn active={filterType === 'video'} onClick={() => setFilterType('video')} label="Videos" icon={<Video size={14}/>} />
-            <FilterBtn active={filterType === 'imagen'} onClick={() => setFilterType('imagen')} label="Imágenes" icon={<ImageIcon size={14}/>} />
-          </div>
-        )}
+        <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl overflow-x-auto w-full md:w-auto">
+          <FilterBtn active={filterType === 'all'} onClick={() => setFilterType('all')} label="Todos" />
+          <FilterBtn active={filterType === 'pdf'} onClick={() => setFilterType('pdf')} label="PDFs" icon={<FileText size={14}/>} />
+          <FilterBtn active={filterType === 'video'} onClick={() => setFilterType('video')} label="Videos" icon={<Video size={14}/>} />
+          <FilterBtn active={filterType === 'imagen'} onClick={() => setFilterType('imagen')} label="Imágenes" icon={<ImageIcon size={14}/>} />
+        </div>
       </div>
 
-      {libraryMode === 'books' ? (
-        booksLoading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="animate-spin text-indigo-600" size={32} />
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {books
-                .filter(b => {
-                  const resolvedAuthor = (b.publisherId && publisherNames[b.publisherId]) || b.publisherName || '';
-                  return b.title.toLowerCase().includes(searchTerm.toLowerCase()) || resolvedAuthor.toLowerCase().includes(searchTerm.toLowerCase());
-                })
-                .map((book) => {
-                  let author = (book.publisherId && publisherNames[book.publisherId]) || book.publisherName || '';
-                  const authorLower = author.toLowerCase().trim();
-                  if (authorLower === 'safeness' || authorLower === 'safeness.c.a' || authorLower === 'safeness.c.a@gmail.com') {
-                    author = 'Kira Coach';
-                  } else if (!author || author.toLowerCase() === 'usuario') {
-                    author = book.publisherRole === 'admin' ? 'Administrador' : 'Kira Coach';
-                  }
+      <Reorder.Group 
+        axis="y" 
+        values={displayItems} 
+        onReorder={setDisplayItems} 
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 list-none"
+      >
+        {displayItems.map((item) => {
+          const isUnlocked = user?.unlockedTools?.includes(`${item.coachId}:${item.title}`) || (item.pointCost || 0) === 0;
+          const canAfford = (user?.points || 0) >= (item.pointCost || 0);
+          const isCurrentlyUnlocking = unlocking === `${item.coachId}-${item.title}`;
 
-                  return (
-                    <div key={book.id} className="group bg-white rounded-3xl border border-slate-200 overflow-hidden flex flex-col h-full hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
-                      <div className="relative h-48 bg-slate-50 overflow-hidden shrink-0">
-                        <img 
-                          referrerPolicy="no-referrer"
-                          src={book.coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400'} 
-                          alt={book.title} 
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                        />
-                        <div className="absolute top-3 left-3 flex flex-col gap-1.5">
-                          <span className="px-2 py-1 bg-white/95 backdrop-blur rounded-lg text-[9px] font-black text-slate-800 uppercase tracking-wider shadow-sm flex items-center gap-1">
-                            {book.type === 'pdf' ? <FileText size={10} className="text-red-500" /> : <ExternalLink size={10} className="text-blue-500" />}
-                            {book.type}
-                          </span>
-                          {book.publisherRole === 'admin' ? (
-                            <span className="px-2 py-0.5 bg-indigo-600 text-white rounded-lg text-[8px] font-black uppercase tracking-wider shadow-sm">
-                              Oficial
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 bg-teal-600 text-white rounded-lg text-[8px] font-black uppercase tracking-wider shadow-sm">
-                              Coach
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="p-6 flex-1 flex flex-col">
-                        <div className="flex items-center gap-1.5 mb-2.5">
-                          <div className="w-5 h-5 rounded-full bg-slate-100 overflow-hidden shrink-0">
-                            <img src={`https://ui-avatars.com/api/?name=${author}&background=random`} alt={author} className="w-full h-full object-cover" />
-                          </div>
-                          <span className="text-[10px] font-bold text-slate-500">{author}</span>
-                        </div>
-                      <h4 className="font-bold text-slate-900 text-sm leading-tight mb-2">{book.title}</h4>
-                      {book.description && (
-                        <p className="text-xs text-slate-500 line-clamp-3 mb-4 leading-relaxed">{book.description}</p>
-                      )}
-                      
-                      <div className="mt-auto pt-4 border-t border-slate-100 flex items-center justify-between">
-                        <span className="text-[10px] text-slate-400 font-semibold">
-                          {book.createdAt ? new Date(book.createdAt.seconds * 1000).toLocaleDateString() : 'Reciente'}
-                        </span>
-                        <a
-                          href={book.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-800 transition-colors"
-                        >
-                          {book.type === 'pdf' ? <FileText size={12} /> : <ExternalLink size={12} />} Leer Libro
-                        </a>
-                      </div>
-                    </div>
+          return (
+            <Reorder.Item 
+              key={item.uniqueId} 
+              value={item}
+              className={cn(
+                "group bg-white rounded-3xl border transition-all duration-300 flex flex-col overflow-hidden cursor-grab active:cursor-grabbing",
+                isUnlocked ? "border-slate-200 hover:shadow-xl hover:-translate-y-1" : "border-slate-100 shadow-sm"
+              )}
+            >
+              <div className="relative h-40 bg-slate-50 overflow-hidden">
+                {!isUnlocked && (
+                  <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center text-white">
+                      <Lock size={32} className="mb-2 opacity-50" />
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em]">{item.pointCost} Energy Pts</span>
                   </div>
-                );
-              })}
-            </div>
-
-            {books.filter(b => b.title.toLowerCase().includes(searchTerm.toLowerCase()) || (b.publisherName || '').toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
-              <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-slate-200">
-                <Search size={48} className="mx-auto text-slate-200 mb-4" />
-                <p className="text-slate-400 font-medium">No se encontraron libros que coincidan con tu búsqueda.</p>
+                )}
+                <div className="absolute top-4 left-4 z-20 flex flex-col gap-2">
+                   <div className="px-2 py-1 bg-white/90 backdrop-blur rounded-lg text-[9px] font-black text-slate-800 uppercase shadow-sm flex items-center gap-1.5">
+                      {item.type === 'pdf' && <FileText size={10}/>}
+                      {item.type === 'video' && <Video size={10}/>}
+                      {item.type === 'imagen' && <ImageIcon size={10}/>}
+                      {item.type}
+                   </div>
+                </div>
+                <div className="absolute top-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+                   <div className="p-1.5 bg-white/80 backdrop-blur hover:bg-white text-slate-600 rounded-lg shadow-sm">
+                      <GripHorizontal size={14} />
+                   </div>
+                </div>
+                <img 
+                  src={item.type === 'imagen' ? item.url : `https://picsum.photos/seed/${item.coachId}-${item.title}/400/200`} 
+                  alt="Previa" 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                />
               </div>
-            )}
-          </>
-        )
-      ) : (
-        <>
-          <Reorder.Group 
-            axis="y" 
-            values={displayItems} 
-            onReorder={setDisplayItems} 
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 list-none"
-          >
-            {displayItems.map((item) => {
-              const isUnlocked = user?.unlockedTools?.includes(`${item.coachId}:${item.title}`) || (item.pointCost || 0) === 0;
-              const canAfford = (user?.points || 0) >= (item.pointCost || 0);
-              const isCurrentlyUnlocking = unlocking === `${item.coachId}-${item.title}`;
 
-              return (
-                <Reorder.Item 
-                  key={item.uniqueId} 
-                  value={item}
-                  className={cn(
-                    "group bg-white rounded-3xl border transition-all duration-300 flex flex-col overflow-hidden cursor-grab active:cursor-grabbing",
-                    isUnlocked ? "border-slate-200 hover:shadow-xl hover:-translate-y-1" : "border-slate-100 shadow-sm"
-                  )}
-                >
-                  <div className="relative h-40 bg-slate-50 overflow-hidden">
-                    {!isUnlocked && (
-                      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center text-white">
-                          <Lock size={32} className="mb-2 opacity-50" />
-                          <span className="text-[10px] font-black uppercase tracking-[0.2em]">{item.pointCost} Energy Pts</span>
-                      </div>
-                    )}
-                    <div className="absolute top-4 left-4 z-20 flex flex-col gap-2">
-                       <div className="px-2 py-1 bg-white/90 backdrop-blur rounded-lg text-[9px] font-black text-slate-800 uppercase shadow-sm flex items-center gap-1.5">
-                          {item.type === 'pdf' && <FileText size={10}/>}
-                          {item.type === 'video' && <Video size={10}/>}
-                          {item.type === 'imagen' && <ImageIcon size={10}/>}
-                          {item.type}
-                       </div>
-                    </div>
-                    <div className="absolute top-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
-                       <div className="p-1.5 bg-white/80 backdrop-blur hover:bg-white text-slate-600 rounded-lg shadow-sm">
-                          <GripHorizontal size={14} />
-                       </div>
-                    </div>
-                    <img 
-                      src={item.type === 'imagen' ? item.url : `https://picsum.photos/seed/${item.coachId}-${item.title}/400/200`} 
-                      alt="Previa" 
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                    />
-                  </div>
-
-                  <div className="p-6 flex-1 flex flex-col bg-white">
-                    <div className="flex items-center gap-2 mb-3">
-                       <div className="w-5 h-5 rounded-full bg-slate-100 overflow-hidden">
-                          <img src={item.coachPhoto || `https://ui-avatars.com/api/?name=${item.coachName}`} alt={item.coachName} className="w-full h-full object-cover" />
-                       </div>
-                       <span className="text-[10px] font-bold text-slate-500">{item.coachName}</span>
-                    </div>
-                    
-                    <h3 className="font-bold text-slate-900 text-sm mb-4 leading-tight pointer-events-none">{item.title}</h3>
-                    
-                    <div className="mt-auto relative z-10" onPointerDown={e => e.stopPropagation()}>
-                      {isUnlocked ? (
-                        isExternalLink(item.url) ? (
-                          <a 
-                            href={item.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors"
-                          >
-                            <ExternalLink size={14} /> 
-                            <span>
-                              {item.url.toLowerCase().includes('spotify') ? 'Abrir en Spotify' : item.url.toLowerCase().includes('youtube') || item.url.toLowerCase().includes('youtu.be') ? 'Ver en YouTube' : 'Acceder Recurso'}
-                            </span>
-                          </a>
-                        ) : item.type === 'video' ? (
-                          <button 
-                            onClick={() => setPlayingVideo(item.url)}
-                            className="w-full py-2.5 bg-slate-800 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 hover:bg-slate-900 transition-colors cursor-pointer"
-                          >
-                            <PlayCircle size={14} /> Reproducir
-                          </button>
-                        ) : (
-                          <a 
-                            href={item.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="w-full py-2.5 bg-slate-800 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 hover:bg-slate-900 transition-colors"
-                          >
-                            <Unlock size={14} /> Acceder Ahora
-                          </a>
-                        )
+              <div className="p-6 flex-1 flex flex-col bg-white">
+                <div className="flex items-center gap-2 mb-3">
+                   <div className="w-5 h-5 rounded-full bg-slate-100 overflow-hidden">
+                      <img src={item.coachPhoto || `https://ui-avatars.com/api/?name=${item.coachName}`} alt={item.coachName} className="w-full h-full object-cover" />
+                   </div>
+                   <span className="text-[10px] font-bold text-slate-500">{item.coachName}</span>
+                </div>
+                
+                <h3 className="font-bold text-slate-900 text-sm mb-4 leading-tight pointer-events-none">{item.title}</h3>
+                
+                <div className="mt-auto relative z-10" onPointerDown={e => e.stopPropagation()}>
+                  {isUnlocked ? (
+                    item.type === 'video' ? (
+                      <button 
+                        onClick={() => setPlayingVideo(item.url)}
+                        className="w-full py-2.5 bg-slate-800 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 hover:bg-slate-900 transition-colors"
+                      >
+                        <PlayCircle size={14} /> Reproducir
+                      </button>
+                    ) : (
+                      <a 
+                        href={item.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="w-full py-2.5 bg-slate-800 text-white rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 hover:bg-slate-900 transition-colors"
+                      >
+                        <Unlock size={14} /> Acceder Ahora
+                      </a>
+                    )
+                  ) : (
+                    <button 
+                      onClick={() => handleUnlock(item)}
+                      disabled={!canAfford || isCurrentlyUnlocking}
+                      className={cn(
+                        "w-full py-2.5 rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 transition-all",
+                        canAfford 
+                          ? "bg-kiragold text-slate-900 shadow-lg shadow-kiragold/20 hover:scale-[1.02] active:scale-95" 
+                          : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                      )}
+                    >
+                      {isCurrentlyUnlocking ? (
+                        <Loader2 size={14} className="animate-spin" />
                       ) : (
-                        <button 
-                          onClick={() => handleUnlock(item)}
-                          disabled={!canAfford || isCurrentlyUnlocking}
-                          className={cn(
-                            "w-full py-2.5 rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 transition-all cursor-pointer",
-                            canAfford 
-                              ? "bg-kiragold text-slate-900 shadow-lg shadow-kiragold/20 hover:scale-[1.02] active:scale-95" 
-                              : "bg-slate-100 text-slate-400 cursor-not-allowed"
-                          )}
-                        >
-                          {isCurrentlyUnlocking ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <>
-                              <Zap size={14} fill={canAfford ? "currentColor" : "none"} />
-                              Desbloquear por {item.pointCost} E-Pts
-                            </>
-                          )}
-                        </button>
+                        <>
+                          <Zap size={14} fill={canAfford ? "currentColor" : "none"} />
+                          Desbloquear por {item.pointCost} E-Pts
+                        </>
                       )}
-                      {!isUnlocked && !canAfford && (
-                        <p className="text-[9px] text-center text-rose-400 font-bold mt-2 uppercase tracking-tight">Energy Pts insuficientes</p>
-                      )}
-                    </div>
-                  </div>
-                </Reorder.Item>
-              );
-            })}
-          </Reorder.Group>
+                    </button>
+                  )}
+                  {!isUnlocked && !canAfford && (
+                    <p className="text-[9px] text-center text-rose-400 font-bold mt-2 uppercase tracking-tight">Energy Pts insuficientes</p>
+                  )}
+                </div>
+              </div>
+            </Reorder.Item>
+          );
+        })}
+      </Reorder.Group>
 
-          {displayItems.length === 0 && (
-            <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-slate-200">
-               <Search size={48} className="mx-auto text-slate-200 mb-4" />
-               <p className="text-slate-400 font-medium">No se encontraron herramientas que coincidan con tu búsqueda.</p>
-            </div>
-          )}
-        </>
+      {displayItems.length === 0 && (
+        <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-slate-200">
+           <Search size={48} className="mx-auto text-slate-200 mb-4" />
+           <p className="text-slate-400 font-medium">No se encontraron herramientas que coincidan con tu búsqueda.</p>
+        </div>
       )}
 
       {playingVideo && (
@@ -432,9 +284,18 @@ export function EliteLibrary() {
              <X size={24} /> <span className="text-sm font-bold uppercase tracking-widest hidden md:inline pr-2">Cerrar Reproductor</span>
            </button>
            <div className="w-full max-w-5xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10 relative">
-             <video src={playingVideo} autoPlay controls className="w-full h-full object-contain">
-                Tu navegador no soporta el elemento de video.
-             </video>
+             {getEmbedUrl(playingVideo) ? (
+               <iframe 
+                 src={getEmbedUrl(playingVideo)!} 
+                 className="w-full h-full border-0" 
+                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                 allowFullScreen
+               />
+             ) : (
+               <video src={playingVideo} autoPlay controls className="w-full h-full object-contain">
+                  Tu navegador no soporta el elemento de video.
+               </video>
+             )}
            </div>
         </div>
       )}
