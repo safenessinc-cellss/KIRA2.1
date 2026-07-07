@@ -1,3 +1,5 @@
+// src/App.tsx - VERSIÓN CORREGIDA (Usando rutas reales)
+
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import React, { useState, useEffect, Suspense } from 'react';
 import { CoreLayout, ProtectedRoute } from './layouts/CoreLayout';
@@ -12,7 +14,7 @@ import { Loader2 } from 'lucide-react';
 import { PerformanceMonitor } from './components/PerformanceMonitor';
 
 // ============================================================
-// PERFORMANCE OPTIMIZATION: Lazy Loading for Code-Splitting
+// PERFORMANCE OPTIMIZATION: Lazy Loading
 // ============================================================
 
 // --- Alumnos ---
@@ -21,13 +23,12 @@ const Journal = React.lazy(() => import('./pages/Dashboard').then(m => ({ defaul
 const EliteLibrary = React.lazy(() => import('./pages/EliteLibrary').then(m => ({ default: m.EliteLibrary })));
 const Community = React.lazy(() => import('./pages/Community').then(m => ({ default: m.Community })));
 
-// --- Coaches ---
-const CoachDashboard = React.lazy(() => import('./pages/coach/Coach').then(m => ({ default: m.CoachDashboard })));
-const CoachCourses = React.lazy(() => import('./pages/coach/CoachCourses').then(m => ({ default: m.CoachCourses })));
-const CoachSession = React.lazy(() => import('./pages/coach/CoachSession').then(m => ({ default: m.CoachSession })));
-const CoachHomeworkReview = React.lazy(() => import('./pages/coach/CoachHomeworkReview').then(m => ({ default: m.CoachHomeworkReview })));
-const CoachCrmAudit = React.lazy(() => import('./pages/coach/CoachCrmAudit').then(m => ({ default: m.CoachCrmAudit })));
-const CoachCloudSupport = React.lazy(() => import('./pages/coach/CoachCloudSupport').then(m => ({ default: m.CoachCloudSupport })));
+// --- Coaches (RUTAS CORRECTAS) ---
+// CoachDashboard está en ./pages/Coach.tsx (NO en ./pages/coach/Coach)
+const CoachDashboard = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachDashboard })));
+
+// Para los módulos nuevos, vamos a usar importación directa desde el mismo archivo Coach.tsx
+// O crearlos como componentes separados en la carpeta correcta
 
 // --- Admin ---
 const AdminMonitor = React.lazy(() => import('./pages/Admin').then(m => ({ default: m.AdminMonitor })));
@@ -40,7 +41,7 @@ const UserProfile = React.lazy(() => import('./pages/UserProfile').then(m => ({ 
 const Microlearning = React.lazy(() => import('./pages/Microlearning').then(m => ({ default: m.Microlearning })));
 
 // ============================================================
-// PAGE LOADER - Fallback durante la carga
+// PAGE LOADER
 // ============================================================
 function PageLoader() {
   return (
@@ -56,7 +57,7 @@ function PageLoader() {
 }
 
 // ============================================================
-// THEME PROVIDER - Carga colores desde Firestore
+// THEME PROVIDER
 // ============================================================
 function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<any>({ primaryColor: '', secondaryColor: '' });
@@ -88,6 +89,55 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
 }
 
 // ============================================================
+// COMPONENTES SIMPLIFICADOS PARA LAS ACCIONES DIRECTAS
+// (Mientras se crean los archivos completos)
+// ============================================================
+function CoachCourses() {
+  return (
+    <div className="p-8 bg-white rounded-2xl border border-slate-200">
+      <h1 className="text-2xl font-bold text-slate-900">Studio de Cursos</h1>
+      <p className="text-slate-500 mt-2">Gestiona tus programas educativos.</p>
+    </div>
+  );
+}
+
+function CoachSession() {
+  return (
+    <div className="p-8 bg-white rounded-2xl border border-slate-200">
+      <h1 className="text-2xl font-bold text-slate-900">Sesión Inteligente</h1>
+      <p className="text-slate-500 mt-2">Transcripción y análisis con IA.</p>
+    </div>
+  );
+}
+
+function CoachHomeworkReview() {
+  return (
+    <div className="p-8 bg-white rounded-2xl border border-slate-200">
+      <h1 className="text-2xl font-bold text-slate-900">Revisión de Tareas</h1>
+      <p className="text-slate-500 mt-2">Feedback de módulos.</p>
+    </div>
+  );
+}
+
+function CoachCrmAudit() {
+  return (
+    <div className="p-8 bg-white rounded-2xl border border-slate-200">
+      <h1 className="text-2xl font-bold text-slate-900">AI Audit CRM</h1>
+      <p className="text-slate-500 mt-2">Optimización de embudo.</p>
+    </div>
+  );
+}
+
+function CoachCloudSupport() {
+  return (
+    <div className="p-8 bg-white rounded-2xl border border-slate-200">
+      <h1 className="text-2xl font-bold text-slate-900">Cloud Support</h1>
+      <p className="text-slate-500 mt-2">Kira Corp Direct.</p>
+    </div>
+  );
+}
+
+// ============================================================
 // APP PRINCIPAL
 // ============================================================
 export default function App() {
@@ -98,17 +148,13 @@ export default function App() {
           <BrowserRouter>
             <Suspense fallback={<PageLoader />}>
               <Routes>
-                {/* ============================================
-                    RUTAS PÚBLICAS (Sin autenticación)
-                ============================================ */}
+                {/* RUTAS PÚBLICAS */}
                 <Route element={<CoreLayout />}>
                   <Route path="/" element={<Landing />} />
                   <Route path="/login" element={<Login />} />
                   <Route path="/microlearning" element={<Microlearning />} />
 
-                  {/* ==========================================
-                      RUTAS DE ALUMNOS (Role: alumno)
-                  ========================================== */}
+                  {/* RUTAS DE ALUMNOS */}
                   <Route element={<ProtectedRoute allowedRoles={['alumno']} />}>
                     <Route element={<DashboardLayout title="Mi Aprendizaje" />}>
                       <Route path="/dashboard" element={<Dashboard />} />
@@ -119,38 +165,27 @@ export default function App() {
                     </Route>
                   </Route>
 
-                  {/* ==========================================
-                      RUTAS DE COACHES (Role: coach, admin)
-                  ========================================== */}
+                  {/* RUTAS DE COACHES */}
                   <Route element={<ProtectedRoute allowedRoles={['coach', 'admin']} />}>
                     <Route element={<DashboardLayout title="Panel de Coach" />}>
-                      {/* Panel principal */}
                       <Route path="/coach" element={<CoachDashboard />} />
-
-                      {/* Acciones Directas */}
                       <Route path="/coach/courses" element={<CoachCourses />} />
                       <Route path="/coach/session" element={<CoachSession />} />
                       <Route path="/coach/homework" element={<CoachHomeworkReview />} />
                       <Route path="/coach/crm-audit" element={<CoachCrmAudit />} />
                       <Route path="/coach/support" element={<CoachCloudSupport />} />
-
-                      {/* Perfil */}
                       <Route path="/coach/profile" element={<UserProfile />} />
                     </Route>
                   </Route>
 
-                  {/* ==========================================
-                      RUTAS DE ADMINISTRADORES (Role: admin)
-                  ========================================== */}
+                  {/* RUTAS DE ADMIN */}
                   <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
                     <Route element={<DashboardLayout title="Control total" />}>
                       <Route path="/admin" element={<AdminMonitor />} />
                     </Route>
                   </Route>
 
-                  {/* ==========================================
-                      RUTAS DE HR B2B (Role: hr_admin)
-                  ========================================== */}
+                  {/* RUTAS DE HR */}
                   <Route element={<ProtectedRoute allowedRoles={['hr_admin']} />}>
                     <Route element={<DashboardLayout title="Portal Empresa" />}>
                       <Route path="/hr" element={<HRDashboard />} />
@@ -158,8 +193,6 @@ export default function App() {
                   </Route>
                 </Route>
               </Routes>
-
-              {/* Monitor de rendimiento */}
               <PerformanceMonitor />
             </Suspense>
           </BrowserRouter>
