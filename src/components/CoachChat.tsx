@@ -5,7 +5,7 @@ import { MessageSquare, Send, User, Users, Search, ChevronRight, GraduationCap, 
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 
-export function CoachChat() {
+export function CoachChat({ className }: { className?: string }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState('');
@@ -208,7 +208,7 @@ export function CoachChat() {
   });
 
   return (
-    <div className="bg-white/60 backdrop-blur-xl border border-white/80 rounded-[40px] shadow-xl overflow-hidden h-[750px] flex flex-col md:flex-row">
+    <div className={cn("bg-white/60 backdrop-blur-xl border border-white/80 rounded-[40px] shadow-xl overflow-hidden h-[750px] flex flex-col md:flex-row", className)}>
       
       {/* LEFT COLUMN: Student Roster */}
       <div className="w-full md:w-[350px] border-r border-slate-200/60 flex flex-col bg-slate-50/30">
