@@ -12,7 +12,7 @@ import { CoachBooksView } from './CoachBooksView';
 import { CoachHomeworkReview } from './CoachHomeworkReview';
 import { CoachCrmAudit } from './CoachCrmAudit';
 import { CoachCloudSupport } from './CoachCloudSupport';
-import { MessageSquare, Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight, Award } from 'lucide-react';
+import { MessageSquare, Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight, Award, ArrowLeft, Plus } from 'lucide-react';
 import CertificateGenerator from '@/src/components/CertificateGenerator';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { RichTextEditor } from '@/src/components/RichTextEditor';
@@ -3505,16 +3505,18 @@ export function CoachCourses() {
   const [profile, setProfile] = useState<any>(null);
   const [courses, setCourses] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
+  const [activeCourseStudentsId, setActiveCourseStudentsId] = useState<string | null>(null);
   
   // Form State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState(0);
   const [bannerUrl, setBannerUrl] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
   const [editingCourse, setEditingCourse] = useState<any | null>(null);
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [showForm, setShowForm] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -3550,6 +3552,7 @@ export function CoachCourses() {
         toastSuccess("Inscripción rechazada con éxito.");
       }
       fetchPendingRequests();
+      fetchCourses();
     } catch (error: any) {
       console.error("Error updating enrollment status:", error);
       setErrorMsg("No se pudo procesar la acción: " + error.message);
@@ -3563,6 +3566,11 @@ export function CoachCourses() {
       const q = query(collection(db, 'courses'), where('coachId', '==', user.uid));
       const snap = await getDocs(q);
       setCourses(snap.docs.map(d => ({id: d.id, ...d.data()})));
+
+      // Fetch all enrollments for this coach
+      const eq = query(collection(db, 'enrollments'), where('coachId', '==', user.uid));
+      const esnap = await getDocs(eq);
+      setEnrollments(esnap.docs.map(d => ({id: d.id, ...d.data()})));
     } catch(e) {
       console.error(e);
     }
@@ -3571,12 +3579,12 @@ export function CoachCourses() {
   const isApproved = profile?.approvalStatus === 'approved';
 
   const handleCancel = () => {
-    setIsCreating(false);
     setEditingCourse(null);
     setTitle('');
     setDescription('');
     setPrice(0);
     setBannerUrl('');
+    setShowForm(false);
   };
 
   const handleEditClick = (course: any) => {
@@ -3585,12 +3593,12 @@ export function CoachCourses() {
     setDescription(course.description || '');
     setPrice(course.price || 0);
     setBannerUrl(course.bannerUrl || '');
-    setIsCreating(false);
+    setShowForm(true);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !isApproved) return;
+    if (!user) return;
     try {
       await addDoc(collection(db, 'courses'), {
         title,
@@ -3598,6 +3606,7 @@ export function CoachCourses() {
         price: Number(price),
         bannerUrl,
         coachId: user.uid,
+        coachName: profile?.name || 'Kira Coach',
         status: 'published',
         createdAt: new Date()
       });
@@ -3606,14 +3615,14 @@ export function CoachCourses() {
       toastSuccess("Curso creado exitosamente.");
     } catch(e) {
       console.error(e);
-      setErrorMsg('Error creando curso. Asegúrate de estar aprobado.');
+      setErrorMsg('Error creando curso. Intenta de nuevo.');
       setTimeout(() => setErrorMsg(''), 5000);
     }
   };
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !isApproved || !editingCourse) return;
+    if (!user || !editingCourse) return;
     try {
       await updateDoc(doc(db, 'courses', editingCourse.id), {
         title,
@@ -3673,43 +3682,60 @@ export function CoachCourses() {
     }
   };
 
-  if (!isApproved) {
-    return (
-      <div className="bg-white rounded-xl border border-slate-200 p-8 text-center animate-in zoom-in-95">
-        <h2 className="text-lg font-bold text-slate-800 mb-2 tracking-tight">Acceso Restringido</h2>
-        <p className="text-sm text-slate-500">Debes ser aprobado por un administrador antes de subir cursos.</p>
-      </div>
-    );
-  }
+  const toggleShowStudents = (courseId: string) => {
+    if (activeCourseStudentsId === courseId) {
+      setActiveCourseStudentsId(null);
+    } else {
+      setActiveCourseStudentsId(courseId);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in">
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl border border-slate-200 gap-4 shadow-sm">
         <div>
-          <h2 className="text-lg font-bold text-slate-900 tracking-tight">Mis Cursos</h2>
-          <p className="text-[13px] text-slate-500 mt-0.5">Gestiona tu contenido y material educativo.</p>
+          <h2 className="text-lg font-bold text-slate-900 tracking-tight">Studio de Cursos</h2>
+          <p className="text-[13px] text-slate-500 mt-0.5">Diseña programas académicos, gestiona inscripciones de alumnos en tiempo real y define el valor.</p>
         </div>
-        <button 
-          onClick={() => {
-            if (isCreating || editingCourse) {
-              handleCancel();
-            } else {
-              setIsCreating(true);
-            }
-          }}
-          className={cn(
-            "px-6 py-2.5 rounded-xl text-[12px] font-bold shadow-md transition-all active:scale-95",
-            (isCreating || editingCourse)
-              ? "bg-slate-100 text-slate-600 shadow-none" 
-              : "bg-primary text-white shadow-primary/10 hover:shadow-primary/20"
-          )}
-        >
-          {(isCreating || editingCourse) ? 'Cancelar' : 'Crear Nuevo Curso'}
-        </button>
+        {!showForm ? (
+          <button
+            onClick={() => {
+              setEditingCourse(null);
+              setTitle('');
+              setDescription('');
+              setPrice(0);
+              setBannerUrl('');
+              setShowForm(true);
+            }}
+            className="px-5 py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer shrink-0"
+          >
+            <Plus size={16} /> Crear Nuevo Curso
+          </button>
+        ) : (
+          <button
+            onClick={handleCancel}
+            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0"
+          >
+            <ArrowLeft size={16} /> Volver a Programas
+          </button>
+        )}
       </div>
 
+      {!isApproved && (
+        <div className="p-6 bg-gradient-to-r from-amber-500/10 to-indigo-500/10 border border-slate-200 rounded-[32px] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in slide-in-from-top-4">
+          <div className="flex items-center gap-3">
+            <Sparkles className="text-amber-500 shrink-0" size={24} />
+            <div>
+              <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider">Modo de Demostración Activo</h4>
+              <p className="text-xs text-slate-500 mt-0.5 font-medium">Tu cuenta está bajo revisión académica por Kira Moreno. Explora todas las herramientas con funciones simuladas de alta fidelidad.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {errorMsg && (
-        <div className="mb-4 p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-sm font-bold flex items-center gap-2">
+        <div className="p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-sm font-bold flex items-center gap-2 animate-in fade-in">
           <AlertTriangle size={18} /> {errorMsg}
         </div>
       )}
@@ -3717,7 +3743,7 @@ export function CoachCourses() {
       {pendingRequests.length > 0 && (
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm animate-in fade-in">
           <div className="flex items-center gap-2.5 mb-5">
-            <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold shadow-sm">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-sm">
               <Clock size={18} />
             </div>
             <div>
@@ -3757,7 +3783,7 @@ export function CoachCourses() {
                     <div className="flex items-center gap-2 shrink-0 md:ml-4">
                       <button
                         onClick={() => handleEnrollmentAction(req.id, 'rejected')}
-                        className="px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                        className="px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
                       >
                         Rechazar
                       </button>
@@ -3776,98 +3802,286 @@ export function CoachCourses() {
         </div>
       )}
 
-      {(isCreating || editingCourse) && (
-        <form onSubmit={editingCourse ? handleUpdate : handleCreate} className="bg-white p-8 rounded-2xl border border-slate-200 shadow-lg animate-in slide-in-from-top-4 duration-300">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold text-slate-900 text-base tracking-tight">
-              {editingCourse ? 'Editar Curso' : 'Diseño de Curriculum'}
-            </h3>
-            <button 
-               type="button"
-               disabled={isAiGenerating}
-               onClick={generateAiContent}
-               className="px-4 py-2 bg-gradient-to-r from-kirateal to-kirateal-light text-white rounded-xl text-[11px] font-bold flex items-center gap-2 hover:scale-105 transition-all disabled:opacity-50 shadow-md shadow-kirateal/10"
-             >
-               {isAiGenerating ? <Loader2 size={13} className="animate-spin"/> : <Sparkles size={13}/>}
-               {isAiGenerating ? "Generando..." : "Asistente Kira AI"}
-             </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
-            <div className="md:col-span-2">
-              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Título del Curso</label>
-              <input required value={title} onChange={e=>setTitle(e.target.value)} type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none" placeholder="Ej: Maestría en Inteligencia Emocional" />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Inversión Alumno ($)</label>
-              <input required value={price} onChange={e=>setPrice(Number(e.target.value))} type="number" min="0" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none" />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Cover Image</label>
-              <MediaUpload 
-                onUploadComplete={(url) => setBannerUrl(url)}
-                folderPath={`courses/${user?.uid}`}
-                currentMedia={bannerUrl}
-                label="Subir Cover"
-                accept="image/*"
-              />
-              <input value={bannerUrl} onChange={e=>setBannerUrl(e.target.value)} type="text" placeholder="O URL externa..." className="w-full mt-2 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none" />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Propuesta de Valor (Descripción)</label>
-              <textarea required value={description} onChange={e=>setDescription(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none h-32 resize-none" placeholder="¿Qué lograrán tus alumnos?" />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3">
-            <button 
-              type="button" 
-              onClick={handleCancel} 
-              className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all active:scale-95"
-            >
-              Cancelar
-            </button>
-            <button type="submit" className="px-8 py-3 bg-kirateal text-white rounded-xl font-bold shadow-lg shadow-kirateal/20 hover:bg-kirateal-dark hover:shadow-xl transition-all active:scale-95">
-              {editingCourse ? 'Guardar Cambios' : 'Publicar Programa'}
-            </button>
-          </div>
-        </form>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {courses.map(c => (
-          <div key={c.id} className="bg-white rounded-3xl border border-slate-200 overflow-hidden flex flex-col shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all hover:-translate-y-1 group">
-            <div className="relative h-40 overflow-hidden">
-               <img src={c.bannerUrl || `https://picsum.photos/seed/${c.title}/800/400`} alt="Banner" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-               <div className="absolute top-4 right-4 px-2 py-1 bg-white/90 backdrop-blur rounded-lg text-[10px] font-bold text-slate-800 uppercase shadow-sm">
-                  {c.status}
-               </div>
-            </div>
-            <div className="p-6 flex-1 flex flex-col">
-              <h3 className="font-bold text-slate-900 text-[16px] mb-1 leading-tight tracking-tight">{c.title}</h3>
-              <p className="text-[14px] text-primary font-extrabold mb-3">${c.price}</p>
-              <p className="text-[12px] text-slate-500 line-clamp-2 mb-6 flex-1 leading-relaxed">{c.description}</p>
-              <div className="flex justify-between items-center pt-4 border-t border-slate-50">
-                <div className="flex items-center gap-1.5 text-slate-400">
-                  <Users size={14} />
-                  <span className="text-[11px] font-bold">12 Alumnos</span>
+      {/* Dynamic Content: Form Page vs. List Grid */}
+      {showForm ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in duration-300">
+          {/* LEFT COLUMN: THE FORM */}
+          <div className="lg:col-span-8 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 pb-6 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-kirateal/5 text-kirateal flex items-center justify-center font-bold">
+                  <GraduationCap size={24} />
                 </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                    {editingCourse ? 'Editar Programa Educativo' : 'Registrar Nuevo Programa'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">Define la estructura académica y la inversión de tu curso.</p>
+                </div>
+              </div>
+              <button 
+                 type="button"
+                 disabled={isAiGenerating}
+                 onClick={generateAiContent}
+                 className="px-4 py-2 bg-gradient-to-r from-kirateal to-kirateal-light text-white rounded-xl text-[10px] font-bold flex items-center gap-1.5 hover:scale-105 transition-all disabled:opacity-50 shadow-md shadow-kirateal/10 cursor-pointer self-start sm:self-auto"
+               >
+                 {isAiGenerating ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>}
+                 {isAiGenerating ? "Generando..." : "Asistente Kira AI"}
+               </button>
+            </div>
+
+            <form onSubmit={editingCourse ? handleUpdate : handleCreate} className="flex flex-col gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Título del Curso</label>
+                  <input 
+                    required 
+                    value={title} 
+                    onChange={e=>setTitle(e.target.value)} 
+                    type="text" 
+                    className="w-full bg-slate-50 border border-slate-150 rounded-2xl px-4 py-3 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-kirateal/20 transition-all outline-none" 
+                    placeholder="Ej: Maestría en Rendimiento Ontológico" 
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Inversión Alumno ($ USD)</label>
+                  <input 
+                    required 
+                    value={price} 
+                    onChange={e=>setPrice(Number(e.target.value))} 
+                    type="number" 
+                    min="0" 
+                    className="w-full bg-slate-50 border border-slate-150 rounded-2xl px-4 py-3 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-kirateal/20 transition-all outline-none" 
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1 px-1">Cover del Curso (Portada)</label>
+                <p className="text-[10px] text-slate-400 mb-2 px-1">Sube una portada desde tu dispositivo o ingresa una dirección web.</p>
+                
+                <MediaUpload 
+                  onUploadComplete={(url) => setBannerUrl(url)}
+                  folderPath={`courses/${user?.uid}`}
+                  currentMedia={bannerUrl}
+                  label="Subir desde Dispositivo"
+                  accept="image/*"
+                  className="w-full animate-in fade-in"
+                />
+                
+                <div className="mt-3">
+                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">O Dirección Web (URL)</label>
+                  <input 
+                    value={bannerUrl} 
+                    onChange={e=>setBannerUrl(e.target.value)} 
+                    type="text" 
+                    placeholder="https://images.unsplash.com/photo-..." 
+                    className="w-full bg-slate-50 border border-slate-150 rounded-2xl px-4 py-3 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-kirateal/20 transition-all outline-none" 
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Descripción del Programa</label>
+                <textarea 
+                  required 
+                  value={description} 
+                  onChange={e=>setDescription(e.target.value)} 
+                  className="w-full bg-slate-50 border border-slate-150 rounded-2xl px-4 py-3 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-kirateal/20 transition-all outline-none h-48 resize-none leading-relaxed" 
+                  placeholder="Describe brevemente el contenido y qué aprenderán tus alumnos en este programa..." 
+                />
+              </div>
+
+              <div className="flex gap-4 pt-4 border-t border-slate-150">
                 <button 
-                  onClick={() => handleEditClick(c)}
-                  className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
+                  type="button" 
+                  onClick={handleCancel} 
+                  className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 cursor-pointer"
                 >
-                   Editar <ChevronRight size={14} />
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-grow py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-kirateal transition-all active:scale-95 shadow-md cursor-pointer"
+                >
+                  {editingCourse ? 'Guardar Cambios' : 'Publicar Programa'}
                 </button>
               </div>
+            </form>
+          </div>
+
+          {/* RIGHT COLUMN: TIPS */}
+          <div className="lg:col-span-4 flex flex-col gap-6">
+            <div className="bg-gradient-to-br from-slate-900 to-slate-950 text-white p-8 rounded-[32px] shadow-lg relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-kirateal/10 rounded-full blur-3xl" />
+              <h4 className="text-xs font-black text-kirateal-light uppercase tracking-widest mb-4">Ayuda de Kira AI</h4>
+              <p className="text-xs text-slate-300 leading-relaxed font-medium mb-6">
+                ¿No estás seguro de cómo describir tu curso o estructurar el temario? Escribe una idea general o un título tentativo y haz clic en el botón <strong>Asistente Kira AI</strong> en el formulario.
+              </p>
+              <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/10">
+                <Sparkles className="text-kirateal shrink-0 animate-pulse" size={20} />
+                <div className="text-[11px] text-slate-300 leading-normal font-medium">
+                  Kira AI generará una descripción persuasiva y un temario estructurado de 5 módulos en segundos.
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
+              <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Prácticas Recomendadas</h4>
+              <ul className="flex flex-col gap-4">
+                <li className="flex gap-3">
+                  <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 font-bold text-xs animate-in zoom-in">1</div>
+                  <div className="text-xs text-slate-600 leading-normal font-medium">
+                    <strong className="text-slate-800">Define tu audiencia:</strong> Sé claro sobre a quién va dirigido tu programa educativo.
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 font-bold text-xs animate-in zoom-in">2</div>
+                  <div className="text-xs text-slate-600 leading-normal font-medium">
+                    <strong className="text-slate-800">Pon un precio justo:</strong> Puedes modificar el valor de inscripción en cualquier momento.
+                  </div>
+                </li>
+                <li className="flex gap-3">
+                  <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 font-bold text-xs animate-in zoom-in">3</div>
+                  <div className="text-xs text-slate-600 leading-normal font-medium">
+                    <strong className="text-slate-800">Portada de alta calidad:</strong> Usa imágenes profesionales para un diseño óptimo.
+                  </div>
+                </li>
+              </ul>
             </div>
           </div>
-        ))}
-        {courses.length === 0 && !isCreating && !editingCourse && (
-          <div className="col-span-full text-center py-20 bg-slate-50/50 rounded-3xl border-2 border-dashed border-slate-200">
-             <BookOpen size={48} className="mx-auto text-slate-200 mb-4" />
-             <p className="text-slate-400 font-medium text-sm">Aún no has diseñado ningún curso.</p>
-             <button onClick={() => setIsCreating(true)} className="mt-4 text-primary font-bold text-xs uppercase tracking-widest hover:underline">Comenzar ahora</button>
+        </div>
+      ) : (
+        /* LIST VIEW */
+        <div className="flex flex-col gap-6 animate-in fade-in duration-300">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Mis Programas Activos ({courses.length})</h3>
           </div>
-        )}
-      </div>
+
+          {courses.length === 0 ? (
+            <div className="text-center py-20 bg-slate-50 rounded-[32px] border-2 border-dashed border-slate-200 p-8 flex flex-col items-center">
+               <BookOpen size={48} className="text-slate-300 mb-4" />
+               <p className="text-slate-500 font-bold text-base">Aún no has diseñado ningún programa.</p>
+               <p className="text-slate-400 text-xs mt-1 mb-6">Comienza hoy mismo publicando tu primer curso académico.</p>
+               <button
+                 onClick={() => {
+                   setEditingCourse(null);
+                   setTitle('');
+                   setDescription('');
+                   setPrice(0);
+                   setBannerUrl('');
+                   setShowForm(true);
+                 }}
+                 className="px-6 py-3 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+               >
+                 <Plus size={16} /> Diseñar Primer Curso
+               </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {courses.map(c => {
+                const courseEnrollments = enrollments.filter(e => e.courseId === c.id);
+                const isShowingStudents = activeCourseStudentsId === c.id;
+
+                return (
+                  <div key={c.id} className="bg-white rounded-[32px] border border-slate-200 overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-all duration-300">
+                    <div className="relative h-44 overflow-hidden bg-slate-100 shrink-0">
+                       <img 
+                         src={c.bannerUrl || `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800`} 
+                         alt={c.title} 
+                         className="w-full h-full object-cover" 
+                         referrerPolicy="no-referrer"
+                       />
+                       <div className="absolute top-4 left-4 px-2.5 py-1 bg-white/90 backdrop-blur-md rounded-xl text-[9px] font-black text-slate-800 uppercase tracking-wider shadow-sm border border-slate-100">
+                          {c.status || 'Publicado'}
+                       </div>
+                       <div className="absolute top-4 right-4 px-2.5 py-1 bg-kirateal text-white rounded-xl text-[10px] font-black shadow-md">
+                          ${c.price} USD
+                       </div>
+                    </div>
+
+                    <div className="p-6 flex-1 flex flex-col">
+                      <h3 className="font-sans font-black text-slate-900 text-base mb-2 leading-snug">{c.title}</h3>
+                      <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed mb-6 flex-1 font-medium">
+                        {c.description}
+                      </p>
+
+                      <div className="pt-4 border-t border-slate-100 flex flex-col gap-4 mt-auto">
+                        <div className="flex items-center justify-between">
+                          <button
+                            onClick={() => toggleShowStudents(c.id)}
+                            className="flex items-center gap-1.5 text-slate-500 hover:text-kirateal transition-colors cursor-pointer text-[11px] font-bold text-left"
+                          >
+                            <Users size={14} className="text-kirateal shrink-0" />
+                            <span>{courseEnrollments.length} {courseEnrollments.length === 1 ? 'Alumno' : 'Alumnos'}</span>
+                            <span className="text-[9px] text-slate-400 font-normal ml-0.5">
+                              ({isShowingStudents ? 'Ocultar' : 'Ver Lista'})
+                            </span>
+                          </button>
+
+                          <button 
+                            onClick={() => handleEditClick(c)}
+                            className="text-[11px] font-black text-slate-900 uppercase tracking-widest hover:text-kirateal transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                             Editar <ChevronRight size={14} />
+                          </button>
+                        </div>
+
+                        {/* COLLAPSIBLE ENROLLED STUDENTS LIST */}
+                        {isShowingStudents && (
+                          <div className="mt-2 pt-4 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2 duration-300">
+                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                              <GraduationCap size={13} className="text-kirateal" /> Alumnos Inscritos ({courseEnrollments.length})
+                            </h4>
+                            
+                            {courseEnrollments.length === 0 ? (
+                              <p className="text-[11px] text-slate-400 italic py-2">
+                                Aún no hay alumnos inscritos en este programa.
+                              </p>
+                            ) : (
+                              <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
+                                {courseEnrollments.map(st => (
+                                  <div key={st.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <div className="w-7 h-7 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-[10px] font-black text-slate-600 uppercase shrink-0">
+                                        {st.studentName?.[0] || 'A'}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="text-[11px] font-black text-slate-800 truncate leading-tight">{st.studentName || 'Alumno'}</p>
+                                        <p className="text-[9px] text-slate-400 truncate leading-none mt-0.5">{st.studentEmail}</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <div className="text-[10px] text-slate-500 font-bold">{st.progress || 0}%</div>
+                                      {st.status === 'pending' ? (
+                                        <button
+                                          onClick={() => handleEnrollmentAction(st.id, 'approved')}
+                                          className="px-2 py-1 bg-emerald-500 text-white text-[9px] font-black rounded-lg hover:bg-emerald-600 transition shadow-sm cursor-pointer"
+                                        >
+                                          Autorizar
+                                        </button>
+                                      ) : (
+                                        <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[8px] font-bold rounded uppercase tracking-wider border border-emerald-100">
+                                          Activo
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
