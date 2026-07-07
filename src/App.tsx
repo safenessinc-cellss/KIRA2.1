@@ -93,7 +93,7 @@ export default function App() {
                   </Route>
     
                   {/* Coaches */}
-                  <Route element={<ProtectedRoute allowedRoles={['coach']} />}>
+                  <Route element={<ProtectedRoute allowedRoles={['coach', 'admin']} />}>
                     <Route element={<DashboardLayout title="Panel de Coach" />}>
                       <Route path="/coach" element={<CoachDashboard />} />
                       <Route path="/coach/courses" element={<CoachCourses />} />
