@@ -1,4 +1,6 @@
+import "dotenv/config";
 import express from "express";
+import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import Stripe from "stripe";
@@ -8,6 +10,15 @@ import compression from "compression";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Helper to validate if an API Key is loaded and is not a placeholder
+function isValidGeminiKey(key: any): boolean {
+  if (!key || typeof key !== 'string') return false;
+  const trimmed = key.trim();
+  if (trimmed === '' || trimmed === 'undefined' || trimmed === 'null') return false;
+  if (trimmed.includes('MY_GEMINI_API_KEY') || trimmed === 'MY_GEMINI_API_KEY') return false;
+  return true;
+}
 
 // Simple Memory Cache for backend optimizations
 interface CacheEntry {
@@ -49,8 +60,8 @@ let geminiClient: GoogleGenAI | null = null;
 function getGeminiAI() {
   if (!geminiClient) {
     const key = process.env.GEMINI_API_KEY;
-    if (!key || key === "MY_GEMINI_API_KEY" || key.trim() === "" || key.includes("YOUR_")) {
-      throw new Error("La clave de API de Gemini (GEMINI_API_KEY) no está configurada. Por favor, agrégala en el panel de Settings > Secrets de AI Studio.");
+    if (!isValidGeminiKey(key)) {
+      throw new Error("GEMINI_API_KEY is not defined or is a placeholder in environment variables. Please add a real key under Settings > Secrets.");
     }
     geminiClient = new GoogleGenAI({
       apiKey: key,
@@ -80,19 +91,17 @@ app.get("/api/health", (req, res) => {
 
 // Endpoint to verify Gemini configuration
 app.get("/api/gemini/config", (req, res) => {
-  const key = process.env.GEMINI_API_KEY;
-  const configured = !!key && key !== "MY_GEMINI_API_KEY" && key.trim() !== "" && !key.includes("YOUR_");
-  res.json({ configured });
+  res.json({ configured: isValidGeminiKey(process.env.GEMINI_API_KEY) });
 });
 
 // Gemini Content Generation Proxy with Cache, Retry and Timeout logic
 app.post("/api/gemini/generate", async (req, res) => {
   try {
     const key = process.env.GEMINI_API_KEY;
-    if (!key || key === "MY_GEMINI_API_KEY" || key.trim() === "" || key.includes("YOUR_")) {
+    if (!isValidGeminiKey(key)) {
       return res.status(412).json({
         error: "GEMINI_API_KEY_MISSING",
-        message: "La clave de API de Gemini no está configurada en las variables de entorno del servidor. Por favor, añádela en Settings > Secrets."
+        message: "La clave de API de Gemini (GEMINI_API_KEY) no está configurada o es inválida en el servidor. Por favor, ve a la pestaña 'Settings > Secrets' en la esquina superior derecha de AI Studio y agrega una clave de API válida para activar los mentores e Inteligencia de Sesión."
       });
     }
 
@@ -107,7 +116,7 @@ app.post("/api/gemini/generate", async (req, res) => {
     }
 
     // Map models to ensure we use supported models
-    let mappedModel = model || "gemini-2.5-flash";
+    let mappedModel = model || "gemini-3.5-flash";
     const deprecatedModels = [
       "gemini-1.5-flash",
       "gemini-1.5-pro",
@@ -116,10 +125,10 @@ app.post("/api/gemini/generate", async (req, res) => {
       "gemini-2.0-pro",
       "gemini-2.0-flash-thinking",
       "gemini-3-flash-preview",
-      "gemini-3.5-flash"
+      "gemini-2.5-flash"
     ];
     if (deprecatedModels.includes(mappedModel)) {
-      mappedModel = "gemini-2.5-flash";
+      mappedModel = "gemini-3.5-flash";
     }
 
     const ai = getGeminiAI();
@@ -197,7 +206,8 @@ app.post("/api/create-checkout-session", async (req, res) => {
       });
       return res.json({ url: session.url });
     } catch (e: any) {
-      console.error("Stripe Session Error, falling back to mock mode:", e);
+      console.error("Stripe Session Error:", e);
+      return res.status(500).json({ error: e.message });
     }
   }
 
@@ -206,7 +216,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
   
   const redirectUrl = type === 'coach_membership' 
     ? `/coach?success=true&type=coach_membership&amount=${amount}`
-    : `/dashboard?success=true&courseId=${courseId || ''}&amount=${amount}&title=${encodeURIComponent(title)}&type=${type}`;
+    : `/dashboard?success=true&courseId=${courseId}&amount=${amount}&title=${encodeURIComponent(title)}`;
 
   res.json({ 
     url: redirectUrl,
@@ -219,7 +229,6 @@ async function startLocalServer() {
   
   // Vite integration
   if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { 
         middlewareMode: true,
