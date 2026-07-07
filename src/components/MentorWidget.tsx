@@ -2,16 +2,14 @@ import { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, getDocs, limit, orderBy, doc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
-import { GoogleGenAI } from "@google/genai";
 import { Sparkles, GraduationCap, Loader2, ThumbsUp, ThumbsDown, MessageSquare, CheckCircle2 } from 'lucide-react';
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export function MentorWidget() {
   const { user } = useAuth();
   const [recommendation, setRecommendation] = useState<string>('');
   const [suggestedCourses, setSuggestedCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string>('');
   const [feedbackState, setFeedbackState] = useState<'none'|'rating'|'commenting'|'done'>('none');
   const [feedbackComment, setFeedbackComment] = useState('');
   const [currentRating, setCurrentRating] = useState<'positive'|'negative'|null>(null);
@@ -111,13 +109,21 @@ export function MentorWidget() {
         { "message": "tu consejo detallado y ultra-personalizado", "suggestedCourseIds": ["ID1", "ID2"] }
       `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: "gemini-3.5-flash",
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        })
       });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.message || data.error || 'No se pudo conectar con el mentor de IA.');
+      }
 
-      const result = JSON.parse(response.text || '{}');
+      const result = JSON.parse(data.text || '{}');
       setRecommendation(result.message);
       
       const suggested = allCourses.filter(c => result.suggestedCourseIds?.includes(c.id));
@@ -131,9 +137,11 @@ export function MentorWidget() {
         }
       });
       setFeedbackState('rating');
+      setErrorMsg('');
 
-    } catch (err) {
+    } catch (err: any) {
       console.error('Mentor Error:', err);
+      setErrorMsg(err.message || 'Ocurrió un error inesperado al conectar con el mentor de IA.');
     } finally {
       setLoading(false);
     }
@@ -170,6 +178,24 @@ export function MentorWidget() {
     <div className="bg-white p-6 rounded-2xl border border-slate-200 animate-pulse flex flex-col items-center justify-center gap-4 text-slate-400">
       <Loader2 className="animate-spin" size={32} />
       <p className="text-sm font-medium">Kira Mentor está analizando tu progreso...</p>
+    </div>
+  );
+
+  if (errorMsg) return (
+    <div className="bg-rose-50 border border-rose-200 p-6 rounded-2xl flex flex-col gap-3">
+      <div className="flex items-center gap-2 text-rose-600">
+        <Sparkles size={20} className="fill-current" />
+        <h3 className="font-extrabold text-xs uppercase tracking-wider">Kira AI Mentor - Inactivo</h3>
+      </div>
+      <p className="text-xs text-rose-700 leading-relaxed font-semibold">
+        {errorMsg}
+      </p>
+      <button 
+        onClick={() => { setErrorMsg(''); generateRecommendations(); }}
+        className="self-start text-[10px] uppercase tracking-widest bg-rose-600 hover:bg-rose-700 text-white font-black px-4 py-2 rounded-xl transition-all"
+      >
+        Reintentar conexión
+      </button>
     </div>
   );
 
