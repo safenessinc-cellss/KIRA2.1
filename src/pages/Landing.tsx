@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Navigate } from 'react-router-dom';
 import { Logo } from '../components/Brand';
-import { LogIn, ArrowRight, ShieldCheck, Activity, Users, BrainCircuit, Globe, BarChart3, Star, DownloadCloud, Award, User, Instagram, Linkedin, Twitter, BadgeCheck, MessageCircleHeart, X, Send, Loader2, HeartPulse, FileText, Search, Zap, Wind, Heart, Target, Tag, Calendar, Ticket, Sparkles, Trophy, BookOpen, ExternalLink } from 'lucide-react';
+import { LogIn, ArrowRight, ShieldCheck, Activity, Users, BrainCircuit, Globe, BarChart3, Star, DownloadCloud, Award, User, Instagram, Linkedin, Twitter, BadgeCheck, MessageCircleHeart, X, Send, Loader2, HeartPulse, FileText, Search, Zap, Wind, Heart, Target, Tag, Calendar, Ticket, Sparkles, Trophy, BookOpen, ExternalLink, GraduationCap } from 'lucide-react';
 import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, getDoc } from 'firebase/firestore';
