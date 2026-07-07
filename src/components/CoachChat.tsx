@@ -208,10 +208,10 @@ export function CoachChat({ className }: { className?: string }) {
   });
 
   return (
-    <div className={cn("bg-white/60 backdrop-blur-xl border border-white/80 rounded-[40px] shadow-xl overflow-hidden h-[480px] flex flex-col md:flex-row", className)}>
+    <div className={cn("bg-white/60 backdrop-blur-xl border border-white/80 rounded-[40px] shadow-xl overflow-hidden h-[500px] flex flex-col", className)}>
       
       {/* LEFT COLUMN: Student Roster */}
-      <div className={cn("w-full md:w-[350px] border-r border-slate-200/60 flex flex-col bg-slate-50/30 h-full", selectedStudent ? "hidden md:flex" : "flex")}>
+      <div className={cn("w-full flex flex-col bg-slate-50/30 h-full", selectedStudent ? "hidden" : "flex")}>
         {/* Search Header */}
         <div className="p-6 border-b border-slate-200/60 bg-white/40">
           <h2 className="text-xl font-black text-slate-900 tracking-tight mb-4 flex items-center gap-2">
@@ -325,23 +325,23 @@ export function CoachChat({ className }: { className?: string }) {
       </div>
 
       {/* RIGHT COLUMN: Chat Area */}
-      <div className={cn("flex-1 flex flex-col bg-white h-full", selectedStudent ? "flex" : "hidden md:flex")}>
+      <div className={cn("w-full flex flex-col bg-white h-full", selectedStudent ? "flex" : "hidden")}>
         {selectedStudent ? (
           <>
             {/* Chat Pane Header */}
-            <div className="p-4 md:p-6 border-b border-slate-200/60 bg-slate-50/50 flex items-center justify-between">
-              <div className="flex items-center gap-3.5">
-                {/* Back button shown on mobile/tablet */}
+            <div className="p-4 md:p-6 border-b border-slate-200/60 bg-slate-50/50 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                {/* Back button shown on all screen sizes */}
                 <button
                   type="button"
                   onClick={() => setSelectedStudent(null)}
-                  className="md:hidden p-2 -ml-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all flex items-center gap-1 font-bold text-xs shrink-0"
+                  className="px-3 py-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all flex items-center gap-1 font-bold text-xs shrink-0 border border-slate-200/80 bg-white shadow-sm cursor-pointer"
                   aria-label="Volver a la lista"
                 >
-                  <ArrowLeft size={16} />
+                  <ArrowLeft size={14} className="text-indigo-600" />
                   <span>Volver</span>
                 </button>
-                <div className="w-12 h-12 rounded-2xl overflow-hidden shrink-0 border border-slate-200/60 bg-slate-100 shadow-sm">
+                <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-slate-200 bg-slate-100 shadow-sm">
                   <img 
                     src={selectedStudent.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${selectedStudent.displayName || 'U'}`} 
                     alt="" 
@@ -349,26 +349,28 @@ export function CoachChat({ className }: { className?: string }) {
                     referrerPolicy="no-referrer"
                   />
                 </div>
-                <div>
-                  <h3 className="text-sm font-black text-slate-800 tracking-tight">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-black text-slate-800 tracking-tight truncate">
                     {selectedStudent.displayName || 'Alumno de Kira'}
                   </h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1.5">
-                    <GraduationCap size={12} className="text-indigo-600" /> Alumno Matriculado
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1 truncate">
+                    <GraduationCap size={12} className="text-indigo-600 shrink-0" /> 
+                    <span className="truncate">{selectedStudent.email}</span>
                   </p>
                 </div>
               </div>
               
               {/* Short student status stats */}
-              <div className="hidden lg:flex items-center gap-4 text-right">
-                <div className="border-r border-slate-200 pr-4">
-                  <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">E-mail</span>
-                  <span className="text-xs font-semibold text-slate-700">{selectedStudent.email}</span>
-                </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {selectedStudent.points !== undefined && (
+                  <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
+                    <Sparkles size={11} className="text-amber-500" /> {selectedStudent.points} Pts
+                  </span>
+                )}
                 {selectedStudent.createdAt && (
-                  <div>
-                    <span className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider">Registro</span>
-                    <span className="text-xs font-semibold text-slate-700">
+                  <div className="hidden sm:block text-right">
+                    <span className="block text-[8px] text-slate-400 font-bold uppercase tracking-wider">Registro</span>
+                    <span className="text-[10px] font-semibold text-slate-600">
                       {new Date(selectedStudent.createdAt?.seconds ? selectedStudent.createdAt.seconds * 1000 : selectedStudent.createdAt).toLocaleDateString()}
                     </span>
                   </div>
