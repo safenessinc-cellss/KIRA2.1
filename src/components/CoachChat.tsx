@@ -208,7 +208,7 @@ export function CoachChat({ className }: { className?: string }) {
   });
 
   return (
-    <div className={cn("bg-white/60 backdrop-blur-xl border border-white/80 rounded-[40px] shadow-xl overflow-hidden h-[750px] flex flex-col md:flex-row", className)}>
+    <div className={cn("bg-white/60 backdrop-blur-xl border border-white/80 rounded-[40px] shadow-xl overflow-hidden h-[580px] flex flex-col md:flex-row", className)}>
       
       {/* LEFT COLUMN: Student Roster */}
       <div className="w-full md:w-[350px] border-r border-slate-200/60 flex flex-col bg-slate-50/30">
