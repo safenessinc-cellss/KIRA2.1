@@ -1,4 +1,4 @@
-// src/App.tsx - VERSIÓN CORREGIDA
+// src/App.tsx - CORREGIDO
 
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import React, { useState, useEffect, Suspense } from 'react';
@@ -12,6 +12,33 @@ import { db } from './firebase';
 import { ToastProvider } from './hooks/useToast';
 import { Loader2 } from 'lucide-react';
 import { PerformanceMonitor } from './components/PerformanceMonitor';
+
+// Performance Optimization: Lazy Loading for Code-Splitting heavy chunks
+const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Journal = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Journal })));
+const EliteLibrary = React.lazy(() => import('./pages/EliteLibrary').then(m => ({ default: m.EliteLibrary })));
+const Community = React.lazy(() => import('./pages/Community').then(m => ({ default: m.Community })));
+const AdminMonitor = React.lazy(() => import('./pages/Admin').then(m => ({ default: m.AdminMonitor })));
+
+// ✅ CORRECTO: Importar desde la ruta correcta
+// Coach.tsx está en ./pages/Coach.tsx
+const CoachDashboard = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachDashboard })));
+
+// CoachCourses.tsx está en ./pages/coach/CoachCourses.tsx (si existe)
+// Si no existe, usa ./pages/CoachCourses.tsx
+const CoachCourses = React.lazy(() => import('./pages/coach/CoachCourses').then(m => ({ default: m.CoachCourses })));
+
+// Para los módulos nuevos, importar desde ./pages/coach/
+const CoachSession = React.lazy(() => import('./pages/coach/CoachSession').then(m => ({ default: m.CoachSession })));
+const CoachHomeworkReview = React.lazy(() => import('./pages/coach/CoachHomeworkReview').then(m => ({ default: m.CoachHomeworkReview })));
+const CoachCrmAudit = React.lazy(() => import('./pages/coach/CoachCrmAudit').then(m => ({ default: m.CoachCrmAudit })));
+const CoachCloudSupport = React.lazy(() => import('./pages/coach/CoachCloudSupport').then(m => ({ default: m.CoachCloudSupport })));
+
+const HRDashboard = React.lazy(() => import('./pages/HRDashboard').then(m => ({ default: m.HRDashboard })));
+const UserProfile = React.lazy(() => import('./pages/UserProfile').then(m => ({ default: m.UserProfile })));
+const Microlearning = React.lazy(() => import('./pages/Microlearning').then(m => ({ default: m.Microlearning })));
+
+// ... resto del código igual
 
 // Performance Optimization: Lazy Loading for Code-Splitting heavy chunks
 const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
