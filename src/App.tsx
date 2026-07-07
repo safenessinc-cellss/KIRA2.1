@@ -17,9 +17,15 @@ const Journal = React.lazy(() => import('./pages/Dashboard').then(m => ({ defaul
 const EliteLibrary = React.lazy(() => import('./pages/EliteLibrary').then(m => ({ default: m.EliteLibrary })));
 const Community = React.lazy(() => import('./pages/Community').then(m => ({ default: m.Community })));
 const AdminMonitor = React.lazy(() => import('./pages/Admin').then(m => ({ default: m.AdminMonitor })));
-const CoachDashboard = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachDashboard })));
-const CoachCourses = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachCourses })));
-const SessionIntelligence = React.lazy(() => import('./pages/SessionIntelligence'));
+
+// ✅ IMPORTACIONES CORREGIDAS: Importar cada componente por separado
+const CoachDashboard = React.lazy(() => import('./pages/coach/Coach').then(m => ({ default: m.CoachDashboard })));
+const CoachCourses = React.lazy(() => import('./pages/coach/CoachCourses').then(m => ({ default: m.CoachCourses })));
+const CoachHomeworkReview = React.lazy(() => import('./pages/coach/CoachHomeworkReview').then(m => ({ default: m.CoachHomeworkReview })));
+const CoachCrmAudit = React.lazy(() => import('./pages/coach/CoachCrmAudit').then(m => ({ default: m.CoachCrmAudit })));
+const CoachCloudSupport = React.lazy(() => import('./pages/coach/CoachCloudSupport').then(m => ({ default: m.CoachCloudSupport })));
+const CoachSession = React.lazy(() => import('./pages/coach/CoachSession').then(m => ({ default: m.CoachSession })));
+
 const HRDashboard = React.lazy(() => import('./pages/HRDashboard').then(m => ({ default: m.HRDashboard })));
 const UserProfile = React.lazy(() => import('./pages/UserProfile').then(m => ({ default: m.UserProfile })));
 const Microlearning = React.lazy(() => import('./pages/Microlearning').then(m => ({ default: m.Microlearning })));
@@ -42,7 +48,6 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<any>({ primaryColor: '', secondaryColor: '' });
 
   useEffect(() => {
-    // Only in browser and if db is initialized
     let unsub = () => {};
     try {
       unsub = onSnapshot(doc(db, 'settings', 'website'), (docSnap) => {
@@ -92,12 +97,20 @@ export default function App() {
                     </Route>
                   </Route>
     
-                  {/* Coaches */}
+                  {/* Coaches - RUTAS COMPLETAS */}
                   <Route element={<ProtectedRoute allowedRoles={['coach', 'admin']} />}>
                     <Route element={<DashboardLayout title="Panel de Coach" />}>
+                      {/* Ruta principal del Coach */}
                       <Route path="/coach" element={<CoachDashboard />} />
+                      
+                      {/* Acciones Directas */}
                       <Route path="/coach/courses" element={<CoachCourses />} />
-                      <Route path="/coach/session" element={<SessionIntelligence />} />
+                      <Route path="/coach/session" element={<CoachSession />} />
+                      <Route path="/coach/homework" element={<CoachHomeworkReview />} />
+                      <Route path="/coach/crm-audit" element={<CoachCrmAudit />} />
+                      <Route path="/coach/support" element={<CoachCloudSupport />} />
+                      
+                      {/* Perfil */}
                       <Route path="/coach/profile" element={<UserProfile />} />
                     </Route>
                   </Route>
