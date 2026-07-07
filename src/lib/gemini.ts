@@ -73,7 +73,7 @@ export async function generateGemini(payload: GeminiPayload): Promise<string> {
     try {
       data = JSON.parse(text);
     } catch (e) {
-      throw new Error("La respuesta del servidor no es un JSON válido. Por favor, asegúrate de que el backend se haya desplegado correctamente en Vercel.");
+      throw new Error("La respuesta del servidor no es un JSON válido. Por favor, asegúrate de que tu clave de API de Gemini (GEMINI_API_KEY) esté bien configurada en el panel de 'Settings > Secrets' (en la esquina superior derecha de AI Studio).");
     }
 
     if (data.error) {
