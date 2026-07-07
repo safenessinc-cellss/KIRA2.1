@@ -118,7 +118,17 @@ export function MentorWidget() {
           config: { responseMimeType: "application/json" }
         })
       });
-      const data = await res.json();
+
+      let data: any = {};
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json().catch(() => ({}));
+      } else {
+        if (!res.ok) {
+          throw new Error(`Error de conexión con el backend (Estado HTTP ${res.status}). Por favor, asegúrate de haber configurado tu backend de Vercel.`);
+        }
+      }
+
       if (!res.ok || data.error) {
         throw new Error(data.message || data.error || 'No se pudo conectar con el mentor de IA.');
       }
