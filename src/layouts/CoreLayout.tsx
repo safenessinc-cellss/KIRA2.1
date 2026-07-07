@@ -2,7 +2,7 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { AIChat } from '../components/AIChat';
-import { ChatWidget } from '../components/ChatWidget'; // <-- IMPORTAR
+import { ChatWidget } from '../components/ChatWidget'; // ✅ IMPORTAR
 import { Loader2 } from 'lucide-react';
 import { PushNotificationManager } from '../components/PushNotificationManager';
 
@@ -22,7 +22,7 @@ export function CoreLayout() {
       <PushNotificationManager />
       <Outlet />
       <AIChat />
-      {/* ✅ AGREGAR ChatWidget AQUÍ */}
+      {/* ✅ CHAT WIDGET MONTADO AQUÍ */}
       <ChatWidget />
     </div>
   );
