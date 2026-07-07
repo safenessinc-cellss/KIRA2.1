@@ -1,3 +1,5 @@
+// src/App.tsx - VERSIÓN CORREGIDA
+
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import React, { useState, useEffect, Suspense } from 'react';
 import { CoreLayout, ProtectedRoute } from './layouts/CoreLayout';
@@ -18,13 +20,24 @@ const EliteLibrary = React.lazy(() => import('./pages/EliteLibrary').then(m => (
 const Community = React.lazy(() => import('./pages/Community').then(m => ({ default: m.Community })));
 const AdminMonitor = React.lazy(() => import('./pages/Admin').then(m => ({ default: m.AdminMonitor })));
 
-// ✅ IMPORTACIONES CORREGIDAS: Importar cada componente por separado
+// ✅ CORRECTO: Importar desde los archivos específicos
+// Coach.tsx exporta CoachDashboard como exportación nombrada
 const CoachDashboard = React.lazy(() => import('./pages/coach/Coach').then(m => ({ default: m.CoachDashboard })));
+
+// CoachCourses.tsx exporta CoachCourses como exportación nombrada
 const CoachCourses = React.lazy(() => import('./pages/coach/CoachCourses').then(m => ({ default: m.CoachCourses })));
-const CoachHomeworkReview = React.lazy(() => import('./pages/coach/CoachHomeworkReview').then(m => ({ default: m.CoachHomeworkReview })));
-const CoachCrmAudit = React.lazy(() => import('./pages/coach/CoachCrmAudit').then(m => ({ default: m.CoachCrmAudit })));
-const CoachCloudSupport = React.lazy(() => import('./pages/coach/CoachCloudSupport').then(m => ({ default: m.CoachCloudSupport })));
+
+// CoachSession.tsx exporta CoachSession como exportación nombrada
 const CoachSession = React.lazy(() => import('./pages/coach/CoachSession').then(m => ({ default: m.CoachSession })));
+
+// CoachHomeworkReview.tsx exporta CoachHomeworkReview como exportación nombrada
+const CoachHomeworkReview = React.lazy(() => import('./pages/coach/CoachHomeworkReview').then(m => ({ default: m.CoachHomeworkReview })));
+
+// CoachCrmAudit.tsx exporta CoachCrmAudit como exportación nombrada
+const CoachCrmAudit = React.lazy(() => import('./pages/coach/CoachCrmAudit').then(m => ({ default: m.CoachCrmAudit })));
+
+// CoachCloudSupport.tsx exporta CoachCloudSupport como exportación nombrada
+const CoachCloudSupport = React.lazy(() => import('./pages/coach/CoachCloudSupport').then(m => ({ default: m.CoachCloudSupport })));
 
 const HRDashboard = React.lazy(() => import('./pages/HRDashboard').then(m => ({ default: m.HRDashboard })));
 const UserProfile = React.lazy(() => import('./pages/UserProfile').then(m => ({ default: m.UserProfile })));
