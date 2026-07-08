@@ -1,162 +1,57 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, getDocs, getDoc, addDoc, onSnapshot, doc, updateDoc, setDoc, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, onSnapshot, doc, updateDoc, setDoc, orderBy, limit } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { MentorWidget } from '../components/MentorWidget';
 import { Seal } from '../components/Brand';
-import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut, MessageCircle, Globe, Copy, Check, Clock, UserPlus, Search, X, BadgeCheck, Instagram, Linkedin, User, Twitter, Heart, ExternalLink, FileText } from 'lucide-react';
+import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut, MessageCircle, Globe, Copy, Check } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
-import { useToast } from '../hooks/useToast';
-import { useCart } from '../components/CartProvider';
-import { ProductDetailModal } from '../components/ProductDetailModal';
-import { Product } from '../types';
 
-// HELPER PARA OBTENER LOS CAPÍTULOS DE UN LIBRO INTERACTIVO
-const getChaptersForBook = (bookTitle: string) => {
-  const t = bookTitle.toLowerCase();
-  if (t.includes('solo') || t.includes('soledad')) {
-    return [
-      {
-        title: "Capítulo 1: El Silencio como Aliado",
-        pages: [
-          "Aprender a estar solo es el mayor superpoder del siglo XXI. Vivimos inundados de notificaciones, opiniones y ruidos ajenos que ahogan nuestra voz interior. El primer paso del coaching ontológico es suspender la interpretación y simplemente SER.",
-          "El silencio no está vacío, está lleno de respuestas. Cuando logras sostener la incomodidad de los primeros minutos sin estímulos, tu mente se asienta. Empiezas a observar tus juicios en lugar de reaccionar ciegamente ante ellos."
-        ],
-        reflectionPrompt: "¿Qué es lo que más intentas evitar o tapar con el uso de tu teléfono cuando te quedas a solas en tu habitación?",
-        reflectionPlaceholder: "Escribe con total honestidad sobre tus distracciones...",
-        valueZap: 30
-      },
-      {
-        title: "Capítulo 2: Reconfigurando el Autoconcepto",
-        pages: [
-          "Nuestra identidad a menudo es un collage de las expectativas de los demás: padres, jefes, parejas. En la soledad, podemos desmantelar ese personaje. ¿Quién eres cuando nadie te está mirando?",
-          "La arteterapia nos permite plasmar de forma física y tangible esos hilos invisibles que nos atan. Al trazar círculos o pintar de forma no-lineal, el inconsciente se libera y redibuja tu verdadero hogar base."
-        ],
-        reflectionPrompt: "Menciona 2 expectativas externas que sientes que has estado cargando innecesariamente en tu vida.",
-        reflectionPlaceholder: "Ej: Cumplir con un estatus profesional perfecto, ser siempre fuerte...",
-        valueZap: 30
-      },
-      {
-        title: "Capítulo 3: Alquimia de la Conexión",
-        pages: [
-          "Sólo quien sabe estar solo sabe amar de verdad, porque no busca en el otro un parche para su vacío, sino un compañero para su plenitud. El viaje hacia adentro termina en una mayor empatía y conexión con la humanidad.",
-          "Felicidades por completar esta lectura. Has integrado conceptos profundos de andragogía y autoconocimiento. Has ganado nuevos Zaps de evolución para tu consciencia."
-        ],
-        reflectionPrompt: "Escribe tu compromiso para honrar tu soledad creativa al menos 15 minutos al día.",
-        reflectionPlaceholder: "Yo me comprometo a...",
-        valueZap: 40
-      }
-    ];
+const DEFAULT_BOOKS = [
+  {
+    id: 'cio-robert-teran',
+    title: 'Cio',
+    author: 'Robert Teran',
+    price: 0,
+    imageUrl: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=400',
+    description: 'Soy un hombre que llegó al mundo sin saber quién era y que aprendió a nombrarse en el silencio. Estas páginas son mi despedida de quien fui y mi bienvenida a quien aún no sé que soy. Aquí encontrarás preguntas que tal vez también te has hecho: ¿Quién soy? ¿De dónde vengo? ¿Hacia dónde voy? ¿Por qué las cosas terribles se aprenden rápido y las hermosas nos cuestan la vida? No esperes respuestas. Espera caminos. "Caminante, no hay camino, el camino se hace al andar."',
+    status: 'published',
+    authorType: 'coach'
+  },
+  {
+    id: 'diario-diosa-kira',
+    title: 'Diario de una Diosa',
+    author: 'Kira Zurita',
+    price: 0,
+    imageUrl: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=400',
+    description: 'Un libro canalizado y estructurado con herramientas de arteterapia, respiración consciente y introspección guiada.',
+    status: 'published',
+    authorType: 'admin'
+  },
+  {
+    id: 'habitos-atomicos-ideas',
+    title: 'Las diez ideas clave de Hábitos Atómicos',
+    author: 'Kira Coach',
+    price: 5,
+    imageUrl: 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?auto=format&fit=crop&q=80&w=400',
+    description: 'Un libro canalizado y estructurado con herramientas de arteterapia, respiración consciente e introspección inspirada en el best-seller de James Clear.',
+    status: 'published',
+    authorType: 'coach'
   }
-  
-  if (t.includes('liderazgo') || t.includes('empresarial') || t.includes('psicopedagogia')) {
-    return [
-      {
-        title: "Capítulo 1: El Liderazgo desde el SER",
-        pages: [
-          "El estilo de liderazgo tradicional se enfoca en el control y la jerarquía. Sin embargo, en la psicopedagogía empresarial moderna, el líder es un facilitador del aprendizaje. No enseña con memorándums, inspira con el ejemplo.",
-          "Un líder transformacional comprende las matrices cognitivas del adulto. Respeta el ritmo biológico y emocional de su equipo y diseña espacios de colaboración orgánica que disuelven los sesgos de autodesaprobación."
-        ],
-        reflectionPrompt: "¿Qué tipo de líder has tenido en el pasado que más ha potenciado tu aprendizaje y qué cualidades lo hacían diferente?",
-        reflectionPlaceholder: "Escribe tu reflexión sobre tu experiencia de liderazgo...",
-        valueZap: 30
-      },
-      {
-        title: "Capítulo 2: Andragogía y Curva de Tolerancia",
-        pages: [
-          "Un operario o empleado no se compromete leyendo manuales de 80 páginas. Eso genera fatiga mental y desmotivación. El aprendizaje debe ser en micro-sesiones dinámicas que encajen en la jornada de forma natural.",
-          "Al fragmentar la información en micro-aprendizajes aplicados, se facilita la asimilación y se evitan las no-conformidades operativas. El conocimiento se convierte en acción inmediata."
-        ],
-        reflectionPrompt: "¿Cómo estructurarías una micro-sesión de 5 minutos para enseñar algo complejo en tu propio trabajo?",
-        reflectionPlaceholder: "Describe tu diseño de micro-aprendizaje...",
-        valueZap: 30
-      },
-      {
-        title: "Capítulo 3: Matrices Vivas y Aprendizaje Autónomo",
-        pages: [
-          "El estilo Democrático y el Transformacional generan un alto compromiso a largo plazo. Pero en equipos altamente expertos, el estilo Laissez-Faire (autónomo) permite la máxima innovación.",
-          "Integra la arteterapia y la introspección en tus dinámicas de equipo para liberar bloqueos creativos y fomentar la resolución disruptiva de problemas."
-        ],
-        reflectionPrompt: "Escribe una acción concreta para inspirar confianza y autonomía en tus colaboradores directos.",
-        reflectionPlaceholder: "Mi acción será...",
-        valueZap: 40
-      }
-    ];
-  }
-
-  return [
-    {
-      title: "Capítulo 1: Conectando con la Esencia",
-      pages: [
-        `Bienvenido a la versión interactiva de "${bookTitle}". Todo libro de crecimiento personal es un mapa de ruta hacia una nueva versión de ti mismo.`,
-        "El primer paso de la transformación es suspender el juicio automático. Lee las ideas de forma activa, buscando cómo resuenan en tu historia personal y tu experiencia del ser."
-      ],
-      reflectionPrompt: "¿Qué intención principal tienes al explorar e integrar las lecciones de este libro en tu vida cotidiana?",
-      reflectionPlaceholder: "Mi intención es...",
-      valueZap: 30
-    },
-    {
-      title: "Capítulo 2: La Práctica del Observador",
-      pages: [
-        "El conocimiento sin acción es simple entretenimiento. Para fijar un nuevo aprendizaje, debemos pasar por el cuerpo y la emoción. Es aquí donde la arteterapia y la escritura reflexiva juegan un rol vital.",
-        "Al responder estas preguntas y realizar las pausas de respiración, estás reorganizando tu red neuronal y creando nuevos hábitos de alto rendimiento."
-      ],
-      reflectionPrompt: "¿Qué pequeño cambio de hábito podrías iniciar mañana mismo inspirado en lo que has leído hoy?",
-      reflectionPlaceholder: "Ej: Hacer 5 respiraciones lentas antes de revisar mi teléfono...",
-      valueZap: 30
-    },
-    {
-      title: "Capítulo 3: Declaración de Evolución",
-      pages: [
-        "Has finalizado este libro interactivo. La andragogía (pedagogía de adultos) nos enseña que el aprendizaje real es autodirigido y continuo. Tu camino de expansión de consciencia no se detiene aquí.",
-        "Sigue acumulando energía, conectando con tus mentores y expresando tu sabiduría en tu diario personal."
-      ],
-      reflectionPrompt: "Escribe una frase de agradecimiento y empoderamiento para cerrar este ciclo de lectura.",
-      reflectionPlaceholder: "Agradezco este espacio porque...",
-      valueZap: 40
-    }
-  ];
-};
-
-function stripHtml(html: string) {
-  if (!html) return '';
-  return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
-}
+];
 
 export function Dashboard() {
   const { user, logout } = useAuth();
-  const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [courseReviewing, setCourseReviewing] = useState<string | null>(null);
-  const [reviewType, setReviewType] = useState<'course' | 'book' | 'coach'>('course');
-  const [reviewName, setReviewName] = useState<string>('');
-  const [showAdBanner, setShowAdBanner] = useState(true);
+  const [reviewingItem, setReviewingItem] = useState<{ id: string; type: 'course' | 'book'; title: string } | null>(null);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
-  
-  // Interactive Gamification States
-  const [userOwnedBooks, setUserOwnedBooks] = useState<string[]>([]);
-  const [myReviews, setMyReviews] = useState<any[]>([]);
-  const [selectedBookForPurchase, setSelectedBookForPurchase] = useState<any | null>(null);
-  const [isPurchasingBook, setIsPurchasingBook] = useState(false);
-  const [readingBook, setReadingBook] = useState<any | null>(null);
-  const [currentBookChapter, setCurrentBookChapter] = useState(0);
-  const [bookAnswers, setBookAnswers] = useState<Record<string, string>>({});
-  const [isSavingBookAnswer, setIsSavingBookAnswer] = useState(false);
-  
-  const [selectedCourseForEnroll, setSelectedCourseForEnroll] = useState<any | null>(null);
-  const [enrollIntention, setEnrollIntention] = useState('');
-  const [isEnrolling, setIsEnrolling] = useState(false);
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
-  const [availableBooks, setAvailableBooks] = useState<any[]>([]);
-  const [publisherNames, setPublisherNames] = useState<Record<string, string>>({});
-  const [selectedProductForDetail, setSelectedProductForDetail] = useState<Product | null>(null);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const { addToCart } = useCart();
+  const [availableBooks, setAvailableBooks] = useState<any[]>(DEFAULT_BOOKS);
   const [myEnrollments, setMyEnrollments] = useState<any[]>([]);
   const [favoriteCoaches, setFavoriteCoaches] = useState<any[]>([]);
   const [unlockedHistory, setUnlockedHistory] = useState<any[]>([]);
@@ -165,12 +60,13 @@ export function Dashboard() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
 
-  const [showDirectoryModal, setShowDirectoryModal] = useState(false);
-  const [directorySearchQuery, setDirectorySearchQuery] = useState('');
-  const [directorySpecialty, setDirectorySpecialty] = useState('Todos');
-  const [selectedDirectoryCoach, setSelectedDirectoryCoach] = useState<any | null>(null);
-  const [allCoaches, setAllCoaches] = useState<any[]>([]);
-  const [userFavorites, setUserFavorites] = useState<string[]>([]);
+  const [cartItems, setCartItems] = useState<any[]>([]);
+  const [showCart, setShowCart] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [purchases, setPurchases] = useState<any[]>([]);
+  const [paymentForm, setPaymentForm] = useState({ cardName: '', cardNumber: '', expiry: '', cvv: '' });
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [paymentSuccessData, setPaymentSuccessData] = useState<any | null>(null);
 
   const [showCommunityModal, setShowCommunityModal] = useState(false);
   const [whatsappUrl, setWhatsappUrl] = useState('');
@@ -278,80 +174,6 @@ export function Dashboard() {
     }
   };
 
-  useEffect(() => {
-    if (!user) {
-      setUserFavorites([]);
-      setUserOwnedBooks([]);
-      return;
-    }
-    const unsub = onSnapshot(doc(db, 'users', user.uid), (snap) => {
-      if (snap.exists()) {
-        setUserFavorites(snap.data().favorites || []);
-        setUserOwnedBooks(snap.data().ownedBooks || []);
-      }
-    });
-    return () => unsub();
-  }, [user]);
-
-  // ESCUCHAR REVIEWS EN TIEMPO REAL
-  useEffect(() => {
-    if (!user) {
-      setMyReviews([]);
-      return;
-    }
-    const reviewsQ = query(collection(db, 'reviews'), where('userId', '==', user.uid));
-    const unsub = onSnapshot(reviewsQ, (snap) => {
-      setMyReviews(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsub();
-  }, [user]);
-
-  // ESCUCHAR RESPUESTAS DE LIBRO EN TIEMPO REAL
-  useEffect(() => {
-    if (!user) {
-      setBookAnswers({});
-      return;
-    }
-    const q = query(collection(db, 'bookReflections'), where('userId', '==', user.uid));
-    const unsub = onSnapshot(q, (snap) => {
-      const answersMap: Record<string, string> = {};
-      snap.docs.forEach(docSnap => {
-        const data = docSnap.data();
-        const key = `${data.bookId}_${data.chapterIndex}`;
-        answersMap[key] = data.answer || '';
-      });
-      setBookAnswers(answersMap);
-    });
-    return () => unsub();
-  }, [user]);
-
-  useEffect(() => {
-    if (allCoaches.length > 0 && userFavorites.length > 0) {
-      const favs = allCoaches.filter(c => userFavorites.includes(c.id));
-      setFavoriteCoaches(favs);
-    } else {
-      setFavoriteCoaches([]);
-    }
-  }, [allCoaches, userFavorites]);
-
-  const toggleDirectoryFavorite = async (e: React.MouseEvent, coachId: string) => {
-    e.stopPropagation();
-    if (!user) return;
-    try {
-      const isFav = userFavorites.includes(coachId);
-      const updatedFavorites = isFav 
-        ? userFavorites.filter((id: string) => id !== coachId)
-        : [...userFavorites, coachId];
-      await updateDoc(doc(db, 'users', user.uid), {
-        favorites: updatedFavorites
-      });
-      toastSuccess(isFav ? 'Eliminado de favoritos' : 'Agregado a favoritos');
-    } catch (err) {
-      console.error("Error toggling favorite:", err);
-      toastError("Error al guardar favoritos");
-    }
-  };
-
   const getTier = (pts: number) => {
     if (pts <= 500) return { name: 'Bronce', next: 501, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-100', icon: <Zap size={14} /> };
     if (pts <= 1500) return { name: 'Plata', next: 1501, color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-200', icon: <ShieldCheck size={14} /> };
@@ -371,143 +193,28 @@ export function Dashboard() {
     const success = searchParams.get('success');
     const courseId = searchParams.get('courseId');
     const amount = searchParams.get('amount');
-    const title = searchParams.get('title') || 'Producto';
-    const purchaseType = searchParams.get('type') || 'course_purchase';
 
     if (success === 'true' && courseId && user) {
       try {
-        if (purchaseType === 'cart_purchase') {
-          const itemIds = courseId.split(',');
-          const userRef = doc(db, 'users', user.uid);
-          const userSnap = await getDoc(userRef);
-          const userData = userSnap.data() || {};
-          let currentOwnedBooks = userData.ownedBooks || [];
-          let currentPoints = userData.points || 0;
-          let addedBooks = 0;
-          let addedCourses = 0;
+        await addDoc(collection(db, 'enrollments'), {
+          userId: user.uid,
+          courseId,
+          progress: 0,
+          createdAt: new Date()
+        });
 
-          for (const itemId of itemIds) {
-            const bookDoc = await getDoc(doc(db, 'books', itemId));
-            if (bookDoc.exists()) {
-              if (!currentOwnedBooks.includes(itemId)) {
-                currentOwnedBooks.push(itemId);
-                currentPoints += 50;
-                addedBooks++;
-
-                await addDoc(collection(db, 'transactions'), {
-                  userId: user.uid,
-                  amount: Number(bookDoc.data().price) || 0,
-                  type: 'book_purchase',
-                  bookId: itemId,
-                  bookTitle: bookDoc.data().title || 'Libro de Kira',
-                  createdAt: new Date()
-                });
-              }
-            } else {
-              const courseDoc = await getDoc(doc(db, 'courses', itemId));
-              if (courseDoc.exists()) {
-                const existingQ = query(
-                  collection(db, 'enrollments'),
-                  where('userId', '==', user.uid),
-                  where('courseId', '==', itemId)
-                );
-                const existingSnap = await getDocs(existingQ);
-                if (existingSnap.empty) {
-                  await addDoc(collection(db, 'enrollments'), {
-                    userId: user.uid,
-                    courseId: itemId,
-                    progress: 0,
-                    createdAt: new Date()
-                  });
-
-                  await addDoc(collection(db, 'transactions'), {
-                    userId: user.uid,
-                    amount: Number(courseDoc.data().price) || 0,
-                    type: 'course_purchase',
-                    courseId: itemId,
-                    createdAt: new Date()
-                  });
-                  addedCourses++;
-                }
-              }
-            }
-          }
-
-          await updateDoc(userRef, {
-            ownedBooks: currentOwnedBooks,
-            points: currentPoints
-          });
-
-          if (addedBooks > 0 || addedCourses > 0) {
-            toastSuccess(`¡Compra del carrito procesada con éxito! Desbloqueados: ${addedBooks} libros y ${addedCourses} cursos. +${addedBooks * 50} Zaps de energía acreditados.`);
-          } else {
-            toastInfo('Los productos del carrito ya habían sido adquiridos previamente.');
-          }
-        } else if (purchaseType === 'book_purchase') {
-          const userRef = doc(db, 'users', user.uid);
-          const userSnap = await getDoc(userRef);
-          const userData = userSnap.data() || {};
-          const currentOwnedBooks = userData.ownedBooks || [];
-
-          if (!currentOwnedBooks.includes(courseId)) {
-            const updatedOwnedBooks = [...currentOwnedBooks, courseId];
-            const currentPoints = userData.points || 0;
-            const newPoints = currentPoints + 50;
-
-            await updateDoc(userRef, {
-              ownedBooks: updatedOwnedBooks,
-              points: newPoints
-            });
-
-            await addDoc(collection(db, 'transactions'), {
-              userId: user.uid,
-              amount: Number(amount) || 0,
-              type: 'book_purchase',
-              bookId: courseId,
-              bookTitle: title,
-              createdAt: new Date()
-            });
-
-            toastSuccess(`¡Adquisición de libro completada! Has adquirido "${title}". Se han acreditado +50 Zaps de energía.`);
-          } else {
-            toastInfo('Ya has adquirido este libro.');
-          }
-        } else {
-          // Evitar duplicaciones consultando directamente antes de escribir
-          const existingQ = query(
-            collection(db, 'enrollments'),
-            where('userId', '==', user.uid),
-            where('courseId', '==', courseId)
-          );
-          const existingSnap = await getDocs(existingQ);
-          
-          if (existingSnap.empty) {
-            await addDoc(collection(db, 'enrollments'), {
-              userId: user.uid,
-              courseId,
-              progress: 0,
-              createdAt: new Date()
-            });
-
-            await addDoc(collection(db, 'transactions'), {
-              userId: user.uid,
-              amount: Number(amount) || 0,
-              type: 'course_purchase',
-              courseId,
-              createdAt: new Date()
-            });
-
-            toastSuccess('¡Inscripción completada exitosamente! Bienvenido al curso.');
-          } else {
-            toastInfo('Ya estás inscrito en este curso.');
-          }
-        }
+        await addDoc(collection(db, 'transactions'), {
+          userId: user.uid,
+          amount: Number(amount),
+          type: 'course_purchase',
+          courseId,
+          createdAt: new Date()
+        });
 
         setSearchParams({});
         fetchData();
-      } catch (e: any) {
+      } catch (e) {
         console.error('Error recording payment success:', e);
-        toastError('No se pudo registrar la adquisición: ' + (e.message || String(e)));
       }
     }
   };
@@ -520,54 +227,35 @@ export function Dashboard() {
       setAvailableCourses(coursesSnap.docs.map(d => ({id: d.id, ...d.data()})));
 
       try {
-        const booksQ = collection(db, 'books');
+        const booksQ = query(collection(db, 'books'), where('status', '==', 'published'));
         const booksSnap = await getDocs(booksQ);
-        const fetchedBooks = booksSnap.docs.map(d => ({id: d.id, ...d.data() as any}));
-        fetchedBooks.sort((a: any, b: any) => {
-          const t1 = a.createdAt?.seconds || 0;
-          const t2 = b.createdAt?.seconds || 0;
-          return t2 - t1;
-        });
-        setAvailableBooks(fetchedBooks);
-
-        // Resolve publisher names dynamically from the users collection
-        const uniquePublisherIds = Array.from(new Set(fetchedBooks.map(b => b.publisherId).filter(Boolean))) as string[];
-        for (const pubId of uniquePublisherIds) {
-          try {
-            const userDoc = await getDoc(doc(db, 'users', pubId));
-            if (userDoc.exists()) {
-              const userData = userDoc.data();
-              let name = userData.displayName || userData.name || '';
-              const nameLower = name.toLowerCase().trim();
-              if (nameLower === 'safeness' || nameLower === 'safeness.c.a' || nameLower === 'safeness.c.a@gmail.com') {
-                name = 'Kira Coach';
-              }
-              if (name) {
-                setPublisherNames(prev => ({ ...prev, [pubId]: name }));
-              }
-            }
-          } catch (err) {
-            console.warn("Error resolving publisher name in dashboard:", err);
+        const fbBooks = booksSnap.docs.map(d => ({id: d.id, ...d.data()}));
+        const merged = [...DEFAULT_BOOKS];
+        fbBooks.forEach((fbB: any) => {
+          if (!merged.some(m => m.id === fbB.id)) {
+            merged.push(fbB);
           }
-        }
+        });
+        setAvailableBooks(merged);
       } catch (booksErr) {
         console.warn("Dynamic books fetch failed:", booksErr);
+        setAvailableBooks(DEFAULT_BOOKS);
       }
 
       const enrollQ = query(collection(db, 'enrollments'), where('userId', '==', user.uid));
       const enrollSnap = await getDocs(enrollQ);
-      setMyEnrollments(enrollSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setMyEnrollments(enrollSnap.docs.map(d => d.data().courseId));
 
-      // Fetch all coaches
-      try {
-        const allCoachesQ = query(collection(db, 'users'), where('role', '==', 'coach'));
-        const allCoachesSnap = await getDocs(allCoachesQ);
-        const approvedCoaches = allCoachesSnap.docs
-          .map(d => ({ id: d.id, ...d.data() }))
-          .filter((c: any) => c.approvalStatus === 'approved');
-        setAllCoaches(approvedCoaches);
-      } catch (err) {
-        console.warn("Error fetching all coaches:", err);
+      // Fetch favorites
+      if (user.favorites && user.favorites.length > 0) {
+        const coachesQ = query(
+          collection(db, 'users'), 
+          where('__name__', 'in', user.favorites.slice(0, 10))
+        );
+        const coachesSnap = await getDocs(coachesQ);
+        setFavoriteCoaches(coachesSnap.docs.map(d => ({id: d.id, ...d.data()})));
+      } else {
+        setFavoriteCoaches([]);
       }
 
       const historyQ = query(collection(db, 'unlockedHistory'), where('userId', '==', user.uid));
@@ -579,6 +267,14 @@ export function Dashboard() {
          return tB - tA;
       });
       setUnlockedHistory(historyItems);
+
+      try {
+        const purchasesQ = query(collection(db, 'purchases'), where('userId', '==', user.uid));
+        const purchasesSnap = await getDocs(purchasesQ);
+        setPurchases(purchasesSnap.docs.map(d => ({id: d.id, ...d.data()})));
+      } catch (purchasesErr) {
+        console.warn("Purchases fetch failed:", purchasesErr);
+      }
     } catch(e) {
       console.error(e);
     } finally {
@@ -596,8 +292,8 @@ export function Dashboard() {
         body: JSON.stringify({
           courseId: course.id,
           userId: user.uid,
-          amount: typeof course.price === 'number' ? course.price : Number(course.price) || 0,
-          title: course.title || 'Curso de Kira'
+          amount: course.price,
+          title: course.title
         })
       });
       const data = await resp.json();
@@ -607,179 +303,92 @@ export function Dashboard() {
       window.location.href = data.url;
     } catch(e: any) {
       console.error('Stripe Redirect Error:', e);
-      toastError('Error al iniciar la inscripción: ' + (e.message || String(e)));
-    } finally {
+      alert('Error al iniciar la inscripción: ' + (e.message || String(e)));
       setCheckingOutId(null);
     }
   };
 
-  const handleStripeBookCheckout = async (book: any) => {
-    if(!user) return;
-    setCheckingOutId(book.id);
-    try {
-      const resp = await fetch('/api/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          courseId: book.id,
-          userId: user.uid,
-          amount: typeof book.price === 'number' ? book.price : Number(book.price) || 0,
-          title: book.title || 'Ebook de Kira',
-          type: 'book_purchase'
-        })
-      });
-      const data = await resp.json();
-      if (data.error) {
-        throw new Error(data.error);
-      }
-      window.location.href = data.url;
-    } catch(e: any) {
-      console.error('Stripe Book Redirect Error:', e);
-      toastError('Error al iniciar la compra del libro: ' + (e.message || String(e)));
-    } finally {
-      setCheckingOutId(null);
+  const addToCart = (item: any, type: 'course' | 'book') => {
+    if (cartItems.some(it => it.id === item.id)) {
+      setShowCart(true);
+      return;
     }
+    setCartItems([...cartItems, { ...item, itemType: type }]);
+    setShowCart(true);
   };
 
-  const handleSimpleEnroll = async (course: any) => {
+  const removeFromCart = (id: string) => {
+    setCartItems(cartItems.filter(it => it.id !== id));
+  };
+
+  const handleProcessPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!user) return;
-    setCheckingOutId(course.id);
+    setIsProcessingPayment(true);
+    
     try {
-      const existingQ = query(
-        collection(db, 'enrollments'),
-        where('userId', '==', user.uid),
-        where('courseId', '==', course.id)
-      );
-      const existingSnap = await getDocs(existingQ);
-      if (!existingSnap.empty) {
-        toastInfo('Ya has solicitado la inscripción a este curso.');
-        return;
+      for (const item of cartItems) {
+        await addDoc(collection(db, 'purchases'), {
+          userId: user.uid,
+          userEmail: user.email || '',
+          userName: user.displayName || user.name || 'Alumno',
+          itemId: item.id,
+          itemType: item.itemType || (item.bannerUrl ? 'course' : 'book'),
+          itemTitle: item.title,
+          itemPrice: Number(item.price),
+          imageUrl: item.imageUrl || item.bannerUrl || '',
+          status: 'pending_release',
+          createdAt: new Date()
+        });
+
+        await addDoc(collection(db, 'transactions'), {
+          userId: user.uid,
+          amount: Number(item.price),
+          type: item.itemType === 'course' ? 'course_purchase' : 'book_purchase',
+          itemId: item.id,
+          itemTitle: item.title,
+          status: 'pending_release',
+          createdAt: new Date()
+        });
       }
 
-      await addDoc(collection(db, 'enrollments'), {
-        userId: user.uid,
-        courseId: course.id,
-        courseTitle: course.title || 'Curso',
-        coachId: course.coachId || '',
-        studentName: user.displayName || user.email || 'Alumno',
-        studentEmail: user.email,
-        progress: 0,
-        status: 'pending',
-        createdAt: new Date()
+      setPaymentSuccessData({
+        items: [...cartItems],
+        total: cartItems.reduce((acc, it) => acc + Number(it.price), 0)
       });
-
-      toastSuccess('¡Solicitud de inscripción enviada exitosamente! Tu coach o administrador autorizará tu ingreso pronto.');
+      
+      setCartItems([]);
+      setPaymentForm({ cardName: '', cardNumber: '', expiry: '', cvv: '' });
+      setShowPaymentModal(false);
+      
       fetchData();
-    } catch (e: any) {
-      console.error('Error in simple enrollment:', e);
-      toastError('Error al enviar la solicitud: ' + (e.message || String(e)));
+    } catch (err: any) {
+      console.error("Error creating purchases:", err);
+      alert("Ocurrió un error al registrar el pago: " + (err.message || String(err)));
     } finally {
-      setCheckingOutId(null);
+      setIsProcessingPayment(false);
     }
   };
 
   const submitReview = async () => {
-    if (!user || !courseReviewing) return;
+    if (!user || !reviewingItem) return;
     try {
       await addDoc(collection(db, 'reviews'), {
-        courseId: reviewType === 'course' ? courseReviewing : null,
-        bookId: reviewType === 'book' ? courseReviewing : null,
-        coachId: reviewType === 'coach' ? courseReviewing : null,
-        itemId: courseReviewing,
-        itemType: reviewType,
-        itemName: reviewName,
+        itemId: reviewingItem.id,
+        itemType: reviewingItem.type,
+        courseId: reviewingItem.type === 'course' ? reviewingItem.id : null,
+        bookId: reviewingItem.type === 'book' ? reviewingItem.id : null,
         userId: user.uid,
         rating,
         comment,
         status: 'published',
         createdAt: new Date()
       });
-      toastSuccess(`¡Gracias por tu feedback! Tu calificación para "${reviewName || 'el elemento'}" ha sido registrada con éxito.`);
-      setCourseReviewing(null);
+      setReviewingItem(null);
       setComment('');
       setRating(5);
-    } catch(e: any) {
+    } catch(e) {
       console.error(e);
-      toastError('Error al enviar la calificación: ' + (e.message || String(e)));
-    }
-  };
-
-  const handlePurchaseBook = async (book: any) => {
-    if (!user) return;
-    setIsPurchasingBook(true);
-    try {
-      const userRef = doc(db, 'users', user.uid);
-      const updatedOwnedBooks = [...userOwnedBooks];
-      if (!updatedOwnedBooks.includes(book.id)) {
-        updatedOwnedBooks.push(book.id);
-      }
-      
-      const currentPoints = user?.points || 0;
-      const newPoints = currentPoints + 50;
-
-      await updateDoc(userRef, {
-        ownedBooks: updatedOwnedBooks,
-        points: newPoints
-      });
-
-      await addDoc(collection(db, 'transactions'), {
-        userId: user.uid,
-        amount: Number(book.price) || 0,
-        type: 'book_purchase',
-        bookId: book.id,
-        bookTitle: book.title,
-        createdAt: new Date()
-      });
-
-      toastSuccess(`¡Felicidades! Has adquirido "${book.title}". Se han acreditado +50 Zaps de energía a tu cuenta.`);
-      setSelectedBookForPurchase(null);
-    } catch (e: any) {
-      console.error("Error purchasing book:", e);
-      toastError("Error al realizar la adquisición del libro: " + (e.message || String(e)));
-    } finally {
-      setIsPurchasingBook(false);
-    }
-  };
-
-  const handleSaveBookReflection = async (bookId: string, chapterIndex: number, answer: string, rewardZaps: number) => {
-    if (!user) return;
-    if (!answer || !answer.trim()) {
-      toastError("Por favor escribe tu reflexión antes de guardar.");
-      return;
-    }
-    
-    setIsSavingBookAnswer(true);
-    try {
-      const reflectionId = `${user.uid}_${bookId}_${chapterIndex}`;
-      await setDoc(doc(db, 'bookReflections', reflectionId), {
-        userId: user.uid,
-        bookId,
-        chapterIndex,
-        answer,
-        updatedAt: new Date()
-      });
-
-      const completedKey = `award_${reflectionId}`;
-      const userRef = doc(db, 'users', user.uid);
-      const userSnap = await getDoc(userRef);
-      const userData = userSnap.data() || {};
-      const completedRewards = userData.completedRewards || [];
-
-      if (!completedRewards.includes(completedKey)) {
-        const currentPoints = userData.points || 0;
-        await updateDoc(userRef, {
-          points: currentPoints + rewardZaps,
-          completedRewards: [...completedRewards, completedKey]
-        });
-        toastSuccess(`✨ ¡Reflexión Guardada! Has ganado +${rewardZaps} Zaps de energía.`);
-      } else {
-        toastSuccess("✨ ¡Reflexión Guardada correctamente!");
-      }
-    } catch (e: any) {
-      console.error("Error saving reflection:", e);
-      toastError("Error al guardar la reflexión: " + (e.message || String(e)));
-    } finally {
-      setIsSavingBookAnswer(false);
     }
   };
   
@@ -797,7 +406,7 @@ export function Dashboard() {
             <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Workspace Personal</span>
           </div>
           <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-none">
-            Hola, <span className="text-transparent bg-clip-text bg-gradient-to-r from-kirateal to-violet-600">{user?.name?.split(' ')[0]}</span>
+            Hola, <span className="text-transparent bg-clip-text bg-gradient-to-r from-kirateal to-violet-600">{(user?.displayName || user?.name || user?.email || 'Alumno').split(' ')[0]}</span>
           </h1>
           <p className="text-slate-500 mt-4 font-medium text-lg max-w-xl">Tu centro de comando para el alto rendimiento y la expansión de consciencia.</p>
         </div>
@@ -820,12 +429,32 @@ export function Dashboard() {
               <span>Editar WhatsApp</span>
             </button>
           )}
+          {/* Cart Button */}
+          <button
+            onClick={() => setShowCart(true)}
+            className="relative p-4 bg-white hover:bg-slate-50 text-slate-700 rounded-2xl border border-slate-200/60 shadow-sm transition-all duration-300 hover:shadow-md cursor-pointer active:scale-95 flex items-center justify-center h-16 w-16 shrink-0"
+            title="Ver mi Carrito"
+          >
+            <ShoppingCart size={22} className="text-kirateal" />
+            {cartItems.length > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white font-black text-[10px] w-6 h-6 rounded-full flex items-center justify-center border-2 border-white shadow-md">
+                {cartItems.length}
+              </span>
+            )}
+          </button>
+
           <button 
             onClick={() => navigate('/dashboard/profile')}
             className="w-16 h-16 rounded-2xl bg-slate-200 overflow-hidden border-4 border-white shadow-md hover:ring-4 hover:ring-kirateal/10 transition-all duration-300"
             title="Mi Perfil"
           >
-            {user?.photoUrl ? <img src={user.photoUrl} alt="Profile" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center font-black text-slate-400 text-2xl">{user?.name?.[0]}</div>}
+            {(user?.photoURL || user?.photoUrl) ? (
+              <img src={user.photoURL || user.photoUrl} alt="Profile" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center font-black text-slate-400 text-2xl">
+                {(user?.displayName || user?.name || '?')[0].toUpperCase()}
+              </div>
+            )}
           </button>
           <button
             onClick={logout}
@@ -840,38 +469,29 @@ export function Dashboard() {
       </div>
 
       {/* SECCIÓN ESPECIAL ANIVERSARIO: EBOOK INTERACTIVO */}
-      {showAdBanner && myReviews.length === 0 && (
-        <div className="bg-gradient-to-r from-teal-900 to-indigo-950 border border-teal-500/20 rounded-[32px] p-6 text-white relative overflow-hidden shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
-          <button 
-            onClick={() => setShowAdBanner(false)}
-            className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors p-1 z-20 cursor-pointer"
-            title="Ocultar publicidad"
-          >
-            <X size={16} />
-          </button>
-          <div className="absolute top-0 right-0 w-64 h-64 bg-teal-400/5 rounded-full filter blur-3xl pointer-events-none" />
-          <div className="flex items-center gap-4 relative z-10">
-            <div className="p-3 bg-teal-500/10 text-teal-400 rounded-2xl border border-teal-400/20">
-              <Award size={28} className="animate-pulse" />
-            </div>
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-teal-400 tracking-widest bg-teal-500/15 px-2.5 py-0.5 rounded-full border border-teal-500/20">
-                <Sparkles size={10} className="fill-current" /> Especial de Aniversario
-              </div>
-              <h3 className="text-xl font-black">Nuevo Ebook de Coaching Ontológico & Arteterapia</h3>
-              <p className="text-xs text-slate-300 max-w-xl text-left">
-                ¡Disfruta del microaprendizaje interactivo! Convierte la lectura en acción con preguntas de reflexión de Kira Moreno, mándalas virtuales y gana +50 Zaps por capítulo.
-              </p>
-            </div>
+      <div className="bg-gradient-to-r from-teal-900 to-indigo-950 border border-teal-500/20 rounded-[32px] p-6 text-white relative overflow-hidden shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-teal-400/5 rounded-full filter blur-3xl pointer-events-none" />
+        <div className="flex items-center gap-4 relative z-10">
+          <div className="p-3 bg-teal-500/10 text-teal-400 rounded-2xl border border-teal-400/20">
+            <Award size={28} className="animate-pulse" />
           </div>
-          <button
-            onClick={() => navigate('/microlearning')}
-            className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-black uppercase tracking-widest text-[11px] px-6 py-3.5 rounded-2xl shadow-lg shadow-teal-500/15 hover:scale-105 transition active:scale-95 shrink-0 relative z-10 cursor-pointer flex items-center gap-2"
-          >
-            Explorar Ebook Gamificado <ArrowRight size={14} />
-          </button>
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-teal-400 tracking-widest bg-teal-500/15 px-2.5 py-0.5 rounded-full border border-teal-500/20">
+              <Sparkles size={10} className="fill-current" /> Especial de Aniversario
+            </div>
+            <h3 className="text-xl font-black">Nuevo Ebook de Coaching Ontológico & Arteterapia</h3>
+            <p className="text-xs text-slate-300 max-w-xl text-left">
+              ¡Disfruta del microaprendizaje interactivo! Convierte la lectura en acción con preguntas de reflexión de Kira Moreno, mándalas virtuales y gana +50 Zaps por capítulo.
+            </p>
+          </div>
         </div>
-      )}
+        <button
+          onClick={() => navigate('/microlearning')}
+          className="bg-teal-500 hover:bg-teal-400 text-slate-950 font-black uppercase tracking-widest text-[11px] px-6 py-3.5 rounded-2xl shadow-lg shadow-teal-500/15 hover:scale-105 transition active:scale-95 shrink-0 relative z-10 cursor-pointer flex items-center gap-2"
+        >
+          Explorar Ebook Gamificado <ArrowRight size={14} />
+        </button>
+      </div>
 
       {/* ONBOARDING MODAL */}
       {showOnboarding && (
@@ -894,7 +514,7 @@ export function Dashboard() {
                     Escribir mi primer Diario
                   </button>
                   <button 
-                    onClick={() => { completeOnboarding(); setShowDirectoryModal(true); }}
+                    onClick={() => { completeOnboarding(); navigate('/'); }}
                     className="w-full py-3.5 bg-slate-50 text-slate-700 rounded-xl font-bold text-[13px] hover:bg-slate-100 transition border border-slate-200"
                   >
                     Explorar Mentores
@@ -934,7 +554,7 @@ export function Dashboard() {
           </div>
           <div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cursos Activos</p>
-            <p className="text-4xl font-black text-slate-900 tracking-tight">{myEnrollments.filter(e => e.status === 'approved' || !e.status).length}</p>
+            <p className="text-4xl font-black text-slate-900 tracking-tight">{myEnrollments.length}</p>
           </div>
         </div>
 
@@ -983,86 +603,6 @@ export function Dashboard() {
             <MentorWidget />
           </section>
 
-          {/* MIS CURSOS Y PROGRAMAS ACTIVOS */}
-          {(() => {
-            const enrolledCourses = availableCourses.filter(course => {
-              const enrollment = myEnrollments.find(e => e.courseId === course.id);
-              return enrollment && (enrollment.status === 'approved' || !enrollment.status);
-            });
-
-            if (enrolledCourses.length === 0) return null;
-
-            return (
-              <section className="bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm relative overflow-hidden">
-                <div className="flex items-center gap-3 mb-8">
-                  <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center text-kirateal">
-                    <GraduationCap size={22} />
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-black text-slate-900 tracking-tight">
-                      Mis Cursos y Programas Activos
-                    </h3>
-                    <p className="text-sm text-slate-500 mt-0.5 font-medium">Accede a tus programas de formación y sigue expandiendo tu consciencia.</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {enrolledCourses.map((course) => {
-                    const banner = course.bannerUrl || `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800`;
-                    return (
-                      <div 
-                        key={course.id} 
-                        className="group flex flex-col bg-slate-50 border border-slate-150 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 h-96"
-                      >
-                        <div className="h-40 bg-slate-200 relative overflow-hidden shrink-0">
-                          <img 
-                            src={banner} 
-                            alt={course.title} 
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
-                            referrerPolicy="no-referrer"
-                          />
-                          <div className="absolute top-4 left-4 bg-emerald-500 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider shadow-sm">
-                            Inscrito & Activo
-                          </div>
-                        </div>
-                        <div className="p-6 flex flex-col flex-1">
-                          <h4 className="font-serif font-black text-slate-900 text-lg mb-2 line-clamp-1">{course.title}</h4>
-                          <p className="text-[11px] text-kiragold font-bold uppercase tracking-widest mb-3 block">
-                            Por {course.coachName || 'Kira Coach'}
-                          </p>
-                          <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed mb-4 flex-grow">
-                            {course.description || "Inicia tu recorrido académico y transforma tus habilidades con este programa único."}
-                          </p>
-                          <div className="mt-auto pt-4 border-t border-slate-200/60 flex items-center justify-between">
-                            <span className="text-[10px] uppercase font-black tracking-widest text-slate-400 block">Kira Academy</span>
-                            <button
-                              onClick={() => {
-                                setSelectedProductForDetail({
-                                  id: course.id,
-                                  title: course.title,
-                                  price: Number(course.price) || 0,
-                                  description: course.description || 'Programa de formación premium...',
-                                  imageUrl: banner,
-                                  type: 'course',
-                                  author: course.coachName || 'Kira Coach'
-                                });
-                                setIsDetailModalOpen(true);
-                              }}
-                              className="px-4 py-2 bg-kirateal hover:bg-kirateal-light text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition shadow-md flex items-center gap-1 cursor-pointer active:scale-95"
-                            >
-                              <span>Estudiar</span>
-                              <ArrowRight size={12} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })()}
-
           {/* Marketplace de Cursos Recomendados */}
           <section className="bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm relative overflow-hidden">
             <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
@@ -1099,57 +639,19 @@ export function Dashboard() {
                 style={{ transform: `translateX(-${currentSlide * 100}%)` }}
               >
                 {popularCourses.length > 0 ? popularCourses.map((course) => {
-                  const enrollment = myEnrollments.find(e => e.courseId === course.id);
-                  const isEnrolled = enrollment && (enrollment.status === 'approved' || !enrollment.status);
-                  const isPending = enrollment && enrollment.status === 'pending';
-                  const review = myReviews.find(r => r.courseId === course.id);
+                  const isEnrolled = myEnrollments.includes(course.id);
                   return (
                     <div key={course.id} className="w-full flex-shrink-0 px-1">
                       <div className="border border-slate-100 rounded-[32px] overflow-hidden bg-slate-50/40 hover:border-kirateal transition-all duration-500 flex flex-col md:flex-row h-72">
-                        <div 
-                          onClick={() => {
-                            setSelectedProductForDetail({
-                              id: course.id,
-                              title: course.title,
-                              price: Number(course.price) || 0,
-                              description: course.description || 'Programa de formación premium...',
-                              imageUrl: course.bannerUrl || '',
-                              type: 'course',
-                              author: course.coachName || 'Kira Coach'
-                            });
-                            setIsDetailModalOpen(true);
-                          }}
-                          className="md:w-5/12 bg-slate-200 relative shrink-0 cursor-pointer overflow-hidden group/thumb"
-                        >
-                          <img 
-                            src={course.bannerUrl || `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800`} 
-                            alt={course.title} 
-                            className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-500" 
-                            referrerPolicy="no-referrer"
-                          />
+                        <div className="md:w-5/12 bg-slate-200 relative shrink-0">
+                          {course.bannerUrl && <img src={course.bannerUrl} alt={course.title} className="w-full h-full object-cover" />}
                           <div className="absolute top-5 left-5 bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-2xl text-[13px] font-black shadow-lg text-slate-900 border border-white/20">
                             ${course.price}
                           </div>
                         </div>
                         <div className="p-8 md:p-10 flex flex-col flex-1">
-                          <div 
-                            onClick={() => {
-                              setSelectedProductForDetail({
-                                id: course.id,
-                                title: course.title,
-                                price: Number(course.price) || 0,
-                                description: course.description || 'Programa de formación premium...',
-                                imageUrl: course.bannerUrl || '',
-                                type: 'course',
-                                author: course.coachName || 'Kira Coach'
-                              });
-                              setIsDetailModalOpen(true);
-                            }}
-                            className="flex-1 flex flex-col cursor-pointer hover:opacity-90 transition-opacity"
-                          >
-                            <h4 className="font-black text-2xl text-slate-900 mb-3 tracking-tight">{course.title}</h4>
-                            <p className="text-[13px] text-slate-500 mb-6 flex-1 line-clamp-3 leading-relaxed font-medium">{course.description}</p>
-                          </div>
+                          <h4 className="font-black text-2xl text-slate-900 mb-3 tracking-tight">{course.title}</h4>
+                          <p className="text-[13px] text-slate-500 mb-6 flex-1 line-clamp-3 leading-relaxed font-medium">{course.description}</p>
                           
                           <div className="flex gap-5 mt-auto items-center">
                             <div className="flex-1">
@@ -1159,50 +661,61 @@ export function Dashboard() {
                               </div>
                             </div>
                             <div className="flex-1 flex min-w-[140px]">
-                              {review ? (
-                                <div className="w-full text-center py-3.5 bg-emerald-50 text-emerald-700 rounded-2xl text-[11px] font-black uppercase tracking-wider border border-emerald-100 flex items-center justify-center gap-1.5 shadow-sm">
-                                  <BadgeCheck size={14} className="text-emerald-600 shrink-0" />
-                                  <span>Calificado ★ {review.rating}.0</span>
-                                </div>
-                              ) : isEnrolled ? (
-                                <button 
-                                  onClick={() => {
-                                    setCourseReviewing(course.id);
-                                    setReviewType('course');
-                                    setReviewName(course.title);
-                                    setRating(5);
-                                    setComment('');
-                                  }} 
-                                  className="w-full text-[13px] px-6 py-3.5 bg-white text-slate-700 border border-slate-200 rounded-2xl hover:bg-slate-50 font-black transition flex items-center justify-center gap-2 shadow-sm cursor-pointer"
-                                >
-                                  <Star size={16} /> Calificar
-                                </button>
-                              ) : isPending ? (
-                                <button 
-                                  disabled
-                                  className="w-full text-[13px] px-6 py-3.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-2xl font-black flex items-center justify-center gap-2"
-                                >
-                                  <Clock size={16} /> Pendiente
-                                </button>
-                              ) : (
-                                <button 
-                                  onClick={() => {
-                                    addToCart({
-                                      id: course.id,
-                                      title: course.title,
-                                      price: Number(course.price) || 0,
-                                      description: course.description || '',
-                                      imageUrl: course.bannerUrl || '',
-                                      type: 'course',
-                                      author: course.coachName || 'Kira Coach'
-                                    });
-                                  }}
-                                  disabled={checkingOutId !== null}
-                                  className="w-full text-[12px] px-4 py-3.5 bg-kirateal text-white rounded-2xl hover:bg-kirateal-light font-black transition flex items-center justify-center gap-2 shadow-xl shadow-teal-100 disabled:opacity-50 cursor-pointer active:scale-95"
-                                >
-                                  <ShoppingCart size={14} /> Adquirir Curso
-                                </button>
-                              )}
+                              {(() => {
+                                if (isEnrolled) {
+                                  return (
+                                    <button 
+                                      onClick={() => setReviewingItem({ id: course.id, type: 'course', title: course.title })} 
+                                      className="w-full text-[13px] px-6 py-3.5 bg-white text-slate-700 border border-slate-200 rounded-2xl hover:bg-slate-50 font-black transition flex items-center justify-center gap-2 shadow-sm"
+                                    >
+                                      <Star size={16} /> Calificar
+                                    </button>
+                                  );
+                                }
+                                const coursePurchase = purchases.find(p => p.itemId === course.id);
+                                if (coursePurchase) {
+                                  if (coursePurchase.status === 'pending_release') {
+                                    return (
+                                      <button 
+                                        disabled
+                                        className="w-full text-[13px] px-6 py-3.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-2xl font-black flex items-center justify-center gap-2 shadow-sm cursor-not-allowed"
+                                      >
+                                        ⏳ Pendiente
+                                      </button>
+                                    );
+                                  } else {
+                                    return (
+                                      <button 
+                                        onClick={async () => {
+                                          try {
+                                            await addDoc(collection(db, 'enrollments'), {
+                                              userId: user.uid,
+                                              courseId: course.id,
+                                              progress: 0,
+                                              createdAt: new Date()
+                                            });
+                                            fetchData();
+                                          } catch (err) {
+                                            console.error(err);
+                                          }
+                                        }}
+                                        className="w-full text-[13px] px-6 py-3.5 bg-violet-600 text-white rounded-2xl hover:bg-violet-700 font-black transition flex items-center justify-center gap-2 shadow-sm"
+                                      >
+                                        <CheckCircle2 size={16} /> Activar
+                                      </button>
+                                    );
+                                  }
+                                }
+                                const isInCart = cartItems.some(item => item.id === course.id);
+                                return (
+                                  <button 
+                                    onClick={() => addToCart(course, 'course')}
+                                    className="w-full text-[13px] px-6 py-3.5 bg-kirateal text-white rounded-2xl hover:bg-kirateal-light font-black transition flex items-center justify-center gap-2 shadow-xl shadow-teal-100"
+                                  >
+                                    <ShoppingCart size={16} /> {isInCart ? 'En Carrito' : 'Inscribirse'}
+                                  </button>
+                                );
+                              })()}
                             </div>
                           </div>
                         </div>
@@ -1230,188 +743,189 @@ export function Dashboard() {
                     <BookOpen className="text-emerald-400" size={24} />
                     Biblioteca y Ebooks de la Plataforma
                   </h3>
-                  <p className="text-[11px] md:text-xs text-slate-400 mt-1 font-medium">Lecturas, guías y ebooks publicados por nuestros Coaches y Administradores oficiales de Kira.</p>
+                  <p className="text-sm text-slate-400 mt-1 font-medium">Lecturas, guías y ebooks publicados por nuestros Coaches y Administradores oficiales de Kira.</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 relative z-10">
-                {availableBooks.map((book) => {
-                  const bookReview = myReviews.find(r => r.bookId === book.id || (r.itemId === book.id && r.itemType === 'book'));
-                  const cover = book.coverUrl || book.imageUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400';
-                  let author = (book.publisherId && publisherNames[book.publisherId]) || book.publisherName || book.author || 'Kira Coach';
-                  const authorLower = author.toLowerCase().trim();
-                  if (authorLower === 'safeness' || authorLower === 'safeness.c.a' || authorLower === 'safeness.c.a@gmail.com') {
-                    author = 'Kira Coach';
-                  } else if (!author || author.toLowerCase() === 'usuario') {
-                    author = book.publisherRole === 'admin' ? 'Administrador' : 'Kira Coach';
-                  }
-
-                  return (
-                    <div key={book.id} className="border border-white/5 rounded-[32px] overflow-hidden bg-slate-950/60 hover:border-emerald-400/40 transition-all duration-500 flex flex-col h-[400px]">
-                      <div 
-                        onClick={() => {
-                          if (book.url) {
-                            window.open(book.url, '_blank');
-                          } else {
-                            setSelectedProductForDetail({
-                              id: book.id,
-                              title: book.title,
-                              price: Number(book.price) || 0,
-                              description: book.description || 'Un libro interactivo premium...',
-                              imageUrl: cover,
-                              type: 'book',
-                              author: author,
-                              pointCost: 50
-                            });
-                            setIsDetailModalOpen(true);
-                          }
-                        }}
-                        className="h-56 bg-slate-950 relative overflow-hidden shrink-0 cursor-pointer group/book"
-                      >
-                        {cover && (
-                          <img 
-                            src={cover} 
-                            alt={book.title} 
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover/book:scale-105" 
-                            referrerPolicy="no-referrer"
-                          />
-                        )}
-                        <div className="absolute top-5 left-5 flex flex-col gap-1.5 z-10">
-                          {book.url ? (
-                            <span className="px-3 py-1 bg-slate-950/90 backdrop-blur text-teal-400 text-[10px] font-black uppercase tracking-wider rounded-xl shadow-md border border-slate-800">
-                              {book.type || 'Recurso'}
-                            </span>
-                          ) : userOwnedBooks.includes(book.id) ? (
-                            <div className="bg-emerald-500 text-slate-950 px-3.5 py-1.5 rounded-full text-xs font-black shadow-lg flex items-center gap-1">
-                              <BadgeCheck size={12} className="text-slate-950" /> Desbloqueado
-                            </div>
-                          ) : (
-                            <div className="bg-emerald-500 text-white px-3.5 py-1.5 rounded-full text-xs font-black shadow-lg">
-                              ${book.price} USD
-                            </div>
-                          )}
-                          {book.publisherRole && (
-                            <span className={cn(
-                              "px-3 py-0.5 text-[8px] font-black uppercase tracking-widest rounded-lg shadow-md self-start text-white",
-                              book.publisherRole === 'admin' ? "bg-indigo-600" : "bg-teal-600"
-                            )}>
-                              {book.publisherRole === 'admin' ? 'Oficial' : 'Coach'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="p-6 flex flex-col flex-1">
+                {availableBooks.map((book) => (
+                  <div key={book.id} className="border border-white/5 rounded-[32px] overflow-hidden bg-slate-950/60 hover:border-emerald-400/40 transition-all duration-500 flex flex-col min-h-[460px] justify-between">
+                    <div className="h-44 bg-slate-950/80 relative overflow-hidden shrink-0 flex items-center justify-center p-4 border-b border-white/5">
+                      {book.imageUrl && (
                         <div 
-                          onClick={() => {
-                            if (book.url) {
-                              window.open(book.url, '_blank');
-                            } else {
-                              setSelectedProductForDetail({
-                                id: book.id,
-                                title: book.title,
-                                price: Number(book.price) || 0,
-                                description: book.description || 'Un libro interactivo premium...',
-                                imageUrl: cover,
-                                type: 'book',
-                                author: author,
-                                pointCost: 50
-                              });
-                              setIsDetailModalOpen(true);
-                            }
-                          }}
-                          className="flex-1 flex flex-col cursor-pointer hover:opacity-90 transition-opacity"
-                        >
-                          <h4 className="font-black text-lg text-slate-100 mb-1 line-clamp-1">{book.title}</h4>
-                          <p className="text-[11px] text-emerald-400 font-bold mb-4">Por {author}</p>
-                          <p className="text-xs text-slate-400 mb-5 flex-1 line-clamp-3 leading-relaxed font-medium">
-                            {book.description || 'Un libro canalizado y estructurado con herramientas de autoconocimiento, meditación y crecimiento.'}
-                          </p>
+                          className="absolute inset-0 bg-cover bg-center opacity-20 blur-md scale-110 pointer-events-none"
+                          style={{ backgroundImage: `url(${book.imageUrl})` }}
+                        />
+                      )}
+                      
+                      {book.imageUrl ? (
+                        <img 
+                          src={book.imageUrl} 
+                          alt={book.title} 
+                          className="h-28 max-w-[85px] object-contain transition-transform duration-500 hover:scale-105 drop-shadow-2xl z-10 rounded-lg shadow-lg border border-white/10" 
+                        />
+                      ) : (
+                        <div className="h-28 aspect-[3/4] bg-slate-800 rounded-lg flex items-center justify-center text-slate-500 text-[10px] font-black border border-slate-700 z-10 shadow-xl">
+                          NO COVER
                         </div>
-                        
-                        {book.url ? (
-                          <div className="mt-auto space-y-2">
-                            <a 
-                              href={book.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="w-full text-[11px] py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl transition flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer text-center"
-                            >
-                              {book.type === 'pdf' ? <FileText size={13} /> : <ExternalLink size={13} />}
-                              Leer {book.type === 'pdf' ? 'PDF' : 'Enlace'}
-                            </a>
-                            {bookReview ? (
-                              <div className="w-full text-center py-2 bg-emerald-950/40 text-emerald-400 rounded-xl text-[10px] font-bold uppercase tracking-wider border border-emerald-500/20 flex items-center justify-center gap-1">
-                                <Check size={12} /> Calificado ★ {bookReview.rating}.0
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  setCourseReviewing(book.id);
-                                  setReviewType('book');
-                                  setReviewName(book.title);
-                                  setRating(5);
-                                  setComment('');
-                                }}
-                                className="w-full text-[10px] py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition flex items-center justify-center gap-1 uppercase tracking-wider cursor-pointer border border-white/5"
-                              >
-                                <Star size={11} /> Calificar Libro
-                              </button>
-                            )}
-                          </div>
-                        ) : userOwnedBooks.includes(book.id) ? (
-                          <div className="mt-auto space-y-2">
-                            <button 
-                              onClick={() => {
-                                setReadingBook(book);
-                                setCurrentBookChapter(0);
-                              }}
-                              className="w-full text-[11px] py-3 bg-gradient-to-r from-teal-400 to-emerald-500 hover:from-teal-500 hover:to-emerald-600 text-slate-950 font-black rounded-2xl transition flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"
-                            >
-                              <BookOpen size={13} /> Leer Ebook Interactivo
-                            </button>
-                            
-                            {bookReview ? (
-                              <div className="w-full text-center py-2 bg-emerald-950/40 text-emerald-400 rounded-xl text-[10px] font-bold uppercase tracking-wider border border-emerald-500/20 flex items-center justify-center gap-1">
-                                <Check size={12} /> Calificado ★ {bookReview.rating}.0
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  setCourseReviewing(book.id);
-                                  setReviewType('book');
-                                  setReviewName(book.title);
-                                  setRating(5);
-                                  setComment('');
-                                }}
-                                className="w-full text-[10px] py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition flex items-center justify-center gap-1 uppercase tracking-wider cursor-pointer border border-white/5"
-                              >
-                                <Star size={11} /> Calificar Libro
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <button 
-                            onClick={() => {
-                              addToCart({
-                                id: book.id,
-                                title: book.title,
-                                price: Number(book.price) || 0,
-                                description: book.description || '',
-                                imageUrl: cover,
-                                type: 'book',
-                                author: author,
-                                pointCost: 50
-                              });
-                            }}
-                            className="w-full mt-auto text-[11px] py-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-2xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer active:scale-95"
-                          >
-                            <ShoppingCart size={13} /> Adquirir Libro
-                          </button>
-                        )}
+                      )}
+                      
+                      <div className="absolute top-4 left-4 bg-emerald-500/95 text-slate-950 px-2.5 py-1 rounded-full text-[10px] font-black shadow-lg z-20 uppercase tracking-wider">
+                        ${book.price} USD
+                      </div>
+                      
+                      <div className="absolute top-4 right-4 flex gap-1.5 z-20">
+                        <span className="px-2 py-0.5 bg-violet-600/90 backdrop-blur rounded text-[8px] font-black text-white uppercase tracking-wider shadow-sm flex items-center gap-1">
+                          pdf
+                        </span>
+                        <span className="px-2 py-0.5 bg-kiragold/90 backdrop-blur rounded text-[8px] font-black text-slate-950 uppercase tracking-wider shadow-sm flex items-center gap-1">
+                          {book.authorType === 'admin' || book.author?.toLowerCase().includes('zurita') || book.role === 'admin' ? 'Oficial' : 'Coach'}
+                        </span>
                       </div>
                     </div>
-                  );
-                })}
+                    <div className="p-5 flex flex-col flex-1 justify-between">
+                      <div>
+                        <h4 className="font-black text-base text-slate-100 mb-1 line-clamp-1" title={book.title}>{book.title}</h4>
+                        <p className="text-[10px] text-emerald-400 font-bold mb-3 uppercase tracking-wider">Por {book.author || 'Kira Coach'}</p>
+                        <p className="text-xs text-slate-400 mb-4 line-clamp-3 leading-relaxed font-medium">
+                          {book.description || 'Un libro canalizado y estructurado con herramientas prácticas de arteterapia, respiración consciente y autoconocimiento.'}
+                        </p>
+                      </div>
+                      
+                      <div className="mt-auto pt-2">
+                        {(() => {
+                          const bookPurchase = purchases.find(p => p.itemId === book.id);
+                          const isOwned = Number(book.price) === 0 || bookPurchase;
+                          if (isOwned) {
+                            if (bookPurchase && bookPurchase.status === 'pending_release') {
+                              return (
+                                <button 
+                                  disabled
+                                  className="w-full text-[10px] py-2.5 bg-slate-800 text-slate-500 rounded-xl font-black flex items-center justify-center gap-2 uppercase tracking-wider cursor-not-allowed border border-slate-700"
+                                >
+                                  ⏳ Pendiente de liberación
+                                </button>
+                              );
+                            } else {
+                              return (
+                                <div className="flex flex-col gap-2 w-full">
+                                  <button 
+                                    onClick={() => alert(`Lectura del Ebook: "${book.title}". ¡Excelente decisión! Hemos habilitado el material interactivo y PDF en tu correo corporativo o personal.`)}
+                                    className="w-full text-[10px] py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-violet-900/20 active:scale-[0.98]"
+                                  >
+                                    <BookOpen size={12} /> {book.id === 'cio-robert-teran' ? 'Leer Enlace' : 'Leer PDF'}
+                                  </button>
+                                  <button 
+                                    onClick={() => setReviewingItem({ id: book.id, type: 'book', title: book.title })}
+                                    className="w-full text-[10px] py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider active:scale-[0.98]"
+                                  >
+                                    <Star size={12} className="text-kiragold" /> Calificar Libro
+                                  </button>
+                                </div>
+                              );
+                            }
+                          }
+                          const isInCart = cartItems.some(item => item.id === book.id);
+                          return (
+                            <button 
+                              onClick={() => addToCart(book, 'book')}
+                              className="w-full text-[10px] py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-emerald-500/10 active:scale-[0.98]"
+                            >
+                              <ShoppingCart size={12} /> {isInCart ? 'En Carrito' : 'Adquirir Libro'}
+                            </button>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* SECCIÓN DE MIS COMPRAS (Librería y Cursos Adquiridos) */}
+          {purchases.length > 0 && (
+            <section className="bg-slate-50 border border-slate-200 rounded-[40px] p-10 shadow-sm mt-10">
+              <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
+                <div>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                    <CreditCard className="text-kirateal" size={24} />
+                    Mis Compras & Historial
+                  </h3>
+                  <p className="text-sm text-slate-500 mt-1 font-medium">Sigue el estado de liberación de tus ebooks y programas premium adquiridos.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {purchases.map((purchase) => (
+                  <div key={purchase.id} className="bg-white border border-slate-150 rounded-[32px] overflow-hidden p-6 hover:shadow-md transition-all flex flex-col justify-between min-h-[180px]">
+                    <div className="flex gap-4 items-start">
+                      <div className="w-16 h-16 rounded-2xl bg-slate-100 overflow-hidden shrink-0 border border-slate-150">
+                        {purchase.imageUrl ? (
+                          <img src={purchase.imageUrl} alt={purchase.itemTitle} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-slate-200 flex items-center justify-center font-black text-slate-400 uppercase text-xs">
+                            {purchase.itemType === 'course' ? 'C' : 'B'}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider mb-2 ${purchase.itemType === 'course' ? 'bg-kirateal/10 text-kirateal border border-kirateal/15' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'}`}>
+                          {purchase.itemType === 'course' ? 'Programa' : 'Ebook'}
+                        </span>
+                        <h4 className="font-black text-base text-slate-900 leading-tight truncate">{purchase.itemTitle}</h4>
+                        <p className="text-[11px] text-slate-400 font-bold mt-1">Precio: ${purchase.itemPrice} USD</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className={`w-2.5 h-2.5 rounded-full ${purchase.status === 'pending_release' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500'}`} />
+                        <span className="text-[11px] font-black text-slate-600 uppercase tracking-widest">
+                          {purchase.status === 'pending_release' ? 'Pendiente' : 'Liberado'}
+                        </span>
+                      </div>
+
+                      {purchase.status === 'pending_release' ? (
+                        <span className="text-[10px] text-slate-400 font-medium italic">Esperando al Coach...</span>
+                      ) : (
+                        purchase.itemType === 'course' ? (
+                          myEnrollments.includes(purchase.itemId) ? (
+                            <span className="text-xs font-black text-emerald-600 uppercase tracking-widest flex items-center gap-1">
+                              <CheckCircle2 size={12} /> Activo
+                            </span>
+                          ) : (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await addDoc(collection(db, 'enrollments'), {
+                                    userId: user.uid,
+                                    courseId: purchase.itemId,
+                                    progress: 0,
+                                    createdAt: new Date()
+                                  });
+                                  fetchData();
+                                } catch (err) {
+                                  console.error(err);
+                                }
+                              }}
+                              className="text-xs px-4 py-2 bg-kirateal hover:bg-kirateal-dark text-white rounded-xl font-black uppercase tracking-wider transition active:scale-95 cursor-pointer"
+                            >
+                              Ingresar
+                            </button>
+                          )
+                        ) : (
+                          <button
+                            onClick={() => alert(`Lectura del Ebook: "${purchase.itemTitle}". ¡Disfruta de esta obra maestra interactiva en PDF que hemos habilitado en tu correo!`)}
+                            className="text-xs px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black uppercase tracking-wider transition active:scale-95 cursor-pointer"
+                          >
+                            Leer
+                          </button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </section>
           )}
@@ -1426,7 +940,7 @@ export function Dashboard() {
                      </div>
                      <h3 className="text-2xl font-black text-slate-900 tracking-tight">Mis Mentores</h3>
                   </div>
-                  <button onClick={() => setShowDirectoryModal(true)} className="text-[11px] font-black text-kirateal uppercase tracking-widest hover:underline border border-kirateal/20 px-4 py-2 rounded-xl transition-colors hover:bg-kirateal/5">Full Directory</button>
+                  <button onClick={() => navigate('/')} className="text-[11px] font-black text-kirateal uppercase tracking-widest hover:underline border border-kirateal/20 px-4 py-2 rounded-xl transition-colors hover:bg-kirateal/5">Full Directory</button>
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -1437,23 +951,22 @@ export function Dashboard() {
                        </div>
                        <h4 className="text-base font-black text-slate-900 mb-1">{coach.displayName}</h4>
                        <p className="text-[11px] text-slate-400 mb-6 line-clamp-1 w-full font-bold uppercase tracking-tight">{coach.specialty}</p>
-                       <div className="flex gap-2 w-full mt-auto">
-                         <button 
-                          onClick={() => { setSelectedDirectoryCoach(coach); setShowDirectoryModal(true); }}
-                          className="flex-1 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-[10px] font-black hover:bg-slate-50 transition-all shadow-sm"
-                         >
-                           Ver Perfil
-                         </button>
-                         <button 
-                          onClick={() => {
-                            const event = new CustomEvent('open-kira-chat', { detail: { coach } });
-                            window.dispatchEvent(event);
-                          }}
-                          className="flex-1 px-4 py-2 bg-kirateal text-white rounded-2xl text-[10px] font-black hover:bg-kirateal/90 transition-all shadow-sm flex items-center justify-center gap-1"
-                         >
-                           Chat Mentor
-                         </button>
-                       </div>
+                       <button 
+                        onClick={() => {
+                          window.dispatchEvent(new CustomEvent('open-mentor-chat', { 
+                            detail: { 
+                              id: coach.id, 
+                              displayName: coach.displayName, 
+                              photoURL: coach.photoURL, 
+                              specialty: coach.specialty,
+                              role: coach.role || 'coach'
+                            } 
+                          }));
+                        }}
+                        className="mt-auto px-6 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-2xl text-[11px] font-black hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm w-full"
+                       >
+                         Chat Mentor
+                       </button>
                     </div>
                   ))}
                 </div>
@@ -1487,14 +1000,14 @@ export function Dashboard() {
                   </div>
                   <h3 className="text-xl font-black text-slate-900 tracking-tight">Kira Vault</h3>
                </div>
-               <button onClick={() => navigate('/dashboard/elite-library')} className="text-[10px] font-black text-kirateal uppercase tracking-widest hover:underline px-3 py-1.5 bg-kirateal/5 rounded-lg border border-kirateal/10">Ir</button>
+               <button onClick={() => navigate('/dashboard/elite')} className="text-[10px] font-black text-kirateal uppercase tracking-widest hover:underline px-3 py-1.5 bg-kirateal/5 rounded-lg border border-kirateal/10">Ir</button>
             </div>
             
             <div className="space-y-5 relative z-10">
               {unlockedHistory.slice(0, 5).map((item, idx) => (
                  <a 
-                   href={item.url}
-                   target="_blank"
+                   href={item.type === 'video' ? '#' : item.url}
+                   target={item.type === 'video' ? '_self' : '_blank'}
                    rel="noopener noreferrer"
                    key={idx} 
                    className="flex items-center gap-4 p-4 rounded-3xl border border-slate-50 bg-slate-50/50 hover:bg-white hover:border-kiragold/30 hover:shadow-2xl transition-all duration-300 group"
@@ -1523,18 +1036,21 @@ export function Dashboard() {
       </div>
 
       {/* Review Section */}
-      {courseReviewing && (
+      {reviewingItem && (
          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setCourseReviewing(null)} />
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => setReviewingItem(null)} />
            <div className="bg-white rounded-[40px] w-full max-w-xl p-10 relative z-10 shadow-2xl animate-in zoom-in-95 duration-500 border border-slate-100">
              <div className="flex justify-between items-start mb-8">
                <div>
                  <h4 className="text-2xl font-black text-slate-900 tracking-tight mb-1">Feedback de Transformación</h4>
-                 <p className="text-sm text-slate-500 font-medium">
-                   Estás calificando {reviewType === 'course' ? 'el curso' : reviewType === 'book' ? 'el libro' : 'al mentor'}: <strong className="text-kirateal">{reviewName || 'Kira Coach'}</strong>
-                 </p>
+                 {reviewingItem && (
+                   <p className="text-xs text-kirateal font-extrabold uppercase tracking-widest mt-1 mb-2">
+                     {reviewingItem.type === 'course' ? 'Curso' : 'Libro'}: {reviewingItem.title}
+                   </p>
+                 )}
+                 <p className="text-sm text-slate-500 font-medium">Ayúdanos a elevar el estándar de Kira Coach.</p>
                </div>
-               <button onClick={() => setCourseReviewing(null)} className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors">✕</button>
+               <button onClick={() => setReviewingItem(null)} className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors">✕</button>
              </div>
              
              <div className="flex gap-3 mb-8 justify-center bg-slate-50 p-6 rounded-3xl border border-slate-100">
@@ -1557,7 +1073,7 @@ export function Dashboard() {
              />
              
              <div className="flex gap-4">
-               <button onClick={() => setCourseReviewing(null)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs hover:bg-slate-200 transition-colors uppercase tracking-widest">
+               <button onClick={() => setReviewingItem(null)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs hover:bg-slate-200 transition-colors uppercase tracking-widest">
                  Cancelar
                </button>
                <button onClick={submitReview} className="flex-[2] py-4 bg-kirateal text-white rounded-2xl font-black text-xs hover:bg-kirateal-light transition-all shadow-lg shadow-teal-100 uppercase tracking-widest">
@@ -1658,366 +1174,268 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* COCH / MENTOR DIRECTORY MODAL */}
-      {showDirectoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" onClick={() => { setShowDirectoryModal(false); setSelectedDirectoryCoach(null); }} />
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.95, y: 15 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 15 }}
-            className="bg-white rounded-[40px] border border-slate-200/80 w-full max-w-6xl h-[85vh] flex flex-col relative z-10 shadow-2xl overflow-hidden"
-          >
-            {/* Header */}
-            <div className="bg-slate-50 border-b border-slate-100 px-8 py-6 flex justify-between items-center shrink-0">
-              <div>
-                <h2 className="text-2xl font-black text-slate-800 tracking-tight font-serif flex items-center gap-2">
-                  <Sparkles className="text-kirateal animate-pulse" size={22} />
-                  {selectedDirectoryCoach ? `Mentor: ${selectedDirectoryCoach.displayName}` : "Directorio de Mentores Kira Coach"}
-                </h2>
-                <p className="text-xs text-slate-500 font-medium">
-                  {selectedDirectoryCoach 
-                    ? "Explora la biografía, especialidades y los servicios evolutivos que ofrece este mentor." 
-                    : "Encuentra el guía ideal para tu transformación consciente e inscríbete a sus cursos."}
-                </p>
-              </div>
-              <button 
-                onClick={() => { setShowDirectoryModal(false); setSelectedDirectoryCoach(null); }}
-                className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-800 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {selectedDirectoryCoach ? (
-              /* DETAIL VIEW (COACH PROFILE & THEIR SERVICES) */
-              <div className="flex-1 overflow-y-auto p-8 lg:p-10 flex flex-col lg:flex-row gap-10">
-                {/* Left Side: Coach Profile Info */}
-                <div className="lg:w-1/3 flex flex-col items-center text-center lg:items-start lg:text-left border-b lg:border-b-0 lg:border-r border-slate-100 pb-8 lg:pb-0 lg:pr-10 shrink-0">
-                  <div className="w-32 h-32 rounded-full overflow-hidden mb-6 border-4 border-white shadow-xl ring-4 ring-slate-100">
-                    <img 
-                      src={selectedDirectoryCoach.photoURL || `https://picsum.photos/seed/${selectedDirectoryCoach.displayName}/150/150`} 
-                      alt={selectedDirectoryCoach.displayName} 
-                      className="w-full h-full object-cover" 
-                      onError={(e) => {
-                        e.currentTarget.src = `https://picsum.photos/seed/${selectedDirectoryCoach.displayName}/150/150`;
-                      }}
-                    />
-                  </div>
-                  <h3 className="text-2xl font-black text-slate-900 mb-2 flex items-center gap-2">
-                    {selectedDirectoryCoach.displayName}
-                    <BadgeCheck className="text-kirateal shrink-0" size={20} />
-                  </h3>
-                  <div className="flex flex-wrap gap-1.5 justify-center lg:justify-start mb-6 w-full">
-                    {(selectedDirectoryCoach.specialties && selectedDirectoryCoach.specialties.length > 0
-                      ? selectedDirectoryCoach.specialties
-                      : [selectedDirectoryCoach.specialty || "Mentor General"]
-                    ).map((spec: string, i: number) => (
-                      <span key={i} className="px-3 py-1 bg-kirateal/10 text-kirateal rounded-full text-[10px] font-black uppercase tracking-widest border border-kirateal/10">
-                        {spec}
-                      </span>
-                    ))}
+      {/* SIDEBAR CART DRAWER */}
+      {showCart && (
+        <div className="fixed inset-0 z-50 overflow-hidden">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity" onClick={() => setShowCart(false)} />
+          <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
+            <div className="w-screen max-w-md">
+              <div className="h-full flex flex-col bg-white shadow-2xl overflow-y-scroll rounded-l-[40px] border-l border-slate-200">
+                <div className="flex-1 py-8 overflow-y-auto px-6 sm:px-8">
+                  <div className="flex items-start justify-between pb-6 border-b border-slate-150">
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                      <ShoppingCart size={24} className="text-kirateal" /> Carrito de Compras
+                    </h2>
+                    <button onClick={() => setShowCart(false)} className="text-slate-400 hover:text-slate-600 p-2 font-black">✕</button>
                   </div>
 
-                  <div 
-                    className="text-slate-600 text-sm leading-relaxed mb-6 font-medium w-full prose prose-slate max-w-none text-left"
-                    dangerouslySetInnerHTML={{ __html: selectedDirectoryCoach.bio || "Este mentor está dedicado a guiar a las almas en su despertar de consciencia y desarrollo del ser." }}
-                  />
-
-                  {/* Social media contact mockups/real and Favorites Toggle */}
-                  <div className="w-full border-t border-slate-150 pt-6 mt-auto">
-                    <div className="flex flex-wrap gap-4 justify-center lg:justify-start items-center mb-6">
-                      <button
-                        onClick={(e) => toggleDirectoryFavorite(e, selectedDirectoryCoach.id)}
-                        className={cn(
-                          "flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition border",
-                          userFavorites.includes(selectedDirectoryCoach.id)
-                            ? "bg-rose-50 border-rose-100 text-rose-600"
-                            : "bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:border-slate-300"
-                        )}
-                      >
-                        <Heart size={14} className={cn(userFavorites.includes(selectedDirectoryCoach.id) && "fill-current")} />
-                        {userFavorites.includes(selectedDirectoryCoach.id) ? "Favorito" : "Guardar Mentor"}
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          const event = new CustomEvent('open-kira-chat', { detail: { coach: selectedDirectoryCoach } });
-                          window.dispatchEvent(event);
-                          setShowDirectoryModal(false);
-                          setSelectedDirectoryCoach(null);
-                        }}
-                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition border bg-kirateal text-white hover:bg-kirateal/90 border-transparent shadow-md active:scale-95"
-                      >
-                        <MessageCircle size={14} />
-                        <span>Chat Mentor</span>
-                      </button>
-
-                      {(() => {
-                        const coachReview = myReviews.find(r => r.coachId === selectedDirectoryCoach.id || (r.itemId === selectedDirectoryCoach.id && r.itemType === 'coach'));
-                        return coachReview ? (
-                          <div className="flex items-center gap-1.5 px-5 py-2.5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl text-xs font-black uppercase tracking-wider">
-                            <Check size={14} className="text-emerald-600" />
-                            <span>Calificado ★ {coachReview.rating}.0</span>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => {
-                              setCourseReviewing(selectedDirectoryCoach.id);
-                              setReviewType('coach');
-                              setReviewName(selectedDirectoryCoach.displayName);
-                              setRating(5);
-                              setComment('');
-                            }}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition border bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 hover:border-amber-300"
-                          >
-                            <Star size={14} className="fill-amber-400 text-amber-500 animate-pulse" />
-                            <span>Calificar Mentor</span>
-                          </button>
-                        );
-                      })()}
-                    </div>
-
-                    <div className="flex gap-3 justify-center lg:justify-start">
-                      {selectedDirectoryCoach.instagram && (
-                        <a href={selectedDirectoryCoach.instagram} target="_blank" rel="noopener noreferrer" className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-150 text-slate-500 rounded-xl transition">
-                          <Instagram size={16} />
-                        </a>
-                      )}
-                      {selectedDirectoryCoach.linkedin && (
-                        <a href={selectedDirectoryCoach.linkedin} target="_blank" rel="noopener noreferrer" className="p-3 bg-slate-50 hover:bg-slate-100 border border-slate-150 text-slate-500 rounded-xl transition">
-                          <Linkedin size={16} />
-                        </a>
-                      )}
-                      <button 
-                        onClick={() => setSelectedDirectoryCoach(null)}
-                        className="ml-auto px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black rounded-xl uppercase tracking-widest transition"
-                      >
-                        ← Volver
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Side: Cursos & Servicios que ofrece */}
-                <div className="flex-1 flex flex-col min-w-0">
-                  <h4 className="text-xl font-black text-slate-800 tracking-tight font-serif mb-6 flex items-center gap-2">
-                    <GraduationCap className="text-kirateal" size={20} />
-                    Cursos y Servicios Activos
-                  </h4>
-
-                  <div className="flex-1 space-y-6">
-                    {(() => {
-                      const coachCourses = availableCourses.filter(c => c.coachId === selectedDirectoryCoach.id);
-                      if (coachCourses.length === 0) {
-                        return (
-                          <div className="py-20 text-center bg-slate-50 rounded-[32px] border border-dashed border-slate-200 p-8 flex flex-col items-center justify-center">
-                            <GraduationCap size={44} className="text-slate-300 mb-4" />
-                            <h5 className="text-slate-700 font-bold text-base mb-1">Sin cursos activos actualmente</h5>
-                            <p className="text-slate-400 text-xs max-w-sm">
-                              Este mentor está estructurando nuevas experiencias y consultorías de alto impacto. ¡Vuelve pronto!
-                            </p>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {coachCourses.map(course => {
-                            // Determine user's enrollment status
-                            const enrollment = myEnrollments.find(e => e.courseId === course.id);
-                            const isEnrolled = enrollment && enrollment.status === 'approved';
-                            const isPending = enrollment && enrollment.status === 'pending';
-
-                            return (
-                              <div key={course.id} className="bg-white border border-slate-150 rounded-[32px] p-6 hover:shadow-2xl transition duration-300 flex flex-col">
-                                <div className="flex justify-between items-start mb-4">
-                                  <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-bold uppercase tracking-wider font-mono">
-                                    {course.modality || "Online"}
-                                  </span>
-                                  {course.price > 0 ? (
-                                    <span className="text-sm font-black text-kirateal font-mono">
-                                      ${course.price}
-                                    </span>
-                                  ) : (
-                                    <span className="text-sm font-black text-emerald-600 uppercase tracking-widest text-[11px]">
-                                      Gratuito
-                                    </span>
-                                  )}
+                  <div className="mt-8">
+                    {cartItems.length === 0 ? (
+                      <div className="text-center py-24">
+                        <ShoppingCart size={48} className="mx-auto text-slate-300 mb-4 stroke-[1.5]" />
+                        <p className="text-slate-500 font-bold">Tu carrito está vacío</p>
+                        <p className="text-slate-400 text-xs mt-1">Explora nuestros ebooks y cursos recomendados para añadir contenido.</p>
+                      </div>
+                    ) : (
+                      <div className="flow-root">
+                        <ul className="-my-6 divide-y divide-slate-100">
+                          {cartItems.map((item) => (
+                            <li key={item.id} className="py-6 flex gap-4">
+                              <div className="flex-shrink-0 w-24 h-16 rounded-xl bg-slate-100 overflow-hidden border border-slate-200">
+                                <img src={item.imageUrl || item.bannerUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=150'} alt={item.title} className="w-full h-full object-cover" />
+                              </div>
+                              <div className="flex-1 flex flex-col">
+                                <div>
+                                  <div className="flex justify-between text-base font-black text-slate-900">
+                                    <h3 className="line-clamp-1">{item.title}</h3>
+                                    <p className="ml-4">${item.price} USD</p>
+                                  </div>
+                                  <p className="mt-1 text-xs text-slate-500 font-medium">
+                                    {item.bannerUrl ? 'Curso Premium' : 'Ebook Recomendado'}
+                                  </p>
                                 </div>
-                                <h5 className="font-serif font-black text-slate-800 text-base mb-2 line-clamp-1">{course.title}</h5>
-                                <p className="text-slate-500 text-xs leading-relaxed mb-6 line-clamp-3">
-                                  {course.description || "Sin descripción disponible."}
-                                </p>
-                                
-                                <div className="mt-auto pt-4 border-t border-slate-100">
-                                  {isEnrolled ? (
-                                    <div className="w-full py-3 bg-emerald-50 text-emerald-700 rounded-2xl text-[11px] font-black uppercase tracking-widest text-center border border-emerald-100">
-                                      ✓ Inscrito & Activo
-                                    </div>
-                                  ) : isPending ? (
-                                    <div className="w-full py-3 bg-slate-100 text-slate-500 rounded-2xl text-[11px] font-black uppercase tracking-widest text-center border border-slate-200">
-                                      ⏳ Solicitud Pendiente
-                                    </div>
-                                  ) : (
-                                    <button
-                                      onClick={() => setSelectedCourseForEnroll(course)}
-                                      disabled={checkingOutId === course.id}
-                                      className="w-full py-3 bg-slate-900 hover:bg-black text-white rounded-2xl text-[11px] font-black uppercase tracking-widest text-center transition flex items-center justify-center gap-1 cursor-pointer"
+                                <div className="flex-1 flex items-end justify-between text-sm">
+                                  <span className="text-slate-400 text-xs font-bold">Cantidad: 1</span>
+                                  <div className="flex">
+                                    <button 
+                                      onClick={() => removeFromCart(item.id)} 
+                                      className="font-black text-xs text-rose-500 hover:text-rose-600 uppercase tracking-widest cursor-pointer"
                                     >
-                                      {checkingOutId === course.id ? (
-                                        <>
-                                          <Loader2 size={12} className="animate-spin" /> Procesando...
-                                        </>
-                                      ) : (
-                                        "Solicitar Cupo Directo"
-                                      )}
+                                      Eliminar
                                     </button>
-                                  )}
+                                  </div>
                                 </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              /* LIST VIEW OF COACHES */
-              <div className="flex-1 flex flex-col min-h-0 bg-slate-50/50">
-                {/* Search & Filter Bar */}
-                <div className="bg-white border-b border-slate-100 p-6 flex flex-col sm:flex-row gap-4 justify-between items-center shrink-0">
-                  <div className="relative w-full sm:w-80">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                      <Search size={16} />
-                    </div>
-                    <input
-                      type="text"
-                      value={directorySearchQuery}
-                      onChange={(e) => setDirectorySearchQuery(e.target.value)}
-                      placeholder="Buscar por nombre, especialidad..."
-                      className="w-full text-xs border border-slate-200 rounded-2xl pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-kirateal/10 focus:border-kirateal bg-slate-50 focus:bg-white transition"
-                    />
-                  </div>
-
-                  <div className="flex gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 scrollbar-none">
-                    {["Todos", "Espiritualidad", "Liderazgo", "Ontología", "Arteterapia"].map((spec) => (
-                      <button
-                        key={spec}
-                        onClick={() => setDirectorySpecialty(spec)}
-                        className={cn(
-                          "px-4 py-2 rounded-xl text-xs font-black transition shrink-0 uppercase tracking-widest",
-                          directorySpecialty === spec
-                            ? "bg-kirateal text-white shadow-md shadow-teal-500/15"
-                            : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                        )}
-                      >
-                        {spec}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Grid */}
-                <div className="flex-1 overflow-y-auto p-8 lg:p-10">
-                  {(() => {
-                    const filtered = allCoaches.filter(c => {
-                      const matchesSearch = 
-                        c.displayName?.toLowerCase().includes(directorySearchQuery.toLowerCase()) ||
-                        c.specialty?.toLowerCase().includes(directorySearchQuery.toLowerCase()) ||
-                        c.bio?.toLowerCase().includes(directorySearchQuery.toLowerCase());
-                      const matchesSpec = 
-                        directorySpecialty === 'Todos' || 
-                        c.specialty?.toLowerCase().includes(directorySpecialty.toLowerCase());
-                      return matchesSearch && matchesSpec;
-                    });
-
-                    if (filtered.length === 0) {
-                      return (
-                        <div className="py-24 text-center">
-                          <User size={48} className="text-slate-300 mx-auto mb-4" />
-                          <h4 className="text-slate-700 font-bold text-lg mb-1">No se encontraron mentores</h4>
-                          <p className="text-slate-400 text-sm max-w-xs mx-auto">
-                            Intenta ajustar los términos de búsqueda o filtros para explorar a nuestros guías.
-                          </p>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        {filtered.map(coach => (
-                          <div 
-                            key={coach.id} 
-                            onClick={() => setSelectedDirectoryCoach(coach)}
-                            className="bg-white border border-slate-150 rounded-[40px] p-6 hover:shadow-2xl hover:border-kirateal/20 transition-all duration-300 group flex flex-col items-center text-center cursor-pointer relative"
-                          >
-                            <button
-                              onClick={(e) => toggleDirectoryFavorite(e, coach.id)}
-                              className="absolute top-6 right-6 w-9 h-9 bg-slate-50 hover:bg-slate-100 rounded-full flex items-center justify-center border border-slate-100 text-slate-400 hover:text-rose-500 transition shadow-sm z-10"
-                            >
-                              <Heart size={14} className={cn(userFavorites.includes(coach.id) && "fill-current text-rose-500")} />
-                            </button>
-
-                            <div className="w-24 h-24 rounded-full overflow-hidden mb-5 border-4 border-white shadow-lg ring-4 ring-slate-100 group-hover:scale-105 transition-transform duration-500">
-                              <img 
-                                src={coach.photoURL || `https://picsum.photos/seed/${coach.displayName}/150/150`} 
-                                alt={coach.displayName} 
-                                className="w-full h-full object-cover" 
-                                onError={(e) => {
-                                  e.currentTarget.src = `https://picsum.photos/seed/${coach.displayName}/150/150`;
-                                }}
-                              />
-                            </div>
-                            
-                            <h4 className="text-lg font-black text-slate-900 mb-1 group-hover:text-kirateal transition-colors">{coach.displayName}</h4>
-                            <div className="flex flex-wrap gap-1.5 justify-center mb-4 max-w-full">
-                              {(coach.specialties && coach.specialties.length > 0
-                                ? coach.specialties
-                                : [coach.specialty || "Mentor General"]
-                              ).slice(0, 3).map((spec: string, i: number) => (
-                                <span key={i} className="text-[9px] text-kirateal font-black uppercase tracking-wider bg-kirateal/5 px-2.5 py-1 rounded-full border border-kirateal/10 whitespace-nowrap">
-                                  {spec}
-                                </span>
-                              ))}
-                            </div>
-                            
-                            <p className="text-slate-500 text-xs leading-relaxed mb-6 line-clamp-3 font-medium">
-                              {stripHtml(coach.bio) || "Este mentor está dedicado a guiar a las almas en su despertar de consciencia y desarrollo del ser."}
-                            </p>
-
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); setSelectedDirectoryCoach(coach); }}
-                              className="mt-auto w-full py-3 bg-slate-50 hover:bg-slate-900 text-slate-700 hover:text-white rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 border border-slate-200"
-                            >
-                              Ver Perfil & Servicios
-                            </button>
-                          </div>
-                        ))}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
-                    );
-                  })()}
+                    )}
+                  </div>
                 </div>
+
+                {cartItems.length > 0 && (
+                  <div className="border-t border-slate-100 py-8 px-6 sm:px-8 bg-slate-50/50">
+                    <div className="flex justify-between text-base font-black text-slate-900 mb-6">
+                      <p>Total de la Orden</p>
+                      <p>${cartItems.reduce((acc, item) => acc + Number(item.price), 0).toFixed(2)} USD</p>
+                    </div>
+                    <p className="mt-0.5 text-xs text-slate-500 mb-6 leading-relaxed">
+                      El pago se procesará a través de nuestro simulador de pasarela segura. Una vez completado, el Coach liberará tu acceso de forma inmediata o manual.
+                    </p>
+                    <div>
+                      <button
+                        onClick={() => { setShowCart(false); setShowPaymentModal(true); }}
+                        className="w-full flex justify-center items-center px-6 py-4 border border-transparent rounded-2xl shadow-xl shadow-teal-100 bg-kirateal text-base font-black text-white hover:bg-kirateal-dark transition duration-300"
+                      >
+                        Proceder al Pago
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </motion.div>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Reusable Product Detail Modal */}
-      <ProductDetailModal
-        product={selectedProductForDetail}
-        isOpen={isDetailModalOpen}
-        onClose={() => {
-          setIsDetailModalOpen(false);
-          setSelectedProductForDetail(null);
-        }}
-        onAddToCart={(product) => {
-          addToCart(product);
-        }}
-      />
+      {/* SIMULATED PAYMENT MODAL */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowPaymentModal(false)} />
+          <div className="bg-white rounded-[40px] w-full max-w-lg p-8 sm:p-10 relative z-10 shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-start mb-6 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <CreditCard size={24} className="text-kirateal" /> Checkout de Compra
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">Simulador de pasarela de pago segura de Kira Coach</p>
+              </div>
+              <button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-slate-600 font-bold p-2">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-2 space-y-6">
+              {/* Order Summary */}
+              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Resumen del Pedido</h4>
+                <ul className="space-y-3 divide-y divide-slate-100">
+                  {cartItems.map((item) => (
+                    <li key={item.id} className="pt-2 first:pt-0 flex justify-between items-center text-sm">
+                      <div>
+                        <span className="font-bold text-slate-800">{item.title}</span>
+                        <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded ml-2 font-bold uppercase">
+                          {item.bannerUrl ? 'Curso' : 'Libro'}
+                        </span>
+                      </div>
+                      <span className="font-black text-slate-900 shrink-0 ml-4">${item.price} USD</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="border-t border-slate-200 mt-4 pt-4 flex justify-between items-center text-base font-black text-slate-900">
+                  <span>Monto Total</span>
+                  <span>${cartItems.reduce((acc, item) => acc + Number(item.price), 0).toFixed(2)} USD</span>
+                </div>
+              </div>
+
+              {/* Card form */}
+              <form onSubmit={handleProcessPayment} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Nombre en la Tarjeta</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej. Robert Harrison"
+                    value={paymentForm.cardName}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, cardName: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Número de Tarjeta</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      placeholder="4000 1234 5678 9010"
+                      maxLength={19}
+                      value={paymentForm.cardNumber}
+                      onChange={(e) => {
+                        let val = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
+                        let matches = val.match(/\d{4,16}/g);
+                        let match = matches && matches[0] || '';
+                        let parts = [];
+                        for (let i = 0, len = match.length; i < len; i += 4) {
+                          parts.push(match.substring(i, i + 4));
+                        }
+                        if (parts.length > 0) {
+                          setPaymentForm({ ...paymentForm, cardNumber: parts.join(' ') });
+                        } else {
+                          setPaymentForm({ ...paymentForm, cardNumber: val });
+                        }
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none pl-11"
+                    />
+                    <CreditCard className="absolute left-4 top-3.5 text-slate-400" size={18} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Vencimiento</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="MM/AA"
+                      maxLength={5}
+                      value={paymentForm.expiry}
+                      onChange={(e) => {
+                        let val = e.target.value.replace(/[^0-9]/g, '');
+                        if (val.length >= 2) {
+                          setPaymentForm({ ...paymentForm, expiry: val.substring(0, 2) + '/' + val.substring(2, 4) });
+                        } else {
+                          setPaymentForm({ ...paymentForm, expiry: val });
+                        }
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">CVC / CVV</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="123"
+                      maxLength={4}
+                      value={paymentForm.cvv}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, cvv: e.target.value.replace(/[^0-9]/g, '') })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isProcessingPayment}
+                  className="w-full mt-6 py-4 bg-kirateal text-white hover:bg-kirateal-dark rounded-2xl font-black uppercase text-xs tracking-wider transition-all duration-300 hover:shadow-xl hover:shadow-teal-100 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-teal-50"
+                >
+                  {isProcessingPayment ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" /> Procesando Transacción...
+                    </>
+                  ) : (
+                    <>
+                      Pagar ${cartItems.reduce((acc, item) => acc + Number(item.price), 0).toFixed(2)} USD
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PAYMENT SUCCESS MODAL */}
+      {paymentSuccessData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setPaymentSuccessData(null)} />
+          <div className="bg-white rounded-[40px] w-full max-w-md p-8 relative z-10 shadow-2xl text-center flex flex-col items-center animate-in zoom-in-95 duration-500">
+            <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-6">
+              <CheckCircle2 size={40} className="stroke-[2.5]" />
+            </div>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight mb-2">¡Pago Realizado con Éxito!</h3>
+            <p className="text-slate-500 text-sm leading-relaxed mb-6">
+              Hemos registrado el pago de tu orden de forma segura en Firestore.
+            </p>
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-left w-full mb-6 space-y-2">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Detalle de la Transacción</p>
+              {paymentSuccessData.items.map((it: any, i: number) => (
+                <div key={i} className="flex justify-between items-center text-xs">
+                  <span className="font-bold text-slate-700">{it.title}</span>
+                  <span className="font-black text-slate-900">${it.price} USD</span>
+                </div>
+              ))}
+              <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-xs font-black text-slate-900">
+                <span>Total pagado</span>
+                <span>${paymentSuccessData.total.toFixed(2)} USD</span>
+              </div>
+            </div>
+            <div className="bg-amber-50 border border-amber-200/50 rounded-2xl p-4 text-amber-800 text-xs text-left leading-relaxed mb-8 flex gap-3 items-start">
+              <span className="text-lg">⏳</span>
+              <div>
+                <strong className="font-bold block mb-0.5">Pendiente de liberación por el Coach:</strong>
+                Según las políticas de Kira Coach, tu material/acceso será liberado y habilitado manualmente por tu Coach o Administrador desde su Panel de Control. ¡Te avisaremos por correo!
+              </div>
+            </div>
+            <button 
+              onClick={() => setPaymentSuccessData(null)}
+              className="w-full py-4 bg-slate-900 hover:bg-black text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-all duration-300"
+            >
+              Cerrar y Ver Mis Compras
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

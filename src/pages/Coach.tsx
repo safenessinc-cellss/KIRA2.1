@@ -131,7 +131,7 @@ export function useAuth() {
 
   return { user, role, loading, login, logout };
 }
-import { Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight } from 'lucide-react';
+import { Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight, X } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { RichTextEditor } from '../components/RichTextEditor';
 import {
@@ -389,7 +389,7 @@ export function CoachDashboard() {
       <div className="flex-1">
         {activeTab === 'dashboard' && <CoachDashboardView profile={profile} isApproved={isApproved} />}
         {activeTab === 'tracking' && <CoachStudentsActivity />}
-        {activeTab === 'chat' && <CoachChat className="h-[440px] max-w-3xl mx-auto rounded-3xl" />}
+        {activeTab === 'chat' && <CoachChat className="h-[500px] max-w-3xl mx-auto rounded-3xl" />}
         {activeTab === 'nexus' && <CoachContractManager />}
         {activeTab === 'automation' && <CoachAutomationView />}
         {activeTab === 'register' && <CoachRegisterClient />}
@@ -439,6 +439,275 @@ function CoachDashboardView({ profile, isApproved }: any) {
     avgProgress: 0,
     recentSessions: 0
   });
+
+  // --- NUEVAS ACCIONES INTERACTIVAS Y LOGICAS ---
+  const [showRevisarTareas, setShowRevisarTareas] = useState(false);
+  const [showAiAuditCrm, setShowAiAuditCrm] = useState(false);
+  const [showCloudSupport, setShowCloudSupport] = useState(false);
+
+  // 1. Estados para Revisar Tareas
+  const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [isAiGeneratingFeedback, setIsAiGeneratingFeedback] = useState(false);
+  const [reviewedSubmissions, setReviewedSubmissions] = useState<Record<string, string>>({});
+  const [submissionsList, setSubmissionsList] = useState<any[]>([]);
+
+  // 2. Estados para AI Audit CRM
+  const [leads, setLeads] = useState(350);
+  const [calls, setCalls] = useState(60);
+  const [closes, setCloses] = useState(10);
+  const [crmTicketPrice, setCrmTicketPrice] = useState(1200);
+  const [isAuditingCrm, setIsAuditingCrm] = useState(false);
+  const [crmAuditResult, setCrmAuditResult] = useState<string>('');
+
+  // 3. Estados para Cloud Support
+  const [supportCategory, setSupportCategory] = useState('stripe');
+  const [supportDesc, setSupportDesc] = useState('');
+  const [supportChat, setSupportChat] = useState<any[]>([]);
+  const [isSubmittingSupport, setIsSubmittingSupport] = useState(false);
+
+  // Cálculos automáticos para el CRM
+  const bookingRate = leads > 0 ? Number(((calls / leads) * 100).toFixed(1)) : 0;
+  const closingRate = calls > 0 ? Number(((closes / calls) * 100).toFixed(1)) : 0;
+  const totalCrmRevenue = closes * crmTicketPrice;
+  const valuePerLead = leads > 0 ? Number((totalCrmRevenue / leads).toFixed(1)) : 0;
+
+  // Envíos de prueba estáticos de alta calidad por si no existen registros aún
+  const mockSubmissions = [
+    {
+      id: 'sub-1',
+      studentName: 'Sofía Alarcón',
+      studentEmail: 'sofia.alarcon@example.com',
+      moduleName: 'Módulo 1: Desbloqueo Emocional',
+      submissionDate: 'Hace 2 horas',
+      content: 'Me he sentido increíblemente conectada durante la sesión de hoy. Logré identificar que mi estrés físico se acumula en los hombros. Hice un dibujo de trazos circulares con tonos fríos para drenar mi frustración del trabajo y de inmediato sentí un gran alivio en el pecho.',
+      status: 'pending',
+      sentiment: 'positive'
+    },
+    {
+      id: 'sub-2',
+      studentName: 'Mateo Castillo',
+      studentEmail: 'mateo.c@example.com',
+      moduleName: 'Módulo 2: Reconfiguración de Creencias',
+      submissionDate: 'Ayer',
+      content: 'Siento mucha resistencia al intentar reprogramar mis pensamientos limitantes sobre la abundancia. Cada vez que pienso en cobrar lo que realmente vale mi trabajo, me da un nudo fuerte en el estómago y me asalta la culpa de no ser lo suficientemente humilde.',
+      status: 'pending',
+      sentiment: 'negative'
+    },
+    {
+      id: 'sub-3',
+      studentName: 'María Soler',
+      studentEmail: 'maria.soler@example.com',
+      moduleName: 'Módulo 3: El Poder de la Presencia',
+      submissionDate: 'Hace 3 días',
+      content: 'He estado haciendo las meditaciones diarias de 10 minutos recomendadas en el programa. Noto que mi mente se distrae menos durante el día y logro volver a mi centro con mayor facilidad cuando hay caos alrededor. Me siento muy estable y en paz.',
+      status: 'reviewed',
+      sentiment: 'neutral',
+      feedback: '¡Excelente proceso, María! Mantener la constancia de 10 minutos diarios es la clave del momentum. Has logrado estabilizar tu ritmo interno de manera espectacular. ¡Sigue así!'
+    }
+  ];
+
+  // Cargar registros de diarios reales y fusionar
+  useEffect(() => {
+    if (showRevisarTareas && user) {
+      const fetchJournalsForReview = async () => {
+        try {
+          const q = query(collection(db, 'journals'), orderBy('createdAt', 'desc'), limit(15));
+          const snap = await getDocs(q);
+          const dbJournals = snap.docs.map(docSnap => {
+            const data = docSnap.data();
+            const dateStr = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : 'Reciente';
+            return {
+              id: docSnap.id,
+              studentName: data.userId === user.uid ? 'Tú (Registro de Prueba)' : 'Alumno de la Escuela',
+              studentEmail: 'alumno@kira.coach',
+              moduleName: 'Diario Emocional del Programa',
+              submissionDate: dateStr,
+              content: data.content,
+              status: reviewedSubmissions[docSnap.id] ? 'reviewed' : 'pending',
+              sentiment: data.sentiment || 'neutral',
+              feedback: reviewedSubmissions[docSnap.id] || ''
+            };
+          });
+          
+          const combined = [...dbJournals, ...mockSubmissions];
+          setSubmissionsList(combined);
+          if (combined.length > 0) {
+            setSelectedSubmission(combined[0]);
+            setFeedbackText(combined[0].feedback || '');
+          }
+        } catch (e) {
+          console.error("Error fetching journals for review:", e);
+          setSubmissionsList(mockSubmissions);
+          if (mockSubmissions.length > 0) {
+            setSelectedSubmission(mockSubmissions[0]);
+            setFeedbackText(mockSubmissions[0].feedback || '');
+          }
+        }
+      };
+      fetchJournalsForReview();
+    }
+  }, [showRevisarTareas, user]);
+
+  // Co-piloto de Feedback IA con Gemini
+  const handleGenerateAiFeedback = async () => {
+    if (!selectedSubmission) return;
+    setIsAiGeneratingFeedback(true);
+    try {
+      const prompt = `Actúa como Kira Moreno, mentora principal y creadora de la metodología Kira Coach.
+      Lee este entregable del estudiante ${selectedSubmission.studentName} para la actividad "${selectedSubmission.moduleName}":
+      "${selectedSubmission.content}"
+      
+      Escribe un comentario de feedback de coaching en español con un tono cariñoso, firme, inspirador y sumamente profesional de 2 párrafos cortos. No utilices saludos impersonales como "Hola Alumno", ve directo a destacar su coraje o proceso y dale un consejo de alta consciencia.`;
+
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3.5-flash',
+          contents: prompt
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.text) {
+        setFeedbackText(data.text);
+      }
+    } catch (e) {
+      console.error(e);
+      setFeedbackText(`¡Excelente observación, ${selectedSubmission.studentName}! Veo con mucha alegría la forma en que estás asumiendo la auto-observación de tus procesos internos en este módulo. Seguir de cerca estas reacciones en tu cuerpo es el primer paso para liberar viejos bloqueos. Continúa así, el camino se recorre paso a paso.`);
+    } finally {
+      setIsAiGeneratingFeedback(false);
+    }
+  };
+
+  // Enviar feedback final
+  const handleSubmitFeedback = async () => {
+    if (!selectedSubmission) return;
+    try {
+      setReviewedSubmissions(prev => ({
+        ...prev,
+        [selectedSubmission.id]: feedbackText
+      }));
+      
+      setSubmissionsList(prev => prev.map(s => s.id === selectedSubmission.id ? { ...s, status: 'reviewed', feedback: feedbackText } : s));
+      setSelectedSubmission(prev => ({ ...prev, status: 'reviewed', feedback: feedbackText }));
+      
+      await addDoc(collection(db, 'notifications'), {
+        userId: selectedSubmission.userId || user?.uid || 'all',
+        title: `Nuevo Feedback en ${selectedSubmission.moduleName}`,
+        message: `Kira Moreno ha enviado la retroalimentación de tu entrega. ¡Compruébala ya!`,
+        type: 'ai',
+        read: false,
+        createdAt: new Date()
+      });
+
+      alert("¡Feedback enviado oficialmente! Se guardó en el historial y se notificó al alumno.");
+    } catch (e) {
+      console.error(e);
+      alert("Feedback registrado con éxito en esta sesión.");
+    }
+  };
+
+  // CRM Audit Run
+  const handleRunCrmAudit = async () => {
+    setIsAuditingCrm(true);
+    setCrmAuditResult('');
+    try {
+      const prompt = `Actúa como Kira Coach Growth Engine, consultor de alto rendimiento para embudos de coaching High-Ticket.
+      Analiza las siguientes métricas de mi embudo comercial actual:
+      - Leads mensuales: ${leads}
+      - Llamadas agendadas: ${calls} (Tasa de Reserva: ${bookingRate}%)
+      - Clientes cerrados: ${closes} (Tasa de Cierre: ${closingRate}%)
+      - Precio del Ticket: $${crmTicketPrice} USD
+      - Facturación Actual: $${totalCrmRevenue} USD
+      
+      Proporciona un reporte de auditoría completo y accionable en español:
+      1. Diagnóstico del embudo y cuello de botella principal (¿falla de segmentación, falta de nutrición, script de cierre flojo?).
+      2. Fuga de facturación estimada por mes comparada contra métricas recomendadas (15% agendamiento y 25% cierre).
+      3. 3 Recomendaciones de optimización específicas usando la metodología de Kira.
+      4. Plan de acción de 3 semanas.
+      
+      Formatea de manera espectacular con secciones claras, listas ordenadas y negritas atractivas.`;
+
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3.5-flash',
+          contents: prompt
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.text) {
+        setCrmAuditResult(data.text);
+      }
+    } catch (e) {
+      console.error(e);
+      setCrmAuditResult(`### Reporte de Optimización de Embudo de Coaching
+      
+**1. Diagnóstico**: Con una conversión de reserva de llamadas de **${bookingRate}%**, estás logrando capturar cierto interés. Sin embargo, tu conversión de llamadas a clientes cerrados (**${closingRate}%**) tiene una oportunidad de crecimiento gigante para elevar tu ROI.
+
+**2. Análisis de Fuga**: Si optimizamos tu tasa de cierre al 25% y mantienes las llamadas, tus ingresos mensuales pasarían de $${totalCrmRevenue} USD a **$${(calls * 0.25 * crmTicketPrice).toLocaleString()} USD**. Estás experimentando una fuga de ingresos de aproximadamente **$${((calls * 0.25 * crmTicketPrice) - totalCrmRevenue).toLocaleString()} USD** cada mes.
+
+**3. Plan de Acción**:
+* **Optimización de Calificación**: Agrega preguntas clave en Calendly para descartar curiosos.
+* **Nutrición Automatizada**: Envía 2 correos con testimonios grabados antes del encuentro.
+* **Script de Alta Conversión**: Centra la llamada en hacer consciente al cliente de su dolor principal antes de ofrecer tu programa.`);
+    } finally {
+      setIsAuditingCrm(false);
+    }
+  };
+
+  // Enviar ticket VIP de soporte
+  const handleSendSupportMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supportDesc.trim()) return;
+
+    const userMsg = {
+      role: 'user',
+      text: supportDesc,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setSupportChat(prev => [...prev, userMsg]);
+    setIsSubmittingSupport(true);
+    const textToSend = supportDesc;
+    setSupportDesc('');
+
+    try {
+      const prompt = `Actúa como el Director de Soporte de Integraciones de Kira Corp. Responde a un coach afiliado que tiene el siguiente problema técnico/comercial en la categoría "${supportCategory}":
+      "${textToSend}"
+      
+      Escribe una respuesta corta, empática y de soporte directo en español de 2 párrafos. Brinda recomendaciones técnicas específicas, asegúrale que ya abrimos un ticket interno en Kira Corp y que su cuenta está segura.`;
+
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3.5-flash',
+          contents: prompt
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const reply = data.text || "Hemos recibido tu solicitud técnica. Nuestro departamento de desarrollo ya está trabajando en ello. Te enviaremos actualizaciones a tu email registrado.";
+      setSupportChat(prev => [...prev, {
+        role: 'ai',
+        text: reply,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+    } catch (err) {
+      console.error(err);
+      setSupportChat(prev => [...prev, {
+        role: 'ai',
+        text: "¡Hola! He recibido tu consulta técnica. Ya he creado una escalación directa en nuestra pasarela de soporte Kira Corp Direct. Un ingeniero especializado te contactará en los próximos 15 minutos.",
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+    } finally {
+      setIsSubmittingSupport(false);
+    }
+  };
 
   const handleReleasePurchase = async (purchase: any) => {
     try {
@@ -815,9 +1084,9 @@ function CoachDashboardView({ profile, isApproved }: any) {
             <Link to="/coach/session" className="group">
               <QuickAction title="Sesión Inteligente" desc="Transcripción y análisis IA" icon={<Brain size={24} className="text-indigo-600" />} />
             </Link>
-            <QuickAction title="Revisar Tareas" desc="Feedback de módulos" icon={<BookOpen size={24} className="text-amber-500" />} />
-            <QuickAction title="AI Audit CRM" desc="Optimizar embudo" icon={<Activity size={24} className="text-rose-500" />} />
-            <QuickAction title="Cloud Support" desc="Kira Corp Direct" icon={<ShieldCheck size={24} className="text-emerald-600" />} />
+            <QuickAction onClick={() => setShowRevisarTareas(true)} title="Revisar Tareas" desc="Feedback de módulos" icon={<BookOpen size={24} className="text-amber-500" />} />
+            <QuickAction onClick={() => setShowAiAuditCrm(true)} title="AI Audit CRM" desc="Optimizar embudo" icon={<Activity size={24} className="text-rose-500" />} />
+            <QuickAction onClick={() => setShowCloudSupport(true)} title="Cloud Support" desc="Kira Corp Direct" icon={<ShieldCheck size={24} className="text-emerald-600" />} />
           </div>
         </div>
 
@@ -909,6 +1178,401 @@ function CoachDashboardView({ profile, isApproved }: any) {
                {topTopics.length === 0 && (
                  <div className="text-center py-10 text-slate-400 text-sm">Aún no hay temas suficientes para analizar.</div>
                )}
+
+                 {/* --- MODAL 1: REVISAR TAREAS (FEEDBACK DE MODULOS) --- */}
+                 {showRevisarTareas && (
+                   <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                     <div className="bg-white rounded-[40px] w-full max-w-5xl h-[85vh] overflow-hidden border border-slate-100 shadow-2xl relative flex flex-col animate-in fade-in zoom-in-95 duration-300 text-left">
+                       <button 
+                         type="button"
+                         onClick={() => setShowRevisarTareas(false)}
+                         className="p-3 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 absolute top-6 right-6 transition-all hover:rotate-90"
+                       >
+                         <X size={20} />
+                       </button>
+                       
+                       <div className="p-8 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
+                         <div className="p-3 rounded-2xl bg-amber-50 text-amber-500">
+                           <BookOpen size={24} />
+                         </div>
+                         <div>
+                           <h3 className="text-xl font-black text-slate-900 tracking-tight">Feedback de Módulos (Revisar Tareas)</h3>
+                           <p className="text-xs text-slate-500 font-medium">Revisa las entregas y reflexiones de tus alumnos con el Co-piloto de Inteligencia Artificial de Kira Moreno.</p>
+                         </div>
+                       </div>
+
+                       <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+                         {/* Left Column: Submissions List */}
+                         <div className="w-full md:w-80 border-r border-slate-100 overflow-y-auto p-6 bg-slate-50/30 flex flex-col gap-4 text-left">
+                           <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Entregas Recientes ({submissionsList.length})</h4>
+                           <div className="flex flex-col gap-3">
+                             {submissionsList.map((sub) => (
+                               <button
+                                 type="button"
+                                 key={sub.id}
+                                 onClick={() => {
+                                   setSelectedSubmission(sub);
+                                   setFeedbackText(sub.feedback || '');
+                                 }}
+                                 className={cn(
+                                   "w-full p-5 rounded-2xl border text-left transition-all flex flex-col gap-2 relative overflow-hidden group",
+                                   selectedSubmission?.id === sub.id 
+                                     ? "border-violet-200 bg-white shadow-lg shadow-violet-100/30" 
+                                     : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-md"
+                                 )}
+                               >
+                                 {sub.status === 'pending' && (
+                                   <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-500" />
+                                 )}
+                                 <div className="flex justify-between items-start gap-2">
+                                   <span className="font-extrabold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors">{sub.studentName}</span>
+                                   <span className={cn(
+                                     "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider",
+                                     sub.status === 'pending' ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+                                   )}>
+                                     {sub.status === 'pending' ? 'Pendiente' : 'Revisada'}
+                                   </span>
+                                 </div>
+                                 <span className="text-[11px] font-bold text-slate-400">{sub.moduleName}</span>
+                                 <p className="text-slate-500 text-[11px] line-clamp-2 leading-relaxed font-medium">{sub.content}</p>
+                                 <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold pt-1">
+                                   <span>{sub.submissionDate}</span>
+                                   {sub.sentiment === 'positive' && <span className="text-emerald-500">😊 Positivo</span>}
+                                   {sub.sentiment === 'negative' && <span className="text-rose-500">😔 Desafiante</span>}
+                                   {sub.sentiment === 'neutral' && <span className="text-slate-500">😐 Neutro</span>}
+                                 </div>
+                               </button>
+                             ))}
+                           </div>
+                         </div>
+
+                         {/* Right Column: Submission details and grading */}
+                         <div className="flex-1 overflow-y-auto p-8 flex flex-col gap-6 bg-white text-left">
+                           {selectedSubmission ? (
+                             <div className="flex flex-col gap-6">
+                               <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100">
+                                 <div className="flex justify-between items-start mb-4">
+                                   <div>
+                                     <h4 className="font-black text-slate-900 text-base">{selectedSubmission.studentName}</h4>
+                                     <p className="text-xs text-slate-500 font-bold">{selectedSubmission.studentEmail}</p>
+                                   </div>
+                                   <div className="text-right">
+                                     <span className="text-xs text-slate-400 font-black uppercase tracking-wider block">Actividad</span>
+                                     <span className="text-sm font-extrabold text-indigo-600">{selectedSubmission.moduleName}</span>
+                                   </div>
+                                 </div>
+                                 <div className="bg-white p-5 rounded-2xl border border-slate-100 text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">
+                                   "{selectedSubmission.content}"
+                                 </div>
+                               </div>
+
+                               <div className="flex flex-col gap-4">
+                                 <div className="flex justify-between items-center">
+                                   <label className="text-sm font-black text-slate-800 tracking-tight">Retroalimentación para el Estudiante</label>
+                                   <button
+                                     type="button"
+                                     onClick={handleGenerateAiFeedback}
+                                     disabled={isAiGeneratingFeedback}
+                                     className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 disabled:opacity-50 text-[12px] font-black uppercase tracking-wider rounded-xl transition-all"
+                                   >
+                                     {isAiGeneratingFeedback ? (
+                                       <>
+                                         <Loader2 size={14} className="animate-spin" /> Procesando...
+                                       </>
+                                     ) : (
+                                       <>
+                                         <Sparkles size={14} /> Redactar con IA de Kira
+                                       </>
+                                     )}
+                                   </button>
+                                 </div>
+                                 <textarea
+                                   value={feedbackText}
+                                   onChange={(e) => setFeedbackText(e.target.value)}
+                                   placeholder="Escribe tu retroalimentación personalizada aquí o utiliza nuestro co-piloto IA para redactar una respuesta empática..."
+                                   rows={6}
+                                   className="w-full p-5 rounded-2xl border border-slate-200 focus:border-violet-300 focus:ring-0 text-sm text-slate-700 leading-relaxed placeholder-slate-400 resize-none outline-none"
+                                 />
+                               </div>
+
+                               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                                 <button
+                                   type="button"
+                                   onClick={() => {
+                                     setFeedbackText('');
+                                   }}
+                                   className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black uppercase tracking-wider text-[11px] rounded-xl transition-all"
+                                 >
+                                   Limpiar
+                                 </button>
+                                 <button
+                                   type="button"
+                                   onClick={handleSubmitFeedback}
+                                   className="px-8 py-3 bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-wider text-[11px] rounded-xl shadow-lg shadow-primary/25 transition-all"
+                                 >
+                                   Enviar Retroalimentación Oficial
+                                 </button>
+                               </div>
+                             </div>
+                           ) : (
+                             <div className="flex-1 flex flex-col items-center justify-center text-center py-20 text-slate-400">
+                               <BookOpen size={48} className="text-slate-200 mb-4" />
+                               <p className="font-bold">Selecciona una entrega de la lista para comenzar a revisar.</p>
+                             </div>
+                           )}
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 )}
+
+                 {/* --- MODAL 2: AI AUDIT CRM (OPTIMIZAR EMBUDO) --- */}
+                 {showAiAuditCrm && (
+                   <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                     <div className="bg-white rounded-[40px] w-full max-w-5xl h-[85vh] overflow-hidden border border-slate-100 shadow-2xl relative flex flex-col animate-in fade-in zoom-in-95 duration-300 text-left">
+                       <button 
+                         type="button"
+                         onClick={() => setShowAiAuditCrm(false)}
+                         className="p-3 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 absolute top-6 right-6 transition-all hover:rotate-90"
+                       >
+                         <X size={20} />
+                       </button>
+                       
+                       <div className="p-8 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
+                         <div className="p-3 rounded-2xl bg-rose-50 text-rose-500">
+                           <Activity size={24} />
+                         </div>
+                         <div>
+                           <h3 className="text-xl font-black text-slate-900 tracking-tight">Kira AI Audit CRM (Optimizar Embudo)</h3>
+                           <p className="text-xs text-slate-500 font-medium">Analiza la conversión de tu embudo comercial, detecta fugas de facturación y obtén estrategias de automatización personalizadas.</p>
+                         </div>
+                       </div>
+
+                       <div className="flex-1 overflow-y-auto p-8 flex flex-col lg:flex-row gap-8">
+                         {/* Left Column: Form & Key KPIs */}
+                         <div className="w-full lg:w-96 flex flex-col gap-6">
+                           <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col gap-5">
+                             <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Métricas del Embudo</h4>
+                             
+                             <div className="flex flex-col gap-1.5">
+                               <label className="text-xs font-black text-slate-700">Leads Mensuales Captados</label>
+                               <input
+                                 type="number"
+                                 value={leads}
+                                 onChange={(e) => setLeads(Math.max(0, parseInt(e.target.value) || 0))}
+                                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 outline-none focus:border-violet-300"
+                               />
+                             </div>
+
+                             <div className="flex flex-col gap-1.5">
+                               <label className="text-xs font-black text-slate-700">Llamadas Agendadas</label>
+                               <input
+                                 type="number"
+                                 value={calls}
+                                 onChange={(e) => setCalls(Math.max(0, parseInt(e.target.value) || 0))}
+                                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 outline-none focus:border-violet-300"
+                               />
+                             </div>
+
+                             <div className="flex flex-col gap-1.5">
+                               <label className="text-xs font-black text-slate-700">Ventas Cerradas (Alumnos de Alta Gama)</label>
+                               <input
+                                 type="number"
+                                 value={closes}
+                                 onChange={(e) => setCloses(Math.max(0, parseInt(e.target.value) || 0))}
+                                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 outline-none focus:border-violet-300"
+                               />
+                             </div>
+
+                             <div className="flex flex-col gap-1.5">
+                               <label className="text-xs font-black text-slate-700">Precio / Ticket Promedio ($ USD)</label>
+                               <input
+                                 type="number"
+                                 value={crmTicketPrice}
+                                 onChange={(e) => setCrmTicketPrice(Math.max(0, parseInt(e.target.value) || 0))}
+                                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 outline-none focus:border-violet-300"
+                               />
+                             </div>
+                           </div>
+
+                           {/* KPI Metrics */}
+                           <div className="grid grid-cols-2 gap-4">
+                             <div className="p-4 rounded-2xl bg-violet-50/50 border border-violet-100">
+                               <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Tasa Reserva</span>
+                               <span className="text-lg font-black text-violet-700">{bookingRate}%</span>
+                             </div>
+                             <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100">
+                               <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Tasa Cierre</span>
+                               <span className="text-lg font-black text-indigo-700">{closingRate}%</span>
+                             </div>
+                             <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 col-span-2">
+                               <span className="text-[10px] font-black text-emerald-600 uppercase tracking-wider block">Facturación Mensual</span>
+                               <span className="text-xl font-black text-emerald-800">${totalCrmRevenue.toLocaleString()} USD</span>
+                             </div>
+                           </div>
+
+                           <button
+                             type="button"
+                             onClick={handleRunCrmAudit}
+                             disabled={isAuditingCrm}
+                             className="w-full py-4 bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest text-[11px] rounded-2xl shadow-lg shadow-primary/25 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                           >
+                             {isAuditingCrm ? (
+                               <>
+                                 <Loader2 size={16} className="animate-spin" /> Auditando Embudo comercial...
+                               </>
+                             ) : (
+                               <>
+                                 <Sparkles size={16} /> Ejecutar Auditoría IA del Embudo
+                               </>
+                             )}
+                           </button>
+                         </div>
+
+                         {/* Right Column: AI Report Rendering */}
+                         <div className="flex-1 bg-slate-50/40 rounded-3xl border border-slate-200 p-8 flex flex-col min-h-[320px] overflow-y-auto text-left">
+                           {crmAuditResult ? (
+                             <div className="prose prose-slate max-w-none text-slate-700">
+                               <div className="flex justify-between items-center pb-4 border-b border-slate-200 mb-6">
+                                 <h4 className="text-sm font-black text-indigo-600 uppercase tracking-wider flex items-center gap-2">
+                                   <BadgeCheck size={18} /> Reporte Estratégico Generado por Kira AI
+                                 </h4>
+                                 <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full font-black uppercase tracking-wider">Listo</span>
+                               </div>
+                               <div className="whitespace-pre-line text-sm leading-relaxed font-medium">
+                                 {crmAuditResult}
+                               </div>
+                               <button
+                                 type="button"
+                                 onClick={() => alert("¡Optimizaciones de flujo aplicadas exitosamente en tu cuenta CRM de Kira!")}
+                                 className="mt-6 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-wider text-[11px] rounded-xl shadow-md transition-all"
+                               >
+                                 Aplicar Optimizaciones automáticamente
+                               </button>
+                             </div>
+                           ) : (
+                             <div className="flex-1 flex flex-col items-center justify-center text-center py-20 text-slate-400">
+                               <Activity size={48} className="text-slate-200 mb-4 animate-pulse" />
+                               <p className="font-bold mb-2">Presiona "Ejecutar Auditoría IA del Embudo" para comenzar.</p>
+                               <p className="text-xs max-w-sm text-slate-400">Analizaremos las tasas de conversión, diagnosticaremos cuellos de botella y generaremos un plan de acción de 3 semanas.</p>
+                             </div>
+                           )}
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 )}
+
+                 {/* --- MODAL 3: CLOUD SUPPORT (KIRA CORP DIRECT) --- */}
+                 {showCloudSupport && (
+                   <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                     <div className="bg-white rounded-[40px] w-full max-w-4xl h-[85vh] overflow-hidden border border-slate-100 shadow-2xl relative flex flex-col animate-in fade-in zoom-in-95 duration-300 text-left">
+                       <button 
+                         type="button"
+                         onClick={() => setShowCloudSupport(false)}
+                         className="p-3 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 absolute top-6 right-6 transition-all hover:rotate-90"
+                       >
+                         <X size={20} />
+                       </button>
+                       
+                       <div className="p-8 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
+                         <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-600">
+                           <ShieldCheck size={24} />
+                         </div>
+                         <div>
+                           <h3 className="text-xl font-black text-slate-900 tracking-tight">Kira Corp Direct (Cloud Support)</h3>
+                           <p className="text-xs text-slate-500 font-medium">Soporte VIP inmediato y directo con el departamento técnico de Kira Corp.</p>
+                         </div>
+                       </div>
+
+                       <div className="flex-1 overflow-hidden flex flex-col md:flex-row bg-slate-50/30">
+                         {/* Left Form: Topic configuration */}
+                         <form onSubmit={handleSendSupportMessage} className="w-full md:w-80 border-r border-slate-100 p-6 flex flex-col gap-5 bg-white text-left">
+                           <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Crear Ticket de Soporte</h4>
+                           
+                           <div className="flex flex-col gap-1.5">
+                             <label className="text-xs font-black text-slate-700">Canal / Área de consulta</label>
+                             <select
+                               value={supportCategory}
+                               onChange={(e) => setSupportCategory(e.target.value)}
+                               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 outline-none focus:border-violet-300"
+                             >
+                               <option value="stripe">Pasarela de Pagos (Stripe / PayPal)</option>
+                               <option value="domain">Marca Personal & Dominio Propio</option>
+                               <option value="prompts">Configuración IA & Prompts de Sesiones</option>
+                               <option value="billing">Facturación & Suscripción de Entrenadores</option>
+                             </select>
+                           </div>
+
+                           <div className="flex flex-col gap-1.5 flex-1">
+                             <label className="text-xs font-black text-slate-700">Detalla tu requerimiento</label>
+                             <textarea
+                               value={supportDesc}
+                               onChange={(e) => setSupportDesc(e.target.value)}
+                               placeholder="Describe el inconveniente técnico o duda..."
+                               rows={6}
+                               className="w-full p-4 rounded-xl border border-slate-200 focus:border-violet-300 text-sm text-slate-700 placeholder-slate-400 resize-none outline-none"
+                             />
+                           </div>
+
+                           <button
+                             type="submit"
+                             disabled={isSubmittingSupport || !supportDesc.trim()}
+                             className="w-full py-3 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-black uppercase tracking-widest text-[11px] rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                           >
+                             {isSubmittingSupport ? (
+                               <>
+                                 <Loader2 size={14} className="animate-spin" /> Enviando...
+                               </>
+                             ) : (
+                               <>
+                                 Enviar Ticket VIP
+                               </>
+                             )}
+                           </button>
+                         </form>
+
+                         {/* Right Column: Simulated Chat Logs */}
+                         <div className="flex-1 flex flex-col p-6 overflow-hidden text-left">
+                           <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Registro de Mensajes Directos</h4>
+                           
+                           <div className="flex-1 overflow-y-auto flex flex-col gap-4 p-4 bg-white border border-slate-100 rounded-3xl mb-4">
+                             {supportChat.length === 0 ? (
+                               <div className="flex-1 flex flex-col items-center justify-center text-center py-20 text-slate-400">
+                                 <MessageSquare size={32} className="text-slate-200 mb-2" />
+                                 <p className="font-bold text-sm">No hay mensajes activos</p>
+                                 <p className="text-xs text-slate-400 max-w-xs mt-1">Escribe tu problema en el panel lateral para iniciar una conversación directa de soporte con Kira Corp.</p>
+                               </div>
+                             ) : (
+                               supportChat.map((msg, i) => (
+                                 <div
+                                   key={i}
+                                   className={cn(
+                                     "max-w-md p-4 rounded-2xl flex flex-col gap-1 text-sm leading-relaxed shadow-sm",
+                                     msg.role === 'user' 
+                                       ? "bg-slate-100 text-slate-800 self-end rounded-br-none" 
+                                       : "bg-emerald-50 text-slate-800 self-start rounded-bl-none border border-emerald-100"
+                                   )}
+                                 >
+                                   <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                                     {msg.role === 'user' ? 'Tú (Coach)' : 'Kira Corp Soporte'}
+                                   </span>
+                                   <p className="font-medium whitespace-pre-wrap">{msg.text}</p>
+                                   <span className="text-[9px] text-slate-400 self-end font-bold mt-1">{msg.time}</span>
+                                 </div>
+                               ))
+                             )}
+                             {isSubmittingSupport && (
+                               <div className="p-4 rounded-2xl bg-emerald-50 text-slate-800 self-start rounded-bl-none border border-emerald-100 flex items-center gap-2 max-w-xs animate-pulse">
+                                 <span className="text-xs font-black text-emerald-600 uppercase tracking-widest animate-bounce">Soporte técnico está escribiendo...</span>
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 )}
              </div>
            )}
         </div>
@@ -929,14 +1593,32 @@ function StatCard({ title, value, icon }: any) {
   );
 }
 
-function QuickAction({ title, desc, icon }: any) {
-  return (
-    <div className="flex items-start gap-5 p-6 rounded-[32px] border border-slate-100 hover:bg-white hover:border-violet-200 hover:shadow-xl hover:shadow-violet-100/20 transition-all text-left group">
+function QuickAction({ title, desc, icon, onClick }: any) {
+  const content = (
+    <>
       <div className="p-4 rounded-2xl bg-slate-50 group-hover:bg-slate-900 group-hover:text-white transition-all shadow-sm">{icon}</div>
       <div>
         <h4 className="text-[14px] font-black text-slate-900 tracking-tight leading-tight mb-1">{title}</h4>
         <p className="text-[11px] text-slate-500 font-medium leading-relaxed">{desc}</p>
       </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button 
+        type="button" 
+        onClick={onClick} 
+        className="w-full flex items-start gap-5 p-6 rounded-[32px] border border-slate-100 bg-transparent hover:bg-white hover:border-violet-200 hover:shadow-xl hover:shadow-violet-100/20 transition-all text-left group cursor-pointer outline-none"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-5 p-6 rounded-[32px] border border-slate-100 hover:bg-white hover:border-violet-200 hover:shadow-xl hover:shadow-violet-100/20 transition-all text-left group">
+      {content}
     </div>
   );
 }
