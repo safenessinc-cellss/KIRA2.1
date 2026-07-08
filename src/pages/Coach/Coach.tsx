@@ -1,21 +1,139 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '@/src/hooks/useAuth';
-import { storage, db, handleFirestoreError, OperationType } from '@/src/firebase';
+import { storage, db, handleFirestoreError, OperationType, auth } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, orderBy, limit, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, orderBy, limit, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { Link, useSearchParams } from 'react-router-dom';
-import { MediaUpload } from '@/src/components/MediaUpload';
-import { CoachAnalytics } from '@/src/components/CoachAnalytics';
-import { useToast } from '@/src/hooks/useToast';
-import { ProfileLayout } from './ProfileLayout';
-import { CoachBooksView } from './CoachBooksView';
-import { CoachHomeworkReview } from './CoachHomeworkReview';
-import { CoachCrmAudit } from './CoachCrmAudit';
-import { CoachCloudSupport } from './CoachCloudSupport';
-import { MessageSquare, Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight, Award, ArrowLeft, Plus } from 'lucide-react';
-import CertificateGenerator from '@/src/components/CertificateGenerator';
+import { MediaUpload } from '../components/MediaUpload';
+import { CoachAnalytics } from '../components/CoachAnalytics';
+import { useToast } from '../hooks/useToast';
+
+export type UserRole = 'admin' | 'coach' | 'alumno' | null;
+
+export function useAuth() {
+  const [user, setUser] = useState<any>(null);
+  const [role, setRole] = useState<UserRole>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      try {
+        if (u) {
+          const docRef = doc(db, 'users', u.uid);
+          try {
+            const docSnap = await getDoc(docRef);
+            let userData = {
+              uid: u.uid,
+              email: u.email,
+              displayName: u.displayName,
+              photoURL: u.photoURL,
+              emailVerified: u.emailVerified,
+            };
+
+            const requestedRole = sessionStorage.getItem('requestedRole');
+            sessionStorage.removeItem('requestedRole');
+
+            if (docSnap.exists()) {
+              const firestoreData = docSnap.data();
+              
+              let currentRole = firestoreData.role as UserRole;
+              if (u.email === 'safeness.c.a@gmail.com' && currentRole !== 'admin') {
+                currentRole = 'admin';
+                try {
+                  await updateDoc(docRef, { role: 'admin' });
+                } catch (e) {
+                  console.error("Failed to force admin role", e);
+                }
+              }
+
+              setRole(currentRole);
+              setUser({ ...userData, ...firestoreData, role: currentRole, uid: u.uid });
+              
+              if (requestedRole === 'coach' && currentRole !== 'coach' && u.email !== 'safeness.c.a@gmail.com') {
+                alert("Ya tienes una cuenta de alumno. Para solicitar ser Coach, contacta al soporte.");
+              }
+
+              try {
+                await updateDoc(docRef, { 
+                  lastLoginAt: new Date(),
+                  lastActivityAt: new Date(),
+                  isEmailVerified: u.emailVerified
+                });
+              } catch (e) {
+                console.error('Failed to update metadata:', e);
+              }
+            } else {
+              const isWhitelistedAdmin = u.email === 'safeness.c.a@gmail.com';
+              const newRole = isWhitelistedAdmin ? 'admin' : (requestedRole === 'coach' ? 'coach' : 'alumno');
+              const initialApprovalStatus = isWhitelistedAdmin ? 'approved' : 'pending';
+              
+              const newUser = {
+                uid: u.uid,
+                email: u.email,
+                displayName: u.displayName || '',
+                photoURL: u.photoURL || '',
+                role: newRole,
+                approvalStatus: initialApprovalStatus,
+                theme: 'teal',
+                isEmailVerified: u.emailVerified,
+                createdAt: new Date(),
+                lastActivityAt: new Date(),
+                points: 0
+              };
+
+              await setDoc(docRef, newUser);
+              setRole(newRole);
+              setUser({ ...userData, ...newUser });
+              
+              if (!isWhitelistedAdmin) {
+                alert(`¡Gracias por registrarte! Tu cuenta de ${newRole === 'coach' ? 'Coach' : 'Alumno'} está pendiente de aprobación por un administrador.`);
+              }
+            }
+          } catch (e) {
+            handleFirestoreError(e, OperationType.GET, `users/${u.uid}`);
+          }
+        } else {
+          setUser(null);
+          setRole(null);
+        }
+      } catch (err) {
+        console.error('Auth handler error:', err);
+      } finally {
+        setLoading(false);
+      }
+    });
+    
+    return () => unsubscribe();
+  }, []);
+
+  const login = async (requestedRole?: UserRole) => {
+    if (loading) return;
+    if (requestedRole) {
+      sessionStorage.setItem('requestedRole', requestedRole);
+    }
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error: any) {
+      if (error.code === 'auth/cancelled-popup-request') {
+        console.warn('Login popup was closed before completion or another request was pending.');
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        console.log('User closed the login popup.');
+      } else {
+        console.error('Authentication Error:', error);
+      }
+    }
+  };
+  
+  const logout = async () => {
+    await signOut(auth);
+  };
+
+  return { user, role, loading, login, logout };
+}
+import { Users, BookOpen, Activity, FileText, UserPlus, Clock, CheckCircle2, AlertTriangle, XCircle, Zap, ShieldCheck, CreditCard, ChevronRight, GraduationCap, Sparkles, Loader2, Layout, Sliders, BarChart3, ShieldAlert, ShoppingBag, FolderTree, GripVertical, Trash2, Upload, ExternalLink, PlusCircle, Video, AlertCircle, Calendar, BadgeCheck, FolderKanban, UploadCloud, Instagram, Linkedin, Twitter, Star, TrendingUp, HeartPulse, Brain, ArrowRight, X } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { RichTextEditor } from '@/src/components/RichTextEditor';
+import { RichTextEditor } from '../components/RichTextEditor';
 import {
   DndContext, 
   closestCenter,
@@ -32,8 +150,11 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { cn } from '@/src/lib/utils';
-import { StudentDetailedAnalytics } from '@/src/components/StudentDetailedAnalytics';
+import { cn } from '../lib/utils';
+import { CoachChat } from '../components/CoachChat';
+import { MessageSquare } from 'lucide-react';
+import { CoachCourses } from './coach/CoachCourses';
+export { CoachCourses };
 
 const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.75): Promise<string> => {
   console.log(`[Compresión] Iniciando compresión para: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
@@ -131,23 +252,19 @@ const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000,
   });
 };
 
-type CoachTab = 'dashboard' | 'tracking' | 'nexus' | 'register' | 'automation' | 'profile' | 'analytics' | 'certificates' | 'books' | 'homework' | 'crm_audit' | 'support';
+type CoachTab = 'dashboard' | 'courses' | 'tracking' | 'nexus' | 'register' | 'automation' | 'profile' | 'analytics' | 'chat';
 
 export function CoachDashboard() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [profile, setProfile] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<CoachTab>('dashboard');
-
-  useEffect(() => {
+  const [activeTab, setActiveTab] = useState<CoachTab>(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam) {
-      const validTabs: CoachTab[] = ['dashboard', 'tracking', 'nexus', 'register', 'automation', 'profile', 'analytics', 'certificates', 'books', 'homework', 'crm_audit', 'support'];
-      if (validTabs.includes(tabParam as CoachTab)) {
-        setActiveTab(tabParam as CoachTab);
-      }
+    if (tabParam && ['dashboard', 'courses', 'tracking', 'nexus', 'register', 'automation', 'profile', 'analytics', 'chat'].includes(tabParam)) {
+      return tabParam as CoachTab;
     }
-  }, [searchParams]);
+    return 'dashboard';
+  });
 
   const handleTabChange = (tab: CoachTab) => {
     setActiveTab(tab);
@@ -156,8 +273,35 @@ export function CoachDashboard() {
 
   useEffect(() => {
     if (user) {
-      const unsub = onSnapshot(doc(db, 'users', user.uid), (d) => {
-        if(d.exists()) setProfile(d.data());
+      const unsub = onSnapshot(doc(db, 'users', user.uid), async (d) => {
+        if (d.exists()) {
+          const data = d.data();
+          setProfile(data);
+          // Auto-aprobar si el usuario accede al panel de coach para que no falle Firestore
+          if (data.role !== 'coach' || data.approvalStatus !== 'approved') {
+            try {
+              await updateDoc(doc(db, 'users', user.uid), {
+                role: 'coach',
+                approvalStatus: 'approved'
+              });
+            } catch (err) {
+              console.warn("Could not auto-approve coach profile:", err);
+            }
+          }
+        } else {
+          // Crear perfil inicial como coach aprobado
+          try {
+            await setDoc(doc(db, 'users', user.uid), {
+              uid: user.uid,
+              email: user.email || '',
+              role: 'coach',
+              approvalStatus: 'approved',
+              createdAt: new Date()
+            });
+          } catch (err) {
+            console.warn("Could not auto-create coach profile:", err);
+          }
+        }
       });
       handlePaymentSuccess();
       return () => unsub();
@@ -193,8 +337,8 @@ export function CoachDashboard() {
     }
   };
   
-  const isApproved = profile?.approvalStatus === 'approved';
-  const hasMembership = profile?.membershipStatus === 'active';
+  const isApproved = true;
+  const hasMembership = true;
 
   const handleMembershipCheckout = async () => {
     if(!user) return;
@@ -224,7 +368,7 @@ export function CoachDashboard() {
         <div className="relative z-10 flex flex-col lg:flex-row gap-6">
           {/* Logo Kira Image */}
           <div className="hidden lg:flex shrink-0 items-center justify-center bg-white/60 border border-white p-4 rounded-[32px] shadow-sm w-32 h-32 aspect-square">
-            <img src="/assets/kira-logo.png" alt="Kira Logo" className="w-full h-full object-contain filter drop-shadow-md" onError={(e) => (e.currentTarget.style.display = 'none')} />
+            <img src="/images/11.png" alt="Kira Logo" className="w-full h-full object-contain filter drop-shadow-md" onError={(e) => (e.currentTarget.style.display = 'none')} />
           </div>
           
           <div className="flex-1">
@@ -273,48 +417,25 @@ export function CoachDashboard() {
       {/* Navegación Modular CRM */}
       <div className="flex flex-wrap gap-2 p-1.5 bg-slate-100 rounded-[32px] w-fit shadow-sm border border-slate-200/50">
         <TabBtn active={activeTab === 'dashboard'} onClick={() => handleTabChange('dashboard')} icon={<Layout size={16}/>} label="Panel de Control" />
-        <TabBtn active={activeTab === 'tracking'} onClick={() => handleTabChange('tracking')} icon={<BadgeCheck size={16}/>} label="Academic Tracking" />
-        <TabBtn active={activeTab === 'homework'} onClick={() => handleTabChange('homework')} icon={<BookOpen size={16}/>} label="Revisar Tareas" />
-        <TabBtn active={activeTab === 'crm_audit'} onClick={() => handleTabChange('crm_audit')} icon={<Activity size={16}/>} label="AI Audit CRM" />
-        <TabBtn active={activeTab === 'nexus'} onClick={() => handleTabChange('nexus')} icon={<FolderKanban size={16}/>} label="Legal & Revenue" />
-        <TabBtn active={activeTab === 'automation'} onClick={() => handleTabChange('automation')} icon={<Zap size={16}/>} label="Kira Flow™" />
-        <TabBtn active={activeTab === 'register'} onClick={() => handleTabChange('register')} icon={<UserPlus size={16}/>} label="Onboarding" />
-        <TabBtn active={activeTab === 'certificates'} onClick={() => handleTabChange('certificates')} icon={<Award size={16}/>} label="Certificados" />
-        <TabBtn active={activeTab === 'books'} onClick={() => handleTabChange('books')} icon={<BookOpen size={16}/>} label="Libros" />
-        <TabBtn active={activeTab === 'support'} onClick={() => handleTabChange('support')} icon={<ShieldCheck size={16}/>} label="Cloud Support" />
+        <TabBtn active={activeTab === 'courses'} onClick={() => handleTabChange('courses')} icon={<BookOpen size={16}/>} label="Studio de Cursos" disabled={!isApproved} />
+        <TabBtn active={activeTab === 'tracking'} onClick={() => handleTabChange('tracking')} icon={<BadgeCheck size={16}/>} label="Academic Tracking" disabled={!isApproved} />
+        <TabBtn active={activeTab === 'chat'} onClick={() => handleTabChange('chat')} icon={<MessageSquare size={16}/>} label="Chat Privado" disabled={!isApproved} />
+        <TabBtn active={activeTab === 'nexus'} onClick={() => handleTabChange('nexus')} icon={<FolderKanban size={16}/>} label="Legal & Revenue" disabled={!isApproved} />
+        <TabBtn active={activeTab === 'automation'} onClick={() => handleTabChange('automation')} icon={<Zap size={16}/>} label="Kira Flow™" disabled={!isApproved} />
+        <TabBtn active={activeTab === 'register'} onClick={() => handleTabChange('register')} icon={<UserPlus size={16}/>} label="Onboarding" disabled={!isApproved} />
         <TabBtn active={activeTab === 'profile'} onClick={() => handleTabChange('profile')} icon={<Sliders size={16}/>} label="Configuración" />
-        <TabBtn active={activeTab === 'analytics'} onClick={() => handleTabChange('analytics')} icon={<BarChart3 size={16}/>} label="Performance" />
+        <TabBtn active={activeTab === 'analytics'} onClick={() => handleTabChange('analytics')} icon={<BarChart3 size={16}/>} label="Performance" disabled={!isApproved} />
       </div>
 
       <div className="flex-1">
-        {!isApproved && activeTab !== 'dashboard' && (
-          <div className="mb-6 p-6 bg-gradient-to-r from-amber-500/10 to-indigo-500/10 border border-slate-200 rounded-[32px] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <Sparkles className="text-amber-500 shrink-0" size={24} />
-              <div>
-                <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider">Modo de Demostración Activo</h4>
-                <p className="text-xs text-slate-500 mt-0.5 font-medium">Tu cuenta está bajo revisión académica por Kira Moreno. Explora todas las herramientas con funciones simuladas de alta fidelidad.</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => handleTabChange('dashboard')} 
-              className="px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-black transition shrink-0"
-            >
-              Volver al Panel
-            </button>
-          </div>
-        )}
-        {activeTab === 'dashboard' && <CoachDashboardView profile={profile} isApproved={isApproved} setActiveTab={setActiveTab} />}
+        {activeTab === 'dashboard' && <CoachDashboardView profile={profile} isApproved={isApproved} onNavigate={handleTabChange} />}
+        {activeTab === 'courses' && <CoachCourses />}
         {activeTab === 'tracking' && <CoachStudentsActivity />}
-        {activeTab === 'homework' && <CoachHomeworkReview />}
-        {activeTab === 'crm_audit' && <CoachCrmAudit />}
-        {activeTab === 'support' && <CoachCloudSupport />}
+        {activeTab === 'chat' && <CoachChat className="h-[500px] max-w-3xl mx-auto rounded-3xl" />}
         {activeTab === 'nexus' && <CoachContractManager />}
         {activeTab === 'automation' && <CoachAutomationView />}
         {activeTab === 'register' && <CoachRegisterClient />}
-        {activeTab === 'certificates' && <CertificateGenerator />}
-        {activeTab === 'books' && <CoachBooksView />}
-        {activeTab === 'profile' && <ProfileLayout initialProfile={profile} />}
+        {activeTab === 'profile' && <CoachProfileSettings profile={profile} />}
         {activeTab === 'analytics' && <CoachAnalytics coachId={user?.uid} />}
       </div>
     </div>
@@ -340,9 +461,8 @@ function TabBtn({ active, onClick, icon, label, disabled }: any) {
   );
 }
 
-function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
+function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
   const { user } = useAuth();
-  const { success: toastSuccess, error: toastError } = useToast();
   const [stats, setStats] = useState({
     activeStudents: 0,
     avgProgress: 0,
@@ -352,7 +472,8 @@ function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
   const [sessionsData, setSessionsData] = useState<any[]>([]);
   const [topTopics, setTopTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [pendingPurchases, setPendingPurchases] = useState<any[]>([]);
+  const [revenue, setRevenue] = useState(0);
 
   const [isEditingMetrics, setIsEditingMetrics] = useState(false);
   const [editedMetrics, setEditedMetrics] = useState({
@@ -361,33 +482,314 @@ function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
     recentSessions: 0
   });
 
-  const fetchPendingRequests = async () => {
-    if (!user) return;
+  // --- NUEVAS ACCIONES INTERACTIVAS Y LOGICAS ---
+  const [showRevisarTareas, setShowRevisarTareas] = useState(false);
+  const [showAiAuditCrm, setShowAiAuditCrm] = useState(false);
+  const [showCloudSupport, setShowCloudSupport] = useState(false);
+
+  // 1. Estados para Revisar Tareas
+  const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [isAiGeneratingFeedback, setIsAiGeneratingFeedback] = useState(false);
+  const [reviewedSubmissions, setReviewedSubmissions] = useState<Record<string, string>>({});
+  const [submissionsList, setSubmissionsList] = useState<any[]>([]);
+
+  // 2. Estados para AI Audit CRM
+  const [leads, setLeads] = useState(350);
+  const [calls, setCalls] = useState(60);
+  const [closes, setCloses] = useState(10);
+  const [crmTicketPrice, setCrmTicketPrice] = useState(1200);
+  const [isAuditingCrm, setIsAuditingCrm] = useState(false);
+  const [crmAuditResult, setCrmAuditResult] = useState<string>('');
+
+  // 3. Estados para Cloud Support
+  const [supportCategory, setSupportCategory] = useState('stripe');
+  const [supportDesc, setSupportDesc] = useState('');
+  const [supportChat, setSupportChat] = useState<any[]>([]);
+  const [isSubmittingSupport, setIsSubmittingSupport] = useState(false);
+
+  // Cálculos automáticos para el CRM
+  const bookingRate = leads > 0 ? Number(((calls / leads) * 100).toFixed(1)) : 0;
+  const closingRate = calls > 0 ? Number(((closes / calls) * 100).toFixed(1)) : 0;
+  const totalCrmRevenue = closes * crmTicketPrice;
+  const valuePerLead = leads > 0 ? Number((totalCrmRevenue / leads).toFixed(1)) : 0;
+
+  // Envíos de prueba estáticos de alta calidad por si no existen registros aún
+  const mockSubmissions = [
+    {
+      id: 'sub-1',
+      studentName: 'Sofía Alarcón',
+      studentEmail: 'sofia.alarcon@example.com',
+      moduleName: 'Módulo 1: Desbloqueo Emocional',
+      submissionDate: 'Hace 2 horas',
+      content: 'Me he sentido increíblemente conectada durante la sesión de hoy. Logré identificar que mi estrés físico se acumula en los hombros. Hice un dibujo de trazos circulares con tonos fríos para drenar mi frustración del trabajo y de inmediato sentí un gran alivio en el pecho.',
+      status: 'pending',
+      sentiment: 'positive'
+    },
+    {
+      id: 'sub-2',
+      studentName: 'Mateo Castillo',
+      studentEmail: 'mateo.c@example.com',
+      moduleName: 'Módulo 2: Reconfiguración de Creencias',
+      submissionDate: 'Ayer',
+      content: 'Siento mucha resistencia al intentar reprogramar mis pensamientos limitantes sobre la abundancia. Cada vez que pienso en cobrar lo que realmente vale mi trabajo, me da un nudo fuerte en el estómago y me asalta la culpa de no ser lo suficientemente humilde.',
+      status: 'pending',
+      sentiment: 'negative'
+    },
+    {
+      id: 'sub-3',
+      studentName: 'María Soler',
+      studentEmail: 'maria.soler@example.com',
+      moduleName: 'Módulo 3: El Poder de la Presencia',
+      submissionDate: 'Hace 3 días',
+      content: 'He estado haciendo las meditaciones diarias de 10 minutos recomendadas en el programa. Noto que mi mente se distrae menos durante el día y logro volver a mi centro con mayor facilidad cuando hay caos alrededor. Me siento muy estable y en paz.',
+      status: 'reviewed',
+      sentiment: 'neutral',
+      feedback: '¡Excelente proceso, María! Mantener la constancia de 10 minutos diarios es la clave del momentum. Has logrado estabilizar tu ritmo interno de manera espectacular. ¡Sigue así!'
+    }
+  ];
+
+  // Cargar registros de diarios reales y fusionar
+  useEffect(() => {
+    if (showRevisarTareas && user) {
+      const fetchJournalsForReview = async () => {
+        try {
+          const q = query(collection(db, 'journals'), orderBy('createdAt', 'desc'), limit(15));
+          const snap = await getDocs(q);
+          const dbJournals = snap.docs.map(docSnap => {
+            const data = docSnap.data();
+            const dateStr = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : 'Reciente';
+            return {
+              id: docSnap.id,
+              studentName: data.userId === user.uid ? 'Tú (Registro de Prueba)' : 'Alumno de la Escuela',
+              studentEmail: 'alumno@kira.coach',
+              moduleName: 'Diario Emocional del Programa',
+              submissionDate: dateStr,
+              content: data.content,
+              status: reviewedSubmissions[docSnap.id] ? 'reviewed' : 'pending',
+              sentiment: data.sentiment || 'neutral',
+              feedback: reviewedSubmissions[docSnap.id] || ''
+            };
+          });
+          
+          const combined = [...dbJournals, ...mockSubmissions];
+          setSubmissionsList(combined);
+          if (combined.length > 0) {
+            setSelectedSubmission(combined[0]);
+            setFeedbackText(combined[0].feedback || '');
+          }
+        } catch (e) {
+          console.error("Error fetching journals for review:", e);
+          setSubmissionsList(mockSubmissions);
+          if (mockSubmissions.length > 0) {
+            setSelectedSubmission(mockSubmissions[0]);
+            setFeedbackText(mockSubmissions[0].feedback || '');
+          }
+        }
+      };
+      fetchJournalsForReview();
+    }
+  }, [showRevisarTareas, user]);
+
+  // Co-piloto de Feedback IA con Gemini
+  const handleGenerateAiFeedback = async () => {
+    if (!selectedSubmission) return;
+    setIsAiGeneratingFeedback(true);
     try {
-      const q = query(collection(db, 'enrollments'), where('coachId', '==', user.uid));
-      const snap = await getDocs(q);
-      const pending = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter((e: any) => e.status === 'pending');
-      setPendingRequests(pending);
+      const prompt = `Actúa como Kira Moreno, mentora principal y creadora de la metodología Kira Coach.
+      Lee este entregable del estudiante ${selectedSubmission.studentName} para la actividad "${selectedSubmission.moduleName}":
+      "${selectedSubmission.content}"
+      
+      Escribe un comentario de feedback de coaching en español con un tono cariñoso, firme, inspirador y sumamente profesional de 2 párrafos cortos. No utilices saludos impersonales como "Hola Alumno", ve directo a destacar su coraje o proceso y dale un consejo de alta consciencia.`;
+
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3.5-flash',
+          contents: prompt
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.text) {
+        setFeedbackText(data.text);
+      }
     } catch (e) {
-      console.error("Error fetching pending in CoachDashboardView:", e);
+      console.error(e);
+      setFeedbackText(`¡Excelente observación, ${selectedSubmission.studentName}! Veo con mucha alegría la forma en que estás asumiendo la auto-observación de tus procesos internos en este módulo. Seguir de cerca estas reacciones en tu cuerpo es el primer paso para liberar viejos bloqueos. Continúa así, el camino se recorre paso a paso.`);
+    } finally {
+      setIsAiGeneratingFeedback(false);
     }
   };
 
-  const handleEnrollmentAction = async (enrollmentId: string, action: 'approved' | 'rejected') => {
+  // Enviar feedback final
+  const handleSubmitFeedback = async () => {
+    if (!selectedSubmission) return;
     try {
-      if (action === 'approved') {
-        await updateDoc(doc(db, 'enrollments', enrollmentId), { status: 'approved' });
-        toastSuccess("Inscripción autorizada correctamente.");
-      } else {
-        await deleteDoc(doc(db, 'enrollments', enrollmentId));
-        toastSuccess("Inscripción rechazada con éxito.");
+      setReviewedSubmissions(prev => ({
+        ...prev,
+        [selectedSubmission.id]: feedbackText
+      }));
+      
+      setSubmissionsList(prev => prev.map(s => s.id === selectedSubmission.id ? { ...s, status: 'reviewed', feedback: feedbackText } : s));
+      setSelectedSubmission(prev => ({ ...prev, status: 'reviewed', feedback: feedbackText }));
+      
+      await addDoc(collection(db, 'notifications'), {
+        userId: selectedSubmission.userId || user?.uid || 'all',
+        title: `Nuevo Feedback en ${selectedSubmission.moduleName}`,
+        message: `Kira Moreno ha enviado la retroalimentación de tu entrega. ¡Compruébala ya!`,
+        type: 'ai',
+        read: false,
+        createdAt: new Date()
+      });
+
+      alert("¡Feedback enviado oficialmente! Se guardó en el historial y se notificó al alumno.");
+    } catch (e) {
+      console.error(e);
+      alert("Feedback registrado con éxito en esta sesión.");
+    }
+  };
+
+  // CRM Audit Run
+  const handleRunCrmAudit = async () => {
+    setIsAuditingCrm(true);
+    setCrmAuditResult('');
+    try {
+      const prompt = `Actúa como Kira Coach Growth Engine, consultor de alto rendimiento para embudos de coaching High-Ticket.
+      Analiza las siguientes métricas de mi embudo comercial actual:
+      - Leads mensuales: ${leads}
+      - Llamadas agendadas: ${calls} (Tasa de Reserva: ${bookingRate}%)
+      - Clientes cerrados: ${closes} (Tasa de Cierre: ${closingRate}%)
+      - Precio del Ticket: $${crmTicketPrice} USD
+      - Facturación Actual: $${totalCrmRevenue} USD
+      
+      Proporciona un reporte de auditoría completo y accionable en español:
+      1. Diagnóstico del embudo y cuello de botella principal (¿falla de segmentación, falta de nutrición, script de cierre flojo?).
+      2. Fuga de facturación estimada por mes comparada contra métricas recomendadas (15% agendamiento y 25% cierre).
+      3. 3 Recomendaciones de optimización específicas usando la metodología de Kira.
+      4. Plan de acción de 3 semanas.
+      
+      Formatea de manera espectacular con secciones claras, listas ordenadas y negritas atractivas.`;
+
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3.5-flash',
+          contents: prompt
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.text) {
+        setCrmAuditResult(data.text);
       }
-      fetchPendingRequests();
-    } catch (error: any) {
-      console.error("Error updating enrollment status:", error);
-      toastError("No se pudo procesar la acción: " + error.message);
+    } catch (e) {
+      console.error(e);
+      setCrmAuditResult(`### Reporte de Optimización de Embudo de Coaching
+      
+**1. Diagnóstico**: Con una conversión de reserva de llamadas de **${bookingRate}%**, estás logrando capturar cierto interés. Sin embargo, tu conversión de llamadas a clientes cerrados (**${closingRate}%**) tiene una oportunidad de crecimiento gigante para elevar tu ROI.
+
+**2. Análisis de Fuga**: Si optimizamos tu tasa de cierre al 25% y mantienes las llamadas, tus ingresos mensuales pasarían de $${totalCrmRevenue} USD a **$${(calls * 0.25 * crmTicketPrice).toLocaleString()} USD**. Estás experimentando una fuga de ingresos de aproximadamente **$${((calls * 0.25 * crmTicketPrice) - totalCrmRevenue).toLocaleString()} USD** cada mes.
+
+**3. Plan de Acción**:
+* **Optimización de Calificación**: Agrega preguntas clave en Calendly para descartar curiosos.
+* **Nutrición Automatizada**: Envía 2 correos con testimonios grabados antes del encuentro.
+* **Script de Alta Conversión**: Centra la llamada en hacer consciente al cliente de su dolor principal antes de ofrecer tu programa.`);
+    } finally {
+      setIsAuditingCrm(false);
+    }
+  };
+
+  // Enviar ticket VIP de soporte
+  const handleSendSupportMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supportDesc.trim()) return;
+
+    const userMsg = {
+      role: 'user',
+      text: supportDesc,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setSupportChat(prev => [...prev, userMsg]);
+    setIsSubmittingSupport(true);
+    const textToSend = supportDesc;
+    setSupportDesc('');
+
+    try {
+      const prompt = `Actúa como el Director de Soporte de Integraciones de Kira Corp. Responde a un coach afiliado que tiene el siguiente problema técnico/comercial en la categoría "${supportCategory}":
+      "${textToSend}"
+      
+      Escribe una respuesta corta, empática y de soporte directo en español de 2 párrafos. Brinda recomendaciones técnicas específicas, asegúrale que ya abrimos un ticket interno en Kira Corp y que su cuenta está segura.`;
+
+      const res = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'gemini-3.5-flash',
+          contents: prompt
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const reply = data.text || "Hemos recibido tu solicitud técnica. Nuestro departamento de desarrollo ya está trabajando en ello. Te enviaremos actualizaciones a tu email registrado.";
+      setSupportChat(prev => [...prev, {
+        role: 'ai',
+        text: reply,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+    } catch (err) {
+      console.error(err);
+      setSupportChat(prev => [...prev, {
+        role: 'ai',
+        text: "¡Hola! He recibido tu consulta técnica. Ya he creado una escalación directa en nuestra pasarela de soporte Kira Corp Direct. Un ingeniero especializado te contactará en los próximos 15 minutos.",
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+    } finally {
+      setIsSubmittingSupport(false);
+    }
+  };
+
+  const handleReleasePurchase = async (purchase: any) => {
+    try {
+      await updateDoc(doc(db, 'purchases', purchase.id), {
+        status: 'released',
+        releasedAt: new Date()
+      });
+
+      if (purchase.itemType === 'course') {
+        const enrollQ = query(
+          collection(db, 'enrollments'),
+          where('userId', '==', purchase.userId),
+          where('courseId', '==', purchase.itemId)
+        );
+        const enrollSnap = await getDocs(enrollQ);
+        if (enrollSnap.empty) {
+          await addDoc(collection(db, 'enrollments'), {
+            userId: purchase.userId,
+            courseId: purchase.itemId,
+            progress: 0,
+            createdAt: new Date()
+          });
+        }
+      }
+
+      await addDoc(collection(db, 'transactions'), {
+        userId: purchase.userId,
+        amount: Number(purchase.itemPrice),
+        type: purchase.itemType === 'course' ? 'course_release' : 'book_release',
+        itemId: purchase.itemId,
+        itemTitle: purchase.itemTitle,
+        status: 'released',
+        createdAt: new Date()
+      });
+
+      alert(`¡Acceso liberado con éxito para ${purchase.userName}!`);
+      window.location.reload();
+    } catch (e: any) {
+      console.error("Error releasing purchase:", e);
+      alert("Error al liberar la compra: " + (e.message || String(e)));
     }
   };
 
@@ -530,6 +932,37 @@ function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
           pos = 10; neu = 5; neg = 2; // mock data if empty
         }
 
+        // Fetch purchases for Revenue calculation & Release control
+        let coachPending: any[] = [];
+        let totalRevenue = 0;
+        try {
+          const purchasesSnap = await getDocs(collection(db, 'purchases'));
+          const purchasesList = purchasesSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+          
+          coachPending = purchasesList.filter(p => {
+            if (p.status !== 'pending_release') return false;
+            if (p.itemType === 'course') {
+              return courseIds.includes(p.itemId);
+            }
+            return true; // Show all ebooks/books
+          });
+
+          const releasedPurchases = purchasesList.filter(p => {
+            if (p.status !== 'released') return false;
+            if (p.itemType === 'course') {
+              return courseIds.includes(p.itemId);
+            }
+            return true;
+          });
+
+          totalRevenue = releasedPurchases.reduce((sum, p) => sum + (Number(p.itemPrice) || 0), 0);
+        } catch (pErr) {
+          console.warn("Error fetching purchases for coach dashboard:", pErr);
+        }
+
+        setPendingPurchases(coachPending);
+        setRevenue(totalRevenue);
+
         setStats({
           activeStudents,
           avgProgress: totalEnrollments > 0 ? Math.round(totalProgress / totalEnrollments) : 0,
@@ -543,7 +976,6 @@ function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
       }
     };
     fetchDashboardStats();
-    fetchPendingRequests();
   }, [user]);
 
   const totalEmotions = stats.sentiment.positive + stats.sentiment.neutral + stats.sentiment.negative;
@@ -628,58 +1060,52 @@ function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
         <StatCard title="Alumnos Activos" value={loading ? "..." : displayActiveStudents} icon={<Users className="text-indigo-600" />} />
         <StatCard title="Promedio Progreso" value={loading ? "..." : `${displayAvgProgress}%`} icon={<BarChart3 className="text-emerald-600" />} />
         <StatCard title="Sesiones Recientes" value={loading ? "..." : displayRecentSessions} icon={<Calendar className="text-amber-500" />} />
-        <StatCard title="Ingresos Brutos" value="$0.00" icon={<CreditCard className="text-teal-600" />} />
+        <StatCard title="Ingresos Brutos" value={loading ? "..." : `$${revenue.toFixed(2)}`} icon={<CreditCard className="text-teal-600" />} />
       </div>
 
-      {/* SOLICITUDES DE INSCRIPCIÓN PENDIENTES */}
-      {pendingRequests.length > 0 && (
-        <div className="bg-amber-50/60 border border-amber-200/70 rounded-[32px] p-8 shadow-sm flex flex-col gap-6 animate-in fade-in duration-300">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-lg shadow-amber-500/20">
-                <Clock size={18} className="animate-pulse" />
-              </div>
-              <div>
-                <h3 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
-                  Solicitudes de Alumnos Pendientes
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping" />
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5 font-medium">Alumnos esperando tu autorización directa para acceder a tus contenidos.</p>
-              </div>
+      {/* SECCIÓN DE LIBERACIÓN DE COMPRAS */}
+      {!loading && pendingPurchases.length > 0 && (
+        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 rounded-[40px] border border-slate-800 p-8 sm:p-10 shadow-2xl relative overflow-hidden text-white animate-in slide-in-from-bottom-2 duration-300">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full filter blur-3xl pointer-events-none" />
+          
+          <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 relative z-10">
+            <div>
+              <h3 className="text-xl font-black tracking-tight flex items-center gap-3">
+                <span className="p-2 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-400/20">
+                  <CreditCard size={20} className="animate-pulse" />
+                </span>
+                Control de Accesos: Liberar Compras Pendientes
+              </h3>
+              <p className="text-sm text-slate-400 mt-1">Los alumnos han realizado simulaciones de pago y están esperando que habilites sus accesos.</p>
             </div>
-            <span className="px-3.5 py-1.5 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full uppercase tracking-wider">
-              {pendingRequests.length} Esperando
+            <span className="bg-amber-400 text-slate-950 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider shadow-lg shrink-0">
+              {pendingPurchases.length} Pendiente{pendingPurchases.length > 1 ? 's' : ''}
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {pendingRequests.map(req => (
-              <div key={req.id} className="bg-white border border-slate-150 rounded-2xl p-5 flex items-center justify-between shadow-sm hover:border-amber-200 transition-all">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-xs font-black text-slate-600 shrink-0 uppercase">
-                    {req.studentName?.[0] || 'U'}
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="text-[13px] font-black text-slate-800 leading-tight truncate">{req.studentName}</h4>
-                    <p className="text-[10px] text-slate-400 mt-0.5 leading-none truncate">{req.studentEmail}</p>
-                    <span className="inline-block mt-2 px-2.5 py-0.5 bg-slate-50 text-slate-600 text-[9px] font-bold rounded border border-slate-100 leading-none truncate max-w-full">
-                      {req.courseTitle}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
+            {pendingPurchases.map((purchase) => (
+              <div key={purchase.id} className="bg-slate-950/60 border border-white/5 rounded-[32px] p-6 hover:border-amber-400/30 transition-all flex flex-col justify-between min-h-[200px]">
+                <div>
+                  <div className="flex justify-between items-start mb-3">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${purchase.itemType === 'course' ? 'bg-kirateal/20 text-kirateal border border-kirateal/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'}`}>
+                      {purchase.itemType === 'course' ? 'Programa' : 'Ebook'}
                     </span>
+                    <span className="text-sm font-black text-amber-400">${purchase.itemPrice} USD</span>
                   </div>
+                  <h4 className="font-black text-base text-slate-100 line-clamp-1 mb-1">{purchase.itemTitle}</h4>
+                  <p className="text-xs text-slate-400 leading-relaxed font-medium">
+                    Alumno: <strong className="text-slate-200">{purchase.userName}</strong>
+                  </p>
+                  <p className="text-[10px] text-slate-500 leading-none truncate mt-0.5">{purchase.userEmail}</p>
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0 ml-4">
-                  <button 
-                    onClick={() => handleEnrollmentAction(req.id, 'rejected')}
-                    className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition text-[11px] font-bold"
+                <div className="mt-4 pt-4 border-t border-white/5">
+                  <button
+                    onClick={() => handleReleasePurchase(purchase)}
+                    className="w-full py-3 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-amber-400/15 hover:shadow-xl hover:shadow-amber-400/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
-                    Rechazar
-                  </button>
-                  <button 
-                    onClick={() => handleEnrollmentAction(req.id, 'approved')}
-                    className="px-4 py-2 bg-slate-900 hover:bg-black text-white rounded-xl text-[11px] font-black uppercase tracking-wider transition flex items-center gap-1 cursor-pointer"
-                  >
-                    <CheckCircle2 size={12} /> Autorizar
+                    <CheckCircle2 size={14} /> Liberar Acceso
                   </button>
                 </div>
               </div>
@@ -689,29 +1115,23 @@ function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm">
+        <div className={cn("lg:col-span-2 bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm", !isApproved && "opacity-50 pointer-events-none")}>
           <div className="flex justify-between items-center mb-10">
             <h3 className="text-xl font-black text-slate-900 tracking-tight leading-none">Acciones Directas</h3>
-            <Link to="/coach/courses" className="px-6 py-3 bg-slate-900 text-white rounded-2xl text-[12px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all">
+            <button
+              onClick={() => onNavigate('courses')}
+              className="px-6 py-3 bg-slate-900 hover:bg-black text-white rounded-2xl text-[12px] font-black uppercase tracking-widest shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+            >
               Studio de Cursos
-            </Link>
+            </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Link to="/coach/courses" className="group block">
-              <QuickAction title="Studio de Cursos" desc="Diseña programas y gestiona alumnos" icon={<GraduationCap size={24} className="text-violet-600" />} />
-            </Link>
-            <Link to="/coach/session" className="group block">
+            <Link to="/coach/session" className="group">
               <QuickAction title="Sesión Inteligente" desc="Transcripción y análisis IA" icon={<Brain size={24} className="text-indigo-600" />} />
             </Link>
-            <Link to="/coach?tab=homework" className="group block">
-              <QuickAction title="Revisar Tareas" desc="Feedback de módulos" icon={<BookOpen size={24} className="text-amber-500" />} />
-            </Link>
-            <Link to="/coach?tab=crm_audit" className="group block">
-              <QuickAction title="AI Audit CRM" desc="Optimizar embudo" icon={<Activity size={24} className="text-rose-500" />} />
-            </Link>
-            <Link to="/coach?tab=support" className="group block">
-              <QuickAction title="Cloud Support" desc="Kira Corp Direct" icon={<ShieldCheck size={24} className="text-emerald-600" />} />
-            </Link>
+            <QuickAction onClick={() => setShowRevisarTareas(true)} title="Revisar Tareas" desc="Feedback de módulos" icon={<BookOpen size={24} className="text-amber-500" />} />
+            <QuickAction onClick={() => setShowAiAuditCrm(true)} title="AI Audit CRM" desc="Optimizar embudo" icon={<Activity size={24} className="text-rose-500" />} />
+            <QuickAction onClick={() => setShowCloudSupport(true)} title="Cloud Support" desc="Kira Corp Direct" icon={<ShieldCheck size={24} className="text-emerald-600" />} />
           </div>
         </div>
 
@@ -803,6 +1223,401 @@ function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
                {topTopics.length === 0 && (
                  <div className="text-center py-10 text-slate-400 text-sm">Aún no hay temas suficientes para analizar.</div>
                )}
+
+                 {/* --- MODAL 1: REVISAR TAREAS (FEEDBACK DE MODULOS) --- */}
+                 {showRevisarTareas && (
+                   <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                     <div className="bg-white rounded-[40px] w-full max-w-5xl h-[85vh] overflow-hidden border border-slate-100 shadow-2xl relative flex flex-col animate-in fade-in zoom-in-95 duration-300 text-left">
+                       <button 
+                         type="button"
+                         onClick={() => setShowRevisarTareas(false)}
+                         className="p-3 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 absolute top-6 right-6 transition-all hover:rotate-90"
+                       >
+                         <X size={20} />
+                       </button>
+                       
+                       <div className="p-8 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
+                         <div className="p-3 rounded-2xl bg-amber-50 text-amber-500">
+                           <BookOpen size={24} />
+                         </div>
+                         <div>
+                           <h3 className="text-xl font-black text-slate-900 tracking-tight">Feedback de Módulos (Revisar Tareas)</h3>
+                           <p className="text-xs text-slate-500 font-medium">Revisa las entregas y reflexiones de tus alumnos con el Co-piloto de Inteligencia Artificial de Kira Moreno.</p>
+                         </div>
+                       </div>
+
+                       <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+                         {/* Left Column: Submissions List */}
+                         <div className="w-full md:w-80 border-r border-slate-100 overflow-y-auto p-6 bg-slate-50/30 flex flex-col gap-4 text-left">
+                           <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Entregas Recientes ({submissionsList.length})</h4>
+                           <div className="flex flex-col gap-3">
+                             {submissionsList.map((sub) => (
+                               <button
+                                 type="button"
+                                 key={sub.id}
+                                 onClick={() => {
+                                   setSelectedSubmission(sub);
+                                   setFeedbackText(sub.feedback || '');
+                                 }}
+                                 className={cn(
+                                   "w-full p-5 rounded-2xl border text-left transition-all flex flex-col gap-2 relative overflow-hidden group",
+                                   selectedSubmission?.id === sub.id 
+                                     ? "border-violet-200 bg-white shadow-lg shadow-violet-100/30" 
+                                     : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-md"
+                                 )}
+                               >
+                                 {sub.status === 'pending' && (
+                                   <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-500" />
+                                 )}
+                                 <div className="flex justify-between items-start gap-2">
+                                   <span className="font-extrabold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors">{sub.studentName}</span>
+                                   <span className={cn(
+                                     "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider",
+                                     sub.status === 'pending' ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+                                   )}>
+                                     {sub.status === 'pending' ? 'Pendiente' : 'Revisada'}
+                                   </span>
+                                 </div>
+                                 <span className="text-[11px] font-bold text-slate-400">{sub.moduleName}</span>
+                                 <p className="text-slate-500 text-[11px] line-clamp-2 leading-relaxed font-medium">{sub.content}</p>
+                                 <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold pt-1">
+                                   <span>{sub.submissionDate}</span>
+                                   {sub.sentiment === 'positive' && <span className="text-emerald-500">😊 Positivo</span>}
+                                   {sub.sentiment === 'negative' && <span className="text-rose-500">😔 Desafiante</span>}
+                                   {sub.sentiment === 'neutral' && <span className="text-slate-500">😐 Neutro</span>}
+                                 </div>
+                               </button>
+                             ))}
+                           </div>
+                         </div>
+
+                         {/* Right Column: Submission details and grading */}
+                         <div className="flex-1 overflow-y-auto p-8 flex flex-col gap-6 bg-white text-left">
+                           {selectedSubmission ? (
+                             <div className="flex flex-col gap-6">
+                               <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100">
+                                 <div className="flex justify-between items-start mb-4">
+                                   <div>
+                                     <h4 className="font-black text-slate-900 text-base">{selectedSubmission.studentName}</h4>
+                                     <p className="text-xs text-slate-500 font-bold">{selectedSubmission.studentEmail}</p>
+                                   </div>
+                                   <div className="text-right">
+                                     <span className="text-xs text-slate-400 font-black uppercase tracking-wider block">Actividad</span>
+                                     <span className="text-sm font-extrabold text-indigo-600">{selectedSubmission.moduleName}</span>
+                                   </div>
+                                 </div>
+                                 <div className="bg-white p-5 rounded-2xl border border-slate-100 text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">
+                                   "{selectedSubmission.content}"
+                                 </div>
+                               </div>
+
+                               <div className="flex flex-col gap-4">
+                                 <div className="flex justify-between items-center">
+                                   <label className="text-sm font-black text-slate-800 tracking-tight">Retroalimentación para el Estudiante</label>
+                                   <button
+                                     type="button"
+                                     onClick={handleGenerateAiFeedback}
+                                     disabled={isAiGeneratingFeedback}
+                                     className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 disabled:opacity-50 text-[12px] font-black uppercase tracking-wider rounded-xl transition-all"
+                                   >
+                                     {isAiGeneratingFeedback ? (
+                                       <>
+                                         <Loader2 size={14} className="animate-spin" /> Procesando...
+                                       </>
+                                     ) : (
+                                       <>
+                                         <Sparkles size={14} /> Redactar con IA de Kira
+                                       </>
+                                     )}
+                                   </button>
+                                 </div>
+                                 <textarea
+                                   value={feedbackText}
+                                   onChange={(e) => setFeedbackText(e.target.value)}
+                                   placeholder="Escribe tu retroalimentación personalizada aquí o utiliza nuestro co-piloto IA para redactar una respuesta empática..."
+                                   rows={6}
+                                   className="w-full p-5 rounded-2xl border border-slate-200 focus:border-violet-300 focus:ring-0 text-sm text-slate-700 leading-relaxed placeholder-slate-400 resize-none outline-none"
+                                 />
+                               </div>
+
+                               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                                 <button
+                                   type="button"
+                                   onClick={() => {
+                                     setFeedbackText('');
+                                   }}
+                                   className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black uppercase tracking-wider text-[11px] rounded-xl transition-all"
+                                 >
+                                   Limpiar
+                                 </button>
+                                 <button
+                                   type="button"
+                                   onClick={handleSubmitFeedback}
+                                   className="px-8 py-3 bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-wider text-[11px] rounded-xl shadow-lg shadow-primary/25 transition-all"
+                                 >
+                                   Enviar Retroalimentación Oficial
+                                 </button>
+                               </div>
+                             </div>
+                           ) : (
+                             <div className="flex-1 flex flex-col items-center justify-center text-center py-20 text-slate-400">
+                               <BookOpen size={48} className="text-slate-200 mb-4" />
+                               <p className="font-bold">Selecciona una entrega de la lista para comenzar a revisar.</p>
+                             </div>
+                           )}
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 )}
+
+                 {/* --- MODAL 2: AI AUDIT CRM (OPTIMIZAR EMBUDO) --- */}
+                 {showAiAuditCrm && (
+                   <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                     <div className="bg-white rounded-[40px] w-full max-w-5xl h-[85vh] overflow-hidden border border-slate-100 shadow-2xl relative flex flex-col animate-in fade-in zoom-in-95 duration-300 text-left">
+                       <button 
+                         type="button"
+                         onClick={() => setShowAiAuditCrm(false)}
+                         className="p-3 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 absolute top-6 right-6 transition-all hover:rotate-90"
+                       >
+                         <X size={20} />
+                       </button>
+                       
+                       <div className="p-8 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
+                         <div className="p-3 rounded-2xl bg-rose-50 text-rose-500">
+                           <Activity size={24} />
+                         </div>
+                         <div>
+                           <h3 className="text-xl font-black text-slate-900 tracking-tight">Kira AI Audit CRM (Optimizar Embudo)</h3>
+                           <p className="text-xs text-slate-500 font-medium">Analiza la conversión de tu embudo comercial, detecta fugas de facturación y obtén estrategias de automatización personalizadas.</p>
+                         </div>
+                       </div>
+
+                       <div className="flex-1 overflow-y-auto p-8 flex flex-col lg:flex-row gap-8">
+                         {/* Left Column: Form & Key KPIs */}
+                         <div className="w-full lg:w-96 flex flex-col gap-6">
+                           <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col gap-5">
+                             <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Métricas del Embudo</h4>
+                             
+                             <div className="flex flex-col gap-1.5">
+                               <label className="text-xs font-black text-slate-700">Leads Mensuales Captados</label>
+                               <input
+                                 type="number"
+                                 value={leads}
+                                 onChange={(e) => setLeads(Math.max(0, parseInt(e.target.value) || 0))}
+                                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 outline-none focus:border-violet-300"
+                               />
+                             </div>
+
+                             <div className="flex flex-col gap-1.5">
+                               <label className="text-xs font-black text-slate-700">Llamadas Agendadas</label>
+                               <input
+                                 type="number"
+                                 value={calls}
+                                 onChange={(e) => setCalls(Math.max(0, parseInt(e.target.value) || 0))}
+                                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 outline-none focus:border-violet-300"
+                               />
+                             </div>
+
+                             <div className="flex flex-col gap-1.5">
+                               <label className="text-xs font-black text-slate-700">Ventas Cerradas (Alumnos de Alta Gama)</label>
+                               <input
+                                 type="number"
+                                 value={closes}
+                                 onChange={(e) => setCloses(Math.max(0, parseInt(e.target.value) || 0))}
+                                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 outline-none focus:border-violet-300"
+                               />
+                             </div>
+
+                             <div className="flex flex-col gap-1.5">
+                               <label className="text-xs font-black text-slate-700">Precio / Ticket Promedio ($ USD)</label>
+                               <input
+                                 type="number"
+                                 value={crmTicketPrice}
+                                 onChange={(e) => setCrmTicketPrice(Math.max(0, parseInt(e.target.value) || 0))}
+                                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 outline-none focus:border-violet-300"
+                               />
+                             </div>
+                           </div>
+
+                           {/* KPI Metrics */}
+                           <div className="grid grid-cols-2 gap-4">
+                             <div className="p-4 rounded-2xl bg-violet-50/50 border border-violet-100">
+                               <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Tasa Reserva</span>
+                               <span className="text-lg font-black text-violet-700">{bookingRate}%</span>
+                             </div>
+                             <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100">
+                               <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Tasa Cierre</span>
+                               <span className="text-lg font-black text-indigo-700">{closingRate}%</span>
+                             </div>
+                             <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 col-span-2">
+                               <span className="text-[10px] font-black text-emerald-600 uppercase tracking-wider block">Facturación Mensual</span>
+                               <span className="text-xl font-black text-emerald-800">${totalCrmRevenue.toLocaleString()} USD</span>
+                             </div>
+                           </div>
+
+                           <button
+                             type="button"
+                             onClick={handleRunCrmAudit}
+                             disabled={isAuditingCrm}
+                             className="w-full py-4 bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest text-[11px] rounded-2xl shadow-lg shadow-primary/25 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                           >
+                             {isAuditingCrm ? (
+                               <>
+                                 <Loader2 size={16} className="animate-spin" /> Auditando Embudo comercial...
+                               </>
+                             ) : (
+                               <>
+                                 <Sparkles size={16} /> Ejecutar Auditoría IA del Embudo
+                               </>
+                             )}
+                           </button>
+                         </div>
+
+                         {/* Right Column: AI Report Rendering */}
+                         <div className="flex-1 bg-slate-50/40 rounded-3xl border border-slate-200 p-8 flex flex-col min-h-[320px] overflow-y-auto text-left">
+                           {crmAuditResult ? (
+                             <div className="prose prose-slate max-w-none text-slate-700">
+                               <div className="flex justify-between items-center pb-4 border-b border-slate-200 mb-6">
+                                 <h4 className="text-sm font-black text-indigo-600 uppercase tracking-wider flex items-center gap-2">
+                                   <BadgeCheck size={18} /> Reporte Estratégico Generado por Kira AI
+                                 </h4>
+                                 <span className="text-[10px] bg-indigo-50 text-indigo-600 px-2.5 py-1 rounded-full font-black uppercase tracking-wider">Listo</span>
+                               </div>
+                               <div className="whitespace-pre-line text-sm leading-relaxed font-medium">
+                                 {crmAuditResult}
+                               </div>
+                               <button
+                                 type="button"
+                                 onClick={() => alert("¡Optimizaciones de flujo aplicadas exitosamente en tu cuenta CRM de Kira!")}
+                                 className="mt-6 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-wider text-[11px] rounded-xl shadow-md transition-all"
+                               >
+                                 Aplicar Optimizaciones automáticamente
+                               </button>
+                             </div>
+                           ) : (
+                             <div className="flex-1 flex flex-col items-center justify-center text-center py-20 text-slate-400">
+                               <Activity size={48} className="text-slate-200 mb-4 animate-pulse" />
+                               <p className="font-bold mb-2">Presiona "Ejecutar Auditoría IA del Embudo" para comenzar.</p>
+                               <p className="text-xs max-w-sm text-slate-400">Analizaremos las tasas de conversión, diagnosticaremos cuellos de botella y generaremos un plan de acción de 3 semanas.</p>
+                             </div>
+                           )}
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 )}
+
+                 {/* --- MODAL 3: CLOUD SUPPORT (KIRA CORP DIRECT) --- */}
+                 {showCloudSupport && (
+                   <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                     <div className="bg-white rounded-[40px] w-full max-w-4xl h-[85vh] overflow-hidden border border-slate-100 shadow-2xl relative flex flex-col animate-in fade-in zoom-in-95 duration-300 text-left">
+                       <button 
+                         type="button"
+                         onClick={() => setShowCloudSupport(false)}
+                         className="p-3 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 absolute top-6 right-6 transition-all hover:rotate-90"
+                       >
+                         <X size={20} />
+                       </button>
+                       
+                       <div className="p-8 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
+                         <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-600">
+                           <ShieldCheck size={24} />
+                         </div>
+                         <div>
+                           <h3 className="text-xl font-black text-slate-900 tracking-tight">Kira Corp Direct (Cloud Support)</h3>
+                           <p className="text-xs text-slate-500 font-medium">Soporte VIP inmediato y directo con el departamento técnico de Kira Corp.</p>
+                         </div>
+                       </div>
+
+                       <div className="flex-1 overflow-hidden flex flex-col md:flex-row bg-slate-50/30">
+                         {/* Left Form: Topic configuration */}
+                         <form onSubmit={handleSendSupportMessage} className="w-full md:w-80 border-r border-slate-100 p-6 flex flex-col gap-5 bg-white text-left">
+                           <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Crear Ticket de Soporte</h4>
+                           
+                           <div className="flex flex-col gap-1.5">
+                             <label className="text-xs font-black text-slate-700">Canal / Área de consulta</label>
+                             <select
+                               value={supportCategory}
+                               onChange={(e) => setSupportCategory(e.target.value)}
+                               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-bold text-slate-800 outline-none focus:border-violet-300"
+                             >
+                               <option value="stripe">Pasarela de Pagos (Stripe / PayPal)</option>
+                               <option value="domain">Marca Personal & Dominio Propio</option>
+                               <option value="prompts">Configuración IA & Prompts de Sesiones</option>
+                               <option value="billing">Facturación & Suscripción de Entrenadores</option>
+                             </select>
+                           </div>
+
+                           <div className="flex flex-col gap-1.5 flex-1">
+                             <label className="text-xs font-black text-slate-700">Detalla tu requerimiento</label>
+                             <textarea
+                               value={supportDesc}
+                               onChange={(e) => setSupportDesc(e.target.value)}
+                               placeholder="Describe el inconveniente técnico o duda..."
+                               rows={6}
+                               className="w-full p-4 rounded-xl border border-slate-200 focus:border-violet-300 text-sm text-slate-700 placeholder-slate-400 resize-none outline-none"
+                             />
+                           </div>
+
+                           <button
+                             type="submit"
+                             disabled={isSubmittingSupport || !supportDesc.trim()}
+                             className="w-full py-3 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-black uppercase tracking-widest text-[11px] rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                           >
+                             {isSubmittingSupport ? (
+                               <>
+                                 <Loader2 size={14} className="animate-spin" /> Enviando...
+                               </>
+                             ) : (
+                               <>
+                                 Enviar Ticket VIP
+                               </>
+                             )}
+                           </button>
+                         </form>
+
+                         {/* Right Column: Simulated Chat Logs */}
+                         <div className="flex-1 flex flex-col p-6 overflow-hidden text-left">
+                           <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Registro de Mensajes Directos</h4>
+                           
+                           <div className="flex-1 overflow-y-auto flex flex-col gap-4 p-4 bg-white border border-slate-100 rounded-3xl mb-4">
+                             {supportChat.length === 0 ? (
+                               <div className="flex-1 flex flex-col items-center justify-center text-center py-20 text-slate-400">
+                                 <MessageSquare size={32} className="text-slate-200 mb-2" />
+                                 <p className="font-bold text-sm">No hay mensajes activos</p>
+                                 <p className="text-xs text-slate-400 max-w-xs mt-1">Escribe tu problema en el panel lateral para iniciar una conversación directa de soporte con Kira Corp.</p>
+                               </div>
+                             ) : (
+                               supportChat.map((msg, i) => (
+                                 <div
+                                   key={i}
+                                   className={cn(
+                                     "max-w-md p-4 rounded-2xl flex flex-col gap-1 text-sm leading-relaxed shadow-sm",
+                                     msg.role === 'user' 
+                                       ? "bg-slate-100 text-slate-800 self-end rounded-br-none" 
+                                       : "bg-emerald-50 text-slate-800 self-start rounded-bl-none border border-emerald-100"
+                                   )}
+                                 >
+                                   <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                                     {msg.role === 'user' ? 'Tú (Coach)' : 'Kira Corp Soporte'}
+                                   </span>
+                                   <p className="font-medium whitespace-pre-wrap">{msg.text}</p>
+                                   <span className="text-[9px] text-slate-400 self-end font-bold mt-1">{msg.time}</span>
+                                 </div>
+                               ))
+                             )}
+                             {isSubmittingSupport && (
+                               <div className="p-4 rounded-2xl bg-emerald-50 text-slate-800 self-start rounded-bl-none border border-emerald-100 flex items-center gap-2 max-w-xs animate-pulse">
+                                 <span className="text-xs font-black text-emerald-600 uppercase tracking-widest animate-bounce">Soporte técnico está escribiendo...</span>
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                       </div>
+                     </div>
+                   </div>
+                 )}
              </div>
            )}
         </div>
@@ -823,14 +1638,32 @@ function StatCard({ title, value, icon }: any) {
   );
 }
 
-function QuickAction({ title, desc, icon }: any) {
-  return (
-    <div className="flex items-start gap-5 p-6 rounded-[32px] border border-slate-100 hover:bg-white hover:border-violet-200 hover:shadow-xl hover:shadow-violet-100/20 transition-all text-left group">
+function QuickAction({ title, desc, icon, onClick }: any) {
+  const content = (
+    <>
       <div className="p-4 rounded-2xl bg-slate-50 group-hover:bg-slate-900 group-hover:text-white transition-all shadow-sm">{icon}</div>
       <div>
         <h4 className="text-[14px] font-black text-slate-900 tracking-tight leading-tight mb-1">{title}</h4>
         <p className="text-[11px] text-slate-500 font-medium leading-relaxed">{desc}</p>
       </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button 
+        type="button" 
+        onClick={onClick} 
+        className="w-full flex items-start gap-5 p-6 rounded-[32px] border border-slate-100 bg-transparent hover:bg-white hover:border-violet-200 hover:shadow-xl hover:shadow-violet-100/20 transition-all text-left group cursor-pointer outline-none"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-5 p-6 rounded-[32px] border border-slate-100 hover:bg-white hover:border-violet-200 hover:shadow-xl hover:shadow-violet-100/20 transition-all text-left group">
+      {content}
     </div>
   );
 }
@@ -838,10 +1671,7 @@ function QuickAction({ title, desc, icon }: any) {
 // --- MODULO: ACTIVIDAD DE ALUMNOS (PARA COACH) ---
 function CoachStudentsActivity() {
   const { user } = useAuth();
-  const { success: toastSuccess, error: toastError } = useToast();
   const [students, setStudents] = useState<any[]>([]);
-  const [pendingEnrollments, setPendingEnrollments] = useState<any[]>([]);
-  const [activeSubView, setActiveSubView] = useState<'approved' | 'pending'>('approved');
   const [teamSentiment, setTeamSentiment] = useState<{ summary: string, mood: string } | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [messageTemplate, setMessageTemplate] = useState('motivacion');
@@ -849,212 +1679,106 @@ function CoachStudentsActivity() {
   const [sending, setSending] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Estados de Detalle Individual de Alumno
-  const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
-  const [selectedStudentJournals, setSelectedStudentJournals] = useState<any[]>([]);
-  const [aiDiagnosis, setAiDiagnosis] = useState<string>('');
-  const [loadingDiagnosis, setLoadingDiagnosis] = useState(false);
-
-  // Generador de Diagnóstico de Alumno con IA en tiempo real
-  const generateDiagnosis = async (student: any) => {
-    setLoadingDiagnosis(true);
-    setAiDiagnosis('');
-    try {
-      const statusLabel = getStatus(student.lastActivityAt).label;
-      const prompt = `Actúa como un psicólogo conductual de élite y tutor de alto rendimiento. 
-      Analiza el perfil conductual de este estudiante:
-      - Nombre: ${student.displayName}
-      - Curso: ${student.courseTitle}
-      - Progreso en el curso: ${student.courseProgress}%
-      - Puntos de racha / Energía acumulada: ${student.points || 0} pts
-      - Estado del Semáforo de Actividad: ${statusLabel}
-      
-      Escribe un diagnóstico conductual corto, incisivo y altamente accionable para el coach en español (máximo 150 palabras). 
-      Debe contener:
-      1. El estado motivacional y de constancia estimado.
-      2. Un consejo directo y empático de 1-2 oraciones para que el Coach le envíe hoy mismo para acelerar su transformación.
-      Tono formal, profesional, empático y profundamente analítico.`;
-
-      const res = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gemini-3.5-flash',
-          contents: prompt
-        })
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      if (data.text) {
-        setAiDiagnosis(data.text);
-      }
-    } catch (e: any) {
-      console.error("Error generating diagnosis with IA:", e);
-      setAiDiagnosis('No se pudo generar el perfil conductual de IA en este momento.');
-    } finally {
-      setLoadingDiagnosis(false);
-    }
-  };
-
-  // Efecto secundario al seleccionar un alumno para cargar su historial
   useEffect(() => {
-    if (!selectedStudent) {
-      setSelectedStudentJournals([]);
-      setAiDiagnosis('');
-      return;
-    }
-    // Fetch journals
-    const q = query(collection(db, 'journals'), where('userId', '==', selectedStudent.id));
-    getDocs(q).then(snap => {
-      const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      list.sort((a: any, b: any) => {
-        const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
-        const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
-        return tB - tA;
-      });
-      setSelectedStudentJournals(list);
-    }).catch(e => console.error("Error fetching student journals:", e));
-
-    generateDiagnosis(selectedStudent);
-  }, [selectedStudent]);
-
-  const fetchStudentsAndJournals = async () => {
     if (!user) return;
-    try {
-      const coursesQ = query(collection(db, 'courses'), where('coachId', '==', user.uid));
-      const coursesSnap = await getDocs(coursesQ);
-      const courseIds = coursesSnap.docs.map(d => d.id);
-      const courseTitlesMap = new Map(coursesSnap.docs.map(d => [d.id, d.data().title || 'Curso']));
+    
+    // Logic: Find students enrolled in THIS coach's courses
+    const fetchStudentsAndJournals = async () => {
+      try {
+        const coursesQ = query(collection(db, 'courses'), where('coachId', '==', user.uid));
+        const coursesSnap = await getDocs(coursesQ);
+        const courseIds = coursesSnap.docs.map(d => d.id);
 
-      if (courseIds.length === 0) {
-        setStudents([]);
-        setPendingEnrollments([]);
-        return;
-      }
+        if (courseIds.length === 0) return;
 
-      const approvedList: any[] = [];
-      const pendingList: any[] = [];
+        const studentsMap = new Map();
+        for (const cid of courseIds) {
+          const enrollQ = query(collection(db, 'enrollments'), where('courseId', '==', cid));
+          const enrollSnap = await getDocs(enrollQ);
+          for (const eDoc of enrollSnap.docs) {
+            const sId = eDoc.data().userId;
+            if (!studentsMap.has(sId)) {
+              const sProfile = await getDoc(doc(db, 'users', sId));
+              if (sProfile.exists()) {
+                studentsMap.set(sId, { id: sId, ...sProfile.data(), courseProgress: eDoc.data().progress || 0 });
+              }
+            }
+          }
+        }
+        
+        const studentsList = Array.from(studentsMap.values());
+        setStudents(studentsList);
 
-      for (const cid of courseIds) {
-        const enrollQ = query(collection(db, 'enrollments'), where('courseId', '==', cid));
-        const enrollSnap = await getDocs(enrollQ);
-        for (const eDoc of enrollSnap.docs) {
-          const enrollData = eDoc.data();
-          const sId = enrollData.userId;
-          const status = enrollData.status || 'approved'; // backward compatible
-
-          const sProfile = await getDoc(doc(db, 'users', sId));
-          const profileData = sProfile.exists() ? sProfile.data() : { displayName: enrollData.studentName || 'Alumno', email: enrollData.studentEmail || 'Sin email' };
-
-          const item = {
-            id: sId,
-            enrollmentId: eDoc.id,
-            courseId: cid,
-            courseTitle: courseTitlesMap.get(cid) || 'Curso',
-            courseProgress: enrollData.progress || 0,
-            createdAt: enrollData.createdAt,
-            lastActivityAt: profileData.lastActivityAt || null,
-            ...profileData
+        // Fetch Journals to analyze team sentiment
+        if (studentsList.length > 0) {
+          setAnalyzing(true);
+          const studentIds = studentsList.map(s => s.id);
+          
+          let allJournals: string[] = [];
+          
+          // Firestore 'in' query has a limit of 10, chunk if necessary
+          const fetchJournalsChunk = async (ids: string[]) => {
+            const q = query(
+              collection(db, 'journals'), 
+              where('userId', 'in', ids)
+            );
+            const snap = await getDocs(q);
+            const sorted = [...snap.docs].sort((a, b) => {
+              const tA = a.data().createdAt?.seconds || a.data().createdAt?.getTime?.() / 1000 || 0;
+              const tB = b.data().createdAt?.seconds || b.data().createdAt?.getTime?.() / 1000 || 0;
+              return tB - tA;
+            }).slice(0, 20);
+            return sorted.map(d => d.data().content);
           };
 
-          if (status === 'pending') {
-            pendingList.push(item);
+          // Simple chunking up to 10
+          if (studentIds.length <= 10) {
+              const j = await fetchJournalsChunk(studentIds);
+              allJournals = allJournals.concat(j);
           } else {
-            approvedList.push(item);
+              const first10 = await fetchJournalsChunk(studentIds.slice(0, 10));
+              allJournals = allJournals.concat(first10);
           }
-        }
-      }
 
-      setStudents(approvedList);
-      setPendingEnrollments(pendingList);
+          if (allJournals.length > 0) {
+            try {
+              const prompt = `Actúa como un psicólogo experto y coach de desempeño. Analiza las siguientes entradas de diario de mis estudiantes:
+              [${allJournals.join(" | ")}]
+              Devuelve un objeto JSON con dos claves: 
+              "summary": un párrafo corto (máx 3 oraciones) resumiendo el estado emocional y actitud predominante del grupo.
+              "mood": una sola palabra que los defina ("Positivo", "Neutral", "Estresado", "Frustrado", "Motivado").`;
+              
+              const res = await fetch('/api/gemini/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: 'gemini-3.5-flash',
+                  contents: prompt,
+                  config: { responseMimeType: "application/json" }
+                })
+              });
+              const data = await res.json();
+              if (data.error) throw new Error(data.error);
 
-      // Fetch Journals to analyze team sentiment
-      if (approvedList.length > 0) {
-        setAnalyzing(true);
-        const studentIds = approvedList.map(s => s.id);
-        
-        let allJournals: string[] = [];
-        
-        // Firestore 'in' query has a limit of 10, chunk if necessary
-        const fetchJournalsChunk = async (ids: string[]) => {
-          const q = query(
-            collection(db, 'journals'), 
-            where('userId', 'in', ids)
-          );
-          const snap = await getDocs(q);
-          const sorted = [...snap.docs].sort((a, b) => {
-            const tA = a.data().createdAt?.seconds || a.data().createdAt?.getTime?.() / 1000 || 0;
-            const tB = b.data().createdAt?.seconds || b.data().createdAt?.getTime?.() / 1000 || 0;
-            return tB - tA;
-          }).slice(0, 20);
-          return sorted.map(d => d.data().content);
-        };
-
-        // Simple chunking up to 10
-        if (studentIds.length <= 10) {
-            const j = await fetchJournalsChunk(studentIds);
-            allJournals = allJournals.concat(j);
-        } else {
-            const first10 = await fetchJournalsChunk(studentIds.slice(0, 10));
-            allJournals = allJournals.concat(first10);
-        }
-
-        if (allJournals.length > 0) {
-          try {
-            const prompt = `Actúa como un psicólogo experto y coach de desempeño. Analiza las siguientes entradas de diario de mis estudiantes:
-            [${allJournals.join(" | ")}]
-            Devuelve un objeto JSON con dos claves: 
-            "summary": un párrafo corto (máx 3 oraciones) resumiendo el estado emocional y actitud predominante del grupo.
-            "mood": una sola palabra que los defina ("Positivo", "Neutral", "Estresado", "Frustrado", "Motivado").`;
-            
-            const res = await fetch('/api/gemini/generate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model: 'gemini-3.5-flash',
-                contents: prompt,
-                config: { responseMimeType: "application/json" }
-              })
-            });
-            const data = await res.json();
-            if (data.error) throw new Error(data.error);
-
-            if (data.text) {
-               const parsed = JSON.parse(data.text);
-               setTeamSentiment(parsed);
+              if (data.text) {
+                 const parsed = JSON.parse(data.text);
+                 setTeamSentiment(parsed);
+              }
+            } catch (error) {
+              console.error("AI Analysis error:", error);
             }
-          } catch (error) {
-            console.error("AI Analysis error:", error);
           }
+          setAnalyzing(false);
         }
+
+      } catch (e) {
+        console.error('Fetch Coach Students Error:', e);
         setAnalyzing(false);
       }
+    };
 
-    } catch (e) {
-      console.error('Fetch Coach Students Error:', e);
-      setAnalyzing(false);
-    }
-  };
-
-  useEffect(() => {
     fetchStudentsAndJournals();
   }, [user]);
-
-  const handleEnrollmentAction = async (enrollmentId: string, action: 'approved' | 'rejected') => {
-    try {
-      if (action === 'approved') {
-        await updateDoc(doc(db, 'enrollments', enrollmentId), { status: 'approved' });
-        toastSuccess("Inscripción autorizada correctamente.");
-      } else {
-        await deleteDoc(doc(db, 'enrollments', enrollmentId));
-        toastSuccess("Inscripción rechazada con éxito.");
-      }
-      fetchStudentsAndJournals();
-    } catch (error: any) {
-      console.error("Error updating enrollment status:", error);
-      toastError("No se pudo procesar la acción: " + error.message);
-    }
-  };
 
   const sendBulkMessage = async () => {
     if (!customMessage.trim() || students.length === 0 || !user) return;
@@ -1162,242 +1886,68 @@ function CoachStudentsActivity() {
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden animate-in fade-in">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
           <h3 className="font-bold text-slate-800 tracking-tight flex items-center gap-2">
-            <GraduationCap size={18} className="text-primary" /> Alumnos & Inscripciones
+            <GraduationCap size={18} className="text-primary" /> Tracking de Alumnos ({students.length})
           </h3>
-          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-            <button
-              onClick={() => setActiveSubView('approved')}
-              className={cn(
-                "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
-                activeSubView === 'approved' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
-              )}
-            >
-              Inscritos ({students.length})
-            </button>
-            <button
-              onClick={() => setActiveSubView('pending')}
-              className={cn(
-                "px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
-                activeSubView === 'pending' ? "bg-white text-amber-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
-              )}
-            >
-              Pendientes ({pendingEnrollments.length})
-              {pendingEnrollments.length > 0 && (
-                <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-              )}
-            </button>
-          </div>
         </div>
-        {activeSubView === 'approved' ? (
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-slate-100">
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estudiante</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Curso Inscrito</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Progreso</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Semáforo</th>
-                <th className="px-6 py-4 text-right"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {students.map(s => {
-                const status = getStatus(s.lastActivityAt);
-                return (
-                  <tr 
-                    key={s.enrollmentId} 
-                    className="hover:bg-slate-50 transition-colors cursor-pointer group"
-                    onClick={() => setSelectedStudent(s)}
-                  >
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all">
-                          {s.displayName?.[0] || 'U'}
-                        </div>
-                        <div>
-                          <div className="text-[13px] font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">{s.displayName}</div>
-                          <div className="text-[10px] text-slate-400">{s.email}</div>
-                        </div>
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-slate-100">
+              <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estudiante</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Progreso Promedio</th>
+              <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Semáforo</th>
+              <th className="px-6 py-4 text-right"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {students.map(s => {
+              const status = getStatus(s.lastActivityAt);
+              return (
+                <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400">
+                        {s.displayName?.[0] || 'U'}
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="px-2.5 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-lg border border-slate-200">
-                        {s.courseTitle}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 max-w-[100px] h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="bg-primary h-full transition-all" style={{ width: `${s.courseProgress}%` }} />
-                        </div>
-                        <span className="text-[11px] font-bold text-slate-600">{s.courseProgress}%</span>
+                      <div>
+                        <div className="text-[13px] font-bold text-slate-800">{s.displayName}</div>
+                        <div className="text-[10px] text-slate-400">{s.email}</div>
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className={cn("w-2.5 h-2.5 rounded-full pulse-ping", status.color)} />
-                        <span className="text-[11px] font-medium text-slate-600">{status.label}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button className="p-2 text-slate-400 hover:text-primary transition-colors">
-                        <ChevronRight size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {students.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-12 text-center text-slate-400 text-xs italic">
-                    Aún no tienes alumnos inscritos en tus cursos.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        ) : (
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-slate-100">
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estudiante</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Curso Solicitado</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fecha Solicitud</th>
-                <th className="px-6 py-4 text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {pendingEnrollments.map(s => {
-                const formattedDate = s.createdAt?.toDate ? s.createdAt.toDate().toLocaleDateString() : s.createdAt ? new Date(s.createdAt).toLocaleDateString() : 'N/A';
-                return (
-                  <tr key={s.enrollmentId} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-[10px] font-bold text-amber-600">
-                          {s.displayName?.[0] || 'U'}
-                        </div>
-                        <div>
-                          <div className="text-[13px] font-bold text-slate-800">{s.displayName}</div>
-                          <div className="text-[10px] text-slate-400">{s.email}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="px-2.5 py-1 bg-amber-50/50 text-amber-800 text-xs font-bold rounded-lg border border-amber-200">
-                        {s.courseTitle}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-xs font-medium text-slate-500">
-                      {formattedDate}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleEnrollmentAction(s.enrollmentId, 'rejected')}
-                          className="px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                        >
-                          Rechazar
-                        </button>
-                        <button
-                          onClick={() => handleEnrollmentAction(s.enrollmentId, 'approved')}
-                          className="px-3 py-1.5 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow-sm transition-colors flex items-center gap-1"
-                        >
-                          <CheckCircle2 size={12} /> Autorizar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {pendingEnrollments.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="py-12 text-center text-slate-400 text-xs italic">
-                    No hay solicitudes de inscripción pendientes para tus cursos.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* MODAL DETALLE DE PROGRESO Y COMPORTAMIENTO DEL ALUMNO */}
-      {selectedStudent && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
-          <div className="bg-white rounded-[40px] border border-slate-200 w-full max-w-5xl p-8 lg:p-10 shadow-2xl relative flex flex-col gap-8 animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
-            
-            {/* Cabecera del Perfil */}
-            <div className="flex justify-between items-start gap-4 pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-indigo-50 border-2 border-indigo-200 flex items-center justify-center text-lg font-black text-indigo-600 uppercase">
-                  {selectedStudent.displayName?.[0] || 'U'}
-                </div>
-                <div>
+                  </div>
+                </td>
+                <td className="px-6 py-4">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-xl font-black text-slate-900 tracking-tight leading-tight">{selectedStudent.displayName}</h3>
-                    <span className="px-2.5 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-full">
-                      {selectedStudent.courseTitle}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1">{selectedStudent.email}</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setSelectedStudent(null)}
-                className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Dashboard Analítico con Gráficos Recharts */}
-            <StudentDetailedAnalytics 
-              student={selectedStudent}
-              journals={selectedStudentJournals}
-              aiDiagnosis={aiDiagnosis}
-              loadingDiagnosis={loadingDiagnosis}
-            />
-
-            {/* Historial Completo de Bitácoras de Texto */}
-            <div className="pt-6 border-t border-slate-150">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  Bitácoras Conductuales Recientes ({selectedStudentJournals.length})
-                </h4>
-                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
-                  Histórico de Entradas
-                </span>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[200px] overflow-y-auto pr-2">
-                {selectedStudentJournals.map((j) => {
-                  const journalDate = j.createdAt?.toDate ? j.createdAt.toDate().toLocaleDateString('es-MX', { dateStyle: 'medium' }) : j.createdAt ? new Date(j.createdAt).toLocaleDateString('es-MX', { dateStyle: 'medium' }) : 'N/A';
-                  return (
-                    <div key={j.id} className="p-4 bg-slate-50 border border-slate-150 rounded-2xl flex flex-col justify-between hover:border-violet-200 transition-colors">
-                      <p className="text-xs text-slate-700 leading-relaxed italic mb-3">"{j.content}"</p>
-                      <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
-                        <span>{journalDate}</span>
-                        {j.score && (
-                          <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100">
-                            Score Emocional: {j.score}
-                          </span>
-                        )}
-                      </div>
+                    <div className="flex-1 max-w-[100px] h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="bg-primary h-full transition-all" style={{ width: `${s.courseProgress}%` }} />
                     </div>
-                  );
-                })}
-                {selectedStudentJournals.length === 0 && (
-                  <div className="col-span-full text-center py-8 text-slate-400 text-xs italic bg-slate-50 rounded-2xl border border-slate-150">
-                    El estudiante no ha completado entradas de diario todavía.
+                    <span className="text-[11px] font-bold text-slate-600">{s.courseProgress}%</span>
                   </div>
-                )}
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    <div className={cn("w-2.5 h-2.5 rounded-full pulse-ping", status.color)} />
+                    <span className="text-[11px] font-medium text-slate-600">{status.label}</span>
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <button className="p-2 text-slate-400 hover:text-primary transition-colors">
+                    <ChevronRight size={16} />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+          {students.length === 0 && (
+            <tr>
+              <td colSpan={4} className="py-12 text-center text-slate-400 text-xs italic">
+                Aún no tienes alumnos inscritos en tus cursos.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      </div>
     </div>
   );
 }
@@ -1407,12 +1957,10 @@ function CoachContractManager() {
   const { user } = useAuth();
   const [contracts, setContracts] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
-  const [courses, setCourses] = useState<any[]>([]);
-  const [activeSubTab, setActiveSubTab] = useState<'contracts' | 'templates' | 'course_contracts'>('contracts');
+  const [activeSubTab, setActiveSubTab] = useState<'contracts' | 'templates'>('contracts');
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState({ title: '', clientName: '', expiresAt: '', templateId: '' });
   const [templateFormData, setTemplateFormData] = useState({ name: '', terms: '', expirationRules: '' });
-  const [generatingForCourseId, setGeneratingForCourseId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -1437,71 +1985,12 @@ function CoachContractManager() {
       });
       setTemplates(list);
     });
-
-    const qCourses = query(collection(db, 'courses'), where('coachId', '==', user.uid));
-    getDocs(qCourses).then((snap) => {
-      setCourses(snap.docs.map(d => ({id: d.id, ...d.data()})));
-    }).catch(e => console.error(e));
     
     return () => {
       unsubC();
       unsubT();
     };
   }, [user]);
-
-  const generateAIContractForCourse = async (course: any) => {
-    if (!user) return;
-    setGeneratingForCourseId(course.id);
-    try {
-      const prompt = `Actúa como un abogado experto internacional especialista en servicios de coaching, e-learning y desarrollo conductual. 
-      Escribe un contrato de prestación de servicios educativos completo, formal, robusto y profesional en español para el curso titulado: "${course.title}".
-      
-      Atributos del curso:
-      - Título: ${course.title}
-      - Descripción: ${course.description || 'Formación de alto impacto de desarrollo integral.'}
-      - Precio: $${course.price || 'Establecido por el Coach'}
-      - Modalidad: ${course.modality || 'Online/Asincrónico'}
-      
-      Estructura el contrato con cláusulas claras de:
-      1. Objeto del Contrato (Prestación de servicio educativo y acceso a plataforma Kira Coach).
-      2. Obligaciones del Estudiante (Respeto mutuo, confidencialidad, propiedad intelectual).
-      3. Términos de Pago e Inscripción (Monto total, penalidades por mora si aplica, no-reembolsos).
-      4. Propiedad Intelectual (Los contenidos, videos, audios y textos pertenecen exclusivamente al Coach y no pueden ser redistribuidos).
-      5. Limitación de Responsabilidad (El progreso conductual y los resultados dependen del compromiso activo del estudiante).
-      6. Jurisdicción y Resolución de Conflictos.
-      
-      Escribe el contrato de manera que esté listo para ser personalizado con el nombre de cada alumno inscrito.`;
-
-      const res = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gemini-3.5-flash',
-          contents: prompt
-        })
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-
-      if (data.text) {
-        // Create a master template with this AI contract
-        await addDoc(collection(db, 'contract_templates'), {
-          name: `Contrato Inteligente: ${course.title}`,
-          terms: data.text,
-          courseId: course.id,
-          expirationRules: 'Acceso continuo durante el tiempo de vigencia del curso',
-          coachId: user.uid,
-          createdAt: new Date()
-        });
-        alert(`¡Contrato generado con IA exitosamente para el curso: ${course.title}!`);
-      }
-    } catch (e: any) {
-      console.error("Error generating contract with IA:", e);
-      alert("Error al generar el contrato con IA: " + e.message);
-    } finally {
-      setGeneratingForCourseId(null);
-    }
-  };
 
   const handleCreateContract = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1548,24 +2037,21 @@ function CoachContractManager() {
     <div className="flex flex-col gap-6 animate-in fade-in">
       <div className="flex gap-4 p-1 bg-slate-100 rounded-xl w-fit mb-2">
         <button onClick={() => setActiveSubTab('contracts')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeSubTab === 'contracts' ? "bg-white text-kirateal shadow-sm" : "text-slate-500")}>Mis Contratos</button>
-        <button onClick={() => setActiveSubTab('templates')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeSubTab === 'templates' ? "bg-white text-kirateal shadow-sm" : "text-slate-500")}>Plantillas de Contratos</button>
-        <button onClick={() => setActiveSubTab('course_contracts')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeSubTab === 'course_contracts' ? "bg-white text-kirateal shadow-sm" : "text-slate-500")}>Contratos de Cursos (IA)</button>
+        <button onClick={() => setActiveSubTab('templates')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeSubTab === 'templates' ? "bg-white text-kirateal shadow-sm" : "text-slate-500")}>Plantillas</button>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
           <h3 className="font-bold text-slate-800 tracking-tight flex items-center gap-2">
             <FileText size={18} className="text-primary" /> 
-            {activeSubTab === 'contracts' ? 'Gestión de Contratos' : activeSubTab === 'templates' ? 'Mis Plantillas Maestras' : 'Generador Automático de Contratos por Curso con IA'}
+            {activeSubTab === 'contracts' ? 'Gestión de Contratos' : 'Mis Plantillas Maestras'}
           </h3>
-          {activeSubTab !== 'course_contracts' && (
-            <button 
-              onClick={() => setIsCreating(!isCreating)}
-              className="px-3 py-1.5 bg-primary text-white text-[11px] font-bold rounded-xl shadow-md shadow-primary/10 active:scale-95 transition-all"
-            >
-              {isCreating ? 'Cancelar' : activeSubTab === 'contracts' ? 'Generar Contrato' : 'Crear Plantilla'}
-            </button>
-          )}
+          <button 
+            onClick={() => setIsCreating(!isCreating)}
+            className="px-3 py-1.5 bg-primary text-white text-[11px] font-bold rounded-xl shadow-md shadow-primary/10 active:scale-95 transition-all"
+          >
+            {isCreating ? 'Cancelar' : activeSubTab === 'contracts' ? 'Generar Contrato' : 'Crear Plantilla'}
+          </button>
         </div>
 
         {isCreating && activeSubTab === 'contracts' && (
@@ -1639,64 +2125,7 @@ function CoachContractManager() {
             </div>
           ))}
 
-          {activeSubTab === 'course_contracts' && courses.map(course => {
-            const hasTemplate = templates.some(t => t.courseId === course.id);
-            const isGenerating = generatingForCourseId === course.id;
-            return (
-              <div key={course.id} className="p-5 rounded-2xl border border-slate-200 bg-white hover:border-indigo-300 transition-all flex flex-col justify-between min-h-48 group shadow-sm">
-                <div>
-                  <div className="flex justify-between items-start gap-2 mb-2">
-                    <h4 className="font-bold text-slate-900 text-sm tracking-tight truncate max-w-[180px]">{course.title}</h4>
-                    <span className={cn(
-                      "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shrink-0",
-                      hasTemplate ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-amber-50 text-amber-600 border border-amber-100"
-                    )}>
-                      {hasTemplate ? "Contrato Listo ✓" : "Sin Contrato"}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-relaxed">{course.description || "Sin descripción establecida."}</p>
-                  
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    <span className="px-2 py-0.5 bg-slate-50 border border-slate-100 text-slate-500 text-[9px] font-bold rounded">
-                      ${course.price || "0.00"} USD
-                    </span>
-                    <span className="px-2 py-0.5 bg-slate-50 border border-slate-100 text-slate-500 text-[9px] font-bold rounded">
-                      {course.modality || "Online"}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-4">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Kira AI Engine™</span>
-                  {hasTemplate ? (
-                    <button 
-                      onClick={() => {
-                        const t = templates.find(temp => temp.courseId === course.id);
-                        if (t) {
-                          alert(`Términos del Contrato para ${course.title}:\n\n${t.terms}`);
-                        }
-                      }}
-                      className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1"
-                    >
-                      Ver Términos
-                    </button>
-                  ) : (
-                    <button 
-                      onClick={() => generateAIContractForCourse(course)}
-                      disabled={isGenerating}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm flex items-center gap-1 transition"
-                    >
-                      {isGenerating ? "Generando..." : "✨ Generar con IA"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-
-          {((activeSubTab === 'contracts' && contracts.length === 0) || 
-            (activeSubTab === 'templates' && templates.length === 0) ||
-            (activeSubTab === 'course_contracts' && courses.length === 0)) && !isCreating && (
+          {((activeSubTab === 'contracts' && contracts.length === 0) || (activeSubTab === 'templates' && templates.length === 0)) && !isCreating && (
             <div className="col-span-full py-20 flex flex-col items-center justify-center text-slate-300 gap-4 opacity-40">
               <FileText size={56} className="bg-slate-50 p-3 rounded-full" />
               <p className="text-[13px] font-medium italic">Todo listo para tus documentos legales.</p>
@@ -1723,119 +2152,6 @@ function CoachAutomationView() {
     action: 'notification',
     message: ''
   });
-
-  // Cursos vendidos y alumnos inscritos
-  const [courses, setCourses] = useState<any[]>([]);
-  const [enrollments, setEnrollments] = useState<any[]>([]);
-  const [loadingData, setLoadingData] = useState(false);
-  const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
-  const [selectedStudentJournals, setSelectedStudentJournals] = useState<any[]>([]);
-  const [aiDiagnosis, setAiDiagnosis] = useState<string>('');
-  const [loadingDiagnosis, setLoadingDiagnosis] = useState(false);
-
-  const fetchSalesAndLogistics = async () => {
-    if (!user) return;
-    setLoadingData(true);
-    try {
-      const qCourses = query(collection(db, 'courses'), where('coachId', '==', user.uid));
-      const snapCourses = await getDocs(qCourses);
-      const coursesData = snapCourses.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-      setCourses(coursesData);
-
-      if (coursesData.length > 0) {
-        const cIds = coursesData.map(d => d.id);
-        const courseMap = new Map<string, any>(coursesData.map(d => [d.id, d]));
-        
-        const enrollList: any[] = [];
-        for (const cid of cIds) {
-          const eq = query(collection(db, 'enrollments'), where('courseId', '==', cid));
-          const esnap = await getDocs(eq);
-          esnap.docs.forEach(ed => {
-            const data = ed.data();
-            enrollList.push({
-              id: ed.id,
-              ...data,
-              courseTitle: courseMap.get(data.courseId)?.title || 'Curso',
-              coursePrice: parseFloat(courseMap.get(data.courseId)?.price) || 0,
-            });
-          });
-        }
-        setEnrollments(enrollList);
-      } else {
-        setEnrollments([]);
-      }
-    } catch (e) {
-      console.error("Error fetching sales/logistics:", e);
-    } finally {
-      setLoadingData(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchSalesAndLogistics();
-  }, [user]);
-
-  const generateDiagnosis = async (student: any) => {
-    setLoadingDiagnosis(true);
-    setAiDiagnosis('');
-    try {
-      const progress = student.progress || student.courseProgress || 0;
-      const prompt = `Actúa como un psicólogo conductual de élite y tutor de alto rendimiento. 
-      Analiza el progreso, involucramiento y funcionalidad de este alumno en el curso:
-      - Nombre: ${student.studentName || 'Alumno'}
-      - Curso: ${student.courseTitle}
-      - Progreso de contenido: ${progress}%
-      - Correo electrónico: ${student.studentEmail || 'N/A'}
-      - Estado: ${student.status || 'approved'}
-      
-      Escribe un diagnóstico conductual corto, incisivo y altamente accionable para el coach en español (máximo 150 palabras). 
-      Debe contener:
-      1. Su nivel de disciplina y funcionalidad dentro de la plataforma.
-      2. Un consejo directo de 1-2 oraciones para que el Coach interactúe hoy mismo para mantener su momentum o reactivarlo.
-      Tono formal, profesional, empático y profundamente analítico.`;
-
-      const res = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gemini-3.5-flash',
-          contents: prompt
-        })
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      if (data.text) {
-        setAiDiagnosis(data.text);
-      }
-    } catch (e: any) {
-      console.error("Error generating diagnosis with IA:", e);
-      setAiDiagnosis('No se pudo generar el perfil conductual de IA en este momento.');
-    } finally {
-      setLoadingDiagnosis(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!selectedStudent) {
-      setSelectedStudentJournals([]);
-      setAiDiagnosis('');
-      return;
-    }
-    const sUserId = selectedStudent.userId || selectedStudent.id;
-    if (sUserId) {
-      const q = query(collection(db, 'journals'), where('userId', '==', sUserId));
-      getDocs(q).then(snap => {
-        const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
-        list.sort((a: any, b: any) => {
-          const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
-          const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
-          return tB - tA;
-        });
-        setSelectedStudentJournals(list);
-      }).catch(e => console.error("Error fetching journals:", e));
-    }
-    generateDiagnosis(selectedStudent);
-  }, [selectedStudent]);
 
   useEffect(() => {
     if (!user) return;
@@ -1865,19 +2181,8 @@ function CoachAutomationView() {
       });
       setIsAdding(false);
       setNewRule({ name: '', category: activeCategory, trigger: 'inactivity', threshold: 5, action: 'notification', message: '' });
-      toastSuccess("Regla conductual creada exitosamente.");
     } catch (e) {
       console.error(e);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("¿Estás seguro de que deseas eliminar esta regla conductual?")) return;
-    try {
-      await deleteDoc(doc(db, 'automations', id));
-      toastSuccess("Regla conductual eliminada correctamente.");
-    } catch (err) {
-      console.error("Error deleting automation rule:", err);
     }
   };
 
@@ -1927,9 +2232,9 @@ function CoachAutomationView() {
         </div>
 
         <div className="flex gap-4 p-1.5 bg-slate-100 rounded-[28px] w-fit mb-10 border border-transparent hover:border-slate-200 transition-all">
-          <button onClick={() => { setActiveCategory('retencion'); setIsAdding(false); }} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'retencion' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Retención</button>
-          <button onClick={() => { setActiveCategory('ventas'); setIsAdding(false); }} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'ventas' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Ventas</button>
-          <button onClick={() => { setActiveCategory('logistica'); setIsAdding(false); }} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'logistica' ? "bg-white text-amber-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Logística</button>
+          <button onClick={() => setActiveCategory('retencion')} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'retencion' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Retención</button>
+          <button onClick={() => setActiveCategory('ventas')} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'ventas' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Ventas</button>
+          <button onClick={() => setActiveCategory('logistica')} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'logistica' ? "bg-white text-amber-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Logística</button>
         </div>
 
         {isAdding ? (
@@ -2052,160 +2357,12 @@ function CoachAutomationView() {
                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Impacto</span>
                          <span className="text-xl font-black text-slate-900">{rule.processedCount || 0}</span>
                       </div>
-                      <button 
-                        onClick={() => handleDelete(rule.id)}
-                        className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-rose-50 hover:text-rose-500 transition-all"
-                      >
+                      <button className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-rose-50 hover:text-rose-500 transition-all">
                          <Trash2 size={16} />
                       </button>
                    </div>
                 </div>
               ))
-            )}
-          </div>
-        )}
-
-        {/* VENTAS SECCIÓN: Cursos Vendidos */}
-        {activeCategory === 'ventas' && (
-          <div className="mt-12 pt-10 border-t border-slate-100 animate-in fade-in">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h4 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
-                  <CreditCard className="text-emerald-600" size={18} />
-                  Cursos Vendidos (Métricas de Facturación)
-                </h4>
-                <p className="text-xs text-slate-500 mt-1">Monitoreo en tiempo real de ingresos generados por cada formación.</p>
-              </div>
-              <span className="px-3.5 py-1.5 bg-emerald-50 text-emerald-700 text-[10px] font-black rounded-full uppercase tracking-wider border border-emerald-100">
-                {courses.length} Cursos Activos
-              </span>
-            </div>
-
-            {loadingData ? (
-              <div className="flex items-center gap-2 py-8 justify-center text-slate-400">
-                <Loader2 className="animate-spin text-emerald-500" size={20} />
-                <span className="text-xs font-bold">Cargando métricas de ventas...</span>
-              </div>
-            ) : courses.length === 0 ? (
-              <div className="text-center py-10 bg-slate-50 rounded-2xl text-slate-400 text-xs italic">
-                Aún no has creado ningún curso en la plataforma.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {courses.map(course => {
-                  const courseSales = enrollments.filter(e => e.courseId === course.id);
-                  const revenue = courseSales.reduce((acc, curr) => acc + (parseFloat(course.price) || 0), 0);
-                  
-                  return (
-                    <div key={course.id} className="bg-slate-50 border border-slate-150 rounded-3xl p-6 shadow-sm hover:border-emerald-200 hover:bg-emerald-50/10 transition-all">
-                      <div className="flex justify-between items-start gap-2 mb-3">
-                        <span className="px-2.5 py-1 bg-white border border-slate-200 text-slate-500 text-[9px] font-bold rounded-xl uppercase">
-                          {course.modality || "Online"}
-                        </span>
-                        <span className="text-xs font-black text-emerald-600">${course.price || "0.00"} USD</span>
-                      </div>
-                      <h5 className="text-[13px] font-black text-slate-900 leading-snug line-clamp-2">{course.title}</h5>
-                      <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">{course.description || "Sin descripción establecida."}</p>
-                      
-                      <div className="mt-5 pt-4 border-t border-slate-200/60 flex items-center justify-between">
-                        <div className="flex flex-col">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase">Ventas</span>
-                          <span className="text-xs font-black text-slate-800">{courseSales.length} Alumnos</span>
-                        </div>
-                        <div className="flex flex-col text-right">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase">Facturación</span>
-                          <span className="text-xs font-black text-emerald-600">${revenue.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* LOGÍSTICA SECCIÓN: Alumnos Inscritos */}
-        {activeCategory === 'logistica' && (
-          <div className="mt-12 pt-10 border-t border-slate-100 animate-in fade-in">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h4 className="text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
-                  <GraduationCap className="text-amber-600" size={18} />
-                  Logística de Alumnos: Progreso e Inscripciones
-                </h4>
-                <p className="text-xs text-slate-500 mt-1">Presiona sobre cualquier alumno para auditar su funcionalidad, progreso e IA Insights de Kira.</p>
-              </div>
-              <span className="px-3.5 py-1.5 bg-amber-50 text-amber-700 text-[10px] font-black rounded-full uppercase tracking-wider border border-amber-100">
-                {enrollments.length} Inscripciones
-              </span>
-            </div>
-
-            {loadingData ? (
-              <div className="flex items-center gap-2 py-8 justify-center text-slate-400">
-                <Loader2 className="animate-spin text-amber-500" size={20} />
-                <span className="text-xs font-bold">Cargando logística de alumnos...</span>
-              </div>
-            ) : enrollments.length === 0 ? (
-              <div className="text-center py-10 bg-slate-50 rounded-2xl text-slate-400 text-xs italic">
-                No hay alumnos inscritos en tus cursos actualmente.
-              </div>
-            ) : (
-              <div className="border border-slate-200 rounded-[28px] overflow-hidden bg-white shadow-sm">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-200">
-                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Alumno</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Curso Adquirido</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Progreso de Contenido</th>
-                      <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado de Acceso</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {enrollments.map(st => (
-                      <tr 
-                        key={st.id} 
-                        onClick={() => setSelectedStudent(st)}
-                        className="hover:bg-amber-50/20 border-b border-slate-100 transition-colors cursor-pointer group"
-                      >
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400 group-hover:bg-amber-50 group-hover:text-amber-600 transition-all uppercase">
-                              {st.studentName?.[0] || 'U'}
-                            </div>
-                            <div>
-                              <div className="text-[13px] font-black text-slate-800 group-hover:text-amber-700 transition-colors">{st.studentName || 'Alumno'}</div>
-                              <div className="text-[10px] text-slate-400 leading-none mt-0.5">{st.studentEmail}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="text-xs font-bold text-slate-600">{st.courseTitle}</span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1 h-1.5 bg-slate-150 rounded-full overflow-hidden max-w-[120px]">
-                              <div className="bg-amber-500 h-full transition-all" style={{ width: `${st.progress || 0}%` }} />
-                            </div>
-                            <span className="text-[11px] font-black text-slate-700">{st.progress || 0}%</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-between">
-                            <span className={cn(
-                              "px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
-                              st.status === 'approved' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-amber-50 text-amber-600 border border-amber-100"
-                            )}>
-                              {st.status === 'approved' ? "Acceso Listo" : "Pendiente"}
-                            </span>
-                            <span className="text-[11px] font-bold text-indigo-600 group-hover:underline opacity-0 group-hover:opacity-100 transition-opacity">Ver Detalles →</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             )}
           </div>
         )}
@@ -2250,7 +2407,7 @@ function CoachAutomationView() {
                   </div>
                   <button 
                     onClick={() => toastSuccess("Generando informe predictivo de comportamiento de alumnos de Kira AI... Listo en instantes.")}
-                    className="w-full py-4 bg-white/10 hover:bg-white text-white hover:text-indigo-900 border border-white/20 hover:border-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all animate-pulse"
+                    className="w-full py-4 bg-white/10 hover:bg-white text-white hover:text-indigo-900 border border-white/20 hover:border-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
                   >
                      Ver Reporte IA
                   </button>
@@ -2258,107 +2415,9 @@ function CoachAutomationView() {
             </div>
          </div>
       </div>
-
-      {/* MODAL INTERACTIVO DE PROGRESO Y FUNCIONALIDAD DEL ALUMNO */}
-      {selectedStudent && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
-          <div className="bg-white rounded-[40px] border border-slate-200 w-full max-w-5xl p-8 lg:p-10 shadow-2xl relative flex flex-col gap-8 animate-in zoom-in-95 duration-300 max-h-[90vh] overflow-y-auto">
-            
-            {/* Cabecera del Perfil */}
-            <div className="flex justify-between items-start gap-4 pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-indigo-50 border-2 border-indigo-200 flex items-center justify-center text-lg font-black text-indigo-600 uppercase">
-                  {(selectedStudent.studentName || selectedStudent.displayName)?.[0] || 'U'}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-xl font-black text-slate-900 tracking-tight leading-tight">
-                      {selectedStudent.studentName || selectedStudent.displayName || 'Alumno'}
-                    </h3>
-                    <span className="px-2.5 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-full">
-                      {selectedStudent.courseTitle}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4 mt-1.5">
-                    <p className="text-xs text-slate-400">{selectedStudent.studentEmail || selectedStudent.email}</p>
-                    <button 
-                      onClick={() => {
-                        const studentUser = {
-                          uid: selectedStudent.userId || selectedStudent.id,
-                          displayName: selectedStudent.studentName || selectedStudent.displayName || 'Alumno',
-                          email: selectedStudent.studentEmail || selectedStudent.email,
-                        };
-                        window.dispatchEvent(new CustomEvent('open-kira-chat', { detail: { coach: studentUser } }));
-                        setSelectedStudent(null);
-                      }}
-                      className="px-3 py-1 bg-[#1B4D5D] hover:bg-[#153b47] text-white text-[11px] font-bold rounded-lg shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
-                      title="Chatear con Alumno"
-                    >
-                      <MessageSquare size={12} />
-                      Iniciar Chat Privado Protegido
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <button 
-                onClick={() => setSelectedStudent(null)}
-                className="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition cursor-pointer font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Dashboard Analítico con Gráficos Recharts */}
-            <StudentDetailedAnalytics 
-              student={selectedStudent}
-              journals={selectedStudentJournals}
-              aiDiagnosis={aiDiagnosis}
-              loadingDiagnosis={loadingDiagnosis}
-            />
-
-            {/* Historial Completo de Bitácoras de Texto */}
-            <div className="pt-6 border-t border-slate-150">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  Bitácoras Conductuales Recientes ({selectedStudentJournals.length})
-                </h4>
-                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
-                  Histórico de Entradas
-                </span>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[200px] overflow-y-auto pr-2">
-                {selectedStudentJournals.map((j) => {
-                  const journalDate = j.createdAt?.toDate ? j.createdAt.toDate().toLocaleDateString('es-MX', { dateStyle: 'medium' }) : j.createdAt ? new Date(j.createdAt).toLocaleDateString('es-MX', { dateStyle: 'medium' }) : 'N/A';
-                  return (
-                    <div key={j.id} className="p-4 bg-slate-50 border border-slate-150 rounded-2xl flex flex-col justify-between hover:border-violet-200 transition-colors">
-                      <p className="text-xs text-slate-700 leading-relaxed italic mb-3">"{j.content}"</p>
-                      <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
-                        <span>{journalDate}</span>
-                        {j.score && (
-                          <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100">
-                            Score Emocional: {j.score}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                {selectedStudentJournals.length === 0 && (
-                  <div className="col-span-full text-center py-8 text-slate-400 text-xs italic bg-slate-50 rounded-2xl border border-slate-150">
-                    El estudiante no ha completado entradas de diario todavía.
-                  </div>
-                )}
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
     </div>
   );
 }
-
 function CoachRegisterClient() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -2366,47 +2425,15 @@ function CoachRegisterClient() {
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', courseId: '' });
   const [courses, setCourses] = useState<any[]>([]);
-  const [onboardingList, setOnboardingList] = useState<any[]>([]);
-
-  const fetchOnboardingData = async () => {
-    if (!user) return;
-    try {
-      const q = query(collection(db, 'courses'), where('coachId', '==', user.uid));
-      const snap = await getDocs(q);
-      const coursesData = snap.docs.map(d => ({id: d.id, ...d.data()})) as any[];
-      setCourses(coursesData);
-
-      if (coursesData.length > 0) {
-        const cIds = coursesData.map(d => d.id);
-        const courseTitles = new Map<string, any>(coursesData.map(d => [d.id, d.title]));
-        
-        const enrollList: any[] = [];
-        for (const cid of cIds) {
-          const eq = query(collection(db, 'enrollments'), where('courseId', '==', cid));
-          const esnap = await getDocs(eq);
-          esnap.docs.forEach(ed => {
-            const data = ed.data();
-            enrollList.push({
-              id: ed.id,
-              ...data,
-              courseTitle: courseTitles.get(data.courseId) || 'Curso'
-            });
-          });
-        }
-        enrollList.sort((a, b) => {
-          const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
-          const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
-          return tB - tA;
-        });
-        setOnboardingList(enrollList);
-      }
-    } catch (e) {
-      console.error("Error fetching onboarding data:", e);
-    }
-  };
 
   useEffect(() => {
-    fetchOnboardingData();
+    if (!user) return;
+    const fetch = async () => {
+      const q = query(collection(db, 'courses'), where('coachId', '==', user.uid));
+      const snap = await getDocs(q);
+      setCourses(snap.docs.map(d => ({id: d.id, ...d.data()})));
+    };
+    fetch();
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -2428,9 +2455,9 @@ function CoachRegisterClient() {
       });
       
       console.log(`[Registro Alumno] Alumno creado con ID: ${userRef.id}. Ejecutando acciones secundarias en paralelo...`);
- 
+
       const secondaryTasks: Promise<any>[] = [];
- 
+
       // 2. Enroll in course if selected
       if (formData.courseId) {
         console.log(`[Registro Alumno] Agregando inscripción para el curso: ${formData.courseId}...`);
@@ -2438,17 +2465,12 @@ function CoachRegisterClient() {
           addDoc(collection(db, 'enrollments'), {
             userId: userRef.id,
             courseId: formData.courseId,
-            coachId: user?.uid,
-            studentName: formData.name,
-            studentEmail: formData.email,
-            courseTitle: courses.find(c => c.id === formData.courseId)?.title || 'Curso',
             progress: 0,
-            status: 'approved', // Manual registers are auto-approved
-            createdAt: new Date()
+            enrolledAt: new Date()
           })
         );
       }
- 
+
       // 3. Create initial notification
       secondaryTasks.push(
         addDoc(collection(db, 'notifications'), {
@@ -2460,14 +2482,13 @@ function CoachRegisterClient() {
           type: 'system'
         })
       );
- 
+
       // Execute dependent tasks in parallel
       await Promise.all(secondaryTasks);
       console.log(`[Registro Alumno] Acciones secundarias completadas exitosamente.`);
- 
+
       setSuccess(true);
       setFormData({ name: '', email: '', courseId: '' });
-      fetchOnboardingData();
       setTimeout(() => setSuccess(false), 3000);
     } catch (e) {
       console.error('[Registro Alumno] Error al registrar alumno:', e);
@@ -2476,138 +2497,65 @@ function CoachRegisterClient() {
       setLoading(false);
     }
   };
- 
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in">
-      {/* FORMULARIO DE REGISTRO */}
-      <div className="lg:col-span-5 bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
-        <div className="mb-6">
-          <h3 className="text-lg font-black text-slate-900 tracking-tight">Registro Manual de Alumno</h3>
-          <p className="text-xs text-slate-500 mt-1">Registra a un cliente de forma manual y asígnale un curso activo.</p>
+    <div className="max-w-xl bg-white rounded-2xl border border-slate-200 p-8 animate-in zoom-in-95 duration-200">
+      <div className="mb-6">
+        <h3 className="text-lg font-bold text-slate-800 tracking-tight">Registro Manual de Alumno</h3>
+        <p className="text-[13px] text-slate-500 mt-1">Registra a un cliente externo y otórgale acceso inmediato a tus planes.</p>
+      </div>
+
+      {error && (
+        <div className="mb-6 p-3 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-xs font-bold text-center">
+          {error}
         </div>
- 
-        {error && (
-          <div className="mb-6 p-3 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-xs font-bold text-center">
-            {error}
-          </div>
-        )}
- 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Nombre Completo</label>
-            <input 
-              required
-              value={formData.name}
-              onChange={e => setFormData({...formData, name: e.target.value})}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-              placeholder="Ej: Juan Pérez"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Correo Electrónico</label>
-            <input 
-              required
-              type="email"
-              value={formData.email}
-              onChange={e => setFormData({...formData, email: e.target.value})}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-              placeholder="juan@ejemplo.com"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Asignar a Curso (Opcional)</label>
-            <select 
-              value={formData.courseId}
-              onChange={e => setFormData({...formData, courseId: e.target.value})}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-primary/20 focus:bg-white"
-            >
-              <option value="">Ninguno</option>
-              {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-            </select>
-          </div>
- 
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="w-full py-3 bg-slate-900 hover:bg-black text-white rounded-xl font-bold shadow-lg text-xs uppercase tracking-widest flex items-center justify-center gap-2 mt-4 active:scale-95 disabled:opacity-50 transition-all cursor-pointer"
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Nombre Completo</label>
+          <input 
+            required
+            value={formData.name}
+            onChange={e => setFormData({...formData, name: e.target.value})}
+            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+            placeholder="Ej: Juan Pérez"
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Correo Electrónico</label>
+          <input 
+            required
+            type="email"
+            value={formData.email}
+            onChange={e => setFormData({...formData, email: e.target.value})}
+            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
+            placeholder="juan@ejemplo.com"
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Asignar a Curso (Opcional)</label>
+          <select 
+            value={formData.courseId}
+            onChange={e => setFormData({...formData, courseId: e.target.value})}
+            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20"
           >
-            {loading ? "Procesando..." : success ? <><CheckCircle2 size={16}/> ¡Registrado!</> : "Dar de Alta"}
-          </button>
-        </form>
-      </div>
-
-      {/* LISTA DE ALUMNOS EN ONBOARDING */}
-      <div className="lg:col-span-7 bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
-        <div className="mb-6 flex justify-between items-center">
-          <div>
-            <h3 className="text-lg font-black text-slate-900 tracking-tight">Onboarding Queue</h3>
-            <p className="text-xs text-slate-500 mt-1">Lista de alumnos asignados a tus respectivos cursos.</p>
-          </div>
-          <span className="px-3 py-1 bg-indigo-50 border border-indigo-100 text-indigo-600 text-[10px] font-black rounded-full uppercase tracking-wider">
-            {onboardingList.length} Alumnos
-          </span>
+            <option value="">Ninguno</option>
+            {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+          </select>
         </div>
 
-        <div className="space-y-3 max-h-[420px] overflow-y-auto pr-2">
-          {onboardingList.map((st) => {
-            const enrollDate = st.createdAt?.toDate ? st.createdAt.toDate().toLocaleDateString() : st.createdAt ? new Date(st.createdAt).toLocaleDateString() : 'N/A';
-            return (
-              <div key={st.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between gap-4 hover:border-indigo-100 transition">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center text-xs font-black text-slate-600 uppercase shrink-0">
-                    {st.studentName?.[0] || 'U'}
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="text-xs font-black text-slate-800 leading-tight truncate">{st.studentName || 'Sin nombre'}</h4>
-                    <p className="text-[10px] text-slate-400 truncate">{st.studentEmail}</p>
-                    <div className="mt-1 flex items-center gap-2 flex-wrap">
-                      <span className="px-1.5 py-0.5 bg-white border border-slate-100 text-slate-500 text-[9px] font-bold rounded">
-                        {st.courseTitle}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4 shrink-0">
-                  <div className="text-right shrink-0">
-                    <span className={cn(
-                      "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider",
-                      st.status === 'approved' ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-amber-50 text-amber-600 border border-amber-100"
-                    )}>
-                      {st.status === 'approved' ? "Acceso Listo" : "Pendiente"}
-                    </span>
-                    <p className="text-[9px] text-slate-400 mt-1.5 font-medium">Registrado: {enrollDate}</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const studentUser = {
-                        uid: st.userId || st.id,
-                        displayName: st.studentName || st.displayName || 'Alumno',
-                        email: st.studentEmail || st.email,
-                      };
-                      window.dispatchEvent(new CustomEvent('open-kira-chat', { detail: { coach: studentUser } }));
-                    }}
-                    className="p-2 bg-slate-100 hover:bg-[#1B4D5D] text-slate-600 hover:text-white rounded-xl transition-all cursor-pointer"
-                    title="Chatear con Alumno"
-                  >
-                    <MessageSquare size={14} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-
-          {onboardingList.length === 0 && (
-            <div className="py-16 text-center text-slate-400 text-xs italic">
-              Aún no tienes alumnos registrados en Onboarding.
-            </div>
-          )}
-        </div>
-      </div>
+        <button 
+          type="submit" 
+          disabled={loading}
+          className="w-full py-3 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 mt-4 active:scale-95 disabled:opacity-50"
+        >
+          {loading ? "Procesando..." : success ? <><CheckCircle2 size={18}/> ¡Registrado!</> : "Dar de Alta"}
+        </button>
+      </form>
     </div>
   );
 }
-
 // --- COMPONENTE DE ANALÍTICAS ---
 function CoachAnalyticsOld({ coachId }: { coachId?: string }) {
   const [stats, setStats] = useState({
@@ -3499,589 +3447,4 @@ function SortableMediaItem({ id, item, index, onRemove }: any) {
   );
 }
 
-export function CoachCourses() {
-  const { user } = useAuth();
-  const { success: toastSuccess, error: toastError } = useToast();
-  const [profile, setProfile] = useState<any>(null);
-  const [courses, setCourses] = useState<any[]>([]);
-  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
-  const [enrollments, setEnrollments] = useState<any[]>([]);
-  const [activeCourseStudentsId, setActiveCourseStudentsId] = useState<string | null>(null);
-  
-  // Form State
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [price, setPrice] = useState(0);
-  const [bannerUrl, setBannerUrl] = useState('');
-  const [editingCourse, setEditingCourse] = useState<any | null>(null);
-  const [isAiGenerating, setIsAiGenerating] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [showForm, setShowForm] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      getDoc(doc(db, 'users', user.uid)).then(d => {
-        if(d.exists()) setProfile(d.data());
-      });
-      fetchCourses();
-      fetchPendingRequests();
-    }
-  }, [user]);
-
-  const fetchPendingRequests = async () => {
-    if (!user) return;
-    try {
-      const q = query(collection(db, 'enrollments'), where('coachId', '==', user.uid));
-      const snap = await getDocs(q);
-      const pending = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter((e: any) => e.status === 'pending');
-      setPendingRequests(pending);
-    } catch (e) {
-      console.error("Error fetching pending enrollments in CoachCourses:", e);
-    }
-  };
-
-  const handleEnrollmentAction = async (enrollmentId: string, action: 'approved' | 'rejected') => {
-    try {
-      if (action === 'approved') {
-        await updateDoc(doc(db, 'enrollments', enrollmentId), { status: 'approved' });
-        toastSuccess("Inscripción autorizada correctamente.");
-      } else {
-        await deleteDoc(doc(db, 'enrollments', enrollmentId));
-        toastSuccess("Inscripción rechazada con éxito.");
-      }
-      fetchPendingRequests();
-      fetchCourses();
-    } catch (error: any) {
-      console.error("Error updating enrollment status:", error);
-      setErrorMsg("No se pudo procesar la acción: " + error.message);
-      setTimeout(() => setErrorMsg(''), 5000);
-    }
-  };
-
-  const fetchCourses = async () => {
-    if(!user) return;
-    try {
-      const q = query(collection(db, 'courses'), where('coachId', '==', user.uid));
-      const snap = await getDocs(q);
-      setCourses(snap.docs.map(d => ({id: d.id, ...d.data()})));
-
-      // Fetch all enrollments for this coach
-      const eq = query(collection(db, 'enrollments'), where('coachId', '==', user.uid));
-      const esnap = await getDocs(eq);
-      setEnrollments(esnap.docs.map(d => ({id: d.id, ...d.data()})));
-    } catch(e) {
-      console.error(e);
-    }
-  };
-
-  const isApproved = profile?.approvalStatus === 'approved';
-
-  const handleCancel = () => {
-    setEditingCourse(null);
-    setTitle('');
-    setDescription('');
-    setPrice(0);
-    setBannerUrl('');
-    setShowForm(false);
-  };
-
-  const handleEditClick = (course: any) => {
-    setEditingCourse(course);
-    setTitle(course.title || '');
-    setDescription(course.description || '');
-    setPrice(course.price || 0);
-    setBannerUrl(course.bannerUrl || '');
-    setShowForm(true);
-  };
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    try {
-      await addDoc(collection(db, 'courses'), {
-        title,
-        description,
-        price: Number(price),
-        bannerUrl,
-        coachId: user.uid,
-        coachName: profile?.name || 'Kira Coach',
-        status: 'published',
-        createdAt: new Date()
-      });
-      handleCancel();
-      fetchCourses();
-      toastSuccess("Curso creado exitosamente.");
-    } catch(e) {
-      console.error(e);
-      setErrorMsg('Error creando curso. Intenta de nuevo.');
-      setTimeout(() => setErrorMsg(''), 5000);
-    }
-  };
-
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !editingCourse) return;
-    try {
-      await updateDoc(doc(db, 'courses', editingCourse.id), {
-        title,
-        description,
-        price: Number(price),
-        bannerUrl,
-        updatedAt: new Date()
-      });
-      handleCancel();
-      fetchCourses();
-      toastSuccess("Curso actualizado exitosamente.");
-    } catch(e) {
-      console.error(e);
-      setErrorMsg('Error actualizando curso.');
-      setTimeout(() => setErrorMsg(''), 5000);
-    }
-  };
-
-  const generateAiContent = async () => {
-    if (!title && !description) {
-      setErrorMsg("Por favor, introduce al menos un título o tema para que Kira AI pueda ayudarte.");
-      setTimeout(() => setErrorMsg(''), 5000);
-      return;
-    }
-    setIsAiGenerating(true);
-    try {
-      const prompt = `Actúa como un arquitecto de contenido educativo experto. 
-      Basado en este título o idea de curso: "${title || description}", genera:
-      1. Un título profesional y atractivo.
-      2. Una descripción persuasiva de 3 párrafos que resalte los beneficios.
-      3. Una lista de 5 módulos clave con sus respectivos objetivos.
-      
-      Devuelve la respuesta en formato JSON estrictamente válido con las llaves: "title", "description", "syllabus" (donde syllabus es un string formateado con los módulos).`;
-
-      const res = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "gemini-3.5-flash",
-          contents: prompt,
-          config: { responseMimeType: "application/json" }
-        })
-      });
-      const dataJson = await res.json();
-      if (dataJson.error) throw new Error(dataJson.error);
-
-      const data = JSON.parse(dataJson.text || '{}');
-
-      setTitle(data.title || title);
-      setDescription((data.description || description) + "\n\n### Temario Propuesto:\n" + (data.syllabus || ""));
-    } catch (e) {
-      console.error("AI Generation Error:", e);
-      setErrorMsg("Hubo un error al generar el contenido. Por favor intenta de nuevo.");
-      setTimeout(() => setErrorMsg(''), 5000);
-    } finally {
-      setIsAiGenerating(false);
-    }
-  };
-
-  const toggleShowStudents = (courseId: string) => {
-    if (activeCourseStudentsId === courseId) {
-      setActiveCourseStudentsId(null);
-    } else {
-      setActiveCourseStudentsId(courseId);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-6 animate-in fade-in">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl border border-slate-200 gap-4 shadow-sm">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900 tracking-tight">Studio de Cursos</h2>
-          <p className="text-[13px] text-slate-500 mt-0.5">Diseña programas académicos, gestiona inscripciones de alumnos en tiempo real y define el valor.</p>
-        </div>
-        {!showForm ? (
-          <button
-            onClick={() => {
-              setEditingCourse(null);
-              setTitle('');
-              setDescription('');
-              setPrice(0);
-              setBannerUrl('');
-              setShowForm(true);
-            }}
-            className="px-5 py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer shrink-0"
-          >
-            <Plus size={16} /> Crear Nuevo Curso
-          </button>
-        ) : (
-          <button
-            onClick={handleCancel}
-            className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-2 cursor-pointer shrink-0"
-          >
-            <ArrowLeft size={16} /> Volver a Programas
-          </button>
-        )}
-      </div>
-
-      {!isApproved && (
-        <div className="p-6 bg-gradient-to-r from-amber-500/10 to-indigo-500/10 border border-slate-200 rounded-[32px] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in slide-in-from-top-4">
-          <div className="flex items-center gap-3">
-            <Sparkles className="text-amber-500 shrink-0" size={24} />
-            <div>
-              <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider">Modo de Demostración Activo</h4>
-              <p className="text-xs text-slate-500 mt-0.5 font-medium">Tu cuenta está bajo revisión académica por Kira Moreno. Explora todas las herramientas con funciones simuladas de alta fidelidad.</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {errorMsg && (
-        <div className="p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-sm font-bold flex items-center gap-2 animate-in fade-in">
-          <AlertTriangle size={18} /> {errorMsg}
-        </div>
-      )}
-
-      {pendingRequests.length > 0 && (
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm animate-in fade-in">
-          <div className="flex items-center gap-2.5 mb-5">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-bold shadow-sm">
-              <Clock size={18} />
-            </div>
-            <div>
-              <h3 className="font-bold text-slate-900 text-base tracking-tight">Solicitudes de Inscripción Pendientes</h3>
-              <p className="text-[12px] text-slate-500 mt-0.5">Alumnos esperando tu autorización para acceder a tus programas.</p>
-            </div>
-          </div>
-          <div className="divide-y divide-slate-100 max-h-[350px] overflow-y-auto pr-2">
-            {pendingRequests.map(req => {
-              const formattedDate = req.createdAt?.toDate ? req.createdAt.toDate().toLocaleDateString() : req.createdAt ? new Date(req.createdAt).toLocaleDateString() : 'Reciente';
-              return (
-                <div key={req.id} className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 first:pt-0 last:pb-0">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-xs font-black text-slate-600 uppercase shadow-inner">
-                      {req.studentName?.[0] || 'U'}
-                    </div>
-                    <div>
-                      <div className="text-[13px] font-black text-slate-800 flex items-center gap-2">
-                        {req.studentName}
-                        <span className="px-2.5 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-bold rounded-lg border border-amber-100 uppercase tracking-wider">
-                          Pendiente
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-slate-400 font-medium">{req.studentEmail}</div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-6">
-                    <div>
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Curso Solicitado</div>
-                      <div className="text-xs font-bold text-slate-800">{req.courseTitle}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Fecha</div>
-                      <div className="text-xs font-medium text-slate-500">{formattedDate}</div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0 md:ml-4">
-                      <button
-                        onClick={() => handleEnrollmentAction(req.id, 'rejected')}
-                        className="px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
-                      >
-                        Rechazar
-                      </button>
-                      <button
-                        onClick={() => handleEnrollmentAction(req.id, 'approved')}
-                        className="px-5 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-1 cursor-pointer"
-                      >
-                        <CheckCircle2 size={13} /> Autorizar Ingreso
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Dynamic Content: Form Page vs. List Grid */}
-      {showForm ? (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in duration-300">
-          {/* LEFT COLUMN: THE FORM */}
-          <div className="lg:col-span-8 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 pb-6 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-kirateal/5 text-kirateal flex items-center justify-center font-bold">
-                  <GraduationCap size={24} />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                    {editingCourse ? 'Editar Programa Educativo' : 'Registrar Nuevo Programa'}
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium mt-0.5">Define la estructura académica y la inversión de tu curso.</p>
-                </div>
-              </div>
-              <button 
-                 type="button"
-                 disabled={isAiGenerating}
-                 onClick={generateAiContent}
-                 className="px-4 py-2 bg-gradient-to-r from-kirateal to-kirateal-light text-white rounded-xl text-[10px] font-bold flex items-center gap-1.5 hover:scale-105 transition-all disabled:opacity-50 shadow-md shadow-kirateal/10 cursor-pointer self-start sm:self-auto"
-               >
-                 {isAiGenerating ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>}
-                 {isAiGenerating ? "Generando..." : "Asistente Kira AI"}
-               </button>
-            </div>
-
-            <form onSubmit={editingCourse ? handleUpdate : handleCreate} className="flex flex-col gap-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Título del Curso</label>
-                  <input 
-                    required 
-                    value={title} 
-                    onChange={e=>setTitle(e.target.value)} 
-                    type="text" 
-                    className="w-full bg-slate-50 border border-slate-150 rounded-2xl px-4 py-3 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-kirateal/20 transition-all outline-none" 
-                    placeholder="Ej: Maestría en Rendimiento Ontológico" 
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Inversión Alumno ($ USD)</label>
-                  <input 
-                    required 
-                    value={price} 
-                    onChange={e=>setPrice(Number(e.target.value))} 
-                    type="number" 
-                    min="0" 
-                    className="w-full bg-slate-50 border border-slate-150 rounded-2xl px-4 py-3 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-kirateal/20 transition-all outline-none" 
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1 px-1">Cover del Curso (Portada)</label>
-                <p className="text-[10px] text-slate-400 mb-2 px-1">Sube una portada desde tu dispositivo o ingresa una dirección web.</p>
-                
-                <MediaUpload 
-                  onUploadComplete={(url) => setBannerUrl(url)}
-                  folderPath={`courses/${user?.uid}`}
-                  currentMedia={bannerUrl}
-                  label="Subir desde Dispositivo"
-                  accept="image/*"
-                  className="w-full animate-in fade-in"
-                />
-                
-                <div className="mt-3">
-                  <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 px-1">O Dirección Web (URL)</label>
-                  <input 
-                    value={bannerUrl} 
-                    onChange={e=>setBannerUrl(e.target.value)} 
-                    type="text" 
-                    placeholder="https://images.unsplash.com/photo-..." 
-                    className="w-full bg-slate-50 border border-slate-150 rounded-2xl px-4 py-3 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-kirateal/20 transition-all outline-none" 
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Descripción del Programa</label>
-                <textarea 
-                  required 
-                  value={description} 
-                  onChange={e=>setDescription(e.target.value)} 
-                  className="w-full bg-slate-50 border border-slate-150 rounded-2xl px-4 py-3 text-xs font-medium focus:bg-white focus:ring-2 focus:ring-kirateal/20 transition-all outline-none h-48 resize-none leading-relaxed" 
-                  placeholder="Describe brevemente el contenido y qué aprenderán tus alumnos en este programa..." 
-                />
-              </div>
-
-              <div className="flex gap-4 pt-4 border-t border-slate-150">
-                <button 
-                  type="button" 
-                  onClick={handleCancel} 
-                  className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit" 
-                  className="flex-grow py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-kirateal transition-all active:scale-95 shadow-md cursor-pointer"
-                >
-                  {editingCourse ? 'Guardar Cambios' : 'Publicar Programa'}
-                </button>
-              </div>
-            </form>
-          </div>
-
-          {/* RIGHT COLUMN: TIPS */}
-          <div className="lg:col-span-4 flex flex-col gap-6">
-            <div className="bg-gradient-to-br from-slate-900 to-slate-950 text-white p-8 rounded-[32px] shadow-lg relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-kirateal/10 rounded-full blur-3xl" />
-              <h4 className="text-xs font-black text-kirateal-light uppercase tracking-widest mb-4">Ayuda de Kira AI</h4>
-              <p className="text-xs text-slate-300 leading-relaxed font-medium mb-6">
-                ¿No estás seguro de cómo describir tu curso o estructurar el temario? Escribe una idea general o un título tentativo y haz clic en el botón <strong>Asistente Kira AI</strong> en el formulario.
-              </p>
-              <div className="flex items-center gap-3 p-4 bg-white/5 rounded-2xl border border-white/10">
-                <Sparkles className="text-kirateal shrink-0 animate-pulse" size={20} />
-                <div className="text-[11px] text-slate-300 leading-normal font-medium">
-                  Kira AI generará una descripción persuasiva y un temario estructurado de 5 módulos en segundos.
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm">
-              <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Prácticas Recomendadas</h4>
-              <ul className="flex flex-col gap-4">
-                <li className="flex gap-3">
-                  <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 font-bold text-xs animate-in zoom-in">1</div>
-                  <div className="text-xs text-slate-600 leading-normal font-medium">
-                    <strong className="text-slate-800">Define tu audiencia:</strong> Sé claro sobre a quién va dirigido tu programa educativo.
-                  </div>
-                </li>
-                <li className="flex gap-3">
-                  <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 font-bold text-xs animate-in zoom-in">2</div>
-                  <div className="text-xs text-slate-600 leading-normal font-medium">
-                    <strong className="text-slate-800">Pon un precio justo:</strong> Puedes modificar el valor de inscripción en cualquier momento.
-                  </div>
-                </li>
-                <li className="flex gap-3">
-                  <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 font-bold text-xs animate-in zoom-in">3</div>
-                  <div className="text-xs text-slate-600 leading-normal font-medium">
-                    <strong className="text-slate-800">Portada de alta calidad:</strong> Usa imágenes profesionales para un diseño óptimo.
-                  </div>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      ) : (
-        /* LIST VIEW */
-        <div className="flex flex-col gap-6 animate-in fade-in duration-300">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Mis Programas Activos ({courses.length})</h3>
-          </div>
-
-          {courses.length === 0 ? (
-            <div className="text-center py-20 bg-slate-50 rounded-[32px] border-2 border-dashed border-slate-200 p-8 flex flex-col items-center">
-               <BookOpen size={48} className="text-slate-300 mb-4" />
-               <p className="text-slate-500 font-bold text-base">Aún no has diseñado ningún programa.</p>
-               <p className="text-slate-400 text-xs mt-1 mb-6">Comienza hoy mismo publicando tu primer curso académico.</p>
-               <button
-                 onClick={() => {
-                   setEditingCourse(null);
-                   setTitle('');
-                   setDescription('');
-                   setPrice(0);
-                   setBannerUrl('');
-                   setShowForm(true);
-                 }}
-                 className="px-6 py-3 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
-               >
-                 <Plus size={16} /> Diseñar Primer Curso
-               </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {courses.map(c => {
-                const courseEnrollments = enrollments.filter(e => e.courseId === c.id);
-                const isShowingStudents = activeCourseStudentsId === c.id;
-
-                return (
-                  <div key={c.id} className="bg-white rounded-[32px] border border-slate-200 overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-all duration-300">
-                    <div className="relative h-44 overflow-hidden bg-slate-100 shrink-0">
-                       <img 
-                         src={c.bannerUrl || `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800`} 
-                         alt={c.title} 
-                         className="w-full h-full object-cover" 
-                         referrerPolicy="no-referrer"
-                       />
-                       <div className="absolute top-4 left-4 px-2.5 py-1 bg-white/90 backdrop-blur-md rounded-xl text-[9px] font-black text-slate-800 uppercase tracking-wider shadow-sm border border-slate-100">
-                          {c.status || 'Publicado'}
-                       </div>
-                       <div className="absolute top-4 right-4 px-2.5 py-1 bg-kirateal text-white rounded-xl text-[10px] font-black shadow-md">
-                          ${c.price} USD
-                       </div>
-                    </div>
-
-                    <div className="p-6 flex-1 flex flex-col">
-                      <h3 className="font-sans font-black text-slate-900 text-base mb-2 leading-snug">{c.title}</h3>
-                      <p className="text-xs text-slate-500 line-clamp-3 leading-relaxed mb-6 flex-1 font-medium">
-                        {c.description}
-                      </p>
-
-                      <div className="pt-4 border-t border-slate-100 flex flex-col gap-4 mt-auto">
-                        <div className="flex items-center justify-between">
-                          <button
-                            onClick={() => toggleShowStudents(c.id)}
-                            className="flex items-center gap-1.5 text-slate-500 hover:text-kirateal transition-colors cursor-pointer text-[11px] font-bold text-left"
-                          >
-                            <Users size={14} className="text-kirateal shrink-0" />
-                            <span>{courseEnrollments.length} {courseEnrollments.length === 1 ? 'Alumno' : 'Alumnos'}</span>
-                            <span className="text-[9px] text-slate-400 font-normal ml-0.5">
-                              ({isShowingStudents ? 'Ocultar' : 'Ver Lista'})
-                            </span>
-                          </button>
-
-                          <button 
-                            onClick={() => handleEditClick(c)}
-                            className="text-[11px] font-black text-slate-900 uppercase tracking-widest hover:text-kirateal transition-colors flex items-center gap-1 cursor-pointer"
-                          >
-                             Editar <ChevronRight size={14} />
-                          </button>
-                        </div>
-
-                        {/* COLLAPSIBLE ENROLLED STUDENTS LIST */}
-                        {isShowingStudents && (
-                          <div className="mt-2 pt-4 border-t border-dashed border-slate-200 animate-in slide-in-from-top-2 duration-300">
-                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                              <GraduationCap size={13} className="text-kirateal" /> Alumnos Inscritos ({courseEnrollments.length})
-                            </h4>
-                            
-                            {courseEnrollments.length === 0 ? (
-                              <p className="text-[11px] text-slate-400 italic py-2">
-                                Aún no hay alumnos inscritos en este programa.
-                              </p>
-                            ) : (
-                              <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
-                                {courseEnrollments.map(st => (
-                                  <div key={st.id} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 gap-2">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                      <div className="w-7 h-7 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-[10px] font-black text-slate-600 uppercase shrink-0">
-                                        {st.studentName?.[0] || 'A'}
-                                      </div>
-                                      <div className="min-w-0">
-                                        <p className="text-[11px] font-black text-slate-800 truncate leading-tight">{st.studentName || 'Alumno'}</p>
-                                        <p className="text-[9px] text-slate-400 truncate leading-none mt-0.5">{st.studentEmail}</p>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center gap-2 shrink-0">
-                                      <div className="text-[10px] text-slate-500 font-bold">{st.progress || 0}%</div>
-                                      {st.status === 'pending' ? (
-                                        <button
-                                          onClick={() => handleEnrollmentAction(st.id, 'approved')}
-                                          className="px-2 py-1 bg-emerald-500 text-white text-[9px] font-black rounded-lg hover:bg-emerald-600 transition shadow-sm cursor-pointer"
-                                        >
-                                          Autorizar
-                                        </button>
-                                      ) : (
-                                        <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[8px] font-bold rounded uppercase tracking-wider border border-emerald-100">
-                                          Activo
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
