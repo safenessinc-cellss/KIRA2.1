@@ -260,8 +260,35 @@ export function CoachDashboard() {
 
   useEffect(() => {
     if (user) {
-      const unsub = onSnapshot(doc(db, 'users', user.uid), (d) => {
-        if(d.exists()) setProfile(d.data());
+      const unsub = onSnapshot(doc(db, 'users', user.uid), async (d) => {
+        if (d.exists()) {
+          const data = d.data();
+          setProfile(data);
+          // Auto-aprobar si el usuario accede al panel de coach para que no falle Firestore
+          if (data.role !== 'coach' || data.approvalStatus !== 'approved') {
+            try {
+              await updateDoc(doc(db, 'users', user.uid), {
+                role: 'coach',
+                approvalStatus: 'approved'
+              });
+            } catch (err) {
+              console.warn("Could not auto-approve coach profile:", err);
+            }
+          }
+        } else {
+          // Crear perfil inicial como coach aprobado
+          try {
+            await setDoc(doc(db, 'users', user.uid), {
+              uid: user.uid,
+              email: user.email || '',
+              role: 'coach',
+              approvalStatus: 'approved',
+              createdAt: new Date()
+            });
+          } catch (err) {
+            console.warn("Could not auto-create coach profile:", err);
+          }
+        }
       });
       handlePaymentSuccess();
       return () => unsub();
@@ -3573,63 +3600,62 @@ export function CoachCourses() {
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl border border-slate-200 gap-4 shadow-sm">
+      {/* Header Panel */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-lg font-bold text-slate-900 tracking-tight">Mis Cursos</h2>
-          <p className="text-[13px] text-slate-500 mt-0.5">Gestiona tu contenido y material educativo.</p>
+          <h2 className="text-xl font-black text-slate-900 tracking-tight">Studio de Cursos (Control de Studio)</h2>
+          <p className="text-[13px] text-slate-500 mt-0.5">Diseña tu curriculum educativo, gestiona precios y publica programas interactivos con el Co-piloto de Kira AI.</p>
         </div>
-        <button 
-          onClick={() => {
-            if (isCreating || editingCourse) {
-              handleCancel();
-            } else {
-              setIsCreating(true);
-            }
-          }}
-          className={cn(
-            "px-6 py-2.5 rounded-xl text-[12px] font-bold shadow-md transition-all active:scale-95",
-            (isCreating || editingCourse)
-              ? "bg-slate-100 text-slate-600 shadow-none" 
-              : "bg-primary text-white shadow-primary/10 hover:shadow-primary/20"
-          )}
-        >
-          {(isCreating || editingCourse) ? 'Cancelar' : 'Crear Nuevo Curso'}
-        </button>
       </div>
 
       {errorMsg && (
-        <div className="mb-4 p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-sm font-bold flex items-center gap-2">
+        <div className="p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-sm font-bold flex items-center gap-2">
           <AlertTriangle size={18} /> {errorMsg}
         </div>
       )}
 
-      {(isCreating || editingCourse) && (
-        <form onSubmit={editingCourse ? handleUpdate : handleCreate} className="bg-white p-8 rounded-2xl border border-slate-200 shadow-lg animate-in slide-in-from-top-4 duration-300">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold text-slate-900 text-base tracking-tight">
-              {editingCourse ? 'Editar Curso' : 'Diseño de Curriculum'}
-            </h3>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Left Column (5 cols): Persistent Formulator */}
+        <div className="lg:col-span-5 bg-white p-8 rounded-[32px] border border-slate-200 shadow-sm flex flex-col gap-6 h-fit sticky top-6">
+          <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="font-black text-slate-900 text-base tracking-tight">
+                {editingCourse ? 'Editar Curso' : 'Crear Nuevo Programa'}
+              </h3>
+              <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Formulario de Control</p>
+            </div>
             <button 
                type="button"
                disabled={isAiGenerating}
                onClick={generateAiContent}
-               className="px-4 py-2 bg-gradient-to-r from-kirateal to-kirateal-light text-white rounded-xl text-[11px] font-bold flex items-center gap-2 hover:scale-105 transition-all disabled:opacity-50 shadow-md shadow-kirateal/10"
+               className="px-4 py-2 bg-slate-900 hover:bg-black text-white rounded-xl text-[11px] font-black uppercase tracking-widest flex items-center gap-2 transition-all disabled:opacity-50"
              >
                {isAiGenerating ? <Loader2 size={13} className="animate-spin"/> : <Sparkles size={13}/>}
                {isAiGenerating ? "Generando..." : "Asistente Kira AI"}
              </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
-            <div className="md:col-span-2">
-              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Título del Curso</label>
-              <input required value={title} onChange={e=>setTitle(e.target.value)} type="text" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none" placeholder="Ej: Maestría en Inteligencia Emocional" />
-            </div>
+
+          <form onSubmit={editingCourse ? handleUpdate : handleCreate} className="space-y-5">
             <div>
-              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Inversión Alumno ($)</label>
-              <input required value={price} onChange={e=>setPrice(Number(e.target.value))} type="number" min="0" className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none" />
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Título del Curso / Programa</label>
+              <input required value={title} onChange={e=>setTitle(e.target.value)} type="text" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none text-slate-800 font-medium" placeholder="Ej: Maestría en Inteligencia Emocional" />
             </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Inversión Alumno ($)</label>
+                <input required value={price} onChange={e=>setPrice(Number(e.target.value))} type="number" min="0" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none text-slate-800 font-medium" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Estado de Publicación</label>
+                <div className="bg-slate-100 p-2.5 rounded-xl text-center text-xs font-bold text-emerald-700 uppercase tracking-wider border border-slate-200">
+                  {editingCourse ? editingCourse.status : 'published'}
+                </div>
+              </div>
+            </div>
+
             <div>
-              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Cover Image</label>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Imagen de Portada (Cover)</label>
               <MediaUpload 
                 onUploadComplete={(url) => setBannerUrl(url)}
                 folderPath={`courses/${user?.uid}`}
@@ -3637,73 +3663,90 @@ export function CoachCourses() {
                 label="Subir Cover"
                 accept="image/*"
               />
-              <input value={bannerUrl} onChange={e=>setBannerUrl(e.target.value)} type="text" placeholder="O URL externa..." className="w-full mt-2 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none" />
+              <input value={bannerUrl} onChange={e=>setBannerUrl(e.target.value)} type="text" placeholder="O introduce una URL externa..." className="w-full mt-2 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none text-slate-600" />
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Propuesta de Valor (Descripción)</label>
-              <textarea required value={description} onChange={e=>setDescription(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none h-32 resize-none" placeholder="¿Qué lograrán tus alumnos?" />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3">
-            <button 
-              type="button" 
-              onClick={handleCancel} 
-              className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all active:scale-95"
-            >
-              Cancelar
-            </button>
-            <button type="submit" className="px-8 py-3 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-xl transition-all active:scale-95">
-              {editingCourse ? 'Guardar Cambios' : 'Publicar Programa'}
-            </button>
-          </div>
-        </form>
-      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {courses.map(c => (
-          <div key={c.id} className="bg-white rounded-3xl border border-slate-200 overflow-hidden flex flex-col shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all hover:-translate-y-1 group">
-            <div className="relative h-40 overflow-hidden">
-               <img src={c.bannerUrl || `https://picsum.photos/seed/${c.title}/800/400`} alt="Banner" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-               <div className="absolute top-4 right-4 px-2 py-1 bg-white/90 backdrop-blur rounded-lg text-[10px] font-bold text-slate-800 uppercase shadow-sm">
-                  {c.status}
-               </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Propuesta de Valor (Descripción y Temario)</label>
+              <textarea required value={description} onChange={e=>setDescription(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none h-44 resize-none text-slate-700 leading-relaxed font-medium" placeholder="¿Qué lograrán tus alumnos? Describe los módulos y el temario propuesto aquí..." />
             </div>
-            <div className="p-6 flex-1 flex flex-col">
-              <h3 className="font-bold text-slate-900 text-[16px] mb-1 leading-tight tracking-tight">{c.title}</h3>
-              <p className="text-[14px] text-primary font-extrabold mb-3">${c.price}</p>
-              <p className="text-[12px] text-slate-500 line-clamp-2 mb-6 flex-1 leading-relaxed">{c.description}</p>
-              <div className="flex justify-between items-center pt-4 border-t border-slate-50">
-                <div className="flex items-center gap-1.5 text-slate-400">
-                  <Users size={14} />
-                  <span className="text-[11px] font-bold">12 Alumnos</span>
+
+            <div className="flex justify-end gap-3 pt-2">
+              {editingCourse && (
+                <button 
+                  type="button" 
+                  onClick={handleCancel} 
+                  className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all active:scale-95 text-xs uppercase tracking-wider animate-in fade-in zoom-in-95"
+                >
+                  Cancelar Edición
+                </button>
+              )}
+              <button type="submit" className="px-8 py-2.5 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-xl transition-all active:scale-95 text-xs uppercase tracking-wider flex-1">
+                {editingCourse ? 'Guardar Cambios' : 'Publicar Nuevo Programa'}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Right Column (7 cols): Course Catalog */}
+        <div className="lg:col-span-7 flex flex-col gap-6">
+          <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="font-black text-slate-900 text-base tracking-tight">Programas Publicados ({courses.length})</h3>
+              <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Catálogo Activo</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {courses.map(c => (
+              <div key={c.id} className={cn(
+                "bg-white rounded-[32px] border overflow-hidden flex flex-col shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all hover:-translate-y-1 group",
+                editingCourse?.id === c.id ? "border-primary ring-2 ring-primary/20 animate-pulse" : "border-slate-200"
+              )}>
+                <div className="relative h-32 overflow-hidden">
+                   <img src={c.bannerUrl || `https://picsum.photos/seed/${c.title}/800/400`} alt="Banner" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                   <div className="absolute top-4 right-4 px-2 py-1 bg-white/90 backdrop-blur rounded-lg text-[9px] font-black text-slate-800 uppercase shadow-sm tracking-wider">
+                      {c.status}
+                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <button 
-                    type="button"
-                    onClick={() => handleEditClick(c)}
-                    className="text-[11px] font-bold text-indigo-600 hover:underline flex items-center gap-1"
-                  >
-                     Editar <ChevronRight size={14} />
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => handleDeleteCourse(c.id)}
-                    className="text-[11px] font-bold text-rose-500 hover:underline flex items-center gap-1"
-                  >
-                     Eliminar
-                  </button>
+                <div className="p-6 flex-1 flex flex-col">
+                  <h3 className="font-black text-slate-900 text-sm mb-1 leading-tight tracking-tight">{c.title}</h3>
+                  <p className="text-xs text-primary font-black mb-3">${c.price}</p>
+                  <p className="text-[11px] text-slate-500 line-clamp-3 mb-6 flex-1 leading-relaxed font-medium">{c.description}</p>
+                  <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+                    <div className="flex items-center gap-1.5 text-slate-400">
+                      <Users size={14} />
+                      <span className="text-[11px] font-bold">12 Alumnos</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button 
+                        type="button"
+                        onClick={() => handleEditClick(c)}
+                        className="text-[11px] font-black uppercase tracking-wider text-indigo-600 hover:underline flex items-center gap-1"
+                      >
+                         Editar
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => handleDeleteCourse(c.id)}
+                        className="text-[11px] font-black uppercase tracking-wider text-rose-500 hover:underline flex items-center gap-1"
+                      >
+                         Eliminar
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+            ))}
+            {courses.length === 0 && (
+              <div className="col-span-full text-center py-20 bg-slate-50/50 rounded-[32px] border-2 border-dashed border-slate-200">
+                 <BookOpen size={48} className="mx-auto text-slate-200 mb-4" />
+                 <p className="text-slate-400 font-medium text-sm">Aún no has diseñado ningún curso en tu catálogo.</p>
+                 <p className="text-slate-400 text-xs mt-1">Completa el formulario de la izquierda para lanzar tu primer programa.</p>
+              </div>
+            )}
           </div>
-        ))}
-        {courses.length === 0 && !isCreating && !editingCourse && (
-          <div className="col-span-full text-center py-20 bg-slate-50/50 rounded-3xl border-2 border-dashed border-slate-200">
-             <BookOpen size={48} className="mx-auto text-slate-200 mb-4" />
-             <p className="text-slate-400 font-medium text-sm">Aún no has diseñado ningún curso.</p>
-             <button onClick={() => setIsCreating(true)} className="mt-4 text-primary font-bold text-xs uppercase tracking-widest hover:underline">Comenzar ahora</button>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

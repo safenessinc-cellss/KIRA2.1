@@ -138,7 +138,7 @@ export default function SessionIntelligence() {
         userId: user.uid,
         clientName,
         sessionTopic,
-        coachId: 'kira-ai',
+        coachId: user.uid,
         transcript: manualTranscript,
         analysis: data,
         createdAt: serverTimestamp()
@@ -413,7 +413,7 @@ export default function SessionIntelligence() {
       // Guardar en Firestore
       await addDoc(collection(db, 'sessions'), {
         userId: user.uid,
-        coachId: 'kira-ai',
+        coachId: user.uid,
         transcript: messages,
         analysis: data,
         createdAt: serverTimestamp()
