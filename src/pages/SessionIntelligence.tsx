@@ -46,7 +46,7 @@ interface LongitudinalAnalysis {
 export default function SessionIntelligence() {
   const { user } = useAuth();
   const [isRecording, setIsRecording] = useState(false);
-  const [isPremium, setIsPremium] = useState(false); // Simulación de Growth Hacker
+  const [isPremium, setIsPremium] = useState(true); // Activo por defecto para visualización completa y funcional
   const [messages, setMessages] = useState<Message[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [analysis, setAnalysis] = useState<LongitudinalAnalysis | null>(null);
@@ -158,13 +158,19 @@ export default function SessionIntelligence() {
     try {
       const q = query(
         collection(db, 'sessions'),
-        where('userId', '==', user.uid),
-        orderBy('createdAt', 'desc'),
-        limit(1)
+        where('userId', '==', user.uid)
       );
       const snap = await getDocs(q);
       if (!snap.empty) {
-        setLastSession(snap.docs[0].data().analysis);
+        const sorted: any[] = snap.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })).sort((a: any, b: any) => {
+          const timeA = a.createdAt?.seconds || 0;
+          const timeB = b.createdAt?.seconds || 0;
+          return timeB - timeA;
+        });
+        setLastSession(sorted[0].analysis);
       }
     } catch (e) {
       console.error("Error fetching last session:", e);
