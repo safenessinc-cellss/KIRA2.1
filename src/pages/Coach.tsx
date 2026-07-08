@@ -154,6 +154,7 @@ import { cn } from '../lib/utils';
 import { CoachChat } from '../components/CoachChat';
 import { MessageSquare } from 'lucide-react';
 import { CoachCourses } from './CoachCourses';
+import SessionIntelligence from './SessionIntelligence';
 export { CoachCourses };
 
 const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.75): Promise<string> => {
@@ -486,6 +487,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
   const [showRevisarTareas, setShowRevisarTareas] = useState(false);
   const [showAiAuditCrm, setShowAiAuditCrm] = useState(false);
   const [showCloudSupport, setShowCloudSupport] = useState(false);
+  const [showSessionIntelligence, setShowSessionIntelligence] = useState(false);
 
   // 1. Estados para Revisar Tareas
   const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
@@ -1126,9 +1128,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Link to="/coach/session" className="group">
-              <QuickAction title="Sesión Inteligente" desc="Transcripción y análisis IA" icon={<Brain size={24} className="text-indigo-600" />} />
-            </Link>
+            <QuickAction onClick={() => setShowSessionIntelligence(true)} title="Sesión Inteligente" desc="Transcripción y análisis IA" icon={<Brain size={24} className="text-indigo-600" />} />
             <QuickAction onClick={() => setShowRevisarTareas(true)} title="Revisar Tareas" desc="Feedback de módulos" icon={<BookOpen size={24} className="text-amber-500" />} />
             <QuickAction onClick={() => setShowAiAuditCrm(true)} title="AI Audit CRM" desc="Optimizar embudo" icon={<Activity size={24} className="text-rose-500" />} />
             <QuickAction onClick={() => setShowCloudSupport(true)} title="Cloud Support" desc="Kira Corp Direct" icon={<ShieldCheck size={24} className="text-emerald-600" />} />
@@ -1618,6 +1618,25 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
                      </div>
                    </div>
                  )}
+
+                  {/* --- MODAL 4: SESIÓN INTELIGENTE (TRANSCRIPCIÓN Y ANÁLISIS) --- */}
+                  {showSessionIntelligence && (
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                      <div className="bg-white rounded-[40px] w-full max-w-6xl h-[90vh] overflow-hidden border border-slate-100 shadow-2xl relative flex flex-col animate-in fade-in zoom-in-95 duration-300 text-left">
+                        <button 
+                          type="button"
+                          onClick={() => setShowSessionIntelligence(false)}
+                          className="p-3 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 absolute top-6 right-6 transition-all hover:rotate-90 z-50 shadow-sm"
+                        >
+                          <X size={20} />
+                        </button>
+                        
+                        <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50/50">
+                          <SessionIntelligence />
+                        </div>
+                      </div>
+                    </div>
+                  )}
              </div>
            )}
         </div>
