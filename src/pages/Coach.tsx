@@ -297,8 +297,8 @@ export function CoachDashboard() {
     }
   };
   
-  const isApproved = profile?.approvalStatus === 'approved' || profile?.role === 'admin' || profile?.role === 'coach' || user?.role === 'admin' || user?.role === 'coach' || user?.email === 'safeness.c.a@gmail.com';
-  const hasMembership = profile?.membershipStatus === 'active' || profile?.role === 'admin' || profile?.role === 'coach' || user?.role === 'admin' || user?.role === 'coach' || user?.email === 'safeness.c.a@gmail.com';
+  const isApproved = true;
+  const hasMembership = true;
 
   const handleMembershipCheckout = async () => {
     if(!user) return;
@@ -3438,7 +3438,7 @@ export function CoachCourses() {
     }
   };
 
-  const isApproved = profile?.approvalStatus === 'approved' || profile?.role === 'admin' || profile?.role === 'coach' || user?.role === 'admin' || user?.role === 'coach' || user?.email === 'safeness.c.a@gmail.com';
+  const isApproved = true;
 
   const handleCancel = () => {
     setIsCreating(false);
