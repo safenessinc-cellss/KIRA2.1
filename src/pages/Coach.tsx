@@ -153,7 +153,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { cn } from '../lib/utils';
 import { CoachChat } from '../components/CoachChat';
 import { MessageSquare } from 'lucide-react';
-import { CoachCourses } from './coach_studio/CoachCourses';
+import { CoachCourses } from './coach-courses/CoachCourses';
 export { CoachCourses };
 
 const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.75): Promise<string> => {
