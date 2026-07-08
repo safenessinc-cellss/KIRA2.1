@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { storage, db, handleFirestoreError, OperationType, auth } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, orderBy, limit, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, orderBy, limit, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { Link, useSearchParams } from 'react-router-dom';
 import { MediaUpload } from '../components/MediaUpload';
@@ -250,7 +250,7 @@ const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000,
   });
 };
 
-type CoachTab = 'dashboard' | 'tracking' | 'nexus' | 'register' | 'automation' | 'profile' | 'analytics' | 'chat';
+type CoachTab = 'dashboard' | 'courses' | 'tracking' | 'nexus' | 'register' | 'automation' | 'profile' | 'analytics' | 'chat';
 
 export function CoachDashboard() {
   const { user } = useAuth();
@@ -377,6 +377,7 @@ export function CoachDashboard() {
       {/* Navegación Modular CRM */}
       <div className="flex flex-wrap gap-2 p-1.5 bg-slate-100 rounded-[32px] w-fit shadow-sm border border-slate-200/50">
         <TabBtn active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<Layout size={16}/>} label="Panel de Control" />
+        <TabBtn active={activeTab === 'courses'} onClick={() => setActiveTab('courses')} icon={<BookOpen size={16}/>} label="Studio de Cursos" disabled={!isApproved} />
         <TabBtn active={activeTab === 'tracking'} onClick={() => setActiveTab('tracking')} icon={<BadgeCheck size={16}/>} label="Academic Tracking" disabled={!isApproved} />
         <TabBtn active={activeTab === 'chat'} onClick={() => setActiveTab('chat')} icon={<MessageSquare size={16}/>} label="Chat Privado" disabled={!isApproved} />
         <TabBtn active={activeTab === 'nexus'} onClick={() => setActiveTab('nexus')} icon={<FolderKanban size={16}/>} label="Legal & Revenue" disabled={!isApproved} />
@@ -388,6 +389,7 @@ export function CoachDashboard() {
 
       <div className="flex-1">
         {activeTab === 'dashboard' && <CoachDashboardView profile={profile} isApproved={isApproved} />}
+        {activeTab === 'courses' && <CoachCourses />}
         {activeTab === 'tracking' && <CoachStudentsActivity />}
         {activeTab === 'chat' && <CoachChat className="h-[500px] max-w-3xl mx-auto rounded-3xl" />}
         {activeTab === 'nexus' && <CoachContractManager />}
@@ -3432,9 +3434,26 @@ export function CoachCourses() {
     try {
       const q = query(collection(db, 'courses'), where('coachId', '==', user.uid));
       const snap = await getDocs(q);
-      setCourses(snap.docs.map(d => ({id: d.id, ...d.data()})));
+      const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
+      setCourses(list);
+      if (list.length === 0) {
+        setIsCreating(true);
+      }
     } catch(e) {
       console.error(e);
+    }
+  };
+
+  const handleDeleteCourse = async (courseId: string) => {
+    if (!window.confirm("¿Estás seguro de que deseas eliminar este curso de tu catálogo?")) return;
+    try {
+      await deleteDoc(doc(db, 'courses', courseId));
+      fetchCourses();
+      toastSuccess("Curso eliminado exitosamente.");
+    } catch(e) {
+      console.error(e);
+      setErrorMsg('Error al eliminar el curso.');
+      setTimeout(() => setErrorMsg(''), 5000);
     }
   };
 
@@ -3658,12 +3677,22 @@ export function CoachCourses() {
                   <Users size={14} />
                   <span className="text-[11px] font-bold">12 Alumnos</span>
                 </div>
-                <button 
-                  onClick={() => handleEditClick(c)}
-                  className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
-                >
-                   Editar <ChevronRight size={14} />
-                </button>
+                <div className="flex items-center gap-3">
+                  <button 
+                    type="button"
+                    onClick={() => handleEditClick(c)}
+                    className="text-[11px] font-bold text-indigo-600 hover:underline flex items-center gap-1"
+                  >
+                     Editar <ChevronRight size={14} />
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => handleDeleteCourse(c.id)}
+                    className="text-[11px] font-bold text-rose-500 hover:underline flex items-center gap-1"
+                  >
+                     Eliminar
+                  </button>
+                </div>
               </div>
             </div>
           </div>

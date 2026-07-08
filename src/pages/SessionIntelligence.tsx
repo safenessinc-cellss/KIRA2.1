@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenAI, Modality } from "@google/genai";
+// Client-side Gemini SDK removed. Requests proxied to the server.
 import { collection, query, where, orderBy, limit, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
@@ -53,6 +53,17 @@ export default function SessionIntelligence() {
   const [lastSession, setLastSession] = useState<LongitudinalAnalysis | null>(null);
   const [status, setStatus] = useState<'idle' | 'running' | 'summarizing'>('idle');
   
+  // New manual form & simulator states
+  const [sessionMode, setSessionMode] = useState<'live' | 'form'>('form');
+  const [clientName, setClientName] = useState('Sofía Ramírez');
+  const [sessionTopic, setSessionTopic] = useState('Gestión de Estrés Laboral y Síndrome de Burnout');
+  const [manualTranscript, setManualTranscript] = useState('');
+  const [selectedSentiment, setSelectedSentiment] = useState<'positivo' | 'neutral' | 'estrés' | 'motivación' | 'duda'>('estrés');
+  const [manualConfidence, setManualConfidence] = useState(7);
+  const [manualClarity, setManualClarity] = useState(6);
+  const [manualEnergy, setManualEnergy] = useState(5);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const sessionRef = useRef<any>(null);
@@ -60,6 +71,87 @@ export default function SessionIntelligence() {
   useEffect(() => {
     fetchLastSession();
   }, [user]);
+
+  const handleAnalyzeManualSession = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    if (!manualTranscript.trim()) {
+      alert("Por favor escribe o genera un diálogo de ejemplo para poder analizarlo.");
+      return;
+    }
+    setIsAnalyzing(true);
+    setStatus('summarizing');
+    setAnalysis(null);
+    
+    try {
+      const prompt = `Actúa como un Psicólogo Organizacional y Coach de Alto Rendimiento. Analiza esta sesión de coaching de Kira Coach.
+      
+      DATOS GENERALES:
+      - Alumno/Cliente: ${clientName}
+      - Tema/Intención de la Sesión: ${sessionTopic}
+      - Sentimiento Predominante del Alumno: ${selectedSentiment}
+      - Métricas estimadas por el coach (1-10): Confianza: ${manualConfidence}, Claridad: ${manualClarity}, Energía: ${manualEnergy}
+
+      TRANSCRIPCIÓN DE LA CONVERSACIÓN:
+      ${manualTranscript}
+
+      TAREA ANALÍTICA INTEGRAL:
+      1. TRAYECTORIA EMOCIONAL: Analiza cómo cambió el sentimiento del cliente desde el inicio hasta el final basado en el diálogo.
+      2. IDENTIFICACIÓN DE INCONGRUENCIAS: Compara los objetivos declarados con quejas recurrentes o sentimientos negativos expresados.
+      3. ANÁLISIS PROSÓDICO SIMULADO: Infiere niveles de duda/seguridad basados en el diálogo y flujo del texto.
+      4. ESCENARIOS DE ROLEPLAY: Propón un escenario de simulación/roleplay relevante para que el coach lo use con el cliente.
+      5. MANTRA PERSONALIZADO: Genera una frase de poder única basada en las fortalezas detectadas y el cambio emocional positivo.
+      6. MAPA DE CALOR DE ENFOQUE: Calcula el % de la conversación en [Pasado/Problemas], [Presente], [Futuro/Soluciones].
+
+      Responde ESTRICTAMENTE en este formato JSON:
+      {
+        "resumen_ejecutivo": "string (debe incluir el hallazgo emocional principal y referirse al cliente por su nombre: ${clientName})",
+        "progreso_metas_anteriores": ["string"],
+        "nuevos_compromisos": [{"tarea": "string", "deadline": "string", "priority": "alta|media|baja"}],
+        "patrones_detectados": ["string (incluir patrones emocionales como 'resiliencia ante críticas' o 'evitación de conflicto')"],
+        "inconsistencias_detectadas": ["string"],
+        "prosodic_inference": "string",
+        "roleplay_scenarios": ["string"],
+        "personal_mantra": "string",
+        "focus_heatmap": { "pasado_problemas": number, "presente": number, "futuro_soluciones": number },
+        "metrics": { "confidence": number, "clarity": number, "energy": number },
+        "sugerencia_proxima_sesion": "string"
+      }`;
+
+      const response = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: "gemini-3.5-flash",
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        })
+      });
+      const dataJson = await response.json();
+      if (dataJson.error) throw new Error(dataJson.error);
+
+      const data = JSON.parse(dataJson.text) as LongitudinalAnalysis;
+      setAnalysis(data);
+      
+      // Guardar en Firestore para persistencia
+      await addDoc(collection(db, 'sessions'), {
+        userId: user.uid,
+        clientName,
+        sessionTopic,
+        coachId: 'kira-ai',
+        transcript: manualTranscript,
+        analysis: data,
+        createdAt: serverTimestamp()
+      });
+
+    } catch (e: any) {
+      console.error("Error parsing analysis:", e);
+      alert("Hubo un error al procesar el análisis de la sesión: " + e.message);
+    } finally {
+      setIsAnalyzing(false);
+      setStatus('idle');
+    }
+  };
 
   const fetchLastSession = async () => {
     if (!user) return;
@@ -108,39 +200,72 @@ export default function SessionIntelligence() {
 
   const startSession = async () => {
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      
-      const sessionPromise = ai.live.connect({
-        model: "gemini-3.1-flash-live-preview",
-        config: {
-          responseModalities: [Modality.AUDIO],
-          systemInstruction,
-          inputAudioTranscription: {},
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/api/live`;
+      const ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log("Sesión de IA iniciada a través de puente de servidor");
+        // Enviar configuración inicial
+        ws.send(JSON.stringify({
+          type: "setup",
+          systemInstruction
+        }));
+        startAudioCapture();
+        setIsRecording(true);
+        setStatus('running');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          
+          if (msg.error) {
+            console.error("Server Live error:", msg.error);
+            return;
+          }
+
+          // Manejar transcripciones entrantes
+          if (msg.serverContent?.modelTurn?.parts) {
+            const text = msg.serverContent.modelTurn.parts[0]?.text;
+            if (text) processIAMessage(text);
+          }
+          
+          // Si hay transcripción del usuario (Cliente/Coach local)
+          const userText = msg.inputAudioTranscription?.text;
+          if (userText) {
+            processUserTranscription(userText);
+          }
+        } catch (err) {
+          console.error("Error parsing WebSocket message:", err);
+        }
+      };
+
+      ws.onerror = (err) => {
+        console.error("WebSocket error:", err);
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket connection closed.");
+        setIsRecording(false);
+      };
+
+      // Assign wrapper object to sessionRef.current
+      sessionRef.current = {
+        sendRealtimeInput: (payload: any) => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+              audio: payload.audio?.data
+            }));
+          }
         },
-        callbacks: {
-          onopen: () => {
-            console.log("Sesión de IA iniciada");
-            startAudioCapture();
-          },
-          onmessage: (msg: any) => {
-            // Manejar transcripciones entrantes
-            if (msg.serverContent?.modelTurn?.parts) {
-              const text = msg.serverContent.modelTurn.parts[0]?.text;
-              if (text) processIAMessage(text);
-            }
-            
-            // Si hay transcripción del usuario (Cliente/Coach local)
-            const userText = msg.inputAudioTranscription?.text;
-            if (userText) {
-              processUserTranscription(userText);
-            }
+        close: () => {
+          if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+            ws.close();
           }
         }
-      });
+      } as any;
 
-      sessionRef.current = await sessionPromise;
-      setIsRecording(true);
-      setStatus('running');
     } catch (error) {
       console.error("Error iniciando sesión:", error);
     }
@@ -236,7 +361,6 @@ export default function SessionIntelligence() {
 
   const generateSummary = async () => {
     if (!user) return;
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const fullTranscript = messages.map(m => `${m.speaker}: ${m.text}`).join('\n');
     
     const prompt = `Actúa como un Psicólogo Organizacional y Coach de Alto Rendimiento. Analiza esta sesión de coaching de Kira Coach.
@@ -270,14 +394,20 @@ export default function SessionIntelligence() {
       "sugerencia_proxima_sesion": "string"
     }`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-      config: { responseMimeType: "application/json" }
+    const response = await fetch('/api/gemini/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: { responseMimeType: "application/json" }
+      })
     });
+    const dataJson = await response.json();
+    if (dataJson.error) throw new Error(dataJson.error);
 
     try {
-      const data = JSON.parse(response.text) as LongitudinalAnalysis;
+      const data = JSON.parse(dataJson.text) as LongitudinalAnalysis;
       setAnalysis(data);
       
       // Guardar en Firestore
@@ -296,80 +426,231 @@ export default function SessionIntelligence() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-8">
-      <header className="flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+    <div className="max-w-6xl mx-auto p-6 space-y-8 text-left">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-100 gap-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
             <Brain size={24} />
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Inteligencia de Sesión</h1>
-            <p className="text-slate-500 text-sm">Análisis y transcripción en tiempo real con Kira AI</p>
+            <p className="text-slate-500 text-sm">Análisis y transcripción en tiempo real o simulado con Kira AI</p>
           </div>
         </div>
         
-        <button 
-          onClick={isRecording ? stopSession : startSession}
-          className={`flex items-center gap-3 px-8 py-3 rounded-2xl font-bold transition-all ${
-            isRecording 
-            ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 animate-pulse' 
-            : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-xl shadow-indigo-200'
-          }`}
-        >
-          {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
-          {isRecording ? 'Finalizar Sesión' : 'Iniciar Sesión'}
-        </button>
+        {sessionMode === 'live' && (
+          <button 
+            onClick={isRecording ? stopSession : startSession}
+            className={`flex items-center gap-3 px-8 py-3 rounded-2xl font-bold transition-all ${
+              isRecording 
+              ? 'bg-rose-50 text-rose-600 hover:bg-rose-100 animate-pulse' 
+              : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-xl shadow-indigo-200'
+            }`}
+          >
+            {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
+            {isRecording ? 'Finalizar Sesión' : 'Iniciar Sesión'}
+          </button>
+        )}
       </header>
 
+      {/* Selector de Modo */}
+      <div className="flex bg-slate-100 p-1.5 rounded-2xl w-fit shadow-sm border border-slate-200/40">
+        <button 
+          type="button"
+          onClick={() => { setSessionMode('form'); setAnalysis(null); }}
+          className={`px-6 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+            sessionMode === 'form' 
+              ? "bg-white text-indigo-600 shadow-sm border border-slate-200/10" 
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <FileText size={14} /> Formulario de Sesión (Manual / Simulado)
+        </button>
+        <button 
+          type="button"
+          onClick={() => { setSessionMode('live'); setAnalysis(null); }}
+          className={`px-6 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+            sessionMode === 'live' 
+              ? "bg-white text-indigo-600 shadow-sm border border-slate-200/10" 
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          <Mic size={14} /> En Vivo (Micrófono)
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Panel Izquierdo: Transcripción */}
+        {/* Panel Izquierdo: Transcripción / Formulario */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col h-[600px]">
-            <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
-              <h3 className="font-bold text-slate-700 flex items-center gap-2">
-                <MessageSquare size={18} className="text-indigo-500" />
-                Transcripción en Vivo
-              </h3>
-              {isRecording && <Activity className="text-indigo-500 animate-pulse" size={18} />}
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
-              <AnimatePresence>
-                {messages.length === 0 && !isRecording && (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
-                    <div className="p-4 bg-slate-50 rounded-full">
-                      <Mic size={32} />
-                    </div>
-                    <p className="text-sm">Presiona "Iniciar Sesión" para comenzar a escuchar</p>
+          {sessionMode === 'form' ? (
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col p-8">
+              <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
+                <Sparkles className="text-indigo-600" size={20} />
+                <h3 className="font-bold text-slate-800 text-lg">Formulario y Registro de Sesión</h3>
+              </div>
+
+              <form onSubmit={handleAnalyzeManualSession} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Nombre del Alumno / Cliente</label>
+                    <input 
+                      type="text" 
+                      required 
+                      value={clientName} 
+                      onChange={e => setClientName(e.target.value)} 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all outline-none text-slate-800 font-medium" 
+                      placeholder="Ej: Sofía Ramírez" 
+                    />
                   </div>
-                )}
-                {messages.map((m) => (
-                  <motion.div 
-                    key={m.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`flex gap-4 ${m.speaker === 'Coach' ? 'flex-row' : 'flex-row-reverse text-right'}`}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Tema Principal o Intención</label>
+                    <input 
+                      type="text" 
+                      required 
+                      value={sessionTopic} 
+                      onChange={e => setSessionTopic(e.target.value)} 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all outline-none text-slate-800 font-medium" 
+                      placeholder="Ej: Burnout, Autoestima, Inteligencia Emocional" 
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1.5 px-1">
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest">Diálogo / Transcripción de la Sesión</label>
+                    <button 
+                      type="button" 
+                      onClick={() => setManualTranscript(`Coach: Hola ${clientName}, qué bueno verte hoy. Cuéntame, ¿cuál es el tema principal que te gustaría abordar en nuestra sesión?
+Cliente: Hola Coach. La verdad es que me siento sumamente abrumada. En mi trabajo como líder de producto, todo el mundo me pide cosas constantemente, y no sé cómo decir que no. Siento que voy a explotar.
+Coach: Lamento que te sientas así. Es un peso enorme. Cuando dices que "no sabes decir que no", ¿qué temores o pensamientos surgen en ti en ese instante?
+Cliente: Siento que si digo que no, van a devaluar mi capacidad o mi compromiso. Pero por complacer a todos, me quedo trabajando hasta las 11 de la noche todos los días y mi energía está por el piso.
+Coach: Entiendo perfectamente. Es el dilema clásico entre buscar validación externa y proteger tu bienestar. ¿Qué límites consideras que podrías empezar a ensayar esta semana para recuperar tu balance?
+Cliente: Podría empezar por silenciar Slack a las 7:00 PM y comprometerme a no responder correos hasta el día siguiente. Es difícil, pero muy necesario.`)}
+                      className="text-[10px] font-bold text-indigo-600 hover:bg-indigo-100/50 flex items-center gap-1.5 bg-indigo-50 px-3 py-1.5 rounded-xl transition-all"
+                    >
+                      <Sparkles size={11} /> Cargar Diálogo de Ejemplo
+                    </button>
+                  </div>
+                  <textarea 
+                    required 
+                    value={manualTranscript} 
+                    onChange={e => setManualTranscript(e.target.value)} 
+                    rows={10} 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all outline-none resize-none leading-relaxed text-slate-700" 
+                    placeholder="Escribe o pega el diálogo de la sesión aquí. También puedes usar el botón de ejemplo arriba..." 
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Sentimiento</label>
+                    <select 
+                      value={selectedSentiment} 
+                      onChange={e => setSelectedSentiment(e.target.value as any)} 
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none"
+                    >
+                      <option value="estrés">Estrés / Burnout</option>
+                      <option value="positivo">Positivo / Optimista</option>
+                      <option value="neutral">Neutral / Calmo</option>
+                      <option value="motivación">Motivación / Alto</option>
+                      <option value="duda">Duda / Incertidumbre</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Confianza ({manualConfidence}/10)</label>
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="10" 
+                      value={manualConfidence} 
+                      onChange={e => setManualConfidence(Number(e.target.value))} 
+                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 mt-3" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Claridad ({manualClarity}/10)</label>
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="10" 
+                      value={manualClarity} 
+                      onChange={e => setManualClarity(Number(e.target.value))} 
+                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 mt-3" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Energía ({manualEnergy}/10)</label>
+                    <input 
+                      type="range" 
+                      min="1" 
+                      max="10" 
+                      value={manualEnergy} 
+                      onChange={e => setManualEnergy(Number(e.target.value))} 
+                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 mt-3" 
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button 
+                    type="submit" 
+                    disabled={isAnalyzing || !manualTranscript.trim()}
+                    className="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:scale-[1.02] transition-all disabled:opacity-50 shadow-lg shadow-indigo-100 flex items-center gap-2"
                   >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                      m.speaker === 'Coach' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-600'
-                    }`}>
-                      {m.speaker === 'Coach' ? <Brain size={16} /> : <User size={16} />}
-                    </div>
-                    <div className="space-y-1 max-w-[80%]">
-                      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        {m.speaker} • {m.timestamp}
-                      </div>
-                      <div className={`p-4 rounded-2xl text-sm leading-relaxed ${
-                        m.speaker === 'Coach' ? 'bg-indigo-50 text-indigo-900 rounded-tl-none' : 'bg-amber-50 text-amber-900 rounded-tr-none'
-                      }`}>
-                        {m.text}
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+                    {isAnalyzing ? <Loader2 className="animate-spin" size={14} /> : <Brain size={14} />}
+                    {isAnalyzing ? 'Analizando con Kira AI...' : 'Analizar Sesión con Kira AI'}
+                  </button>
+                </div>
+              </form>
             </div>
-          </div>
+          ) : (
+            <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col h-[600px]">
+              <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
+                <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                  <MessageSquare size={18} className="text-indigo-500" />
+                  Transcripción en Vivo
+                </h3>
+                {isRecording && <Activity className="text-indigo-500 animate-pulse" size={18} />}
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
+                <AnimatePresence>
+                  {messages.length === 0 && !isRecording && (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4 py-20">
+                      <div className="p-4 bg-slate-50 rounded-full">
+                        <Mic size={32} />
+                      </div>
+                      <p className="text-sm">Presiona "Iniciar Sesión" en el encabezado para comenzar a escuchar</p>
+                    </div>
+                  )}
+                  {messages.map((m) => (
+                    <motion.div 
+                      key={m.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`flex gap-4 ${m.speaker === 'Coach' ? 'flex-row' : 'flex-row-reverse text-right'}`}
+                    >
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                        m.speaker === 'Coach' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-600'
+                      }`}>
+                        {m.speaker === 'Coach' ? <Brain size={16} /> : <User size={16} />}
+                      </div>
+                      <div className="space-y-1 max-w-[80%]">
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          {m.speaker} • {m.timestamp}
+                        </div>
+                        <div className={`p-4 rounded-2xl text-sm leading-relaxed ${
+                          m.speaker === 'Coach' ? 'bg-indigo-50 text-indigo-900 rounded-tl-none' : 'bg-amber-50 text-amber-900 rounded-tr-none'
+                        }`}>
+                          {m.text}
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Panel Derecho: Insights */}
