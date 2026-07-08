@@ -63,6 +63,10 @@ export default function SessionIntelligence() {
   const [manualClarity, setManualClarity] = useState(6);
   const [manualEnergy, setManualEnergy] = useState(5);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState('');
+  const [activeSpeaker, setActiveSpeaker] = useState<'Coach' | 'Cliente'>('Cliente');
+  const [isGeneratingReply, setIsGeneratingReply] = useState(false);
+  const recognitionRef = useRef<any>(null);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
@@ -204,123 +208,187 @@ export default function SessionIntelligence() {
     - Alerta de [PATRÓN: descripción] si detectas bloqueos recurrentes o contradicciones.
   `;
 
-  const startSession = async () => {
+  const triggerRealtimeInsight = async (sentence: string) => {
     try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/api/live`;
-      const ws = new WebSocket(wsUrl);
+      const prompt = `Analiza la siguiente intervención de una sesión de coaching y detecta UN hito, sentimiento o acción futura en formato JSON breve.
+      Intervención: "${sentence}"
+      
+      Responde ESTRICTAMENTE en este formato JSON:
+      {
+        "type": "moment" | "action" | "sentiment",
+        "content": "Frase corta de 10 palabras o menos en español resumiendo el hallazgo, ej: 'Expresa fuerte tensión por sobrecarga laboral' o 'Compromiso de apagar notificaciones'",
+        "sentiment": "estrés" | "positivo" | "neutral" | "motivación" | "duda"
+      }`;
 
-      ws.onopen = () => {
-        console.log("Sesión de IA iniciada a través de puente de servidor");
-        // Enviar configuración inicial
-        ws.send(JSON.stringify({
-          type: "setup",
-          systemInstruction
-        }));
-        startAudioCapture();
-        setIsRecording(true);
-        setStatus('running');
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          
-          if (msg.error) {
-            console.error("Server Live error:", msg.error);
-            return;
-          }
-
-          // Manejar transcripciones entrantes
-          if (msg.serverContent?.modelTurn?.parts) {
-            const text = msg.serverContent.modelTurn.parts[0]?.text;
-            if (text) processIAMessage(text);
-          }
-          
-          // Si hay transcripción del usuario (Cliente/Coach local)
-          const userText = msg.inputAudioTranscription?.text;
-          if (userText) {
-            processUserTranscription(userText);
-          }
-        } catch (err) {
-          console.error("Error parsing WebSocket message:", err);
-        }
-      };
-
-      ws.onerror = (err) => {
-        console.error("WebSocket error:", err);
-      };
-
-      ws.onclose = () => {
-        console.log("WebSocket connection closed.");
-        setIsRecording(false);
-      };
-
-      // Assign wrapper object to sessionRef.current
-      sessionRef.current = {
-        sendRealtimeInput: (payload: any) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              audio: payload.audio?.data
-            }));
-          }
-        },
-        close: () => {
-          if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-            ws.close();
-          }
-        }
-      } as any;
-
-    } catch (error) {
-      console.error("Error iniciando sesión:", error);
+      const response = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: "gemini-3.5-flash",
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        })
+      });
+      const dataJson = await response.json();
+      if (dataJson.error) return;
+      const data = JSON.parse(dataJson.text);
+      if (data.content) {
+        const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        addInsight({
+          type: data.type || 'sentiment',
+          content: data.content,
+          timestamp: now,
+          sentiment: data.sentiment || 'neutral'
+        });
+      }
+    } catch (err) {
+      console.error("Error generating realtime insight:", err);
     }
   };
 
-  const startAudioCapture = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    audioContextRef.current = new AudioContext({ sampleRate: 16000 });
-    const source = audioContextRef.current.createMediaStreamSource(stream);
-    processorRef.current = audioContextRef.current.createScriptProcessor(4096, 1, 1);
+  const generateAIPly = async () => {
+    if (messages.length === 0) {
+      alert("Por favor di algo primero antes de solicitar la respuesta de Kira AI.");
+      return;
+    }
+    setIsGeneratingReply(true);
+    try {
+      const history = messages.map(m => `${m.speaker}: ${m.text}`).join('\n');
+      const prompt = `Eres Kira Coach, una mentora de bienestar y psicóloga de alto rendimiento de Kira AI. 
+      Lee la siguiente conversación de coaching en progreso y escribe una única respuesta breve, empática, profunda y relevante de máximo 2 oraciones para guiar al Cliente o responder al Coach.
+      No agregues explicaciones, responde directamente en español de manera profesional y sumamente humana.
 
-    processorRef.current.onaudioprocess = (e) => {
-      if (!isRecording) return;
-      const inputData = e.inputBuffer.getChannelData(0);
-      const pcm16 = floatTo16BitPCM(inputData);
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(pcm16.buffer)));
-      
-      sessionRef.current?.sendRealtimeInput({
-        audio: { data: base64, mimeType: 'audio/pcm;rate=16000' }
+      CONVERSACIÓN EN PROGRESO:
+      ${history}
+
+      Kira Coach:`;
+
+      const response = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: "gemini-3.5-flash",
+          contents: prompt
+        })
       });
-    };
+      const dataJson = await response.json();
+      if (dataJson.error) throw new Error(dataJson.error);
 
-    source.connect(processorRef.current);
-    processorRef.current.connect(audioContextRef.current.destination);
+      const aiText = dataJson.text?.trim() || "";
+      if (aiText) {
+        const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        setMessages(prev => [
+          ...prev,
+          {
+            id: Math.random().toString(36).substring(2, 9),
+            speaker: 'Coach',
+            text: aiText,
+            timestamp: now,
+            sentiment: 'neutral'
+          } as any
+        ]);
+        triggerRealtimeInsight(aiText);
+      }
+    } catch (err: any) {
+      console.error("Error generating AI Coach response:", err);
+      alert("Error al generar respuesta de Kira AI: " + err.message);
+    } finally {
+      setIsGeneratingReply(false);
+    }
+  };
+
+  const startSession = async () => {
+    try {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("La transcripción de voz por micrófono no está soportada en este navegador. Por favor usa Google Chrome, Safari o Microsoft Edge.");
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'es-ES';
+
+      recognition.onstart = () => {
+        console.log("Speech recognition started");
+        setIsRecording(true);
+        setStatus('running');
+        setInterimTranscript('');
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error:", event.error);
+        if (event.error === 'not-allowed') {
+          alert("Acceso al micrófono denegado o bloqueado. Por favor, habilita los permisos de micrófono en la configuración de tu navegador.");
+        }
+        setIsRecording(false);
+        setStatus('idle');
+      };
+
+      recognition.onend = () => {
+        console.log("Speech recognition ended");
+        setIsRecording(false);
+        setInterimTranscript('');
+      };
+
+      recognition.onresult = (event: any) => {
+        let interim = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const result = event.results[i];
+          const transcriptSegment = result[0].transcript;
+          if (result.isFinal) {
+            const cleanText = transcriptSegment.trim();
+            if (cleanText) {
+              const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              
+              setMessages(prev => {
+                const updated = [
+                  ...prev,
+                  {
+                    id: Math.random().toString(36).substring(2, 9),
+                    speaker: activeSpeaker,
+                    text: cleanText,
+                    timestamp: now,
+                    sentiment: 'neutral'
+                  } as any
+                ];
+                return updated;
+              });
+
+              triggerRealtimeInsight(cleanText);
+            }
+          } else {
+            interim += transcriptSegment;
+          }
+        }
+        setInterimTranscript(interim);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+
+    } catch (error: any) {
+      console.error("Error iniciando micrófono:", error);
+      alert("Error al iniciar el micrófono: " + error.message);
+    }
   };
 
   const stopSession = () => {
     setIsRecording(false);
     setStatus('summarizing');
-    sessionRef.current?.close();
-    if (processorRef.current) processorRef.current.disconnect();
-    if (audioContextRef.current) audioContextRef.current.close();
-    generateSummary();
-  };
-
-  const floatTo16BitPCM = (output: Float32Array) => {
-    const buffer = new ArrayBuffer(output.length * 2);
-    const view = new DataView(buffer);
-    for (let i = 0; i < output.length; i++) {
-        const s = Math.max(-1, Math.min(1, output[i]));
-        view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        console.error("Error stopping recognition:", err);
+      }
     }
-    return new Int16Array(buffer);
+    generateSummary(messages);
   };
 
   const processIAMessage = (text: string) => {
-    // Lógica para parsear etiquetas [COACH], [MOMENTO], etc.
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
     if (text.includes('[MOMENTO:')) {
       const content = text.match(/\[MOMENTO: (.*?)\]/)?.[1];
       if (content) addInsight({ type: 'moment', content, timestamp: now });
@@ -333,17 +401,6 @@ export default function SessionIntelligence() {
       const content = text.match(/\[SENTIMIENTO: (.*?)\]/)?.[1];
       if (content) {
         addInsight({ type: 'sentiment', content, timestamp: now });
-        // Actualizar sentimiento del último mensaje del cliente si aplica
-        setMessages(prev => {
-          const last = [...prev];
-          for (let i = last.length - 1; i >= 0; i--) {
-            if (last[i].speaker === 'Cliente') {
-              (last[i] as any).sentiment = content;
-              break;
-            }
-          }
-          return last;
-        });
       }
     }
   };
@@ -351,13 +408,12 @@ export default function SessionIntelligence() {
   const processUserTranscription = (text: string) => {
     const cleanText = text.trim();
     if (!cleanText) return;
-    
     setMessages(prev => [...prev, {
       id: Math.random().toString(36).substr(2, 9),
-      speaker: cleanText.toLowerCase().includes('hola coach') ? 'Cliente' : 'Coach', // Diarización simplificada para el demo
+      speaker: 'Cliente',
       text: cleanText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      sentiment: 'neutral' // Default
+      sentiment: 'neutral'
     } as any]);
   };
 
@@ -365,9 +421,19 @@ export default function SessionIntelligence() {
     setInsights(prev => [insight, ...prev]);
   };
 
-  const generateSummary = async () => {
+  const generateSummary = async (customMessages?: Message[]) => {
+    const listToUse = customMessages || messages;
     if (!user) return;
-    const fullTranscript = messages.map(m => `${m.speaker}: ${m.text}`).join('\n');
+    if (listToUse.length === 0) {
+      alert("No se ha registrado ninguna transcripción para analizar. Por favor habla por el micrófono o usa el Formulario Manual.");
+      setStatus('idle');
+      return;
+    }
+    
+    setStatus('summarizing');
+    setAnalysis(null);
+
+    const fullTranscript = listToUse.map(m => `${m.speaker}: ${m.text}`).join('\n');
     
     const prompt = `Actúa como un Psicólogo Organizacional y Coach de Alto Rendimiento. Analiza esta sesión de coaching de Kira Coach.
     
@@ -616,7 +682,40 @@ Cliente: Podría empezar por silenciar Slack a las 7:00 PM y comprometerme a no 
                   <MessageSquare size={18} className="text-indigo-500" />
                   Transcripción en Vivo
                 </h3>
-                {isRecording && <Activity className="text-indigo-500 animate-pulse" size={18} />}
+                <div className="flex items-center gap-2">
+                  {isRecording && (
+                    <div className="flex items-center gap-1.5 bg-indigo-50 px-3 py-1 rounded-xl text-xs font-bold text-indigo-700 border border-indigo-100">
+                      <span className="w-2 h-2 bg-indigo-600 rounded-full animate-ping shrink-0" />
+                      Hablando como:
+                      <select 
+                        value={activeSpeaker} 
+                        onChange={e => setActiveSpeaker(e.target.value as any)}
+                        className="bg-transparent border-none outline-none font-black text-indigo-800 cursor-pointer p-0 ml-1"
+                      >
+                        <option value="Cliente" className="bg-white text-slate-700">Cliente (Alumno)</option>
+                        <option value="Coach" className="bg-white text-slate-700">Coach (Tú)</option>
+                      </select>
+                    </div>
+                  )}
+                  {messages.length > 0 && (
+                    <button
+                      type="button"
+                      disabled={isGeneratingReply}
+                      onClick={generateAIPly}
+                      className="px-3 py-1.5 bg-indigo-600 text-white text-[11px] font-bold rounded-xl shadow-md shadow-indigo-100 hover:bg-indigo-700 transition disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      {isGeneratingReply ? (
+                        <>
+                          <Loader2 className="animate-spin" size={12} /> Kira pensando...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={12} /> Kira Responde (IA)
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
               
               <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-hide">
@@ -626,7 +725,16 @@ Cliente: Podría empezar por silenciar Slack a las 7:00 PM y comprometerme a no 
                       <div className="p-4 bg-slate-50 rounded-full">
                         <Mic size={32} />
                       </div>
-                      <p className="text-sm">Presiona "Iniciar Sesión" en el encabezado para comenzar a escuchar</p>
+                      <p className="text-sm font-medium text-slate-500 text-center px-6">
+                        Presiona "Iniciar Sesión" para comenzar a transcribir con tu micrófono en tiempo real.
+                      </p>
+                      <button 
+                        type="button"
+                        onClick={startSession}
+                        className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl text-xs transition-all shadow-xl shadow-indigo-100 flex items-center gap-2"
+                      >
+                        <Mic size={14} /> Activar Micrófono
+                      </button>
                     </div>
                   )}
                   {messages.map((m) => (
@@ -646,13 +754,25 @@ Cliente: Podría empezar por silenciar Slack a las 7:00 PM y comprometerme a no 
                           {m.speaker} • {m.timestamp}
                         </div>
                         <div className={`p-4 rounded-2xl text-sm leading-relaxed ${
-                          m.speaker === 'Coach' ? 'bg-indigo-50 text-indigo-900 rounded-tl-none' : 'bg-amber-50 text-amber-900 rounded-tr-none'
+                          m.speaker === 'Coach' ? 'bg-indigo-50 text-indigo-900 rounded-tl-none text-left' : 'bg-amber-50 text-amber-900 rounded-tr-none text-left'
                         }`}>
                           {m.text}
                         </div>
                       </div>
                     </motion.div>
                   ))}
+                  {isRecording && (
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl flex items-center gap-3 animate-pulse"
+                    >
+                      <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full animate-bounce shrink-0" />
+                      <div className="text-xs text-indigo-700 font-bold italic">
+                        {interimTranscript ? `Escuchando a ${activeSpeaker}: "${interimTranscript}"` : `Escuchando como ${activeSpeaker}... Di algo con tu micrófono.`}
+                      </div>
+                    </motion.div>
+                  )}
                 </AnimatePresence>
               </div>
             </div>
