@@ -82,7 +82,6 @@ const safeJoin = (arr: any[] | undefined, separator: string = ', '): string => {
 export default function SessionIntelligence() {
   const { user } = useAuth();
   
-  // Estados principales
   const [isRecording, setIsRecording] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
@@ -95,7 +94,6 @@ export default function SessionIntelligence() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   
-  // Estados del formulario manual
   const [sessionMode, setSessionMode] = useState<'live' | 'form'>('form');
   const [clientName, setClientName] = useState('Sofía Ramírez');
   const [sessionTopic, setSessionTopic] = useState('Gestión de Estrés Laboral');
@@ -107,16 +105,10 @@ export default function SessionIntelligence() {
   
   const recognitionRef = useRef<any>(null);
 
-  // ============================================
-  // EFECTOS
-  // ============================================
   useEffect(() => {
     fetchLastSession();
   }, [user]);
 
-  // ============================================
-  // FUNCIONES DE ANÁLISIS
-  // ============================================
   const fetchLastSession = async () => {
     if (!user) return;
     try {
@@ -235,9 +227,6 @@ export default function SessionIntelligence() {
     }
   };
 
-  // ============================================
-  // FUNCIONES DE VOZ (Live Mode)
-  // ============================================
   const startSession = async () => {
     try {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -321,9 +310,6 @@ export default function SessionIntelligence() {
     generateSummary(messages);
   };
 
-  // ============================================
-  // FUNCIÓN PARA GENERAR RESUMEN
-  // ============================================
   const generateSummary = async (customMessages?: Message[]) => {
     const listToUse = customMessages || messages;
     if (!user) return;
@@ -405,9 +391,6 @@ export default function SessionIntelligence() {
     }
   };
 
-  // ============================================
-  // MANEJO DEL FORMULARIO MANUAL
-  // ============================================
   const handleAnalyzeManualSession = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -505,7 +488,7 @@ export default function SessionIntelligence() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* ========== HEADER ========== */}
+        {/* HEADER */}
         <header className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-200">
@@ -540,7 +523,7 @@ export default function SessionIntelligence() {
           </div>
         </header>
 
-        {/* ========== SELECTOR DE MODO ========== */}
+        {/* SELECTOR DE MODO */}
         <div className="flex flex-wrap gap-2 bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 w-fit">
           <button 
             type="button"
@@ -566,10 +549,10 @@ export default function SessionIntelligence() {
           </button>
         </div>
 
-        {/* ========== GRID PRINCIPAL ========== */}
+        {/* GRID PRINCIPAL */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* ===== COLUMNA IZQUIERDA: Transcripción ===== */}
+          {/* COLUMNA IZQUIERDA: Transcripción */}
           <div className="lg:col-span-2">
             
             {/* MODO FORMULARIO */}
@@ -760,57 +743,49 @@ Cliente: Podría empezar por silenciar Slack a las 7 PM y no responder correos h
                   </div>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide">
-                  <AnimatePresence>
-                    {messages.length === 0 && !isRecording && (
-                      <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
-                        <div className="p-6 bg-slate-50 rounded-full">
-                          <Mic size={40} className="text-slate-300" />
-                        </div>
-                        <p className="text-sm font-medium text-slate-500 text-center max-w-sm">
-                          Presiona "Iniciar Sesión" para comenzar a transcribir con tu micrófono.
-                        </p>
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                  {messages.length === 0 && !isRecording && (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
+                      <div className="p-6 bg-slate-50 rounded-full">
+                        <Mic size={40} className="text-slate-300" />
                       </div>
-                    )}
-                    {messages.map((m) => (
-                      <motion.div 
-                        key={m.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className={`flex gap-3 ${m.speaker === 'Coach' ? '' : 'flex-row-reverse'}`}
-                      >
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                          m.speaker === 'Coach' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-600'
+                      <p className="text-sm font-medium text-slate-500 text-center max-w-sm">
+                        Presiona "Iniciar Sesión" para comenzar a transcribir con tu micrófono.
+                      </p>
+                    </div>
+                  )}
+                  {messages.map((m) => (
+                    <div 
+                      key={m.id}
+                      className={`flex gap-3 ${m.speaker === 'Coach' ? '' : 'flex-row-reverse'}`}
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                        m.speaker === 'Coach' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-600'
+                      }`}>
+                        {m.speaker === 'Coach' ? <Brain size={14} /> : <User size={14} />}
+                      </div>
+                      <div className={`max-w-[75%] ${m.speaker === 'Coach' ? '' : 'text-right'}`}>
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          {m.speaker} • {m.timestamp}
+                        </div>
+                        <div className={`p-3 rounded-2xl text-sm leading-relaxed mt-1 ${
+                          m.speaker === 'Coach' 
+                            ? 'bg-indigo-50 text-indigo-900 rounded-tl-none' 
+                            : 'bg-amber-50 text-amber-900 rounded-tr-none'
                         }`}>
-                          {m.speaker === 'Coach' ? <Brain size={14} /> : <User size={14} />}
+                          {m.text}
                         </div>
-                        <div className={`max-w-[75%] ${m.speaker === 'Coach' ? '' : 'text-right'}`}>
-                          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            {m.speaker} • {m.timestamp}
-                          </div>
-                          <div className={`p-3 rounded-2xl text-sm leading-relaxed mt-1 ${
-                            m.speaker === 'Coach' 
-                              ? 'bg-indigo-50 text-indigo-900 rounded-tl-none' 
-                              : 'bg-amber-50 text-amber-900 rounded-tr-none'
-                          }`}>
-                            {m.text}
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                    {isRecording && (
-                      <motion.div 
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-2xl flex items-center gap-3"
-                      >
-                        <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full animate-bounce" />
-                        <div className="text-xs text-indigo-700 font-medium">
-                          {interimTranscript ? `"${interimTranscript}"` : `Escuchando a ${activeSpeaker}...`}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                      </div>
+                    </div>
+                  ))}
+                  {isRecording && (
+                    <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-2xl flex items-center gap-3">
+                      <div className="w-2.5 h-2.5 bg-indigo-600 rounded-full animate-bounce" />
+                      <div className="text-xs text-indigo-700 font-medium">
+                        {interimTranscript ? `"${interimTranscript}"` : `Escuchando a ${activeSpeaker}...`}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {isRecording && (
@@ -828,9 +803,8 @@ Cliente: Podría empezar por silenciar Slack a las 7 PM y no responder correos h
             )}
           </div>
 
-          {/* ===== COLUMNA DERECHA: Insights ===== */}
+          {/* COLUMNA DERECHA: Insights */}
           <div className="space-y-6">
-            {/* Panel de Insights */}
             <div className="bg-slate-900 rounded-3xl p-5 shadow-xl text-white">
               <h3 className="font-bold mb-4 flex items-center gap-2 text-indigo-400">
                 <Sparkles size={18} />
@@ -839,48 +813,43 @@ Cliente: Podría empezar por silenciar Slack a las 7 PM y no responder correos h
               </h3>
               
               <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                <AnimatePresence>
-                  {insights.map((insight, idx) => (
-                    <motion.div 
-                      key={idx}
-                      initial={{ opacity: 0, x: 10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className={`p-3 rounded-xl border ${
-                        insight.type === 'moment' ? 'border-indigo-500/30 bg-indigo-500/10' :
-                        insight.type === 'action' ? 'border-emerald-500/30 bg-emerald-500/10' :
-                        insight.type === 'pattern' ? 'border-purple-500/30 bg-purple-500/10' :
-                        'border-amber-500/30 bg-amber-500/10'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start mb-1">
-                        <span className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                          insight.type === 'moment' ? 'bg-indigo-500 text-white' :
-                          insight.type === 'action' ? 'bg-emerald-500 text-white' :
-                          insight.type === 'pattern' ? 'bg-purple-500 text-white' :
-                          'bg-amber-500 text-white'
-                        }`}>
-                          {insight.type === 'moment' ? 'Momento' :
-                           insight.type === 'action' ? 'Acción' :
-                           insight.type === 'pattern' ? 'Patrón' : 'Sentimiento'}
-                        </span>
-                        <span className="text-[9px] text-slate-500">{insight.timestamp}</span>
-                      </div>
-                      <p className="text-xs text-slate-300 leading-relaxed">
-                        {insight.content}
-                      </p>
-                    </motion.div>
-                  ))}
-                  {insights.length === 0 && (
-                    <div className="py-8 text-center text-slate-600">
-                      <p className="text-sm">Esperando hallazgos...</p>
-                      <p className="text-xs text-slate-700 mt-1">Los insights aparecerán aquí automáticamente</p>
+                {insights.map((insight, idx) => (
+                  <div 
+                    key={idx}
+                    className={`p-3 rounded-xl border ${
+                      insight.type === 'moment' ? 'border-indigo-500/30 bg-indigo-500/10' :
+                      insight.type === 'action' ? 'border-emerald-500/30 bg-emerald-500/10' :
+                      insight.type === 'pattern' ? 'border-purple-500/30 bg-purple-500/10' :
+                      'border-amber-500/30 bg-amber-500/10'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <span className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                        insight.type === 'moment' ? 'bg-indigo-500 text-white' :
+                        insight.type === 'action' ? 'bg-emerald-500 text-white' :
+                        insight.type === 'pattern' ? 'bg-purple-500 text-white' :
+                        'bg-amber-500 text-white'
+                      }`}>
+                        {insight.type === 'moment' ? 'Momento' :
+                         insight.type === 'action' ? 'Acción' :
+                         insight.type === 'pattern' ? 'Patrón' : 'Sentimiento'}
+                      </span>
+                      <span className="text-[9px] text-slate-500">{insight.timestamp}</span>
                     </div>
-                  )}
-                </AnimatePresence>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      {insight.content}
+                    </p>
+                  </div>
+                ))}
+                {insights.length === 0 && (
+                  <div className="py-8 text-center text-slate-600">
+                    <p className="text-sm">Esperando hallazgos...</p>
+                    <p className="text-xs text-slate-700 mt-1">Los insights aparecerán aquí automáticamente</p>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Estado de la sesión */}
             <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Estado de la Sesión</h4>
               <div className="space-y-2">
@@ -914,19 +883,14 @@ Cliente: Podría empezar por silenciar Slack a las 7 PM y no responder correos h
                   </button>
                 )}
                 {showHistory && lastSession && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="mt-2 p-3 bg-slate-50 rounded-xl text-xs text-slate-600 space-y-1"
-                  >
+                  <div className="mt-2 p-3 bg-slate-50 rounded-xl text-xs text-slate-600 space-y-1">
                     <p><span className="font-bold">Resumen:</span> {lastSession.resumen_ejecutivo}</p>
                     <p><span className="font-bold">Patrones:</span> {safeJoin(lastSession.patrones_detectados) || 'Ninguno'}</p>
-                  </motion.div>
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* Indicador de sesión anterior */}
             {lastSession && !showHistory && (
               <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 text-center">
                 <p className="text-xs text-indigo-600 font-medium">
@@ -938,151 +902,137 @@ Cliente: Podría empezar por silenciar Slack a las 7 PM y no responder correos h
           </div>
         </div>
 
-        {/* ========== ANÁLISIS COMPLETO ========== */}
-        <AnimatePresence>
-          {analysis && (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-6"
-            >
-              {/* Encabezado del análisis */}
-              <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-3xl p-6 text-white shadow-xl flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-bold flex items-center gap-2">
-                    <Brain size={24} />
-                    Análisis de Sesión
-                  </h2>
-                  <p className="text-indigo-200 text-sm">Resumen ejecutivo y métricas de evolución</p>
-                </div>
-                <button
-                  onClick={() => setAnalysis(null)}
-                  className="text-white/70 hover:text-white text-sm font-medium bg-white/20 px-4 py-2 rounded-xl transition"
-                >
-                  Cerrar
-                </button>
+        {/* ANÁLISIS COMPLETO */}
+        {analysis && (
+          <div className="space-y-6">
+            <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-3xl p-6 text-white shadow-xl flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Brain size={24} />
+                  Análisis de Sesión
+                </h2>
+                <p className="text-indigo-200 text-sm">Resumen ejecutivo y métricas de evolución</p>
+              </div>
+              <button
+                onClick={() => setAnalysis(null)}
+                className="text-white/70 hover:text-white text-sm font-medium bg-white/20 px-4 py-2 rounded-xl transition"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
+                <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+                  <FileText size={18} className="text-indigo-600" />
+                  Resumen Ejecutivo
+                </h3>
+                <p className="text-slate-600 leading-relaxed text-sm italic">
+                  "{analysis.resumen_ejecutivo}"
+                </p>
+                
+                {analysis.metrics && (
+                  <div className="mt-4 grid grid-cols-3 gap-2 pt-4 border-t border-slate-100">
+                    {[
+                      { label: 'Confianza', val: analysis.metrics.confidence, color: 'text-blue-600' },
+                      { label: 'Claridad', val: analysis.metrics.clarity, color: 'text-indigo-600' },
+                      { label: 'Energía', val: analysis.metrics.energy, color: 'text-amber-600' }
+                    ].map((m, i) => (
+                      <div key={i} className="text-center">
+                        <div className="text-lg font-black text-slate-800">{m.val}/10</div>
+                        <div className={`text-[10px] font-bold uppercase ${m.color}`}>{m.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Resumen Ejecutivo */}
+              {analysis.focus_heatmap && (
                 <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
                   <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
-                    <FileText size={18} className="text-indigo-600" />
-                    Resumen Ejecutivo
+                    <TrendingUp size={18} className="text-indigo-600" />
+                    Mapa de Calor de Enfoque
                   </h3>
-                  <p className="text-slate-600 leading-relaxed text-sm italic">
-                    "{analysis.resumen_ejecutivo}"
-                  </p>
-                  
-                  {analysis.metrics && (
-                    <div className="mt-4 grid grid-cols-3 gap-2 pt-4 border-t border-slate-100">
-                      {[
-                        { label: 'Confianza', val: analysis.metrics.confidence, color: 'text-blue-600' },
-                        { label: 'Claridad', val: analysis.metrics.clarity, color: 'text-indigo-600' },
-                        { label: 'Energía', val: analysis.metrics.energy, color: 'text-amber-600' }
-                      ].map((m, i) => (
-                        <div key={i} className="text-center">
-                          <div className="text-lg font-black text-slate-800">{m.val}/10</div>
-                          <div className={`text-[10px] font-bold uppercase ${m.color}`}>{m.label}</div>
-                        </div>
-                      ))}
+                  <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden flex mb-3">
+                    <div style={{ width: `${analysis.focus_heatmap.pasado_problemas}%` }} className="bg-rose-400 h-full" />
+                    <div style={{ width: `${analysis.focus_heatmap.presente}%` }} className="bg-amber-400 h-full" />
+                    <div style={{ width: `${analysis.focus_heatmap.futuro_soluciones}%` }} className="bg-emerald-400 h-full" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-[10px] font-bold">
+                    <div className="flex items-center gap-1 text-rose-600">
+                      <div className="w-2 h-2 bg-rose-400 rounded-full" /> Pasado ({analysis.focus_heatmap.pasado_problemas}%)
                     </div>
-                  )}
+                    <div className="flex items-center gap-1 text-amber-600">
+                      <div className="w-2 h-2 bg-amber-400 rounded-full" /> Presente ({analysis.focus_heatmap.presente}%)
+                    </div>
+                    <div className="flex items-center gap-1 text-emerald-600">
+                      <div className="w-2 h-2 bg-emerald-400 rounded-full" /> Futuro ({analysis.focus_heatmap.futuro_soluciones}%)
+                    </div>
+                  </div>
                 </div>
+              )}
 
-                {/* Mapa de Calor */}
-                {analysis.focus_heatmap && (
-                  <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
-                    <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
-                      <TrendingUp size={18} className="text-indigo-600" />
-                      Mapa de Calor de Enfoque
-                    </h3>
-                    <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden flex mb-3">
-                      <div style={{ width: `${analysis.focus_heatmap.pasado_problemas}%` }} className="bg-rose-400 h-full" />
-                      <div style={{ width: `${analysis.focus_heatmap.presente}%` }} className="bg-amber-400 h-full" />
-                      <div style={{ width: `${analysis.focus_heatmap.futuro_soluciones}%` }} className="bg-emerald-400 h-full" />
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-[10px] font-bold">
-                      <div className="flex items-center gap-1 text-rose-600">
-                        <div className="w-2 h-2 bg-rose-400 rounded-full" /> Pasado ({analysis.focus_heatmap.pasado_problemas}%)
-                      </div>
-                      <div className="flex items-center gap-1 text-amber-600">
-                        <div className="w-2 h-2 bg-amber-400 rounded-full" /> Presente ({analysis.focus_heatmap.presente}%)
-                      </div>
-                      <div className="flex items-center gap-1 text-emerald-600">
-                        <div className="w-2 h-2 bg-emerald-400 rounded-full" /> Futuro ({analysis.focus_heatmap.futuro_soluciones}%)
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Compromisos */}
-                {analysis.nuevos_compromisos.length > 0 && (
-                  <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
-                    <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
-                      <Zap size={18} className="text-emerald-600" />
-                      Compromisos y Acciones
-                    </h3>
-                    <div className="space-y-2">
-                      {analysis.nuevos_compromisos.map((c, i) => (
-                        <div key={i} className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex justify-between items-center">
-                          <div>
-                            <p className="text-sm font-medium text-emerald-900">{c.tarea}</p>
-                            <p className="text-[10px] text-emerald-500">📅 {c.deadline}</p>
-                          </div>
-                          <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg ${
-                            c.priority === 'alta' ? 'bg-emerald-600 text-white' : 'bg-emerald-200 text-emerald-700'
-                          }`}>
-                            {c.priority}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Patrones */}
-                {analysis.patrones_detectados.length > 0 && (
-                  <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
-                    <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
-                      <History size={18} className="text-amber-600" />
-                      Patrones Detectados
-                    </h3>
-                    <ul className="space-y-2">
-                      {analysis.patrones_detectados.map((p, i) => (
-                        <li key={i} className="text-sm text-slate-600 flex gap-2 p-2 bg-amber-50 rounded-xl border border-amber-100">
-                          <div className="w-1.5 h-1.5 bg-amber-400 rounded-full mt-1.5" />
-                          {p}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Mantra */}
-                {analysis.personal_mantra && (
-                  <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl p-6 text-white shadow-xl lg:col-span-2 text-center">
-                    <h3 className="text-xs font-black uppercase tracking-wider text-indigo-200 mb-2">✨ Mantra de Poder Personal</h3>
-                    <p className="text-2xl font-serif italic">"{analysis.personal_mantra}"</p>
-                  </div>
-                )}
-
-                {/* Sugerencia próxima sesión */}
-                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm lg:col-span-2">
-                  <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
-                    <Star size={18} className="text-amber-500" />
-                    Sugerencia para la Próxima Sesión
+              {analysis.nuevos_compromisos.length > 0 && (
+                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
+                  <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+                    <Zap size={18} className="text-emerald-600" />
+                    Compromisos y Acciones
                   </h3>
-                  <p className="text-slate-600 text-sm bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    {analysis.sugerencia_proxima_sesion}
-                  </p>
+                  <div className="space-y-2">
+                    {analysis.nuevos_compromisos.map((c, i) => (
+                      <div key={i} className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 flex justify-between items-center">
+                        <div>
+                          <p className="text-sm font-medium text-emerald-900">{c.tarea}</p>
+                          <p className="text-[10px] text-emerald-500">📅 {c.deadline}</p>
+                        </div>
+                        <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg ${
+                          c.priority === 'alta' ? 'bg-emerald-600 text-white' : 'bg-emerald-200 text-emerald-700'
+                        }`}>
+                          {c.priority}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
+              )}
+
+              {analysis.patrones_detectados.length > 0 && (
+                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
+                  <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+                    <History size={18} className="text-amber-600" />
+                    Patrones Detectados
+                  </h3>
+                  <ul className="space-y-2">
+                    {analysis.patrones_detectados.map((p, i) => (
+                      <li key={i} className="text-sm text-slate-600 flex gap-2 p-2 bg-amber-50 rounded-xl border border-amber-100">
+                        <div className="w-1.5 h-1.5 bg-amber-400 rounded-full mt-1.5" />
+                        {p}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {analysis.personal_mantra && (
+                <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl p-6 text-white shadow-xl lg:col-span-2 text-center">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-indigo-200 mb-2">✨ Mantra de Poder Personal</h3>
+                  <p className="text-2xl font-serif italic">"{analysis.personal_mantra}"</p>
+                </div>
+              )}
+
+              <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm lg:col-span-2">
+                <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                  <Star size={18} className="text-amber-500" />
+                  Sugerencia para la Próxima Sesión
+                </h3>
+                <p className="text-slate-600 text-sm bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  {analysis.sugerencia_proxima_sesion}
+                </p>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </div>
+          </div>
+        )}
 
-        {/* ========== LOADING ========== */}
         {status === 'summarizing' && !analysis && (
           <div className="bg-white rounded-3xl p-12 border border-slate-100 flex flex-col items-center justify-center text-center space-y-4">
             <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
@@ -1093,7 +1043,6 @@ Cliente: Podría empezar por silenciar Slack a las 7 PM y no responder correos h
           </div>
         )}
 
-        {/* ========== FOOTER ========== */}
         <footer className="text-center text-xs text-slate-400 py-4 border-t border-slate-100">
           <p>Kira Coach • Inteligencia de Sesión v2.0 • {new Date().getFullYear()}</p>
         </footer>
