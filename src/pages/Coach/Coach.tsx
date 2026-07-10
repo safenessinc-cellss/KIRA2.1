@@ -3,7 +3,7 @@ import { useAuth } from '@/src/hooks/useAuth';
 import { storage, db, handleFirestoreError, OperationType } from '@/src/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, orderBy, limit, onSnapshot, deleteDoc } from 'firebase/firestore';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { MediaUpload } from '@/src/components/MediaUpload';
 import { CoachAnalytics } from '@/src/components/CoachAnalytics';
 import { useToast } from '@/src/hooks/useToast';
@@ -135,23 +135,48 @@ type CoachTab = 'dashboard' | 'courses' | 'tracking' | 'nexus' | 'register' | 'a
 
 export function CoachDashboard() {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [profile, setProfile] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<CoachTab>('dashboard');
-
-  useEffect(() => {
-    const tabParam = searchParams.get('tab');
+  
+  const [activeTab, setActiveTab] = useState<CoachTab>(() => {
+    if (location.pathname === '/coach/courses') {
+      return 'courses';
+    }
+    const tabParam = new URLSearchParams(location.search).get('tab');
     if (tabParam) {
       const validTabs: CoachTab[] = ['dashboard', 'courses', 'tracking', 'nexus', 'register', 'automation', 'profile', 'analytics', 'certificates', 'books', 'homework', 'crm_audit', 'support'];
       if (validTabs.includes(tabParam as CoachTab)) {
-        setActiveTab(tabParam as CoachTab);
+        return tabParam as CoachTab;
       }
     }
-  }, [searchParams]);
+    return 'dashboard';
+  });
+
+  useEffect(() => {
+    if (location.pathname === '/coach/courses') {
+      setActiveTab('courses');
+    } else {
+      const tabParam = searchParams.get('tab');
+      if (tabParam) {
+        const validTabs: CoachTab[] = ['dashboard', 'courses', 'tracking', 'nexus', 'register', 'automation', 'profile', 'analytics', 'certificates', 'books', 'homework', 'crm_audit', 'support'];
+        if (validTabs.includes(tabParam as CoachTab)) {
+          setActiveTab(tabParam as CoachTab);
+        }
+      } else {
+        setActiveTab('dashboard');
+      }
+    }
+  }, [location.pathname, searchParams]);
 
   const handleTabChange = (tab: CoachTab) => {
     setActiveTab(tab);
-    setSearchParams({ tab });
+    if (tab === 'courses') {
+      navigate('/coach/courses');
+    } else {
+      navigate(`/coach?tab=${tab}`);
+    }
   };
 
   useEffect(() => {
@@ -699,7 +724,7 @@ function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Link to="/coach?tab=courses" className="group block">
+            <Link to="/coach/courses" className="group block">
               <QuickAction title="Studio de Cursos" desc="Diseña programas y gestiona alumnos" icon={<GraduationCap size={24} className="text-violet-600" />} />
             </Link>
             <Link to="/coach/session" className="group block">
