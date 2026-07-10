@@ -118,7 +118,7 @@ export function AIChat() {
       <button
         onClick={() => setOpen(true)}
         className={cn(
-          "fixed bottom-8 right-8 group z-50 transition-all duration-500 ease-out",
+          "fixed bottom-8 left-8 group z-50 transition-all duration-500 ease-out",
           open ? "opacity-0 translate-y-8 pointer-events-none" : "opacity-100 translate-y-0"
         )}
       >
@@ -130,7 +130,7 @@ export function AIChat() {
       </button>
 
       {open && (
-        <div className="fixed bottom-6 right-6 w-[360px] sm:w-[420px] h-[600px] max-h-[85vh] bg-slate-900/95 backdrop-blur-2xl rounded-[32px] shadow-[0_0_50px_rgba(99,102,241,0.2)] overflow-hidden flex flex-col z-[60] border border-white/10 ring-1 ring-cyan-500/10 animate-in slide-in-from-bottom-10 fade-in duration-300">
+        <div className="fixed bottom-6 left-6 w-[360px] sm:w-[420px] h-[600px] max-h-[85vh] bg-slate-900/95 backdrop-blur-2xl rounded-[32px] shadow-[0_0_50px_rgba(99,102,241,0.2)] overflow-hidden flex flex-col z-[60] border border-white/10 ring-1 ring-cyan-500/10 animate-in slide-in-from-bottom-10 fade-in duration-300 origin-bottom-left">
           
           <div className="relative p-6 border-b border-white/5 overflow-hidden shrink-0">
             <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/20 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none" />
