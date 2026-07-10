@@ -77,7 +77,7 @@ export function DashboardLayout({ title }: { title: string }) {
     ],
     coach: [
       { to: "/coach", icon: Activity, label: "Gestión Académica" },
-      { to: "/coach?tab=courses", icon: BookOpen, label: "Studio de Cursos" },
+      { to: "/coach/courses", icon: BookOpen, label: "Studio de Cursos" },
       { to: "/coach/profile", icon: Users, label: "Perfil Coach" },
     ],
     alumno: [
@@ -101,10 +101,19 @@ export function DashboardLayout({ title }: { title: string }) {
         
         <nav className="flex-1 space-y-1">
           {currentLinks.map((l) => {
-            const [lPath, lQuery] = l.to.split('?');
-            const isActive = lQuery
-              ? location.pathname === lPath && location.search.includes(lQuery)
-              : (location.pathname === lPath && !location.search.includes('tab=courses')) || (location.pathname.startsWith(l.to + '/') && l.to !== '/');
+            const isActive = (() => {
+              if (l.to === "/coach") {
+                return location.pathname === "/coach" && !location.search.includes("tab=courses") && !location.pathname.startsWith("/coach/courses");
+              }
+              if (l.to === "/coach/courses") {
+                return location.pathname === "/coach/courses" || (location.pathname === "/coach" && location.search.includes("tab=courses"));
+              }
+              const [lPath, lQuery] = l.to.split('?');
+              if (lQuery) {
+                return location.pathname === lPath && location.search.includes(lQuery);
+              }
+              return location.pathname === lPath || (location.pathname.startsWith(l.to + '/') && l.to !== '/');
+            })();
             return (
               <Link 
                 key={l.to} 
