@@ -1,19 +1,28 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from '../components/Brand';
-import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles } from 'lucide-react';
+import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart } from 'lucide-react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { ChatWidget } from '../components/Chat';
 import { NotificationCenter } from '../components/Notifications';
+import { useCart } from '../components/CartProvider';
 import { auth, db } from '../firebase';
 import { doc, updateDoc, collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { sendEmailVerification } from 'firebase/auth';
 
 export function DashboardLayout({ title }: { title: string }) {
   const { user, logout, role, loading } = useAuth();
+  const { cartCount, setIsCartOpen } = useCart();
   const location = useLocation();
   const [toast, setToast] = useState<{ title: string; message: string } | null>(null);
+
+  const emailLower = user?.email?.toLowerCase();
+  const rawDisplayName = user?.displayName || '';
+  const isSafeness = emailLower === 'safeness.c.a@gmail.com' || rawDisplayName.toLowerCase() === 'safeness' || rawDisplayName.toLowerCase() === 'safeness.c.a';
+  
+  const displayProfileName = isSafeness ? 'Kira Coach' : (user?.displayName || 'Usuario');
+  const displayProfileInitial = isSafeness ? 'K' : (user?.displayName?.charAt(0).toUpperCase() || 'U');
 
   useEffect(() => {
     if (user?.theme) {
@@ -62,15 +71,13 @@ export function DashboardLayout({ title }: { title: string }) {
   const links = {
     admin: [
       { to: "/admin", icon: LayoutDashboard, label: "Command Center" },
-      { to: "/coach", icon: Activity, label: "Gestión Académica" },
-      { to: "/coach/courses", icon: BookOpen, label: "Studio de Cursos" },
     ],
     hr_admin: [
       { to: "/hr", icon: Users, label: "Culture & Health" },
     ],
     coach: [
       { to: "/coach", icon: Activity, label: "Gestión Académica" },
-      { to: "/coach/courses", icon: BookOpen, label: "Studio de Cursos" },
+      { to: "/coach?tab=courses", icon: BookOpen, label: "Studio de Cursos" },
       { to: "/coach/profile", icon: Users, label: "Perfil Coach" },
     ],
     alumno: [
@@ -94,7 +101,10 @@ export function DashboardLayout({ title }: { title: string }) {
         
         <nav className="flex-1 space-y-1">
           {currentLinks.map((l) => {
-            const isActive = location.pathname === l.to || (location.pathname.startsWith(l.to + '/') && l.to !== '/');
+            const [lPath, lQuery] = l.to.split('?');
+            const isActive = lQuery
+              ? location.pathname === lPath && location.search.includes(lQuery)
+              : (location.pathname === lPath && !location.search.includes('tab=courses')) || (location.pathname.startsWith(l.to + '/') && l.to !== '/');
             return (
               <Link 
                 key={l.to} 
@@ -147,11 +157,18 @@ export function DashboardLayout({ title }: { title: string }) {
               />
             ) : (
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                {user?.displayName?.charAt(0).toUpperCase() || 'U'}
+                {displayProfileInitial}
               </div>
             )}
             <div className="text-sm truncate">
-              <p className="font-semibold text-slate-600 truncate">{user?.displayName || 'Usuario'}</p>
+              <p className="font-semibold text-slate-600 truncate">
+                {displayProfileName}
+              </p>
+              {user?.email && (
+                <p className="text-[11px] text-slate-400 truncate mt-0.5" title={user.email}>
+                  {user.email}
+                </p>
+              )}
             </div>
           </div>
           <button 
@@ -189,9 +206,27 @@ export function DashboardLayout({ title }: { title: string }) {
         )}
 
         <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between">
-          <div className="font-semibold text-slate-500">Bienvenido, {role === 'admin' ? 'Super Admin' : user?.displayName}</div>
+          <div className="font-semibold text-slate-500">
+            Bienvenido, {displayProfileName}
+          </div>
           <div className="flex items-center gap-4">
             <NotificationCenter />
+            
+            {/* Shopping Cart Trigger Icon */}
+            <button
+              onClick={() => setIsCartOpen(true)}
+              className="relative w-10 h-10 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 transition-all cursor-pointer border border-slate-200/40 active:scale-95"
+              title="Ver Carrito"
+              id="header-cart-trigger"
+            >
+              <ShoppingCart size={18} />
+              {cartCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white font-black text-[9px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+
             {role === 'coach' && (
               <span className="text-xs px-2 py-1 bg-emerald-50 text-emerald-600 rounded-full font-semibold">
                 Membresía Activa
