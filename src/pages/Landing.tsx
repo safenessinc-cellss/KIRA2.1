@@ -1523,7 +1523,7 @@ export function Landing() {
         href={communityLink}
         target="_blank"
         rel="noopener noreferrer"
-        className="fixed bottom-6 left-6 z-50 flex items-center gap-2 px-5 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-full shadow-lg hover:shadow-emerald-500/20 transition-all duration-300 transform hover:-translate-y-1 active:scale-95 text-xs font-black uppercase tracking-wider cursor-pointer"
+        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-5 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white rounded-full shadow-lg hover:shadow-emerald-500/20 transition-all duration-300 transform hover:-translate-y-1 active:scale-95 text-xs font-black uppercase tracking-wider cursor-pointer"
         id="landing-floating-community-btn"
       >
         <span className="flex h-2 w-2 relative">
@@ -1701,7 +1701,7 @@ Implementa las siguientes capas de lógica:
       <button 
         onClick={() => setIsOpen(true)}
         className={cn(
-          "fixed bottom-6 right-6 w-14 h-14 bg-kirateal outline-none hover:bg-kirateal-light text-white rounded-full shadow-xl hover:shadow-2xl hover:shadow-kirateal-dark/20 transition-all duration-300 flex items-center justify-center group z-50",
+          "fixed bottom-6 left-6 w-14 h-14 bg-kirateal outline-none hover:bg-kirateal-light text-white rounded-full shadow-xl hover:shadow-2xl hover:shadow-kirateal-dark/20 transition-all duration-300 flex items-center justify-center group z-50",
           isOpen ? "scale-0 opacity-0 pointer-events-none" : "scale-100 opacity-100"
         )}
       >
@@ -1712,7 +1712,7 @@ Implementa las siguientes capas de lógica:
       {/* Chat Window */}
       <div 
         className={cn(
-          "fixed bottom-6 right-6 w-[350px] sm:w-[380px] h-[550px] max-h-[80vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col transition-all duration-500 ease-out z-50 origin-bottom-right border border-slate-200",
+          "fixed bottom-6 left-6 w-[350px] sm:w-[380px] h-[550px] max-h-[80vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col transition-all duration-500 ease-out z-50 origin-bottom-left border border-slate-200",
           isOpen ? "scale-100 opacity-100" : "scale-95 opacity-0 pointer-events-none"
         )}
       >
