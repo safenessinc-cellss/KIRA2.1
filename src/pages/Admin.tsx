@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
-import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, MessageSquare } from 'lucide-react';
+import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
+import { AdminBooksView } from './AdminBooksView';
 import { cn } from '../lib/utils';
-import { CoachChat } from '../components/CoachChat';
+import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'chat';
+type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books';
 
 export function AdminMonitor() {
   const { user } = useAuth();
@@ -43,9 +44,10 @@ export function AdminMonitor() {
     { id: 'campaign_history', label: 'Ciberseguridad y Logs', icon: <ShieldAlert size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
     { id: 'ai_coaches', label: 'IA para Coaches', icon: <Sparkles size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
 
+    { id: 'approvals', label: 'Aprobaciones de Usuarios', icon: <ShieldCheck size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
     { id: 'coaches', label: 'Estrategia de Coaches', icon: <UserCheck size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
     { id: 'students', label: 'Directorio 360 de Alumnos', icon: <Users size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
-    { id: 'chat', label: 'Chat Privado', icon: <MessageSquare size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
+    { id: 'books', label: 'Biblioteca de Libros', icon: <BookOpen size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
     { id: 'content', label: 'CMS Académico', icon: <ShoppingBag size={18}/>, category: 'Operaciones Académicas', perm: 'billing' },
 
     { id: 'promotions', label: 'Gestión de Promociones', icon: <Star size={18}/>, category: 'Crecimiento y Marketing', perm: 'billing' },
@@ -165,8 +167,9 @@ export function AdminMonitor() {
         {activeTab === 'ai_coaches' && hasPerm(navItems.find(i=>i.id==='ai_coaches')) && <AICoachesView />}
 
         {activeTab === 'coaches' && hasPerm(navItems.find(i=>i.id==='coaches')) && <CoachCuratorView />}
+        {activeTab === 'approvals' && hasPerm(navItems.find(i=>i.id==='approvals')) && <UserApprovalsView />}
         {activeTab === 'students' && hasPerm(navItems.find(i=>i.id==='students')) && <StudentManagementView />}
-        {activeTab === 'chat' && hasPerm(navItems.find(i=>i.id==='chat')) && <CoachChat className="h-[500px] max-w-3xl mx-auto rounded-3xl" />}
+        {activeTab === 'books' && hasPerm(navItems.find(i=>i.id==='books')) && <AdminBooksView />}
         {activeTab === 'content' && hasPerm(navItems.find(i=>i.id==='content')) && <CMSView />}
         {activeTab === 'promotions' && hasPerm(navItems.find(i=>i.id==='promotions')) && <PromotionsManagerView />}
 
@@ -1199,61 +1202,186 @@ function ProgressStat({ label, value, total, color }: { label: string, value: nu
 // --- MODULO DE AUTORIZACIONES ---
 function UserApprovalsView() {
   const [candidates, setCandidates] = useState<any[]>([]);
+  const [filterRole, setFilterRole] = useState<'all' | 'coach' | 'alumno'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const { success: toastSuccess, error: toastError } = useToast();
 
   useEffect(() => {
     const q = query(collection(db, 'users'), where('approvalStatus', '==', 'pending'));
     const unsubscribe = onSnapshot(q, (snap) => {
       setCandidates(snap.docs.map(d => ({id: d.id, ...d.data()})));
+    }, (error) => {
+      console.error("Error fetching approvals:", error);
     });
     return () => unsubscribe();
   }, []);
 
-  const handleAction = async (id: string, action: 'approved' | 'rejected') => {
+  const handleAction = async (id: string, name: string, role: string, action: 'approved' | 'rejected') => {
     try {
       await updateDoc(doc(db, 'users', id), { approvalStatus: action });
-    } catch (e) {
+      if (action === 'approved') {
+        toastSuccess(`¡${role === 'coach' ? 'Coach' : 'Alumno'} ${name} autorizado con éxito!`);
+      } else {
+        toastSuccess(`Solicitud de ${name} rechazada.`);
+      }
+    } catch (e: any) {
+      toastError(`Error al procesar la acción: ${e.message || String(e)}`);
       handleFirestoreError(e, OperationType.UPDATE, `users/${id}`);
     }
   };
 
+  const filteredCandidates = candidates.filter(c => {
+    const matchesRole = filterRole === 'all' || c.role === filterRole;
+    const matchesSearch = !searchTerm || 
+      (c.displayName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.email || '').toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesRole && matchesSearch;
+  });
+
+  const coachPendingCount = candidates.filter(c => c.role === 'coach').length;
+  const studentPendingCount = candidates.filter(c => c.role === 'alumno').length;
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden animate-in fade-in">
-      <div className="px-6 py-4 border-b border-slate-100 bg-amber-50/50">
-        <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-          <ShieldCheck size={18} className="text-amber-600" /> Solicitudes de Autorización
-        </h3>
+    <div className="flex flex-col gap-6 animate-in fade-in">
+      {/* Tarjetas de Métricas de Aprobación */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Pendientes</h4>
+          <p className="text-3xl font-black text-slate-800">{candidates.length}</p>
+        </div>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Coaches Pendientes</h4>
+          <p className="text-3xl font-black text-amber-600">{coachPendingCount}</p>
+        </div>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1">Alumnos Pendientes</h4>
+          <p className="text-3xl font-black text-teal-600">{studentPendingCount}</p>
+        </div>
       </div>
-      <div className="p-6 space-y-4">
-        {candidates.map(c => (
-          <div key={c.id} className="flex items-center justify-between p-4 border border-slate-100 rounded-xl hover:shadow-md transition-shadow">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold uppercase">
-                {c.displayName?.[0] || 'U'}
-              </div>
-              <div>
-                <p className="font-semibold text-slate-800">{c.displayName || 'Sin Nombre'}</p>
-                <p className="text-xs text-slate-500">{c.email} • Rol: {c.role}</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button 
-                onClick={() => handleAction(c.id, 'rejected')}
-                className="px-3 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-              >
-                Rechazar
-              </button>
-              <button 
-                onClick={() => handleAction(c.id, 'approved')}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors"
-              >
-                Autorizar
-              </button>
-            </div>
+
+      {/* Contenedor Principal */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 className="font-bold text-slate-800 text-sm">Bandeja de Autorizaciones</h3>
+            <p className="text-[11px] text-slate-500 mt-0.5">Aprueba el acceso de Alumnos y la facultad de publicar cursos de los Coaches.</p>
           </div>
-        ))}
-        {candidates.length === 0 && (
-          <div className="text-center py-8 text-slate-400 italic text-sm">No hay solicitudes pendientes.</div>
-        )}
+          
+          {/* Filtros */}
+          <div className="flex items-center gap-2 self-start sm:self-center">
+            <button
+              onClick={() => setFilterRole('all')}
+              className={cn(
+                "px-3 py-1 rounded-full text-xs font-bold transition-all",
+                filterRole === 'all' ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
+            >
+              Todos ({candidates.length})
+            </button>
+            <button
+              onClick={() => setFilterRole('coach')}
+              className={cn(
+                "px-3 py-1 rounded-full text-xs font-bold transition-all",
+                filterRole === 'coach' ? "bg-amber-500 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
+            >
+              Coaches ({coachPendingCount})
+            </button>
+            <button
+              onClick={() => setFilterRole('alumno')}
+              className={cn(
+                "px-3 py-1 rounded-full text-xs font-bold transition-all",
+                filterRole === 'alumno' ? "bg-teal-500 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
+            >
+              Alumnos ({studentPendingCount})
+            </button>
+          </div>
+        </div>
+
+        {/* Barra de búsqueda de candidatos */}
+        <div className="p-4 border-b border-slate-100 bg-slate-50/20">
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+            <input
+              type="text"
+              placeholder="Buscar por nombre o correo electrónico..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-2 text-xs outline-none focus:border-cyan-500 shadow-sm"
+            />
+          </div>
+        </div>
+
+        {/* Lista de solicitudes */}
+        <div className="p-6 space-y-4">
+          {filteredCandidates.map(c => (
+            <div key={c.id} className="flex flex-col md:flex-row md:items-center justify-between p-5 border border-slate-100 rounded-xl hover:shadow-md transition-shadow gap-4 bg-white">
+              <div className="flex items-start gap-4 flex-1">
+                <div className="w-12 h-12 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 font-black uppercase text-sm shrink-0">
+                  {c.displayName?.[0] || 'U'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-bold text-slate-800 text-sm leading-tight">{c.displayName || 'Sin Nombre'}</p>
+                    <span className={cn(
+                      "px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider",
+                      c.role === 'coach' ? "bg-amber-100 text-amber-700" : "bg-teal-100 text-teal-700"
+                    )}>
+                      {c.role === 'coach' ? 'Coach' : 'Alumno'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">{c.email}</p>
+                  
+                  {/* Detalles adicionales del coach */}
+                  {c.role === 'coach' && (
+                    <div className="mt-3 bg-slate-50 p-3 rounded-lg border border-slate-100 text-xs">
+                      {c.specialty && (
+                        <p className="text-slate-700 font-semibold mb-1">
+                          <span className="text-slate-400 font-normal">Especialidad:</span> {c.specialty}
+                        </p>
+                      )}
+                      {c.bio ? (
+                        <p className="text-slate-600 italic">
+                          <span className="text-slate-400 font-normal not-italic">Biografía:</span> "{c.bio}"
+                        </p>
+                      ) : (
+                        <p className="text-slate-400 italic">Sin biografía proporcionada.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Botones de acción */}
+              <div className="flex gap-2 self-end md:self-center">
+                <button 
+                  onClick={() => handleAction(c.id, c.displayName || c.email, c.role, 'rejected')}
+                  className="px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-100 rounded-xl transition-all"
+                >
+                  Rechazar
+                </button>
+                <button 
+                  onClick={() => handleAction(c.id, c.displayName || c.email, c.role, 'approved')}
+                  className={cn(
+                    "px-4 py-2 text-xs font-bold text-white rounded-xl shadow-sm transition-all flex items-center gap-1.5",
+                    c.role === 'coach' ? "bg-amber-500 hover:bg-amber-600" : "bg-teal-600 hover:bg-teal-700"
+                  )}
+                >
+                  <CheckCircle2 size={14} /> Autorizar
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {filteredCandidates.length === 0 && (
+            <div className="text-center py-12 text-slate-400 italic text-xs bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+              {candidates.length === 0 
+                ? "No hay solicitudes de autorización pendientes en el sistema." 
+                : "No se encontraron solicitudes pendientes que coincidan con los filtros aplicados."}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2137,27 +2265,6 @@ function CommunityAdminView() {
       url: 'https://t.me/KiraCoachCommunity',
       badge: 'Contenido Exclusivo',
       type: 'telegram'
-    },
-    {
-      name: 'Facebook Oficial',
-      description: 'Sigue nuestras publicaciones, transmisiones en vivo y eventos especiales.',
-      url: 'https://facebook.com/KiraMorenoCoach',
-      badge: 'Red de Apoyo',
-      type: 'facebook'
-    },
-    {
-      name: 'Instagram Inspiracional',
-      description: 'Historias diarias, reflexiones cortas y material estético de alta consciencia.',
-      url: 'https://instagram.com/KiraMoreno',
-      badge: 'Espacio Visual',
-      type: 'instagram'
-    },
-    {
-      name: 'YouTube Canal de Sabiduría',
-      description: 'Vídeos guiados, meditaciones profundas y clases maestras de crecimiento.',
-      url: 'https://youtube.com/KiraMoreno',
-      badge: 'Clases Maestras',
-      type: 'youtube'
     }
   ];
 
@@ -2255,10 +2362,7 @@ function CommunityAdminView() {
                   className="w-full text-xs font-semibold border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-kirateal/20 focus:border-kirateal bg-white transition cursor-pointer font-sans"
                 >
                   <option value="whatsapp">WhatsApp</option>
-                  <option value="telegram">Telegram</option>
-                  <option value="facebook">Facebook</option>
-                  <option value="instagram">Instagram</option>
-                  <option value="youtube">YouTube</option>
+                  <option value="telegram font-sans">Telegram</option>
                   <option value="other">Otro (Sitio Web/Foro)</option>
                 </select>
               </div>
@@ -2411,10 +2515,28 @@ function MicrolearningAdminView() {
     getDoc(docRef).then((snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        setWelcomeTitle(data.welcomeTitle || '');
-        setWelcomeMessage(data.welcomeMessage || '');
-        setCommunityUrl(data.communityUrl || '');
-        setChapters(data.chapters || []);
+        
+        let cleanedMessage = data.welcomeMessage || '';
+        if (
+          !cleanedMessage || 
+          cleanedMessage.toLowerCase().includes('en desarrollo') || 
+          cleanedMessage.toLowerCase().includes('módulo en desarrollo') ||
+          cleanedMessage === 'Contenido educativo en formato micro para aprendizaje rápido y efectivo.'
+        ) {
+          cleanedMessage = '¡Celebramos un año de transformar vidas! Este espacio de Microlearning está diseñado para convertir la lectura pasiva en un viaje interactivo de autodescubrimiento. Explora los capítulos de mi nuevo Ebook, responde a las preguntas clave de coaching ontológico y realiza las dinámicas creativas avanzadas. Tus descubrimientos se guardan localmente para que midas tu evolución.';
+        }
+
+        let cleanedTitle = data.welcomeTitle || '';
+        if (!cleanedTitle || cleanedTitle.trim() === 'Microlearning' || cleanedTitle.trim() === '') {
+          cleanedTitle = '✨ Aniversario Estelar: Del Libro a la Acción Consciente';
+        }
+
+        const cleanedChapters = data.chapters && data.chapters.length > 0 ? data.chapters : MICRO_DEFAULTS;
+
+        setWelcomeTitle(cleanedTitle);
+        setWelcomeMessage(cleanedMessage);
+        setCommunityUrl(data.communityUrl || 'https://chat.whatsapp.com/GZpEnbI7V64DuKiraCommunity');
+        setChapters(cleanedChapters);
       } else {
         setWelcomeTitle('✨ Aniversario Estelar: Del Libro a la Acción Consciente');
         setWelcomeMessage('¡Celebramos un año de transformar vidas! Este espacio de Microlearning está diseñado para convertir la lectura pasiva en un viaje interactivo de autodescubrimiento. Explora los capítulos de mi nuevo Ebook, responde a las preguntas clave de coaching ontológico y realiza las dinámicas creativas avanzadas. Tus descubrimientos se guardan localmente para que midas tu evolución.');
@@ -4342,9 +4464,27 @@ function PromotionsManagerView() {
               </div>
 
               <div className="md:col-span-2">
-                 <label className="block text-xs font-bold text-slate-700 mb-1">Imagen / Banner URL (opcional)</label>
-                 <input type="text" value={imageUrl} onChange={e=>setImageUrl(e.target.value)} className="w-full text-sm rounded-lg border-slate-300" placeholder="https://..." />
-                 {imageUrl && <img src={imageUrl} alt="preview" className="mt-2 h-32 object-cover rounded-xl border border-slate-200" />}
+                 <label className="block text-xs font-bold text-slate-700 mb-1">Imagen / Banner de Promoción (Beca KIRA 2026)</label>
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                    <div>
+                       <ImageUpload 
+                          onUploadComplete={(url) => setImageUrl(url)}
+                          currentImage={imageUrl}
+                          folderPath="promotions"
+                          label="Subir Imagen de Beca"
+                       />
+                    </div>
+                    <div>
+                       <input 
+                          type="text" 
+                          value={imageUrl} 
+                          onChange={e=>setImageUrl(e.target.value)} 
+                          className="w-full text-sm rounded-lg border-slate-300 px-4 py-2" 
+                          placeholder="O pega una URL externa de imagen..." 
+                       />
+                    </div>
+                 </div>
+                 {imageUrl && <img src={imageUrl} alt="preview" className="mt-3 h-32 object-cover rounded-xl border border-slate-200" />}
               </div>
            </div>
 
