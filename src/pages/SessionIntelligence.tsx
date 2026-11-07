@@ -190,17 +190,9 @@ export default function SessionIntelligence() {
       const aiText = (await generateGemini({ model: "gemini-3.5-flash", contents: prompt, config: { maxOutputTokens: 512 } })).trim();
       if (aiText) {
         const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        setMessages(prev => [
-          ...prev,
-          {
-            id: Math.random().toString(36).substring(2, 9),
-            speaker: 'Coach',
-            text: aiText,
-            timestamp: now,
-            sentiment: 'neutral'
-          } as any
-        ]);
-        triggerRealtimeInsight(aiText);
+        const aiMessage = { id: crypto.randomUUID(), speaker: 'Coach' as const, text: aiText, timestamp: now };
+        messagesRef.current = [...messagesRef.current, aiMessage];
+        setMessages(messagesRef.current);
       }
     } catch (err: any) {
       console.error("Error generating AI Coach response:", err);
@@ -310,7 +302,7 @@ export default function SessionIntelligence() {
 
     const lastSessionSafe = lastSession ? sanitizeAnalysis(lastSession) : null;
     
-    const prompt = `Actúa como un Psicólogo Organizacional y Coach de Alto Rendimiento. Analiza esta sesión de coaching de Kira Coach.
+    const prompt = `Actúa como analista profesional de coaching. Resume evidencias de la transcripción; no hagas diagnósticos clínicos ni afirmes hechos no expresados.
     
     HISTORIAL PREVIO (Contexto):
     ${lastSessionSafe ? JSON.stringify({
@@ -414,7 +406,7 @@ export default function SessionIntelligence() {
         "nuevos_compromisos": [{"tarea": "string", "deadline": "string", "priority": "alta|media|baja"}],
         "patrones_detectados": ["string"],
         "inconsistencias_detectadas": ["string"],
-        "prosodic_inference": "string",
+        "prosodic_inference": "No evaluable con texto",
         "roleplay_scenarios": ["string"],
         "personal_mantra": "string",
         "focus_heatmap": { "pasado_problemas": number, "presente": number, "futuro_soluciones": number },
@@ -446,6 +438,7 @@ export default function SessionIntelligence() {
     } catch (e: any) {
       console.error("Error parsing analysis:", e);
       alert("Hubo un error al procesar el análisis: " + e.message);
+      await fetchLastSession();
     } finally {
       setIsAnalyzing(false);
       setStatus('idle');
