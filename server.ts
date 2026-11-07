@@ -410,20 +410,22 @@ app.post("/api/create-checkout-session", async (req, res) => {
     for (const requested of ids) {
       const id = requested.id;
       const product = await catalogItem(id);
-      if (!product || product.status === "draft" || product.status === "archived" || product.published === false) return res.status(400).json({ error: "Producto no disponible: " + id });
+      if (!product || !(["published", "active"].includes(String(product.status || "").toLowerCase()) || product.isActive === true || product.active === true)) return res.status(400).json({ error: "Producto no disponible o no publicado: " + id });
       const price = Number(product.price ?? product.amount);
       if (!Number.isFinite(price) || price <= 0 || price > 100000) return res.status(400).json({ error: "Precio inválido en catálogo para " + id });
       items.push({ id, title: String(product.title || product.name || "Producto KIRA").slice(0, 250), type: (product.type === "membership" || product.collectionName === "membershipPlans") ? "membership" : (product.collectionName === "courses" ? "course" : (product.collectionName === "books" ? "book" : (product.type || "product")) ), collectionName: product.collectionName, unitPrice: price, currency: String(product.currency || (provider === "mercadopago" ? "brl" : "usd")).toLowerCase(), quantity: Number(requested.quantity || 1) });
     }
     if (new Set(items.map(x => x.currency)).size !== 1) return res.status(400).json({ error: "Los productos deben usar la misma moneda." });
+    const stripe = provider === "stripe" ? getStripe() : null;
+    const mercadoPagoToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+    if (provider === "stripe" && !stripe) return res.status(503).json({ error: "Stripe no está configurado en el servidor." });
+    if (provider === "mercadopago" && !mercadoPagoToken) return res.status(503).json({ error: "Mercado Pago no está configurado en el servidor." });
     const orderId = randomBytes(18).toString("hex");
     const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     await fsCommit([fsCreate("orders", orderId, { userId: user.uid, provider, status: "pending", currency: items[0].currency, amount: total, items, createdAt: new Date().toISOString() })]);
     const appUrl = (process.env.KIRA_APP_URL || "https://kira.coach").replace(/\/$/, "");
     if (provider === "stripe") {
-      const stripe = getStripe();
-      if (!stripe) return res.status(503).json({ error: "Stripe no está configurado en el servidor." });
-      const session = await stripe.checkout.sessions.create({
+      const session = await stripe!.checkout.sessions.create({
         mode: "payment",
         line_items: items.map(item => ({ quantity: item.quantity, price_data: { currency: item.currency, unit_amount: Math.round(item.unitPrice * 100), product_data: { name: item.title } } })),
         client_reference_id: user.uid, metadata: { userId: user.uid, orderId },
@@ -434,10 +436,8 @@ app.post("/api/create-checkout-session", async (req, res) => {
       await fsCommit([fsUpdate("orders", orderId, { ...order, providerSessionId: session.id, checkoutUrl: session.url })]);
       return res.json({ url: session.url, orderId, provider });
     }
-    const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
-    if (!accessToken) return res.status(503).json({ error: "Mercado Pago no está configurado en el servidor." });
     const preferenceResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
-      method: "POST", headers: { Authorization: "Bearer " + accessToken, "Content-Type": "application/json", "X-Idempotency-Key": orderId },
+      method: "POST", headers: { Authorization: "Bearer " + mercadoPagoToken, "Content-Type": "application/json", "X-Idempotency-Key": orderId },
       body: JSON.stringify({
         external_reference: orderId, notification_url: appUrl + "/api/webhooks/mercadopago",
         items: items.map(item => ({ id: item.id, title: item.title, quantity: item.quantity, currency_id: item.currency.toUpperCase(), unit_price: item.unitPrice })),
