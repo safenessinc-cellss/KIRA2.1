@@ -1,3 +1,4 @@
+import { auth } from '../firebase';
 /**
  * Centralized Gemini Client Helper
  * Handles robust verification of GEMINI_API_KEY and provides clear user-friendly feedback.
@@ -40,11 +41,14 @@ export async function generateGemini(payload: GeminiPayload): Promise<string> {
     throw new Error(errorMsg);
   }
 
-  // 2. Execute call
+  // 2. Attach a short-lived Firebase ID token; the backend verifies it.
   try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error('Inicia sesión para utilizar KIRA AI.');
+    const idToken = await currentUser.getIdToken();
     const response = await fetch('/api/gemini/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
       body: JSON.stringify(payload),
     });
 
