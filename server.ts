@@ -66,7 +66,7 @@ async function verifyFirebaseIdToken(token: string): Promise<any> {
       claims.iss !== `https://securetoken.google.com/${FIREBASE_PROJECT_ID}` ||
       typeof claims.sub !== "string" || !claims.sub ||
       typeof claims.exp !== "number" || claims.exp <= now ||
-      typeof claims.iat !== "number" || claims.iat > now + 60) {
+      typeof claims.iat !== "number" || claims.iat > now + 60 ||\n      typeof claims.auth_time !== "number" || claims.auth_time > now + 60) {
     throw new Error("Invalid token claims");
   }
   return claims;
@@ -89,7 +89,7 @@ function allowAiRequest(uid: string): boolean {
   const now = Date.now();
   const current = aiRequestCounts.get(uid);
   if (!current || current.resetAt <= now) {
-    aiRequestCounts.set(uid, { count: 1, resetAt: now + 60_000 });
+    if (aiRequestCounts.size > 5000) {\n      for (const [key, value] of aiRequestCounts) if (value.resetAt <= now) aiRequestCounts.delete(key);\n    }\n    aiRequestCounts.set(uid, { count: 1, resetAt: now + 60_000 });
     return true;
   }
   if (current.count >= 20) return false;
