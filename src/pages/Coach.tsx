@@ -1722,7 +1722,14 @@ function CoachStudentsActivity() {
               const sProfile = await getDoc(doc(db, 'users', sId));
               if (sProfile.exists()) {
                 const course = coursesById.get(cid) as any;
-                studentsMap.set(sId, { id: sId, ...sProfile.data(), courseProgress: eDoc.data().progress || 0, enrollmentId: eDoc.id, courseId: cid, courseTitle: course?.title || 'Curso', courseHours: course?.hours || course?.courseHours || course?.durationHours || 0 });
+                const enrollmentInfo = { enrollmentId: eDoc.id, courseId: cid, courseTitle: course?.title || 'Curso', courseHours: course?.hours || course?.courseHours || course?.durationHours || 0, progress: Number(eDoc.data().progress || 0) };
+                studentsMap.set(sId, { id: sId, ...sProfile.data(), courseProgress: enrollmentInfo.progress, enrollmentId: eDoc.id, courseId: cid, courseTitle: enrollmentInfo.courseTitle, courseHours: enrollmentInfo.courseHours, courseEnrollments: [enrollmentInfo] });
+              } else {
+                const existingStudent = studentsMap.get(sId);
+                if (existingStudent && !existingStudent.courseEnrollments.some((item: any) => item.enrollmentId === eDoc.id)) {
+                  const course = coursesById.get(cid) as any;
+                  existingStudent.courseEnrollments.push({ enrollmentId: eDoc.id, courseId: cid, courseTitle: course?.title || 'Curso', courseHours: course?.hours || course?.courseHours || course?.durationHours || 0, progress: Number(eDoc.data().progress || 0) });
+                }
               }
             }
           }
@@ -1834,7 +1841,7 @@ function CoachStudentsActivity() {
       await updateDoc(doc(db, 'enrollments', student.enrollmentId), {
         progress: 100, completed: true, courseCompleted: true, completedAt: new Date()
       });
-      setStudents(prev => prev.map(item => item.id === student.id ? { ...item, courseProgress: 100, completed: true } : item));
+      setStudents(prev => prev.map(item => item.id === student.id ? { ...item, courseProgress: item.enrollmentId === student.enrollmentId ? 100 : item.courseProgress, courseEnrollments: (item.courseEnrollments || []).map((enrollment: any) => enrollment.enrollmentId === student.enrollmentId ? { ...enrollment, progress: 100, completed: true } : enrollment) } : item));
       await addDoc(collection(db, 'notifications'), {
         userId: student.id, title: 'Curso concluido',
         message: 'Tu coach confirmó la conclusión de ' + (student.courseTitle || 'tu curso') + '. Ya puedes solicitar tu certificado en KIRA COACH.',
@@ -1975,7 +1982,7 @@ function CoachStudentsActivity() {
                   </div>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  {s.courseProgress >= 100 ? <span className="text-[10px] font-bold text-emerald-700">Concluido</span> : <button onClick={() => markCourseCompleted(s)} disabled={completionBusy === s.enrollmentId} className="px-3 py-2 rounded-lg bg-teal-700 text-white text-[10px] font-bold disabled:opacity-50">{completionBusy === s.enrollmentId ? 'Guardando…' : 'Marcar concluido'}</button>}
+                  <div className="flex flex-col items-end gap-1">{(s.courseEnrollments || [{ enrollmentId: s.enrollmentId, courseTitle: s.courseTitle, progress: s.courseProgress }]).map((enrollment: any) => enrollment.progress >= 100 ? <span key={enrollment.enrollmentId} className="text-[10px] font-bold text-emerald-700">{enrollment.courseTitle}: Concluido</span> : <button key={enrollment.enrollmentId} onClick={() => markCourseCompleted({ ...s, ...enrollment })} disabled={completionBusy === enrollment.enrollmentId} className="px-3 py-2 rounded-lg bg-teal-700 text-white text-[10px] font-bold disabled:opacity-50">{completionBusy === enrollment.enrollmentId ? 'Guardando…' : 'Concluir: ' + enrollment.courseTitle}</button>)}</div>
                 </td>
               </tr>
             );
