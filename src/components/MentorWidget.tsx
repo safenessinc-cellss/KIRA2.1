@@ -1,3 +1,4 @@
+import { auth } from '../firebase';
 import { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, getDocs, limit, orderBy, doc, updateDoc } from 'firebase/firestore';
@@ -109,9 +110,12 @@ export function MentorWidget() {
         { "message": "tu consejo detallado y ultra-personalizado", "suggestedCourseIds": ["ID1", "ID2"] }
       `;
 
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Inicia sesión para utilizar KIRA AI.');
+      const idToken = await currentUser.getIdToken();
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({
           model: "gemini-3.5-flash",
           contents: prompt,
