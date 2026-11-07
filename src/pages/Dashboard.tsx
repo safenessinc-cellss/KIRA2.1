@@ -255,28 +255,31 @@ export function Dashboard() {
     }
   };
 
-  const handleStripeCheckout = async (course: any) => {
-    if(!user) return;
-    setCheckingOutId(course.id);
+  const handleStripeCheckout = async (item: any, itemType: 'course' | 'book' = 'course') => {
+    if (!user || checkingOutId) return;
+    setCheckingOutId(item.id);
+    setCheckoutNotice('');
     try {
-      const resp = await fetch('/api/create-checkout-session', {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Debes iniciar sesión de nuevo.');
+      const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          courseId: course.id,
-          userId: user.uid,
-          amount: course.price,
-          title: course.title
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ items: [{ id: item.id, itemType }] })
       });
-      const data = await resp.json();
-      if (data.error) {
-        throw new Error(data.error);
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || 'No se pudo iniciar Stripe Checkout.');
+      if (data.free) {
+        setCheckoutNotice('Acceso gratuito concedido por backend.');
+        await fetchData();
+        setCheckingOutId(null);
+        return;
       }
+      if (!data.url) throw new Error('Stripe no devolvió una URL de checkout.');
       window.location.href = data.url;
-    } catch(e: any) {
-      console.error('Stripe Redirect Error:', e);
-      alert('Error al iniciar la inscripción: ' + (e.message || String(e)));
+    } catch (err: any) {
+      console.error('Stripe checkout initialization failed', err);
+      setCheckoutNotice(err.message || 'Error al iniciar el pago.');
       setCheckingOutId(null);
     }
   };
@@ -296,48 +299,31 @@ export function Dashboard() {
 
   const handleProcessPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !cartItems.length || isProcessingPayment) return;
     setIsProcessingPayment(true);
-    
+    setCheckoutNotice('');
     try {
-      for (const item of cartItems) {
-        await addDoc(collection(db, 'purchases'), {
-          userId: user.uid,
-          userEmail: user.email || '',
-          userName: user.displayName || user.name || 'Alumno',
-          itemId: item.id,
-          itemType: item.itemType || (item.bannerUrl ? 'course' : 'book'),
-          itemTitle: item.title,
-          itemPrice: Number(item.price),
-          imageUrl: item.imageUrl || item.bannerUrl || '',
-          status: 'pending_release',
-          createdAt: new Date()
-        });
-
-        await addDoc(collection(db, 'transactions'), {
-          userId: user.uid,
-          amount: Number(item.price),
-          type: item.itemType === 'course' ? 'course_purchase' : 'book_purchase',
-          itemId: item.id,
-          itemTitle: item.title,
-          status: 'pending_release',
-          createdAt: new Date()
-        });
-      }
-
-      setPaymentSuccessData({
-        items: [...cartItems],
-        total: cartItems.reduce((acc, it) => acc + Number(it.price), 0)
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Debes iniciar sesión de nuevo.');
+      const items = cartItems.map(item => ({ id: item.id, itemType: item.itemType || (item.bannerUrl ? 'course' : 'book') }));
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ items })
       });
-      
-      setCartItems([]);
-      setPaymentForm({ cardName: '', cardNumber: '', expiry: '', cvv: '' });
-      setShowPaymentModal(false);
-      
-      fetchData();
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || 'No se pudo crear el checkout.');
+      if (data.free) {
+        setCartItems([]); setShowCart(false); setShowPaymentModal(false);
+        setCheckoutNotice('El pedido gratuito fue procesado por el backend.');
+        await fetchData();
+        return;
+      }
+      if (!data.url) throw new Error('Stripe no devolvió una URL de checkout.');
+      window.location.href = data.url;
     } catch (err: any) {
-      console.error("Error creating purchases:", err);
-      alert("Ocurrió un error al registrar el pago: " + (err.message || String(err)));
+      console.error('Secure checkout failed', err);
+      setCheckoutNotice(err.message || 'No se pudo iniciar el pago.');
     } finally {
       setIsProcessingPayment(false);
     }
