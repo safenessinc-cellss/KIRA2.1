@@ -149,7 +149,7 @@ export default function SessionIntelligence() {
       const uniqueDocs = Array.from(new Map(
         [...byUser.docs, ...byCoach.docs].map(sessionDoc => [sessionDoc.id, sessionDoc])
       ).values());
-      const sorted = uniqueDocs.map(sessionDoc => ({
+      const sorted: any[] = uniqueDocs.map(sessionDoc => ({
         id: sessionDoc.id,
         ...sessionDoc.data(),
       })).sort((left: any, right: any) => {
