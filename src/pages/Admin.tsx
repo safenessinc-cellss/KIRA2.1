@@ -884,14 +884,16 @@ function ContractManagerView() {
 }
 
 const prepareChartData = (txs: any[]) => {
-  const map: any = {};
-  txs.forEach(t => {
-    const date = t.createdAt?.toDate ? t.createdAt.toDate().toLocaleDateString() : 'Desconocido';
-    if (!map[date]) map[date] = { name: date, Curso: 0, Membresía: 0 };
-    if (t.type === 'course_purchase') map[date].Curso += t.amount || 0;
-    else map[date].Membresía += t.amount || 0;
+  const map: Record<string, { name: string; Curso: number; Membresía: number; date: Date }> = {};
+  txs.filter(t => ['paid','succeeded','successful','confirmed','complete','completed'].includes(String(t.status ?? t.paymentStatus ?? '').toLowerCase()) && Number(t.amount) > 0).forEach(t => {
+    const dateObj = t.paidAt?.toDate ? t.paidAt.toDate() : t.createdAt?.toDate ? t.createdAt.toDate() : null;
+    if (!dateObj) return;
+    const date = dateObj.toLocaleDateString('es-ES');
+    if (!map[date]) map[date] = { name: date, Curso: 0, Membresía: 0, date: dateObj };
+    if (t.type === 'course_purchase' || t.type === 'curso') map[date].Curso += Number(t.amount) || 0;
+    else if (t.type === 'coach_membership' || t.type === 'membership') map[date].Membresía += Number(t.amount) || 0;
   });
-  return Object.values(map).reverse().slice(-7); // Last 7 days with data
+  return Object.values(map).sort((a,b)=>a.date.getTime()-b.date.getTime()).slice(-7).map(({date,...row})=>row);
 };
 
 // --- MODULO: MONITOR DE TRANSACCIONES ---
