@@ -6,6 +6,7 @@ import Stripe from "stripe";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { WebSocketServer } from "ws";
 import compression from "compression";
+import { verify as verifySignature } from "node:crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,6 +75,66 @@ function getGeminiAI() {
   return geminiClient;
 }
 
+
+interface VerifiedFirebaseUser { uid: string; email?: string; }
+let firebasePublicKeys: Record<string, string> = {};
+let firebaseKeysExpiresAt = 0;
+
+async function verifyFirebaseIdToken(token: string): Promise<VerifiedFirebaseUser | null> {
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  if (!projectId || !token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+    const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    const now = Math.floor(Date.now() / 1000);
+    if (header.alg !== "RS256" || !header.kid || claims.aud !== projectId
+      || claims.iss !== `https://securetoken.google.com/${projectId}`
+      || typeof claims.sub !== "string" || !claims.sub
+      || !Number.isFinite(claims.exp) || claims.exp <= now
+      || !Number.isFinite(claims.iat) || claims.iat > now + 300) return null;
+    if (Date.now() >= firebaseKeysExpiresAt || !firebasePublicKeys[header.kid]) {
+      const response = await fetch("https://www.googleapis.com/identitytoolkit/v3/relyingparty/publicKeys");
+      if (!response.ok) return null;
+      firebasePublicKeys = await response.json() as Record<string, string>;
+      const cacheControl = response.headers.get("cache-control") || "";
+      const maxAge = Number(cacheControl.match(/max-age=(\d+)/)?.[1] || 3600);
+      firebaseKeysExpiresAt = Date.now() + Math.min(maxAge, 3600) * 1000;
+    }
+    const certificate = firebasePublicKeys[header.kid];
+    if (!certificate) return null;
+    const signedData = Buffer.from(parts[0] + "." + parts[1]);
+    if (!verifySignature("RSA-SHA256", signedData, certificate, Buffer.from(parts[2], "base64url"))) return null;
+    return { uid: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined };
+  } catch {
+    return null;
+  }
+}
+
+const geminiRateLimits = new Map<string, { count: number; resetAt: number }>();
+async function requireFirebaseUser(req: express.Request, res: express.Response): Promise<VerifiedFirebaseUser | null> {
+  const match = (req.headers.authorization || "").match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    res.status(401).json({ error: "Debes iniciar sesión para utilizar este servicio." });
+    return null;
+  }
+  const user = await verifyFirebaseIdToken(match[1]);
+  if (!user) {
+    res.status(401).json({ error: "La sesión no es válida o ha caducado. Vuelve a iniciar sesión." });
+    return null;
+  }
+  const now = Date.now();
+  const limit = geminiRateLimits.get(user.uid);
+  if (limit && now < limit.resetAt && limit.count >= 20) {
+    res.status(429).json({ error: "Has alcanzado el límite temporal de solicitudes de IA. Inténtalo más tarde." });
+    return null;
+  }
+  if (!limit || now >= limit.resetAt) geminiRateLimits.set(user.uid, { count: 1, resetAt: now + 60_000 });
+  else limit.count += 1;
+  return user;
+}
+
 const app = express();
 app.use(compression({
   filter: (req, res) => {
@@ -115,15 +176,21 @@ function extractPromptText(contents: any): string {
 // Gemini Content Generation Proxy with Cache, Retry, Timeout, and robust Simulated Fallback logic
 app.post("/api/gemini/generate", async (req, res) => {
   try {
+    const authenticatedUser = await requireFirebaseUser(req, res);
+    if (!authenticatedUser) return;
     const key = process.env.GEMINI_API_KEY;
-    const { model, contents, config } = req.body;
+    const { model, contents, config } = req.body || {};
+    const promptText = extractPromptText(contents);
+    if (!promptText || promptText.length > 50000 || (model && (typeof model !== "string" || !/^gemini-[a-zA-Z0-9.-]{1,70}$/.test(model)))) {
+      return res.status(400).json({ error: "La solicitud de IA no es válida o supera el límite permitido." });
+    }
 
     if (!isValidGeminiKey(key)) {
       return res.status(503).json({ error: "El servicio de IA no está configurado. Contacta al administrador." });
     }
     
     // Create cache key based on contents and config to avoid repeating identical AI calls
-    const cacheKey = JSON.stringify({ model, contents, config });
+    const cacheKey = JSON.stringify({ uid: authenticatedUser.uid, model, contents, config });
     const cachedResponse = getCache(cacheKey);
     if (cachedResponse) {
       console.log("[Cache Backend] Sirviendo respuesta de Gemini desde caché en memoria.");
@@ -189,45 +256,12 @@ app.post("/api/gemini/generate", async (req, res) => {
 });
 
 // Stripe Integration
-app.post("/api/create-checkout-session", async (req, res) => {
-  const { courseId, userId, amount, title, type = 'course_purchase' } = req.body;
-  const stripe = getStripe();
-  
-  if (!userId || (!courseId && type === 'course_purchase')) {
-    return res.status(400).json({ error: "Faltan datos de compra" });
-  }
-
-  // IF STRIPE IS CONFIGURED
-  if (stripe) {
-    try {
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: title,
-              metadata: { courseId, type }
-            },
-            unit_amount: Math.round(amount * 100),
-          },
-          quantity: 1,
-        }],
-        mode: 'payment',
-        success_url: `${req.headers.origin}${type === 'coach_membership' ? '/coach' : '/dashboard'}?success=true&courseId=${courseId || ''}&amount=${amount}&title=${encodeURIComponent(title)}&type=${type}`,
-        cancel_url: `${req.headers.origin}${type === 'coach_membership' ? '/coach' : '/dashboard'}?canceled=true`,
-        client_reference_id: userId,
-        metadata: { userId, courseId: courseId || '', type }
-      });
-      return res.json({ url: session.url });
-    } catch (e: any) {
-      console.error("Stripe Session Error:", e);
-      return res.status(500).json({ error: e.message });
-    }
-  }
-
-  // No fake transactions. Fail closed when payment provider is not configured.
-  return res.status(503).json({ error: "Los pagos no están configurados. No se ha realizado ningún cobro." });
+app.post("/api/create-checkout-session", async (_req, res) => {
+  // Fail closed until a trusted catalog lookup and signed Stripe webhook are implemented.
+  // Browser-provided amounts, titles and user IDs must never authorize a charge.
+  return res.status(503).json({
+    error: "Los pagos están temporalmente deshabilitados mientras se completa la confirmación segura mediante webhook. No se ha realizado ningún cobro."
+  });
 });
 
 async function startLocalServer() {
