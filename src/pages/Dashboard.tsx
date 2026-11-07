@@ -37,7 +37,6 @@ export function Dashboard() {
   const [purchases, setPurchases] = useState<any[]>([]);
   const [paymentForm, setPaymentForm] = useState({ cardName: '', cardNumber: '', expiry: '', cvv: '' });
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [paymentSuccessData, setPaymentSuccessData] = useState<any | null>(null);
 
   const [showCommunityModal, setShowCommunityModal] = useState(false);
   const [whatsappUrl, setWhatsappUrl] = useState('');
