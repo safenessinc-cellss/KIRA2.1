@@ -342,385 +342,150 @@ function WebsiteConfigView() {
 // --- MODULO 1: TABLERO GLOBAL ---
 function GlobalDashboardView() {
   const [daysRange, setDaysRange] = useState(30);
-  const [stats, setStats] = useState({ 
-    users: 0, 
-    sales: 0, 
-    activeIA: 0, 
-    sentiment: { positive: 0, neutral: 0, negative: 0 },
-    engagement: { dailyActive: 0, weeklyActive: 0 },
-    courses: [] as any[],
-    burnoutRisk: { riskIndex: 0, usersAtRisk: 0, totalUsersEvaluated: 0 }
-  });
+  const [users, setUsers] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [courses, setCourses] = useState<any[]>([]);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
+  const [wellbeingSummary, setWellbeingSummary] = useState<any>(null);
   const [trends, setTrends] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubUsers = onSnapshot(collection(db, 'users'), 
-      (snap) => {
-        let daily = 0;
-        let weekly = 0;
-        const now = new Date();
-        snap.forEach(d => {
-          const data = d.data();
-          if (data.lastActivityAt) {
-            const date = data.lastActivityAt.toDate ? data.lastActivityAt.toDate() : new Date(data.lastActivityAt);
-            const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 3600 * 24));
-            if (diffDays <= 1) daily++;
-            if (diffDays <= 7) weekly++;
-          }
-        });
+    const stops: Array<() => void> = [];
+    stops.push(onSnapshot(collection(db, "users"), snapshot => {
+      setUsers(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    }, error => { console.error("Users summary failed:", error); setLoading(false); }));
+    stops.push(onSnapshot(collection(db, "transactions"), snapshot => {
+      setTransactions(snapshot.docs.map(d => ({ id: d.id, ...d.data() })).filter((row: any) => row.status === "paid"));
+    }, error => console.error("Financial summary failed:", error)));
+    stops.push(onSnapshot(collection(db, "courses"), snapshot => {
+      setCourses(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, error => console.error("Course summary failed:", error)));
+    stops.push(onSnapshot(collection(db, "enrollments"), snapshot => {
+      setEnrollments(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, error => console.error("Enrollment summary failed:", error)));
+    stops.push(onSnapshot(query(collection(db, "course_activity"), orderBy("createdAt", "desc"), limit(8)), snapshot => {
+      setActivities(snapshot.docs.map(d => {
+        const data = d.data();
+        return { id: d.id, user: data.userName || "Alumno", action: data.action || data.activityType || "actividad académica", time: data.createdAt?.toDate ? data.createdAt.toDate().toLocaleString() : "Actividad registrada" };
+      }));
+    }, error => console.warn("Course activity summary unavailable:", error)));
+    stops.push(onSnapshot(doc(db, "stats", "wellbeingSummary"), snapshot => {
+      setWellbeingSummary(snapshot.exists() ? snapshot.data() : null);
+    }, error => console.warn("Aggregated wellbeing summary unavailable:", error)));
+    return () => stops.forEach(stop => stop());
+  }, []);
 
-        setStats(prev => ({ ...prev, users: snap.size, engagement: { dailyActive: daily, weeklyActive: weekly } }));
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'users')
-    );
+  const now = new Date();
+  const dailyActive = users.filter(user => {
+    if (!user.lastActivityAt) return false;
+    const date = user.lastActivityAt?.toDate ? user.lastActivityAt.toDate() : new Date(user.lastActivityAt);
+    const age = (now.getTime() - date.getTime()) / 86400000;
+    return Number.isFinite(age) && age <= 1;
+  }).length;
+  const weeklyActive = users.filter(user => {
+    if (!user.lastActivityAt) return false;
+    const date = user.lastActivityAt?.toDate ? user.lastActivityAt.toDate() : new Date(user.lastActivityAt);
+    const age = (now.getTime() - date.getTime()) / 86400000;
+    return Number.isFinite(age) && age <= 7;
+  }).length;
+  const paidTransactions = transactions.length;
+  const salesByCurrency = transactions.reduce((acc: Record<string, number>, row: any) => {
+    const currency = String(row.currency || "usd").toUpperCase();
+    acc[currency] = (acc[currency] || 0) + Number(row.amount || 0);
+    return acc;
+  }, {});
+  const revenueLabel = Object.entries(salesByCurrency).map(([currency, amount]) =>
+    new Intl.NumberFormat("es-ES", { style: "currency", currency }).format(amount)
+  ).join(" · ") || "—";
+  const completionRate = enrollments.length ? enrollments.reduce((sum, row) => sum + Math.min(100, Math.max(0, Number(row.progress || 0))), 0) / enrollments.length : 0;
+  const riskIndex = Number(wellbeingSummary?.riskIndex || 0);
+  const usersAtRisk = Number(wellbeingSummary?.usersAtRisk || 0);
+  const hasWellbeingSummary = Boolean(wellbeingSummary && (wellbeingSummary.riskIndex !== undefined || wellbeingSummary.usersAtRisk !== undefined));
+  const isHighRisk = hasWellbeingSummary && riskIndex > 10;
 
-    const unsubTransactions = onSnapshot(collection(db, 'transactions'), 
-      (snap) => {
-        let totalSales = 0;
-        snap.forEach(d => totalSales += (d.data().amount || 0));
-        setStats(prev => ({ ...prev, sales: totalSales, activeIA: 12 }));
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'transactions')
-    );
-
-    const unsubCourses = onSnapshot(collection(db, 'courses'),
-      (snap) => {
-        const c = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setStats(prev => ({ ...prev, courses: c }));
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'courses')
-    );
-
-    const unsubEnroll = onSnapshot(collection(db, 'enrollments'), (snap) => {
-      const enrolls = snap.docs.map(d => d.data());
-      
-      // Calculate trends when either journals or enrollments change
-      const journalsRef = collection(db, 'journals');
-      getDocs(journalsRef).then(jSnap => {
-        const journals = jSnap.docs.map(d => d.data());
-        const processedTrends = generateTrendData(journals, enrolls, stats.users || 100, daysRange);
-        setTrends(processedTrends);
-      });
-    });
-
-    const unsubJournals = onSnapshot(query(collection(db, 'journals'), orderBy('createdAt', 'desc'), limit(5)),
-      (snap) => {
-        const newActivities: any[] = [];
-        
-        snap.forEach(d => {
-          const data = d.data();
-          newActivities.push({
-            id: d.id,
-            user: "Estudiante",
-            action: `escribió en su diario (${data.sentiment || 'neutral'})`,
-            time: "Reciente"
-          });
-        });
-        setActivities(newActivities);
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'journals')
-    );
-
-    const unsubSentimentAll = onSnapshot(collection(db, 'journals'), (snap) => {
-      const counts = { positive: 0, neutral: 0, negative: 0 };
-      snap.forEach(d => {
-        const s = d.data().sentiment;
-        if (s === 'positive') counts.positive++;
-        else if (s === 'neutral') counts.neutral++;
-        else if (s === 'negative') counts.negative++;
-      });
-      setStats(prev => ({ ...prev, sentiment: counts }));
-    });
-
-    const unsubBurnout = onSnapshot(query(collection(db, 'journals'), orderBy('createdAt', 'desc'), limit(500)),
-      (snap) => {
-        const userJournals: Record<string, string[]> = {};
-        snap.forEach(d => {
-          const data = d.data();
-          if (data.userId) {
-            if (!userJournals[data.userId]) userJournals[data.userId] = [];
-            if (userJournals[data.userId].length < 3) {
-               userJournals[data.userId].push(data.sentiment || 'neutral');
-            }
-          }
-        });
-
-        let riskCount = 0;
-        let totalUsers = 0;
-        for (const userId in userJournals) {
-          totalUsers++;
-          const sentiments = userJournals[userId];
-          const negativeCount = sentiments.filter(s => s === 'negative').length;
-          if ((sentiments.length === 3 && negativeCount >= 2) || (sentiments.length < 3 && negativeCount === sentiments.length && negativeCount > 0)) {
-             riskCount++;
-          }
-        }
-
-        const riskIndex = totalUsers > 0 ? (riskCount / totalUsers) * 100 : 0;
-        setStats(prev => ({ ...prev, burnoutRisk: { riskIndex, usersAtRisk: riskCount, totalUsersEvaluated: totalUsers }}));
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'journals_burnout')
-    );
-
-    return () => {
-      unsubUsers();
-      unsubTransactions();
-      unsubCourses();
-      unsubEnroll();
-      unsubJournals();
-      unsubSentimentAll();
-      unsubBurnout();
-    };
-  }, [daysRange, stats.users]);
-
-  const generateTrendData = (journals: any[], enrolls: any[], usersCount: number, days: number) => {
-    const data = [];
-    const now = new Date();
-    // Use a small fixed number for demo purposes if usersCount is 0
-    const effectiveUsers = usersCount || 10;
-    
-    for (let i = days; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
-      
-      const journalsOnDay = journals.filter(j => {
-        const jd = j.createdAt?.toDate ? j.createdAt.toDate() : new Date(j.createdAt);
-        return jd.toISOString().split('T')[0] === dateStr;
-      });
-      const uniqueOnDay = new Set(journalsOnDay.map(j => j.userId)).size;
-      
-      const avgComp = enrolls.length > 0 
-        ? enrolls.reduce((acc, curr) => acc + (curr.progress || 0), 0) / enrolls.length
-        : 0;
-
+  useEffect(() => {
+    const data: any[] = [];
+    for (let i = daysRange; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateKey = date.toISOString().slice(0, 10);
+      const newEnrollments = enrollments.filter(row => {
+        const created = row.createdAt?.toDate ? row.createdAt.toDate() : new Date(row.createdAt);
+        return Number.isFinite(created.getTime()) && created.toISOString().slice(0, 10) === dateKey;
+      }).length;
       data.push({
-        name: d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
-        adopcionDiario: effectiveUsers > 0 ? Math.min(100, (uniqueOnDay / effectiveUsers) * 100) : 0,
-        completionRate: Math.min(100, Math.max(0, avgComp))
+        name: date.toLocaleDateString("es-ES", { day: "2-digit", month: "short" }),
+        newEnrollments,
+        completionRate: Number(completionRate.toFixed(1))
       });
     }
-    return data;
-  };
+    setTrends(data);
+  }, [enrollments, daysRange, completionRate]);
 
-
-  const totalSentiments = stats.sentiment.positive + stats.sentiment.neutral + stats.sentiment.negative || 1;
-  const moodScore = Math.round(((stats.sentiment.positive * 100) + (stats.sentiment.neutral * 50)) / totalSentiments);
-
-  const topCourses = [...stats.courses].sort((a,b) => (b.studentsCount || 0) - (a.studentsCount || 0)).slice(0, 3);
-  const isHighRisk = stats.burnoutRisk.riskIndex > 10;
+  const topCourses = courses.map(course => ({
+    ...course,
+    actualEnrollments: enrollments.filter(enrollment => enrollment.courseId === course.id).length
+  })).sort((a, b) => b.actualEnrollments - a.actualEnrollments).slice(0, 3);
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2">
-      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200">
-        <h2 className="font-black text-slate-800 tracking-tight flex items-center gap-2">
-          <Activity size={20} className="text-kirateal" /> Command Center Executive
-        </h2>
+      <div className="flex flex-wrap justify-between items-center gap-3 bg-white p-4 rounded-2xl border border-slate-200">
+        <h2 className="font-black text-slate-800 tracking-tight flex items-center gap-2"><Activity size={20} className="text-kirateal" /> Resumen ejecutivo KIRA</h2>
         <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
-          {[7, 30, 90].map(d => (
-            <button
-              key={d}
-              onClick={() => setDaysRange(d)}
-              className={cn(
-                "px-4 py-1.5 text-[10px] font-bold rounded-lg transition-all",
-                daysRange === d ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              )}
-            >
-              ÚLTIMOS {d} DÍAS
-            </button>
-          ))}
+          {[7, 30, 90].map(days => <button key={days} onClick={() => setDaysRange(days)} className={cn("px-4 py-1.5 text-[10px] font-bold rounded-lg transition-all", daysRange === days ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700")}>ÚLTIMOS {days} DÍAS</button>)}
         </div>
       </div>
 
-      {isHighRisk && (
-        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3">
-          <AlertTriangle className="text-rose-600 shrink-0" size={24} />
-          <div>
-            <h3 className="font-bold text-rose-800 text-sm">Alerta de Riesgo Comunitario</h3>
-            <p className="text-rose-700 text-sm">
-              El Índice de Riesgo de Burnout ha superado el 10% ({stats.burnoutRisk.riskIndex.toFixed(1)}%). 
-              Actualmente {stats.burnoutRisk.usersAtRisk} usuarios muestran signos prolongados de estrés o negatividad. Se sugiere acción preventiva.
-            </p>
-          </div>
-        </div>
-      )}
+      {isHighRisk && <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3"><AlertTriangle className="text-rose-600 shrink-0" size={24} /><div><h3 className="font-bold text-rose-800 text-sm">Indicador agregado de bienestar</h3><p className="text-rose-700 text-sm">El agregado autorizado reporta {riskIndex.toFixed(1)}% de riesgo y {usersAtRisk} personas. No se muestran diarios ni respuestas individuales.</p></div></div>}
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
-        <StatCard title="Ventas del Día" value={`$${(stats.sales * 0.15).toLocaleString()}`} subtitle="Ultimas 24hs" icon={<BarChart3 className="text-kirateal" />} />
-        <StatCard title="Kira Net Revenue" value={`$${(stats.sales * 0.7).toLocaleString()}`} subtitle="Comisión (70%)" icon={<BarChart3 className="text-emerald-500" />} />
-        <StatCard title="Coach Payouts" value={`$${(stats.sales * 0.3).toLocaleString()}`} subtitle="Liquidación (30%)" icon={<CreditCard className="text-purple-500" />} />
-        <StatCard 
-          title="Product DAU" 
-          value={`${stats.engagement.dailyActive}`} 
-          subtitle={`${stats.engagement.weeklyActive} WAU (Retention)`} 
-          icon={<Users className="text-blue-500" />} 
-          color="blue" 
-        />
-        <StatCard 
-          title="Stability Alert" 
-          value={`${stats.burnoutRisk.riskIndex.toFixed(1)}%`} 
-          subtitle={`${stats.burnoutRisk.usersAtRisk} Usuarios en Churn Risk`} 
-          icon={<AlertTriangle className={isHighRisk ? "text-rose-600" : "text-emerald-600"} />} 
-          color={isHighRisk ? "rose" : "emerald"} 
-        />
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+        <StatCard title="Ingresos confirmados" value={loading ? "—" : revenueLabel} subtitle="Importes por moneda; solo transacciones pagadas" icon={<BarChart3 className="text-kirateal" />} />
+        <StatCard title="Transacciones pagadas" value={loading ? "—" : String(paidTransactions)} subtitle="Confirmadas por webhook" icon={<CreditCard className="text-emerald-500" />} />
+        <StatCard title="Usuarios activos" value={loading ? "—" : String(dailyActive)} subtitle={weeklyActive + " activos en los últimos 7 días"} icon={<Users className="text-blue-500" />} color="blue" />
+        <StatCard title="Progreso académico" value={loading || !enrollments.length ? "—" : completionRate.toFixed(1) + "%"} subtitle={enrollments.length + " matrículas registradas"} icon={<GraduationCap className="text-violet-500" />} />
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-          <div>
-            <h3 className="font-bold text-slate-800 tracking-tight flex items-center gap-2">
-              <TrendingUp size={18} className="text-violet-500" /> Macrotendencias de Adopción y Éxito
-            </h3>
-            <p className="text-[11px] text-slate-400 mt-1">Análisis de correlación: Uso del Diario de Gratitud vs. Completion Rate Académico.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-6 text-[10px] font-black uppercase tracking-widest bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-kirateal rounded-sm" /> 
-              <span className="text-slate-600">Adopción Diario</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-violet-500 rounded-sm" /> 
-              <span className="text-slate-600">Media de Finalización</span>
-            </div>
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+          <div><h3 className="font-bold text-slate-800 tracking-tight flex items-center gap-2"><TrendingUp size={18} className="text-violet-500" /> Matrículas y progreso académico</h3><p className="text-[11px] text-slate-400 mt-1">Datos de matrículas y avance registrados en KIRA; no se consulta el diario personal.</p></div>
+          <div className="flex flex-wrap items-center gap-4 text-[10px] font-black uppercase tracking-widest bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
+            <span className="text-slate-600">Nuevas matrículas</span><span className="text-violet-700">Progreso promedio</span>
           </div>
         </div>
-        
         <div className="h-72 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={trends} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-              <XAxis 
-                dataKey="name" 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{fontSize: 9, fill: '#94a3b8', fontWeight: 600}} 
-                dy={12}
-                interval={daysRange > 30 ? 6 : daysRange > 7 ? 2 : 0}
-              />
-              <YAxis 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{fontSize: 9, fill: '#94a3b8', fontWeight: 600}} 
-                unit="%" 
-                domain={[0, 100]}
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  borderRadius: '16px', 
-                  border: 'none', 
-                  boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)',
-                  padding: '12px'
-                }}
-                itemStyle={{ fontSize: '11px', fontWeight: '800', padding: '2px 0' }}
-                labelStyle={{ fontSize: '10px', color: '#94a3b8', marginBottom: '8px', fontWeight: 'bold' }}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="adopcionDiario" 
-                stroke="#1ec6b6" 
-                strokeWidth={4} 
-                dot={false} 
-                activeDot={{ r: 6, strokeWidth: 0 }} 
-                animationDuration={1500}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="completionRate" 
-                stroke="#8b5cf6" 
-                strokeWidth={4} 
-                dot={false} 
-                activeDot={{ r: 6, strokeWidth: 0 }} 
-                animationDuration={1500}
-              />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: "#94a3b8", fontWeight: 600 }} dy={12} interval={daysRange > 30 ? 6 : daysRange > 7 ? 2 : 0} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: "#94a3b8", fontWeight: 600 }} />
+              <Tooltip contentStyle={{ borderRadius: "16px", border: "none", boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1)", padding: "12px" }} />
+              <Line type="monotone" dataKey="newEnrollments" name="Nuevas matrículas" stroke="#1ec6b6" strokeWidth={3} dot={false} />
+              <Line type="monotone" dataKey="completionRate" name="Progreso promedio (%)" stroke="#8b5cf6" strokeWidth={3} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* NUEVA SECCIÓN: INSIGHTS SUGERIDOS POR IA */}
-      <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg overflow-hidden relative group">
-        <div className="absolute -right-8 -top-8 opacity-10 group-hover:scale-110 transition-transform duration-700">
-           <Zap size={180} />
-        </div>
-        <div className="flex items-center gap-3 mb-6 relative z-10">
-           <Sparkles className="text-amber-300 animate-pulse" size={24} />
-           <h3 className="font-bold text-lg tracking-tight">Kira Intelligence: AI-Suggested Insights</h3>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
-           <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 hover:bg-white/20 transition-colors">
-              <div className="flex items-center gap-2 mb-2">
-                 <ShieldAlert size={16} className="text-rose-300" />
-                 <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-100">Detección de Fugas</span>
-              </div>
-              <p className="text-sm font-medium leading-relaxed">
-                 Bajada del 15% en retención detectada en "Curso Nivel 2". Causa probable: Inactividad del Coach en chats grupales (últ. 4 días).
-              </p>
-           </div>
-           
-           <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 hover:bg-white/20 transition-colors">
-              <div className="flex items-center gap-2 mb-2">
-                 <TrendingUp size={16} className="text-amber-300" />
-                 <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-100">Oportunidad de Tracción</span>
-              </div>
-              <p className="text-sm font-medium leading-relaxed">
-                 Tendencia 'Burnout Laboral' creció +34%. Sugerencia: Notificación Push con descuento [BURN20] vinculando a mentoría asíncrona.
-              </p>
-           </div>
-
-           <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 hover:bg-white/20 transition-colors">
-              <div className="flex items-center gap-2 mb-2">
-                 <Zap size={16} className="text-emerald-300" />
-                 <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-100">Optimización B2B</span>
-              </div>
-              <p className="text-sm font-medium leading-relaxed">
-                 Corporación [TechX] muestra incremento en Sentiment negativo. El Algoritmo de Horizonte sugiere revisión de KPIs trimestrales.
-              </p>
-           </div>
-        </div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex items-center gap-2"><Sparkles className="text-violet-600" size={20} /><h3 className="font-bold text-slate-900">Insights y bienestar</h3></div>
+        <p className="mt-2 text-sm text-slate-500">{hasWellbeingSummary ? "Se dispone de un agregado de bienestar autorizado. El análisis detallado se habilitará cuando el proceso de agregación publique datos suficientes." : "Aún no hay un agregado de bienestar autorizado. KIRA no inventa predicciones ni inspecciona diarios privados para completar este panel."}</p>
       </div>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            <BookOpen size={16} className="text-kirateal" /> Popularidad de Cursos
-          </h3>
+          <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2"><BookOpen size={16} className="text-kirateal" /> Cursos con más matrículas</h3>
           <div className="space-y-4">
-            {topCourses.map((c, i) => (
-              <div key={c.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-kirateal/10 flex items-center justify-center font-bold text-kirateal text-xs">
-                    #{i + 1}
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800">{c.title}</h4>
-                    <p className="text-[11px] text-slate-500">{c.category || 'Sin categoría'}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span className="block text-sm font-bold text-slate-800">{c.studentsCount || 0}</span>
-                  <span className="text-[10px] text-slate-400">alumnos</span>
-                </div>
-              </div>
-            ))}
-            {topCourses.length === 0 && (
-              <p className="text-slate-400 text-xs italic">Cargando cursos...</p>
-            )}
+            {topCourses.map((course, index) => <div key={course.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl"><div className="flex items-center gap-3"><div className="w-8 h-8 rounded-full bg-kirateal/10 flex items-center justify-center font-bold text-kirateal text-xs">#{index + 1}</div><div><h4 className="text-sm font-bold text-slate-800">{course.title}</h4><p className="text-[11px] text-slate-500">{course.category || "Sin categoría"}</p></div></div><div className="text-right"><span className="block text-sm font-bold text-slate-800">{course.actualEnrollments}</span><span className="text-[10px] text-slate-400">matrículas</span></div></div>)}
+            {!topCourses.length && <p className="text-slate-400 text-xs">Todavía no hay matrículas para mostrar.</p>}
           </div>
         </div>
-
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            <Clock size={16} className="text-kirateal" /> Actividad Reciente
-          </h3>
-          <div className="space-y-4">
-            {activities.map(act => (
-              <ActivityItem key={act.id} user={act.user} action={act.action} time={act.time} />
-            ))}
-            {activities.length === 0 && (
-              <p className="text-slate-400 text-xs italic">Nada nuevo que reportar.</p>
-            )}
+          <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2"><Clock size={16} className="text-kirateal" /> Actividad académica reciente</h3>
+          <div className="space-y-4">{activities.map(activity => <ActivityItem key={activity.id} user={activity.user} action={activity.action} time={activity.time} />)}
+            {!activities.length && <p className="text-slate-400 text-xs">No hay actividad académica reciente.</p>}
           </div>
         </div>
       </div>
