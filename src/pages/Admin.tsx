@@ -1553,6 +1553,7 @@ function MarketplaceEditorView() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editPrice, setEditPrice] = useState('');
+  const [editHours, setEditHours] = useState('10');
   const [editImageUrl, setEditImageUrl] = useState('');
   const [editAuthor, setEditAuthor] = useState('');
 
@@ -1560,6 +1561,7 @@ function MarketplaceEditorView() {
   const [createType, setCreateType] = useState<'curso' | 'libro' | null>(null);
   const [createTitle, setCreateTitle] = useState('');
   const [createPrice, setCreatePrice] = useState('99');
+  const [createHours, setCreateHours] = useState('10');
   const [createImageUrl, setCreateImageUrl] = useState('');
   const [createAuthor, setCreateAuthor] = useState('Kira Coach');
   const [createStatus, setCreateStatus] = useState<'published' | 'draft'>('draft');
@@ -1590,7 +1592,8 @@ function MarketplaceEditorView() {
          status: createStatus,
          createdAt: new Date(),
          author: createAuthor || 'Kira Coach',
-         imageUrl: createImageUrl || defaultImg
+         imageUrl: createImageUrl || defaultImg,
+         ...(createType === 'curso' ? { hours: Number(createHours) } : {})
       });
 
       // Transactional sync to primary collections for dynamic cross-app rendering
@@ -1604,6 +1607,7 @@ function MarketplaceEditorView() {
           studentsCount: 0,
           coachId: 'coach_kira',
           coachName: createAuthor || 'Kira Coach',
+          hours: Number(createHours),
           createdAt: new Date()
         });
       } else if (createType === 'libro') {
@@ -1621,6 +1625,7 @@ function MarketplaceEditorView() {
       // Reset
       setCreateTitle('');
       setCreatePrice('99');
+      setCreateHours('10');
       setCreateImageUrl('');
       setCreateAuthor('Kira Coach');
       setCreateStatus('draft');
@@ -1658,6 +1663,7 @@ function MarketplaceEditorView() {
           studentsCount: 0,
           coachId: 'coach_kira',
           coachName: 'Admin',
+          hours: 10,
           createdAt: new Date()
         });
       } else {
@@ -1687,6 +1693,7 @@ function MarketplaceEditorView() {
     setEditingId(item.id);
     setEditTitle(item.title || '');
     setEditPrice(item.price ? String(item.price) : '0');
+    setEditHours(String(item.hours || 10));
     setEditImageUrl(item.imageUrl || '');
     setEditAuthor(item.author || '');
   };
@@ -1697,7 +1704,8 @@ function MarketplaceEditorView() {
         title: editTitle,
         price: parseFloat(editPrice) || 0,
         imageUrl: editImageUrl,
-        author: editAuthor
+        author: editAuthor,
+        ...(items.find(item => item.id === id)?.type === 'curso' ? { hours: Number(editHours) } : {})
       });
 
       // Synchronize update down to courses
@@ -1709,7 +1717,8 @@ function MarketplaceEditorView() {
             title: editTitle,
             price: parseFloat(editPrice) || 0,
             bannerUrl: editImageUrl,
-            coachName: editAuthor
+            coachName: editAuthor,
+            hours: Number(editHours)
           });
         }
       } catch (ce) {}
@@ -1839,6 +1848,10 @@ function MarketplaceEditorView() {
                  </div>
                </div>
 
+               {createType === 'curso' && <div>
+                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Carga horaria del curso</label>
+                 <input type="number" min="1" value={createHours} onChange={e => setCreateHours(e.target.value)} className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5" required />
+               </div>}
                <div>
                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">URL de la Imagen (Portada)</label>
                  <input 
@@ -1904,6 +1917,7 @@ function MarketplaceEditorView() {
               setCreateType('curso');
               setCreateTitle('');
               setCreatePrice('199');
+              setCreateHours('10');
               setCreateImageUrl('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500');
               setCreateAuthor('Kira Coach');
               setCreateStatus('draft');
@@ -1977,6 +1991,10 @@ function MarketplaceEditorView() {
                                <span className="block text-xs text-slate-500 py-1.5 capitalize font-semibold">{item.type}</span>
                             </div>
                          </div>
+                         {item.type === 'curso' && <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Horas del curso</label>
+                            <input type="number" min="1" value={editHours} onChange={e => setEditHours(e.target.value)} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5" />
+                         </div>}
                          <div>
                             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">URL de la Imagen</label>
                             <input 
