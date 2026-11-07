@@ -3,6 +3,8 @@ name: KIRA quality gate
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened]
+  workflow_dispatch: {}
   push:
     branches: [main, "fix/**"]
 
