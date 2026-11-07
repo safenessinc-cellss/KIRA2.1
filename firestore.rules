@@ -408,14 +408,21 @@ service cloud.firestore {
         && request.resource.data.status == 'pending'
         && request.resource.data.courseCompleted == true
         && request.resource.data.progress >= 100
-        && request.resource.data.paid == false
-        && request.resource.data.paymentStatus == 'pending_verification'
         && request.resource.data.enrollmentId is string
         && exists(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId))
         && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.userId == request.auth.uid
         && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.courseId == request.resource.data.courseId
         && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.progress >= 100
-        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.courseCompleted == true;
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.courseCompleted == true
+        && exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId))
+        && ((get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.price <= 0
+             && request.resource.data.paymentRequired == false
+             && request.resource.data.paid == true
+             && request.resource.data.paymentStatus == 'not_required')
+            || (get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.price > 0
+             && request.resource.data.paymentRequired == true
+             && request.resource.data.paid == false
+             && request.resource.data.paymentStatus == 'pending_verification'));
       allow update, delete: if isKiraOwner();
     }
 
