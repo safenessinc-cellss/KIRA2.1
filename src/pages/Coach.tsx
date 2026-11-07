@@ -482,10 +482,10 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
   const [submissionsList, setSubmissionsList] = useState<any[]>([]);
 
   // 2. Estados para AI Audit CRM
-  const [leads, setLeads] = useState(350);
-  const [calls, setCalls] = useState(60);
-  const [closes, setCloses] = useState(10);
-  const [crmTicketPrice, setCrmTicketPrice] = useState(1200);
+  const [leads, setLeads] = useState(0);
+  const [calls, setCalls] = useState(0);
+  const [closes, setCloses] = useState(0);
+  const [crmTicketPrice, setCrmTicketPrice] = useState(0);
   const [isAuditingCrm, setIsAuditingCrm] = useState(false);
   const [crmAuditResult, setCrmAuditResult] = useState<string>('');
 
@@ -2439,7 +2439,7 @@ function CoachAnalyticsOld({ coachId }: { coachId?: string }) {
           views,
           favorites,
           enrollments,
-          zapsGenerated: Math.floor(views * 1.5 + enrollments * 10) // Simulated Zaps impact
+          zapsGenerated: 0
         });
       } catch (err) {
         console.error("Error fetching analytics:", err);
@@ -2464,7 +2464,7 @@ function CoachAnalyticsOld({ coachId }: { coachId?: string }) {
          <p className="text-sm text-slate-500 mt-1">Monitorea el impacto de tu consciencia en la comunidad.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
          <AnalyticsStatCard 
            icon={<Activity className="text-sky-500" />} 
            label="Vistas de Perfil" 
@@ -2510,7 +2510,7 @@ function CoachAnalyticsOld({ coachId }: { coachId?: string }) {
   );
 }
 
-function AnalyticsStatCard({ icon, label, value, trend, color }: any) {
+function AnalyticsStatCard({ icon, label, value, color }: any) {
   const colors: any = {
     sky: "bg-sky-50 text-sky-600",
     rose: "bg-rose-50 text-rose-600",
@@ -2524,7 +2524,6 @@ function AnalyticsStatCard({ icon, label, value, trend, color }: any) {
           <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", colors[color])}>
              {icon}
           </div>
-          <span className={cn("text-[10px] font-black px-2 py-0.5 rounded-full", colors[color])}>{trend}</span>
        </div>
        <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">{label}</p>
        <h4 className="text-2xl font-black text-slate-900">{value.toLocaleString()}</h4>
