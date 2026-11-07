@@ -17,7 +17,7 @@ jobs:
   quality:
     name: TypeScript and production build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout reviewed source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -34,3 +34,7 @@ jobs:
         run: npm run lint
       - name: Production frontend build
         run: npm run build
+      - name: Install Firestore rules test tooling
+        run: npm install --no-save --package-lock=false --legacy-peer-deps @firebase/rules-unit-testing firebase-tools
+      - name: Run Firestore security rules tests
+        run: npx firebase emulators:exec --only firestore --project demo-kira-rules "npm run test:rules"
