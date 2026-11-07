@@ -348,8 +348,7 @@ service cloud.firestore {
 
     match /transactions/{id} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow create: if false; // Transactions are created only by trusted Stripe/backend handlers. 
-      allow update, delete: if isAdmin();
+      allow create, update, delete: if false; // Ledger entries are immutable; corrections use trusted backend workflows.
     }
 
     match /coupons/{id} {
@@ -436,8 +435,10 @@ service cloud.firestore {
     }
 
     match /automations/{id} {
-      allow read: if isAdmin() || isApprovedCoach();
-      allow create, update, delete: if isAdmin() || isApprovedCoach();
+      allow read: if isAdmin() || (isApprovedCoach() && resource.data.ownerId == request.auth.uid);
+      allow create: if isAdmin() || (isApprovedCoach() && isValidAutomation() && request.resource.data.ownerId == request.auth.uid);
+      allow update: if isAdmin() || (isApprovedCoach() && isValidAutomation() && resource.data.ownerId == request.auth.uid && request.resource.data.ownerId == request.auth.uid && areImmutableFieldsUnchanged(['ownerId', 'createdAt']));
+      allow delete: if isAdmin() || (isApprovedCoach() && resource.data.ownerId == request.auth.uid);
     }
 
     match /campaign_logs/{id} {
