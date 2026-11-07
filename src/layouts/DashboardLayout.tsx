@@ -1,3 +1,4 @@
+import { SafeImage } from '../components/SafeImage';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from '../components/Brand';
@@ -7,7 +8,6 @@ import {
 } from 'lucide-react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
-import { ChatWidget } from '../components/Chat';
 import { NotificationCenter } from '../components/Notifications';
 import { useCart } from '../components/CartProvider';
 import { auth, db } from '../firebase';
@@ -142,7 +142,7 @@ export function DashboardLayout({ title }: { title: string }) {
       <div className="border-t border-slate-100 px-5 pt-4">
         <div className="mb-4 flex min-w-0 items-center gap-3">
           {user?.photoURL ? (
-            <img src={user.photoURL} alt="Foto de perfil" referrerPolicy="no-referrer" className="h-9 w-9 shrink-0 rounded-full object-cover shadow-sm" />
+            <SafeImage src={user.photoURL} alt="Foto de perfil" referrerPolicy="no-referrer" className="h-9 w-9 shrink-0 rounded-full object-cover shadow-sm" />
           ) : (
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
               {displayProfileInitial}
@@ -263,7 +263,6 @@ export function DashboardLayout({ title }: { title: string }) {
           <div className="min-w-0 w-full flex-1">
             <Outlet />
           </div>
-          <ChatWidget />
 
           {toast && (
             <div className="fixed right-3 top-20 z-[100] w-[calc(100vw-1.5rem)] max-w-sm cursor-pointer sm:right-6" onClick={() => setToast(null)}>

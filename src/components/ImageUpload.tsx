@@ -1,3 +1,4 @@
+import { SafeImage } from './SafeImage';
 import React, { useState, useRef } from 'react';
 import { storage } from '../firebase';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
@@ -151,7 +152,7 @@ export function ImageUpload({ onUploadComplete, folderPath, className, label = "
     <div className={cn("flex flex-col gap-3", className)}>
       {currentImage && (
         <div className="w-full h-32 rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-           <img src={currentImage} alt="Current" className="w-full h-full object-cover" />
+           <SafeImage src={currentImage} alt="Current" className="w-full h-full object-cover" />
         </div>
       )}
       

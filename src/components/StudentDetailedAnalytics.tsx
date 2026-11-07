@@ -382,7 +382,7 @@ export function StudentDetailedAnalytics({
           </div>
 
           <div className="h-[280px] min-h-[280px] w-full min-w-0 flex-none">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
               {activeTab === 'progress' ? (
                 <AreaChart data={progressData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
