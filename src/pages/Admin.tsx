@@ -495,8 +495,8 @@ function GlobalDashboardView() {
 
       data.push({
         name: d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
-        adopcionDiario: Math.min(100, (uniqueOnDay / effectiveUsers) * 100 + (Math.random() * 5)),
-        completionRate: Math.min(100, avgComp - (i * 0.2) + (Math.random() * 3))
+        adopcionDiario: effectiveUsers > 0 ? Math.min(100, (uniqueOnDay / effectiveUsers) * 100) : 0,
+        completionRate: Math.min(100, Math.max(0, avgComp))
       });
     }
     return data;
