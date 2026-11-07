@@ -1549,6 +1549,8 @@ function CoachCuratorView() {
 
 function MarketplaceEditorView() {
   const [items, setItems] = useState<any[]>([]);
+  const [availableCoaches, setAvailableCoaches] = useState<any[]>([]);
+  const [createCoachId, setCreateCoachId] = useState('');
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -1573,6 +1575,12 @@ function MarketplaceEditorView() {
     });
     return () => unsub();
   }, []);
+  useEffect(() => {
+    const unsub = onSnapshot(query(collection(db, 'users'), where('role', '==', 'coach')), snap => {
+      setAvailableCoaches(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, []);
 
   const handleCreateItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1580,18 +1588,24 @@ function MarketplaceEditorView() {
       alert('Por favor introduce un título para el catálogo.');
       return;
     }
+    if (createType === 'curso' && !createCoachId) {
+      alert('Selecciona el coach responsable del curso.');
+      return;
+    }
     try {
       const defaultImg = createType === 'curso' 
         ? 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500'
         : 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=500';
 
+      const selectedCoach = availableCoaches.find(coach => coach.id === createCoachId);
+      const courseCoachName = selectedCoach?.displayName || selectedCoach?.name || createAuthor || 'Kira Coach';
       const dRef = await addDoc(collection(db, 'marketplace'), {
          title: createTitle,
          price: parseFloat(createPrice) || 0,
          type: createType,
          status: createStatus,
          createdAt: new Date(),
-         author: createAuthor || 'Kira Coach',
+         author: createType === 'curso' ? courseCoachName : (createAuthor || 'Kira Coach'),
          imageUrl: createImageUrl || defaultImg,
          ...(createType === 'curso' ? { hours: Number(createHours) } : {})
       });
@@ -1605,8 +1619,8 @@ function MarketplaceEditorView() {
           status: createStatus,
           description: 'Un curso integrador enfocado en expandir tu bienestar mental, emocional y espiritual a través de dinámicas en vivo.',
           studentsCount: 0,
-          coachId: 'coach_kira',
-          coachName: createAuthor || 'Kira Coach',
+          coachId: createCoachId,
+          coachName: courseCoachName,
           hours: Number(createHours),
           createdAt: new Date()
         });
@@ -1661,8 +1675,8 @@ function MarketplaceEditorView() {
           status: 'draft',
           description: 'Un curso integrador enfocado en expandir tu bienestar mental, emocional y espiritual.',
           studentsCount: 0,
-          coachId: 'coach_kira',
-          coachName: 'Admin',
+          coachId: availableCoaches[0]?.id || 'coach_kira',
+          coachName: availableCoaches[0]?.displayName || 'Admin',
           hours: 10,
           createdAt: new Date()
         });
@@ -1849,6 +1863,13 @@ function MarketplaceEditorView() {
                </div>
 
                {createType === 'curso' && <div>
+                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Coach responsable</label>
+                 <select value={createCoachId} onChange={e => { const coach = availableCoaches.find(item => item.id === e.target.value); setCreateCoachId(e.target.value); setCreateAuthor(coach?.displayName || coach?.name || ''); }} className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5" required>
+                   <option value="">Selecciona un coach</option>
+                   {availableCoaches.map(coach => <option key={coach.id} value={coach.id}>{coach.displayName || coach.name || coach.email}</option>)}
+                 </select>
+               </div>}
+               {createType === 'curso' && <div>
                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Carga horaria del curso</label>
                  <input type="number" min="1" value={createHours} onChange={e => setCreateHours(e.target.value)} className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5" required />
                </div>}
@@ -1918,6 +1939,8 @@ function MarketplaceEditorView() {
               setCreateTitle('');
               setCreatePrice('199');
               setCreateHours('10');
+              setCreateCoachId(availableCoaches[0]?.id || '');
+              setCreateAuthor(availableCoaches[0]?.displayName || 'Kira Coach');
               setCreateImageUrl('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500');
               setCreateAuthor('Kira Coach');
               setCreateStatus('draft');
