@@ -7,7 +7,7 @@ on:
     branches: [main, "feat/**"]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: kira-ci-${{ github.ref }}
@@ -20,28 +20,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
-          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - name: Regenerate stale npm lockfile
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-      - name: Commit lockfile repair on feature branch
-        run: |
-          if ! git diff --quiet -- package-lock.json; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add package-lock.json
-            git commit -m "chore: refresh npm lockfile [skip ci]"
-            git push
-          fi
-      - name: Install dependencies from repaired lockfile
-        run: npm ci
+      - name: Install dependencies and reconcile lockfile
+        run: npm install --no-audit --no-fund
       - name: Type check
         run: npm run lint
       - name: Build
         run: npm run build
+      - name: Upload reconciled npm lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: kira-package-lock
+          path: package-lock.json
+          if-no-files-found: error
