@@ -21,6 +21,9 @@ export function CoreLayout() {
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       <PushNotificationManager />
       <Outlet />
+      <footer className="mt-auto py-4 text-center text-[10px] text-slate-500 tracking-wide" aria-label="Créditos de desarrollo">
+        Creado por <span className="font-semibold text-slate-600">SAFENESS.INC</span>
+      </footer>
       <AIChat />
       {/* ✅ CHAT WIDGET MONTADO AQUÍ */}
       <ChatWidget />
