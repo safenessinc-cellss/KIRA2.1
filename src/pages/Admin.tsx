@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
-import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search } from 'lucide-react';
+import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, Menu, X } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
 import { AdminBooksView } from './AdminBooksView';
 import { cn } from '../lib/utils';
 import { AdminExecutiveDashboard } from './AdminExecutiveDashboard';
 import { useToast } from '../hooks/useToast';
+import { Logo } from '../components/Brand';
 
 type AdminTab = string;
 
@@ -17,6 +18,7 @@ export function AdminMonitor() {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [profile, setProfile] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -111,14 +113,23 @@ export function AdminMonitor() {
     setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
   };
 
+  const selectAdminTab = (tab: AdminTab) => {
+    setActiveTab(tab);
+    setMobileMenuOpen(false);
+  };
+
   return (
-    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
-      {/* Sidebar Refinada */}
-      <aside className="w-full lg:w-72 lg:shrink-0 lg:sticky lg:top-4 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="rounded-xl bg-gradient-to-br from-cyan-50 via-white to-indigo-50 border border-cyan-100 px-4 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-700">KIRA COACH</div>
-          <div className="mt-1 text-sm font-extrabold text-slate-900">Ecosistema de Bienestar</div>
-          <div className="mt-1 text-[11px] text-slate-500">Centro de Mando</div>
+    <div className="relative flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:hidden">
+        <div className="flex min-w-0 items-center gap-2"><Logo size={34} /><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-800">Centro de Mando</p><p className="truncate text-xs text-slate-500">Administración KIRA</p></div></div>
+        <button type="button" onClick={() => setMobileMenuOpen(true)} aria-label="Abrir menú de módulos" aria-expanded={mobileMenuOpen} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-700"><Menu size={20}/></button>
+      </div>
+      {mobileMenuOpen && <button type="button" aria-label="Cerrar menú" onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-[70] bg-slate-950/40 lg:hidden" />}
+      {/* Único menú administrativo: drawer en móvil y sidebar en escritorio */}
+      <aside className={cn("flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl lg:sticky lg:top-4 lg:z-auto lg:w-72 lg:shrink-0 lg:shadow-sm", mobileMenuOpen ? "fixed inset-y-0 left-0 z-[80] w-[min(20rem,88vw)] overflow-y-auto rounded-none" : "hidden lg:flex")}>
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-cyan-100 bg-gradient-to-br from-cyan-50 via-white to-indigo-50 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3"><Logo size={38}/><div className="min-w-0"><div className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-700">KIRA COACH</div><div className="mt-1 text-sm font-extrabold text-slate-900">Ecosistema de Bienestar</div><div className="mt-1 text-[11px] text-slate-500">Centro de Mando</div></div></div>
+          <button type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Cerrar menú" className="rounded-lg p-2 text-slate-500 hover:bg-white lg:hidden"><X size={18}/></button>
         </div>
         {/* Búsqueda rápida de módulos */}
         <div className="relative group mb-2">
@@ -155,7 +166,7 @@ export function AdminMonitor() {
                     key={item.id}
                     active={activeTab === item.id} 
                     disabled={!canOpen(item)}
-                    onClick={() => canOpen(item) && setActiveTab(item.id as AdminTab)} 
+                    onClick={() => canOpen(item) && selectAdminTab(item.id as AdminTab)} 
                     icon={item.icon} 
                     label={item.label} 
                   />
@@ -167,7 +178,7 @@ export function AdminMonitor() {
       </aside>
 
       {/* Área principal: dashboard inicial y contenido del módulo seleccionado */}
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 flex-1 w-full">
         {activeTab === 'dashboard' && hasPerm(navItems.find(i=>i.id==='dashboard')) && <GlobalDashboardView onNavigate={(tab) => setActiveTab(tab)} />}
         {activeTab === 'analytics' && hasPerm(navItems.find(i=>i.id==='analytics')) && <BIView />}
 
