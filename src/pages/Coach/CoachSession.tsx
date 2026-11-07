@@ -41,7 +41,6 @@ export function CoachSession() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const transcriptIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Estado del micrófono
   const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
@@ -131,6 +130,9 @@ export function CoachSession() {
     }
 
     try {
+      // Confirmación explícita de consentimiento de todas las personas participantes.
+      if (!window.confirm('¿Todas las personas participantes han dado su consentimiento informado para grabar y transcribir esta sesión?')) return;
+
       // Crear sesión en Firestore
       const sessionData = {
         coachId: user?.uid,
@@ -141,8 +143,6 @@ export function CoachSession() {
         startedAt: new Date(),
         transcript: [],
         analysis: null,
-        transcriptionMode: 'browser-speech-recognition',
-        consentConfirmed: true,
         createdAt: new Date()
       };
       
