@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, getDocs, addDoc, onSnapshot, doc, updateDoc, setDoc, orderBy, limit } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
@@ -10,39 +10,6 @@ import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, Shiel
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
 
-const DEFAULT_BOOKS = [
-  {
-    id: 'cio-robert-teran',
-    title: 'Cio',
-    author: 'Robert Teran',
-    price: 0,
-    imageUrl: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=400',
-    description: 'Soy un hombre que llegó al mundo sin saber quién era y que aprendió a nombrarse en el silencio. Estas páginas son mi despedida de quien fui y mi bienvenida a quien aún no sé que soy. Aquí encontrarás preguntas que tal vez también te has hecho: ¿Quién soy? ¿De dónde vengo? ¿Hacia dónde voy? ¿Por qué las cosas terribles se aprenden rápido y las hermosas nos cuestan la vida? No esperes respuestas. Espera caminos. "Caminante, no hay camino, el camino se hace al andar."',
-    status: 'published',
-    authorType: 'coach'
-  },
-  {
-    id: 'diario-diosa-kira',
-    title: 'Diario de una Diosa',
-    author: 'Kira Zurita',
-    price: 0,
-    imageUrl: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=400',
-    description: 'Un libro canalizado y estructurado con herramientas de arteterapia, respiración consciente y introspección guiada.',
-    status: 'published',
-    authorType: 'admin'
-  },
-  {
-    id: 'habitos-atomicos-ideas',
-    title: 'Las diez ideas clave de Hábitos Atómicos',
-    author: 'Kira Coach',
-    price: 5,
-    imageUrl: 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?auto=format&fit=crop&q=80&w=400',
-    description: 'Un libro canalizado y estructurado con herramientas de arteterapia, respiración consciente e introspección inspirada en el best-seller de James Clear.',
-    status: 'published',
-    authorType: 'coach'
-  }
-];
-
 export function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -51,7 +18,7 @@ export function Dashboard() {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
-  const [availableBooks, setAvailableBooks] = useState<any[]>(DEFAULT_BOOKS);
+  const [availableBooks, setAvailableBooks] = useState<any[]>([]);
   const [myEnrollments, setMyEnrollments] = useState<any[]>([]);
   const [favoriteCoaches, setFavoriteCoaches] = useState<any[]>([]);
   const [unlockedHistory, setUnlockedHistory] = useState<any[]>([]);
@@ -59,6 +26,7 @@ export function Dashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
+  const [checkoutNotice, setCheckoutNotice] = useState('');
 
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [showCart, setShowCart] = useState(false);
@@ -165,8 +133,7 @@ export function Dashboard() {
     if (!user) return;
     try {
       await updateDoc(doc(db, 'users', user.uid), {
-        hasCompletedOnboarding: true,
-        points: (user.points || 0) + 50
+        hasCompletedOnboarding: true
       });
       setShowOnboarding(false);
     } catch(e) {
@@ -186,36 +153,42 @@ export function Dashboard() {
 
   useEffect(() => {
     fetchData();
-    handlePaymentSuccess();
-  }, [user]);
+    verifyCheckoutReturn();
+  }, [user, searchParams]);
 
-  const handlePaymentSuccess = async () => {
-    const success = searchParams.get('success');
-    const courseId = searchParams.get('courseId');
-    const amount = searchParams.get('amount');
-
-    if (success === 'true' && courseId && user) {
-      try {
-        await addDoc(collection(db, 'enrollments'), {
-          userId: user.uid,
-          courseId,
-          progress: 0,
-          createdAt: new Date()
-        });
-
-        await addDoc(collection(db, 'transactions'), {
-          userId: user.uid,
-          amount: Number(amount),
-          type: 'course_purchase',
-          courseId,
-          createdAt: new Date()
-        });
-
-        setSearchParams({});
-        fetchData();
-      } catch (e) {
-        console.error('Error recording payment success:', e);
+  const verifyCheckoutReturn = async () => {
+    if (!user) return;
+    const checkout = searchParams.get('checkout');
+    const sessionId = searchParams.get('session_id');
+    if (searchParams.get('success') === 'true') {
+      setCheckoutNotice('El retorno antiguo success=true no es prueba de pago. No se concedió acceso. Usa el checkout seguro.');
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    if (checkout === 'cancelled') {
+      setCheckoutNotice('Checkout cancelado. No se confirmó ningún pago ni se concedió acceso.');
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    if (checkout !== 'return' || !sessionId) return;
+    setCheckoutNotice('Verificando el pago con Stripe…');
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('No hay sesión autenticada');
+      const response = await fetch('/api/stripe/session-status?session_id=' + encodeURIComponent(sessionId), { headers: { Authorization: 'Bearer ' + token } });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'No se pudo verificar el checkout');
+      if (result.paymentStatus === 'paid') {
+        setCheckoutNotice('Stripe confirma el pago. El acceso se habilita únicamente cuando el webhook firmado registra la compra.');
+        await fetchData();
+      } else {
+        setCheckoutNotice('El pago todavía no está confirmado por Stripe. No se concedió acceso.');
       }
+    } catch (err) {
+      console.error('Stripe return verification failed', err);
+      setCheckoutNotice('No se pudo verificar el pago. No se concedió acceso; revisa el historial de pedidos o contacta soporte.');
+    } finally {
+      setSearchParams({}, { replace: true });
     }
   };
 
@@ -239,7 +212,7 @@ export function Dashboard() {
         setAvailableBooks(merged);
       } catch (booksErr) {
         console.warn("Dynamic books fetch failed:", booksErr);
-        setAvailableBooks(DEFAULT_BOOKS);
+        setAvailableBooks([]);
       }
 
       const enrollQ = query(collection(db, 'enrollments'), where('userId', '==', user.uid));
@@ -282,28 +255,31 @@ export function Dashboard() {
     }
   };
 
-  const handleStripeCheckout = async (course: any) => {
-    if(!user) return;
-    setCheckingOutId(course.id);
+  const handleStripeCheckout = async (item: any, itemType: 'course' | 'book' = 'course') => {
+    if (!user || checkingOutId) return;
+    setCheckingOutId(item.id);
+    setCheckoutNotice('');
     try {
-      const resp = await fetch('/api/create-checkout-session', {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Debes iniciar sesión de nuevo.');
+      const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          courseId: course.id,
-          userId: user.uid,
-          amount: course.price,
-          title: course.title
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ items: [{ id: item.id, itemType }] })
       });
-      const data = await resp.json();
-      if (data.error) {
-        throw new Error(data.error);
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || 'No se pudo iniciar Stripe Checkout.');
+      if (data.free) {
+        setCheckoutNotice('Acceso gratuito concedido por backend.');
+        await fetchData();
+        setCheckingOutId(null);
+        return;
       }
+      if (!data.url) throw new Error('Stripe no devolvió una URL de checkout.');
       window.location.href = data.url;
-    } catch(e: any) {
-      console.error('Stripe Redirect Error:', e);
-      alert('Error al iniciar la inscripción: ' + (e.message || String(e)));
+    } catch (err: any) {
+      console.error('Stripe checkout initialization failed', err);
+      setCheckoutNotice(err.message || 'Error al iniciar el pago.');
       setCheckingOutId(null);
     }
   };
@@ -323,48 +299,31 @@ export function Dashboard() {
 
   const handleProcessPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !cartItems.length || isProcessingPayment) return;
     setIsProcessingPayment(true);
-    
+    setCheckoutNotice('');
     try {
-      for (const item of cartItems) {
-        await addDoc(collection(db, 'purchases'), {
-          userId: user.uid,
-          userEmail: user.email || '',
-          userName: user.displayName || user.name || 'Alumno',
-          itemId: item.id,
-          itemType: item.itemType || (item.bannerUrl ? 'course' : 'book'),
-          itemTitle: item.title,
-          itemPrice: Number(item.price),
-          imageUrl: item.imageUrl || item.bannerUrl || '',
-          status: 'pending_release',
-          createdAt: new Date()
-        });
-
-        await addDoc(collection(db, 'transactions'), {
-          userId: user.uid,
-          amount: Number(item.price),
-          type: item.itemType === 'course' ? 'course_purchase' : 'book_purchase',
-          itemId: item.id,
-          itemTitle: item.title,
-          status: 'pending_release',
-          createdAt: new Date()
-        });
-      }
-
-      setPaymentSuccessData({
-        items: [...cartItems],
-        total: cartItems.reduce((acc, it) => acc + Number(it.price), 0)
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Debes iniciar sesión de nuevo.');
+      const items = cartItems.map(item => ({ id: item.id, itemType: item.itemType || (item.bannerUrl ? 'course' : 'book') }));
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ items })
       });
-      
-      setCartItems([]);
-      setPaymentForm({ cardName: '', cardNumber: '', expiry: '', cvv: '' });
-      setShowPaymentModal(false);
-      
-      fetchData();
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || 'No se pudo crear el checkout.');
+      if (data.free) {
+        setCartItems([]); setShowCart(false); setShowPaymentModal(false);
+        setCheckoutNotice('El pedido gratuito fue procesado por el backend.');
+        await fetchData();
+        return;
+      }
+      if (!data.url) throw new Error('Stripe no devolvió una URL de checkout.');
+      window.location.href = data.url;
     } catch (err: any) {
-      console.error("Error creating purchases:", err);
-      alert("Ocurrió un error al registrar el pago: " + (err.message || String(err)));
+      console.error('Secure checkout failed', err);
+      setCheckoutNotice(err.message || 'No se pudo iniciar el pago.');
     } finally {
       setIsProcessingPayment(false);
     }
@@ -394,6 +353,7 @@ export function Dashboard() {
   
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-10 animate-in fade-in duration-700">
+      {checkoutNotice && <div role="status" className="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">{checkoutNotice}</div>}
       {/* Header Ejecutivo para Alumno */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-100 pb-10">
         <div>
@@ -795,9 +755,9 @@ export function Dashboard() {
                       <div className="mt-auto pt-2">
                         {(() => {
                           const bookPurchase = purchases.find(p => p.itemId === book.id);
-                          const isOwned = Number(book.price) === 0 || bookPurchase;
+                          const isOwned = Number(book.price) === 0 || (bookPurchase && ['paid','completed'].includes(String(bookPurchase.status || bookPurchase.paymentStatus || '').toLowerCase()));
                           if (isOwned) {
-                            if (bookPurchase && bookPurchase.status === 'pending_release') {
+                            if (bookPurchase && !['paid','completed'].includes(String(bookPurchase.status || bookPurchase.paymentStatus || '').toLowerCase())) {
                               return (
                                 <button 
                                   disabled
@@ -809,12 +769,15 @@ export function Dashboard() {
                             } else {
                               return (
                                 <div className="flex flex-col gap-2 w-full">
-                                  <button 
-                                    onClick={() => alert(`Lectura del Ebook: "${book.title}". ¡Excelente decisión! Hemos habilitado el material interactivo y PDF en tu correo corporativo o personal.`)}
-                                    className="w-full text-[10px] py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-violet-900/20 active:scale-[0.98]"
-                                  >
-                                    <BookOpen size={12} /> {book.id === 'cio-robert-teran' ? 'Leer Enlace' : 'Leer PDF'}
-                                  </button>
+                                  {(book.fileUrl || book.downloadUrl || book.pdfUrl || book.resourceUrl) ? (
+                                    <a href={book.fileUrl || book.downloadUrl || book.pdfUrl || book.resourceUrl} target="_blank" rel="noreferrer" className="w-full text-[10px] py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider">
+                                      <BookOpen size={12} /> Abrir recurso
+                                    </a>
+                                  ) : (
+                                    <button disabled title="El archivo del libro no está cargado en la ficha del recurso." className="w-full text-[10px] py-2.5 bg-slate-100 text-slate-400 rounded-xl font-black flex items-center justify-center gap-2 uppercase tracking-wider cursor-not-allowed">
+                                      <BookOpen size={12} /> Archivo no disponible
+                                    </button>
+                                  )}
                                   <button 
                                     onClick={() => setReviewingItem({ id: book.id, type: 'book', title: book.title })}
                                     className="w-full text-[10px] py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider active:scale-[0.98]"
@@ -1259,184 +1222,28 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* SIMULATED PAYMENT MODAL */}
+      {/* STRIPE HOSTED CHECKOUT MODAL — no card data is collected by KIRA */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowPaymentModal(false)} />
-          <div className="bg-white rounded-[40px] w-full max-w-lg p-8 sm:p-10 relative z-10 shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
-            <div className="flex justify-between items-start mb-6 pb-4 border-b border-slate-100">
-              <div>
-                <h3 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                  <CreditCard size={24} className="text-kirateal" /> Checkout de Compra
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">Simulador de pasarela de pago segura de Kira Coach</p>
-              </div>
-              <button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-slate-600 font-bold p-2">✕</button>
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !isProcessingPayment && setShowPaymentModal(false)} />
+          <div className="relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col rounded-3xl bg-white p-6 sm:p-8 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between border-b border-slate-100 pb-4">
+              <div><h3 className="text-xl font-bold text-slate-900 flex items-center gap-2"><CreditCard size={22} className="text-kirateal"/> Checkout seguro</h3><p className="mt-1 text-xs text-slate-500">El pago se procesa en Stripe. KIRA no recibe ni almacena números de tarjeta o CVC.</p></div>
+              <button disabled={isProcessingPayment} onClick={() => setShowPaymentModal(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 disabled:opacity-40">✕</button>
             </div>
-
-            <div className="flex-1 overflow-y-auto pr-2 space-y-6">
-              {/* Order Summary */}
-              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Resumen del Pedido</h4>
-                <ul className="space-y-3 divide-y divide-slate-100">
-                  {cartItems.map((item) => (
-                    <li key={item.id} className="pt-2 first:pt-0 flex justify-between items-center text-sm">
-                      <div>
-                        <span className="font-bold text-slate-800">{item.title}</span>
-                        <span className="text-[10px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded ml-2 font-bold uppercase">
-                          {item.bannerUrl ? 'Curso' : 'Libro'}
-                        </span>
-                      </div>
-                      <span className="font-black text-slate-900 shrink-0 ml-4">${item.price} USD</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="border-t border-slate-200 mt-4 pt-4 flex justify-between items-center text-base font-black text-slate-900">
-                  <span>Monto Total</span>
-                  <span>${cartItems.reduce((acc, item) => acc + Number(item.price), 0).toFixed(2)} USD</span>
-                </div>
+            <div className="space-y-3 overflow-y-auto">
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Resumen del pedido</h4>
+                {cartItems.map(item=><div key={item.id} className="flex justify-between gap-3 border-b border-slate-200/70 py-2 text-sm last:border-0"><span className="font-medium text-slate-700">{item.title}<span className="ml-2 text-[10px] text-slate-400 uppercase">{item.itemType==='course'||item.bannerUrl?'Curso':'Libro'}</span></span><span className="shrink-0 font-semibold">{item.price != null ? Number(item.price).toLocaleString('es-ES',{style:'currency',currency:'USD'}) : 'Precio verificado en servidor'}</span></div>)}
               </div>
-
-              {/* Card form */}
-              <form onSubmit={handleProcessPayment} className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Nombre en la Tarjeta</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Robert Harrison"
-                    value={paymentForm.cardName}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, cardName: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Número de Tarjeta</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      placeholder="4000 1234 5678 9010"
-                      maxLength={19}
-                      value={paymentForm.cardNumber}
-                      onChange={(e) => {
-                        let val = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-                        let matches = val.match(/\d{4,16}/g);
-                        let match = matches && matches[0] || '';
-                        let parts = [];
-                        for (let i = 0, len = match.length; i < len; i += 4) {
-                          parts.push(match.substring(i, i + 4));
-                        }
-                        if (parts.length > 0) {
-                          setPaymentForm({ ...paymentForm, cardNumber: parts.join(' ') });
-                        } else {
-                          setPaymentForm({ ...paymentForm, cardNumber: val });
-                        }
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none pl-11"
-                    />
-                    <CreditCard className="absolute left-4 top-3.5 text-slate-400" size={18} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Vencimiento</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="MM/AA"
-                      maxLength={5}
-                      value={paymentForm.expiry}
-                      onChange={(e) => {
-                        let val = e.target.value.replace(/[^0-9]/g, '');
-                        if (val.length >= 2) {
-                          setPaymentForm({ ...paymentForm, expiry: val.substring(0, 2) + '/' + val.substring(2, 4) });
-                        } else {
-                          setPaymentForm({ ...paymentForm, expiry: val });
-                        }
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">CVC / CVV</label>
-                    <input
-                      type="password"
-                      required
-                      placeholder="123"
-                      maxLength={4}
-                      value={paymentForm.cvv}
-                      onChange={(e) => setPaymentForm({ ...paymentForm, cvv: e.target.value.replace(/[^0-9]/g, '') })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isProcessingPayment}
-                  className="w-full mt-6 py-4 bg-kirateal text-white hover:bg-kirateal-dark rounded-2xl font-black uppercase text-xs tracking-wider transition-all duration-300 hover:shadow-xl hover:shadow-teal-100 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-teal-50"
-                >
-                  {isProcessingPayment ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" /> Procesando Transacción...
-                    </>
-                  ) : (
-                    <>
-                      Pagar ${cartItems.reduce((acc, item) => acc + Number(item.price), 0).toFixed(2)} USD
-                    </>
-                  )}
-                </button>
-              </form>
+              <p className="text-xs leading-relaxed text-slate-500">El importe definitivo se obtiene de la ficha publicada en Firestore y se valida en el servidor. El retorno desde Stripe no concede acceso por sí solo; el webhook firmado debe registrar la compra.</p>
+              <form onSubmit={handleProcessPayment}><button type="submit" disabled={isProcessingPayment || cartItems.length===0} className="flex w-full items-center justify-center gap-2 rounded-xl bg-kirateal px-4 py-3.5 text-sm font-bold text-white transition hover:bg-kirateal-dark disabled:opacity-50">{isProcessingPayment?<><Loader2 size={16} className="animate-spin"/> Preparando Stripe…</>:<>Continuar a Stripe <ArrowRight size={16}/></>}</button></form>
             </div>
           </div>
         </div>
       )}
 
-      {/* PAYMENT SUCCESS MODAL */}
-      {paymentSuccessData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setPaymentSuccessData(null)} />
-          <div className="bg-white rounded-[40px] w-full max-w-md p-8 relative z-10 shadow-2xl text-center flex flex-col items-center animate-in zoom-in-95 duration-500">
-            <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-6">
-              <CheckCircle2 size={40} className="stroke-[2.5]" />
-            </div>
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight mb-2">¡Pago Realizado con Éxito!</h3>
-            <p className="text-slate-500 text-sm leading-relaxed mb-6">
-              Hemos registrado el pago de tu orden de forma segura en Firestore.
-            </p>
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-left w-full mb-6 space-y-2">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Detalle de la Transacción</p>
-              {paymentSuccessData.items.map((it: any, i: number) => (
-                <div key={i} className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-700">{it.title}</span>
-                  <span className="font-black text-slate-900">${it.price} USD</span>
-                </div>
-              ))}
-              <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-xs font-black text-slate-900">
-                <span>Total pagado</span>
-                <span>${paymentSuccessData.total.toFixed(2)} USD</span>
-              </div>
-            </div>
-            <div className="bg-amber-50 border border-amber-200/50 rounded-2xl p-4 text-amber-800 text-xs text-left leading-relaxed mb-8 flex gap-3 items-start">
-              <span className="text-lg">⏳</span>
-              <div>
-                <strong className="font-bold block mb-0.5">Pendiente de liberación por el Coach:</strong>
-                Según las políticas de Kira Coach, tu material/acceso será liberado y habilitado manualmente por tu Coach o Administrador desde su Panel de Control. ¡Te avisaremos por correo!
-              </div>
-            </div>
-            <button 
-              onClick={() => setPaymentSuccessData(null)}
-              className="w-full py-4 bg-slate-900 hover:bg-black text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-all duration-300"
-            >
-              Cerrar y Ver Mis Compras
-            </button>
           </div>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -1446,6 +1253,7 @@ export function Journal() {
   const [sentiment, setSentiment] = useState<'positive' | 'neutral' | 'negative'>('positive');
   const [aiPrompt, setAiPrompt] = useState<string>('');
   const [loadingPrompt, setLoadingPrompt] = useState(false);
+  const [promptError, setPromptError] = useState('');
   
   useEffect(() => {
     if (user) {
@@ -1475,10 +1283,13 @@ export function Journal() {
         Si no hay entradas previas, dale una bienvenida inspiradora.
       `;
 
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Debes iniciar sesión para usar KIRA AI.');
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + token
         },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
@@ -1489,9 +1300,11 @@ export function Journal() {
       if (data.error) throw new Error(data.error);
       const text = data.text || '';
       setAiPrompt(text.trim());
+      setPromptError('');
     } catch (e) {
-      console.error('Error generating predictive prompt:', e);
-      setAiPrompt('¿Qué intención quieres sembrar en tu corazón hoy?');
+      console.error('Error generating journal reflection:', e);
+      setAiPrompt('');
+      setPromptError('La reflexión de KIRA AI no está disponible ahora. No se generó una respuesta de reemplazo.');
     } finally {
       setLoadingPrompt(false);
     }
@@ -1500,9 +1313,6 @@ export function Journal() {
   const handleSave = async () => {
     if(!content.trim() || !user) return;
     try {
-      const currentPoints = user.points || 0;
-      const userRef = doc(db, 'users', user.uid);
-      
       await addDoc(collection(db, 'journals'), {
         userId: user.uid,
         content: content.trim(),
@@ -1510,12 +1320,8 @@ export function Journal() {
         createdAt: new Date()
       });
 
-      await updateDoc(userRef, {
-        points: currentPoints + 20
-      });
-
       setContent('');
-      alert("¡Entrada sincronizada! Has generado +20 Energy Pts.");
+      alert("Tu entrada privada se guardó correctamente.");
     } catch(e) {
       handleFirestoreError(e, OperationType.WRITE, 'journals');
     }
@@ -1540,6 +1346,7 @@ export function Journal() {
            </div>
         </div>
 
+        {promptError && <p role="alert" className="mb-4 text-sm text-amber-700">{promptError}</p>}
         {aiPrompt && (
           <div className="mb-10 p-8 bg-slate-50 border border-slate-150 rounded-[32px] flex items-start gap-5 relative overflow-hidden group">
              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-100/50 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
@@ -1547,9 +1354,9 @@ export function Journal() {
                 <Sparkles size={20} />
              </div>
              <div className="relative z-10 flex-1">
-                <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Kira Predictive Insight</p>
+                <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Reflexión de KIRA AI</p>
                 <p className="text-lg text-slate-700 italic font-medium leading-relaxed italic">
-                  {loadingPrompt ? "Decodificando patrones energéticos..." : `"${aiPrompt}"`}
+                  {loadingPrompt ? "Generando reflexión…" : `"${aiPrompt}"`}
                 </p>
              </div>
           </div>

@@ -3,7 +3,7 @@ import { storage, db, handleFirestoreError, OperationType, auth } from '../fireb
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, orderBy, limit, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { MediaUpload } from '../components/MediaUpload';
 import { CoachAnalytics } from '../components/CoachAnalytics';
 import { useToast } from '../hooks/useToast';
@@ -464,42 +464,25 @@ function TabBtn({ active, onClick, icon, label, disabled }: any) {
 
 function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     activeStudents: 0,
     avgProgress: 0,
     recentSessions: 0,
-    sentiment: { positive: 0, neutral: 0, negative: 0 }
   });
   const [sessionsData, setSessionsData] = useState<any[]>([]);
   const [topTopics, setTopTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pendingPurchases, setPendingPurchases] = useState<any[]>([]);
-  const [revenue, setRevenue] = useState(0);
-
-  const [isEditingMetrics, setIsEditingMetrics] = useState(false);
-  const [editedMetrics, setEditedMetrics] = useState({
-    activeStudents: 0,
-    avgProgress: 0,
-    recentSessions: 0
-  });
 
   // --- NUEVAS ACCIONES INTERACTIVAS Y LOGICAS ---
-  const [showRevisarTareas, setShowRevisarTareas] = useState(false);
   const [showAiAuditCrm, setShowAiAuditCrm] = useState(false);
   const [showCloudSupport, setShowCloudSupport] = useState(false);
   const [showSessionIntelligence, setShowSessionIntelligence] = useState(false);
 
-  // 1. Estados para Revisar Tareas
-  const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
-  const [feedbackText, setFeedbackText] = useState('');
-  const [isAiGeneratingFeedback, setIsAiGeneratingFeedback] = useState(false);
-  const [reviewedSubmissions, setReviewedSubmissions] = useState<Record<string, string>>({});
-  const [submissionsList, setSubmissionsList] = useState<any[]>([]);
-
   // 2. Estados para AI Audit CRM
-  const [leads, setLeads] = useState(350);
-  const [calls, setCalls] = useState(60);
-  const [closes, setCloses] = useState(10);
+  const [leads, setLeads] = useState(0);
+  const [calls, setCalls] = useState(0);
+  const [closes, setCloses] = useState(0);
   const [crmTicketPrice, setCrmTicketPrice] = useState(1200);
   const [isAuditingCrm, setIsAuditingCrm] = useState(false);
   const [crmAuditResult, setCrmAuditResult] = useState<string>('');
@@ -516,142 +499,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
   const totalCrmRevenue = closes * crmTicketPrice;
   const valuePerLead = leads > 0 ? Number((totalCrmRevenue / leads).toFixed(1)) : 0;
 
-  // Envíos de prueba estáticos de alta calidad por si no existen registros aún
-  const mockSubmissions = [
-    {
-      id: 'sub-1',
-      studentName: 'Sofía Alarcón',
-      studentEmail: 'sofia.alarcon@example.com',
-      moduleName: 'Módulo 1: Desbloqueo Emocional',
-      submissionDate: 'Hace 2 horas',
-      content: 'Me he sentido increíblemente conectada durante la sesión de hoy. Logré identificar que mi estrés físico se acumula en los hombros. Hice un dibujo de trazos circulares con tonos fríos para drenar mi frustración del trabajo y de inmediato sentí un gran alivio en el pecho.',
-      status: 'pending',
-      sentiment: 'positive'
-    },
-    {
-      id: 'sub-2',
-      studentName: 'Mateo Castillo',
-      studentEmail: 'mateo.c@example.com',
-      moduleName: 'Módulo 2: Reconfiguración de Creencias',
-      submissionDate: 'Ayer',
-      content: 'Siento mucha resistencia al intentar reprogramar mis pensamientos limitantes sobre la abundancia. Cada vez que pienso en cobrar lo que realmente vale mi trabajo, me da un nudo fuerte en el estómago y me asalta la culpa de no ser lo suficientemente humilde.',
-      status: 'pending',
-      sentiment: 'negative'
-    },
-    {
-      id: 'sub-3',
-      studentName: 'María Soler',
-      studentEmail: 'maria.soler@example.com',
-      moduleName: 'Módulo 3: El Poder de la Presencia',
-      submissionDate: 'Hace 3 días',
-      content: 'He estado haciendo las meditaciones diarias de 10 minutos recomendadas en el programa. Noto que mi mente se distrae menos durante el día y logro volver a mi centro con mayor facilidad cuando hay caos alrededor. Me siento muy estable y en paz.',
-      status: 'reviewed',
-      sentiment: 'neutral',
-      feedback: '¡Excelente proceso, María! Mantener la constancia de 10 minutos diarios es la clave del momentum. Has logrado estabilizar tu ritmo interno de manera espectacular. ¡Sigue así!'
-    }
-  ];
 
-  // Cargar registros de diarios reales y fusionar
-  useEffect(() => {
-    if (showRevisarTareas && user) {
-      const fetchJournalsForReview = async () => {
-        try {
-          const q = query(collection(db, 'journals'), orderBy('createdAt', 'desc'), limit(15));
-          const snap = await getDocs(q);
-          const dbJournals = snap.docs.map(docSnap => {
-            const data = docSnap.data();
-            const dateStr = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : 'Reciente';
-            return {
-              id: docSnap.id,
-              studentName: data.userId === user.uid ? 'Tú (Registro de Prueba)' : 'Alumno de la Escuela',
-              studentEmail: 'alumno@kira.coach',
-              moduleName: 'Diario Emocional del Programa',
-              submissionDate: dateStr,
-              content: data.content,
-              status: reviewedSubmissions[docSnap.id] ? 'reviewed' : 'pending',
-              sentiment: data.sentiment || 'neutral',
-              feedback: reviewedSubmissions[docSnap.id] || ''
-            };
-          });
-          
-          const combined = [...dbJournals, ...mockSubmissions];
-          setSubmissionsList(combined);
-          if (combined.length > 0) {
-            setSelectedSubmission(combined[0]);
-            setFeedbackText(combined[0].feedback || '');
-          }
-        } catch (e) {
-          console.error("Error fetching journals for review:", e);
-          setSubmissionsList(mockSubmissions);
-          if (mockSubmissions.length > 0) {
-            setSelectedSubmission(mockSubmissions[0]);
-            setFeedbackText(mockSubmissions[0].feedback || '');
-          }
-        }
-      };
-      fetchJournalsForReview();
-    }
-  }, [showRevisarTareas, user]);
-
-  // Co-piloto de Feedback IA con Gemini
-  const handleGenerateAiFeedback = async () => {
-    if (!selectedSubmission) return;
-    setIsAiGeneratingFeedback(true);
-    try {
-      const prompt = `Actúa como Kira Moreno, mentora principal y creadora de la metodología Kira Coach.
-      Lee este entregable del estudiante ${selectedSubmission.studentName} para la actividad "${selectedSubmission.moduleName}":
-      "${selectedSubmission.content}"
-      
-      Escribe un comentario de feedback de coaching en español con un tono cariñoso, firme, inspirador y sumamente profesional de 2 párrafos cortos. No utilices saludos impersonales como "Hola Alumno", ve directo a destacar su coraje o proceso y dale un consejo de alta consciencia.`;
-
-      const res = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gemini-3.5-flash',
-          contents: prompt
-        })
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      if (data.text) {
-        setFeedbackText(data.text);
-      }
-    } catch (e) {
-      console.error(e);
-      setFeedbackText(`¡Excelente observación, ${selectedSubmission.studentName}! Veo con mucha alegría la forma en que estás asumiendo la auto-observación de tus procesos internos en este módulo. Seguir de cerca estas reacciones en tu cuerpo es el primer paso para liberar viejos bloqueos. Continúa así, el camino se recorre paso a paso.`);
-    } finally {
-      setIsAiGeneratingFeedback(false);
-    }
-  };
-
-  // Enviar feedback final
-  const handleSubmitFeedback = async () => {
-    if (!selectedSubmission) return;
-    try {
-      setReviewedSubmissions(prev => ({
-        ...prev,
-        [selectedSubmission.id]: feedbackText
-      }));
-      
-      setSubmissionsList(prev => prev.map(s => s.id === selectedSubmission.id ? { ...s, status: 'reviewed', feedback: feedbackText } : s));
-      setSelectedSubmission(prev => ({ ...prev, status: 'reviewed', feedback: feedbackText }));
-      
-      await addDoc(collection(db, 'notifications'), {
-        userId: selectedSubmission.userId || user?.uid || 'all',
-        title: `Nuevo Feedback en ${selectedSubmission.moduleName}`,
-        message: `Kira Moreno ha enviado la retroalimentación de tu entrega. ¡Compruébala ya!`,
-        type: 'ai',
-        read: false,
-        createdAt: new Date()
-      });
-
-      alert("¡Feedback enviado oficialmente! Se guardó en el historial y se notificó al alumno.");
-    } catch (e) {
-      console.error(e);
-      alert("Feedback registrado con éxito en esta sesión.");
-    }
-  };
 
   // CRM Audit Run
   const handleRunCrmAudit = async () => {
@@ -676,7 +524,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -727,7 +575,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -750,80 +598,6 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
       }]);
     } finally {
       setIsSubmittingSupport(false);
-    }
-  };
-
-  const handleReleasePurchase = async (purchase: any) => {
-    try {
-      await updateDoc(doc(db, 'purchases', purchase.id), {
-        status: 'released',
-        releasedAt: new Date()
-      });
-
-      if (purchase.itemType === 'course') {
-        const enrollQ = query(
-          collection(db, 'enrollments'),
-          where('userId', '==', purchase.userId),
-          where('courseId', '==', purchase.itemId)
-        );
-        const enrollSnap = await getDocs(enrollQ);
-        if (enrollSnap.empty) {
-          await addDoc(collection(db, 'enrollments'), {
-            userId: purchase.userId,
-            courseId: purchase.itemId,
-            progress: 0,
-            createdAt: new Date()
-          });
-        }
-      }
-
-      await addDoc(collection(db, 'transactions'), {
-        userId: purchase.userId,
-        amount: Number(purchase.itemPrice),
-        type: purchase.itemType === 'course' ? 'course_release' : 'book_release',
-        itemId: purchase.itemId,
-        itemTitle: purchase.itemTitle,
-        status: 'released',
-        createdAt: new Date()
-      });
-
-      alert(`¡Acceso liberado con éxito para ${purchase.userName}!`);
-      window.location.reload();
-    } catch (e: any) {
-      console.error("Error releasing purchase:", e);
-      alert("Error al liberar la compra: " + (e.message || String(e)));
-    }
-  };
-
-  useEffect(() => {
-    if (profile) {
-      setEditedMetrics({
-        activeStudents: profile.manualActiveStudents !== undefined ? profile.manualActiveStudents : stats.activeStudents,
-        avgProgress: profile.manualAvgProgress !== undefined ? profile.manualAvgProgress : stats.avgProgress,
-        recentSessions: profile.manualRecentSessions !== undefined ? profile.manualRecentSessions : stats.recentSessions
-      });
-    } else {
-      setEditedMetrics({
-        activeStudents: stats.activeStudents,
-        avgProgress: stats.avgProgress,
-        recentSessions: stats.recentSessions
-      });
-    }
-  }, [profile, stats]);
-
-  const handleSaveMetrics = async () => {
-    if (!user) return;
-    try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        manualActiveStudents: Number(editedMetrics.activeStudents),
-        manualAvgProgress: Number(editedMetrics.avgProgress),
-        manualRecentSessions: Number(editedMetrics.recentSessions),
-        updatedAt: new Date()
-      });
-      setIsEditingMetrics(false);
-    } catch (e) {
-      console.error("Error saving manual metrics:", e);
-      alert("Error al guardar métricas.");
     }
   };
 
@@ -903,36 +677,14 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
           sesiones: sessionCountsByDate[date]
         }));
         
-        if (sData.every(d => d.sesiones === 0)) {
-          sData.forEach(d => d.sesiones = Math.floor(Math.random() * 4));
-        }
-        setSessionsData(sData);
+        setSessionsData(sData.every(d => d.sesiones === 0) ? [] : sData);
 
         const sortedTopics = Array.from(topicsMap.entries())
           .sort((a, b) => b[1] - a[1])
           .slice(0, 5)
           .map(([topic, count]) => ({ topic, count }));
           
-        if (sortedTopics.length === 0) {
-          sortedTopics.push({ topic: 'Manejo de ansiedad', count: 8 });
-          sortedTopics.push({ topic: 'Liderazgo de equipo', count: 5 });
-          sortedTopics.push({ topic: 'Gestión del tiempo', count: 4 });
-        }
         setTopTopics(sortedTopics);
-
-        // Fetch Journals to mock team energy heatmap
-        const journalsSnap = await getDocs(collection(db, 'journals')); // In a real app we'd filter by the coach's students
-        let pos = 0, neu = 0, neg = 0;
-        journalsSnap.docs.forEach(doc => {
-          const s = doc.data().sentiment || 'neutral';
-          if (s === 'positive') pos++;
-          else if (s === 'negative') neg++;
-          else neu++;
-        });
-
-        if (pos === 0 && neu === 0 && neg === 0) {
-          pos = 10; neu = 5; neg = 2; // mock data if empty
-        }
 
         // Fetch purchases for Revenue calculation & Release control
         let coachPending: any[] = [];
@@ -945,31 +697,10 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
             if (p.status !== 'pending_release') return false;
             if (p.itemType === 'course') {
               return courseIds.includes(p.itemId);
-            }
-            return true; // Show all ebooks/books
-          });
-
-          const releasedPurchases = purchasesList.filter(p => {
-            if (p.status !== 'released') return false;
-            if (p.itemType === 'course') {
-              return courseIds.includes(p.itemId);
-            }
-            return true;
-          });
-
-          totalRevenue = releasedPurchases.reduce((sum, p) => sum + (Number(p.itemPrice) || 0), 0);
-        } catch (pErr) {
-          console.warn("Error fetching purchases for coach dashboard:", pErr);
-        }
-
-        setPendingPurchases(coachPending);
-        setRevenue(totalRevenue);
-
-        setStats({
+                    setStats({
           activeStudents,
           avgProgress: totalEnrollments > 0 ? Math.round(totalProgress / totalEnrollments) : 0,
-          recentSessions: recentSessionsCount,
-          sentiment: { positive: pos, neutral: neu, negative: neg }
+          recentSessions: recentSessionsCount
         });
         setLoading(false);
       } catch (error) {
@@ -980,14 +711,9 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
     fetchDashboardStats();
   }, [user]);
 
-  const totalEmotions = stats.sentiment.positive + stats.sentiment.neutral + stats.sentiment.negative;
-  const posPct = totalEmotions > 0 ? (stats.sentiment.positive / totalEmotions) * 100 : 0;
-  const neuPct = totalEmotions > 0 ? (stats.sentiment.neutral / totalEmotions) * 100 : 0;
-  const negPct = totalEmotions > 0 ? (stats.sentiment.negative / totalEmotions) * 100 : 0;
-
-  const displayActiveStudents = profile?.manualActiveStudents !== undefined ? profile.manualActiveStudents : stats.activeStudents;
-  const displayAvgProgress = profile?.manualAvgProgress !== undefined ? profile.manualAvgProgress : stats.avgProgress;
-  const displayRecentSessions = profile?.manualRecentSessions !== undefined ? profile.manualRecentSessions : stats.recentSessions;
+  const displayActiveStudents = stats.activeStudents;
+  const displayAvgProgress = stats.avgProgress;
+  const displayRecentSessions = stats.recentSessions;
 
   return (
     <div className="flex flex-col gap-10 animate-in fade-in slide-in-from-bottom-2">
@@ -996,125 +722,19 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
           <div className="w-2.5 h-2.5 rounded-full bg-kirateal animate-pulse" />
           <span className="text-sm font-black text-slate-800 tracking-tight uppercase">Métricas de Rendimiento</span>
         </div>
-        <button 
-          onClick={() => setIsEditingMetrics(!isEditingMetrics)}
-          className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-wider hover:bg-black transition-all cursor-pointer active:scale-95 shadow-md shadow-slate-900/10"
-        >
-          {isEditingMetrics ? "Cancelar Edición" : "Editar Indicadores"}
-        </button>
-      </div>
 
-      {isEditingMetrics && (
-        <div className="bg-white rounded-[40px] border border-slate-200 p-8 shadow-xl animate-in zoom-in-95 duration-200">
-          <h3 className="text-lg font-black text-slate-900 tracking-tight mb-2">Personalizar Indicadores</h3>
-          <p className="text-xs text-slate-500 mb-6">Configura y publica manualmente los números que se muestran en tu panel de control.</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            <div className="space-y-2">
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Alumnos Activos</label>
-              <input 
-                type="number"
-                min="0"
-                value={editedMetrics.activeStudents}
-                onChange={e => setEditedMetrics({...editedMetrics, activeStudents: parseInt(e.target.value) || 0})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Promedio Progreso (%)</label>
-              <input 
-                type="number"
-                min="0"
-                max="100"
-                value={editedMetrics.avgProgress}
-                onChange={e => setEditedMetrics({...editedMetrics, avgProgress: Math.min(100, Math.max(0, parseInt(e.target.value) || 0))})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Sesiones Recientes</label>
-              <input 
-                type="number"
-                min="0"
-                value={editedMetrics.recentSessions}
-                onChange={e => setEditedMetrics({...editedMetrics, recentSessions: parseInt(e.target.value) || 0})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3">
-            <button 
-              onClick={() => setIsEditingMetrics(false)}
-              className="px-6 py-3 border border-slate-200 text-slate-600 rounded-2xl text-xs font-bold uppercase tracking-wider hover:bg-slate-50 transition-all"
-            >
-              Cancelar
-            </button>
-            <button 
-              onClick={handleSaveMetrics}
-              className="px-6 py-3 bg-kirateal text-white rounded-2xl text-xs font-black uppercase tracking-wider hover:bg-kirateal-dark transition-all shadow-lg shadow-kirateal/20"
-            >
-              Publicar Cambios
-            </button>
-          </div>
-        </div>
-      )}
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard title="Alumnos Activos" value={loading ? "..." : displayActiveStudents} icon={<Users className="text-indigo-600" />} />
         <StatCard title="Promedio Progreso" value={loading ? "..." : `${displayAvgProgress}%`} icon={<BarChart3 className="text-emerald-600" />} />
         <StatCard title="Sesiones Recientes" value={loading ? "..." : displayRecentSessions} icon={<Calendar className="text-amber-500" />} />
-        <StatCard title="Ingresos Brutos" value={loading ? "..." : `$${revenue.toFixed(2)}`} icon={<CreditCard className="text-teal-600" />} />
+        <StatCard title="Finanzas" value="No disponible" icon={<CreditCard className="text-teal-600" />} />
       </div>
 
-      {/* SECCIÓN DE LIBERACIÓN DE COMPRAS */}
-      {!loading && pendingPurchases.length > 0 && (
-        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 rounded-[40px] border border-slate-800 p-8 sm:p-10 shadow-2xl relative overflow-hidden text-white animate-in slide-in-from-bottom-2 duration-300">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full filter blur-3xl pointer-events-none" />
-          
-          <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 relative z-10">
-            <div>
-              <h3 className="text-xl font-black tracking-tight flex items-center gap-3">
-                <span className="p-2 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-400/20">
-                  <CreditCard size={20} className="animate-pulse" />
-                </span>
-                Control de Accesos: Liberar Compras Pendientes
-              </h3>
-              <p className="text-sm text-slate-400 mt-1">Los alumnos han realizado simulaciones de pago y están esperando que habilites sus accesos.</p>
-            </div>
-            <span className="bg-amber-400 text-slate-950 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider shadow-lg shrink-0">
-              {pendingPurchases.length} Pendiente{pendingPurchases.length > 1 ? 's' : ''}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
-            {pendingPurchases.map((purchase) => (
-              <div key={purchase.id} className="bg-slate-950/60 border border-white/5 rounded-[32px] p-6 hover:border-amber-400/30 transition-all flex flex-col justify-between min-h-[200px]">
-                <div>
-                  <div className="flex justify-between items-start mb-3">
-                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${purchase.itemType === 'course' ? 'bg-kirateal/20 text-kirateal border border-kirateal/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'}`}>
-                      {purchase.itemType === 'course' ? 'Programa' : 'Ebook'}
-                    </span>
-                    <span className="text-sm font-black text-amber-400">${purchase.itemPrice} USD</span>
-                  </div>
-                  <h4 className="font-black text-base text-slate-100 line-clamp-1 mb-1">{purchase.itemTitle}</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed font-medium">
-                    Alumno: <strong className="text-slate-200">{purchase.userName}</strong>
-                  </p>
-                  <p className="text-[10px] text-slate-500 leading-none truncate mt-0.5">{purchase.userEmail}</p>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-white/5">
-                  <button
-                    onClick={() => handleReleasePurchase(purchase)}
-                    className="w-full py-3 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-amber-400/15 hover:shadow-xl hover:shadow-amber-400/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <CheckCircle2 size={14} /> Liberar Acceso
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
+        <strong className="text-slate-800">Pagos y liquidaciones:</strong> esta vista no permite liberar compras ni modificar transacciones desde el navegador. El detalle financiero estará disponible cuando el servicio de liquidaciones del backend esté conectado.
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className={cn("lg:col-span-2 bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm", !isApproved && "opacity-50 pointer-events-none")}>
@@ -1129,50 +749,15 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <QuickAction onClick={() => setShowSessionIntelligence(true)} title="Sesión Inteligente" desc="Transcripción y análisis IA" icon={<Brain size={24} className="text-indigo-600" />} />
-            <QuickAction onClick={() => setShowRevisarTareas(true)} title="Revisar Tareas" desc="Feedback de módulos" icon={<BookOpen size={24} className="text-amber-500" />} />
+            <QuickAction onClick={() => navigate('/coach/homework')} title="Revisar Tareas" desc="Feedback de módulos" icon={<BookOpen size={24} className="text-amber-500" />} />
             <QuickAction onClick={() => setShowAiAuditCrm(true)} title="AI Audit CRM" desc="Optimizar embudo" icon={<Activity size={24} className="text-rose-500" />} />
             <QuickAction onClick={() => setShowCloudSupport(true)} title="Cloud Support" desc="Kira Corp Direct" icon={<ShieldCheck size={24} className="text-emerald-600" />} />
           </div>
         </div>
 
-        {/* Heatmap de Energía (Resumen del equipo) */}
-        <div className={cn("bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm flex flex-col justify-center", !isApproved && "opacity-50 pointer-events-none")}>
-           <h3 className="text-lg font-black text-slate-800 mb-6 text-center">Heatmap Energía de Equipo</h3>
-           {loading ? (
-              <div className="flex justify-center py-10"><Loader2 className="animate-spin text-teal-500" size={32} /></div>
-           ) : (
-              <div className="flex flex-col gap-5">
-                 <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Sinergia (Alta)</span>
-                       <span className="text-sm font-black text-emerald-600">{Math.round(posPct)}%</span>
-                    </div>
-                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                       <div className="h-full bg-emerald-500 transition-all duration-1000 shadow-sm" style={{ width: `${posPct}%` }}></div>
-                    </div>
-                 </div>
-
-                 <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Estable (Neutral)</span>
-                       <span className="text-sm font-black text-amber-500">{Math.round(neuPct)}%</span>
-                    </div>
-                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                       <div className="h-full bg-amber-400 transition-all duration-1000 shadow-sm" style={{ width: `${neuPct}%` }}></div>
-                    </div>
-                 </div>
-
-                 <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Agotamiento (Riesgo)</span>
-                       <span className="text-sm font-black text-rose-500">{Math.round(negPct)}%</span>
-                    </div>
-                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                       <div className="h-full bg-rose-500 transition-all duration-1000 shadow-sm" style={{ width: `${negPct}%` }}></div>
-                    </div>
-                 </div>
-              </div>
-           )}
+        <div className={cn("bg-white rounded-[40px] border border-slate-200 p-8 shadow-sm flex flex-col justify-center", !isApproved && "opacity-50 pointer-events-none")}>
+          <div className="flex items-center gap-3 mb-4"><ShieldCheck className="text-emerald-600" size={22} /><h3 className="text-lg font-black text-slate-800">Privacidad del bienestar</h3></div>
+          <p className="text-sm leading-relaxed text-slate-600">Los diarios personales, conversaciones privadas con IA y notas de sesión no están disponibles para coaches. El seguimiento se limita a inscripciones, progreso académico y sesiones autorizadas.</p>
         </div>
       </div>
 
@@ -1223,153 +808,6 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
                {topTopics.length === 0 && (
                  <div className="text-center py-10 text-slate-400 text-sm">Aún no hay temas suficientes para analizar.</div>
                )}
-
-                 {/* --- MODAL 1: REVISAR TAREAS (FEEDBACK DE MODULOS) --- */}
-                 {showRevisarTareas && (
-                   <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                     <div className="bg-white rounded-[40px] w-full max-w-5xl h-[85vh] overflow-hidden border border-slate-100 shadow-2xl relative flex flex-col animate-in fade-in zoom-in-95 duration-300 text-left">
-                       <button 
-                         type="button"
-                         onClick={() => setShowRevisarTareas(false)}
-                         className="p-3 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 absolute top-6 right-6 transition-all hover:rotate-90"
-                       >
-                         <X size={20} />
-                       </button>
-                       
-                       <div className="p-8 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
-                         <div className="p-3 rounded-2xl bg-amber-50 text-amber-500">
-                           <BookOpen size={24} />
-                         </div>
-                         <div>
-                           <h3 className="text-xl font-black text-slate-900 tracking-tight">Feedback de Módulos (Revisar Tareas)</h3>
-                           <p className="text-xs text-slate-500 font-medium">Revisa las entregas y reflexiones de tus alumnos con el Co-piloto de Inteligencia Artificial de Kira Moreno.</p>
-                         </div>
-                       </div>
-
-                       <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-                         {/* Left Column: Submissions List */}
-                         <div className="w-full md:w-80 border-r border-slate-100 overflow-y-auto p-6 bg-slate-50/30 flex flex-col gap-4 text-left">
-                           <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Entregas Recientes ({submissionsList.length})</h4>
-                           <div className="flex flex-col gap-3">
-                             {submissionsList.map((sub) => (
-                               <button
-                                 type="button"
-                                 key={sub.id}
-                                 onClick={() => {
-                                   setSelectedSubmission(sub);
-                                   setFeedbackText(sub.feedback || '');
-                                 }}
-                                 className={cn(
-                                   "w-full p-5 rounded-2xl border text-left transition-all flex flex-col gap-2 relative overflow-hidden group",
-                                   selectedSubmission?.id === sub.id 
-                                     ? "border-violet-200 bg-white shadow-lg shadow-violet-100/30" 
-                                     : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-md"
-                                 )}
-                               >
-                                 {sub.status === 'pending' && (
-                                   <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-500" />
-                                 )}
-                                 <div className="flex justify-between items-start gap-2">
-                                   <span className="font-extrabold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors">{sub.studentName}</span>
-                                   <span className={cn(
-                                     "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider",
-                                     sub.status === 'pending' ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
-                                   )}>
-                                     {sub.status === 'pending' ? 'Pendiente' : 'Revisada'}
-                                   </span>
-                                 </div>
-                                 <span className="text-[11px] font-bold text-slate-400">{sub.moduleName}</span>
-                                 <p className="text-slate-500 text-[11px] line-clamp-2 leading-relaxed font-medium">{sub.content}</p>
-                                 <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold pt-1">
-                                   <span>{sub.submissionDate}</span>
-                                   {sub.sentiment === 'positive' && <span className="text-emerald-500">😊 Positivo</span>}
-                                   {sub.sentiment === 'negative' && <span className="text-rose-500">😔 Desafiante</span>}
-                                   {sub.sentiment === 'neutral' && <span className="text-slate-500">😐 Neutro</span>}
-                                 </div>
-                               </button>
-                             ))}
-                           </div>
-                         </div>
-
-                         {/* Right Column: Submission details and grading */}
-                         <div className="flex-1 overflow-y-auto p-8 flex flex-col gap-6 bg-white text-left">
-                           {selectedSubmission ? (
-                             <div className="flex flex-col gap-6">
-                               <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100">
-                                 <div className="flex justify-between items-start mb-4">
-                                   <div>
-                                     <h4 className="font-black text-slate-900 text-base">{selectedSubmission.studentName}</h4>
-                                     <p className="text-xs text-slate-500 font-bold">{selectedSubmission.studentEmail}</p>
-                                   </div>
-                                   <div className="text-right">
-                                     <span className="text-xs text-slate-400 font-black uppercase tracking-wider block">Actividad</span>
-                                     <span className="text-sm font-extrabold text-indigo-600">{selectedSubmission.moduleName}</span>
-                                   </div>
-                                 </div>
-                                 <div className="bg-white p-5 rounded-2xl border border-slate-100 text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">
-                                   "{selectedSubmission.content}"
-                                 </div>
-                               </div>
-
-                               <div className="flex flex-col gap-4">
-                                 <div className="flex justify-between items-center">
-                                   <label className="text-sm font-black text-slate-800 tracking-tight">Retroalimentación para el Estudiante</label>
-                                   <button
-                                     type="button"
-                                     onClick={handleGenerateAiFeedback}
-                                     disabled={isAiGeneratingFeedback}
-                                     className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 disabled:opacity-50 text-[12px] font-black uppercase tracking-wider rounded-xl transition-all"
-                                   >
-                                     {isAiGeneratingFeedback ? (
-                                       <>
-                                         <Loader2 size={14} className="animate-spin" /> Procesando...
-                                       </>
-                                     ) : (
-                                       <>
-                                         <Sparkles size={14} /> Redactar con IA de Kira
-                                       </>
-                                     )}
-                                   </button>
-                                 </div>
-                                 <textarea
-                                   value={feedbackText}
-                                   onChange={(e) => setFeedbackText(e.target.value)}
-                                   placeholder="Escribe tu retroalimentación personalizada aquí o utiliza nuestro co-piloto IA para redactar una respuesta empática..."
-                                   rows={6}
-                                   className="w-full p-5 rounded-2xl border border-slate-200 focus:border-violet-300 focus:ring-0 text-sm text-slate-700 leading-relaxed placeholder-slate-400 resize-none outline-none"
-                                 />
-                               </div>
-
-                               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                                 <button
-                                   type="button"
-                                   onClick={() => {
-                                     setFeedbackText('');
-                                   }}
-                                   className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black uppercase tracking-wider text-[11px] rounded-xl transition-all"
-                                 >
-                                   Limpiar
-                                 </button>
-                                 <button
-                                   type="button"
-                                   onClick={handleSubmitFeedback}
-                                   className="px-8 py-3 bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-wider text-[11px] rounded-xl shadow-lg shadow-primary/25 transition-all"
-                                 >
-                                   Enviar Retroalimentación Oficial
-                                 </button>
-                               </div>
-                             </div>
-                           ) : (
-                             <div className="flex-1 flex flex-col items-center justify-center text-center py-20 text-slate-400">
-                               <BookOpen size={48} className="text-slate-200 mb-4" />
-                               <p className="font-bold">Selecciona una entrega de la lista para comenzar a revisar.</p>
-                             </div>
-                           )}
-                         </div>
-                       </div>
-                     </div>
-                   </div>
-                 )}
 
                  {/* --- MODAL 2: AI AUDIT CRM (OPTIMIZAR EMBUDO) --- */}
                  {showAiAuditCrm && (
@@ -1691,8 +1129,6 @@ function QuickAction({ title, desc, icon, onClick }: any) {
 function CoachStudentsActivity() {
   const { user } = useAuth();
   const [students, setStudents] = useState<any[]>([]);
-  const [teamSentiment, setTeamSentiment] = useState<{ summary: string, mood: string } | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
   const [messageTemplate, setMessageTemplate] = useState('motivacion');
   const [customMessage, setCustomMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -1700,103 +1136,57 @@ function CoachStudentsActivity() {
 
   useEffect(() => {
     if (!user) return;
-    
-    // Logic: Find students enrolled in THIS coach's courses
-    const fetchStudentsAndJournals = async () => {
+
+    const fetchStudentsAndEnrollments = async () => {
       try {
-        const coursesQ = query(collection(db, 'courses'), where('coachId', '==', user.uid));
-        const coursesSnap = await getDocs(coursesQ);
-        const courseIds = coursesSnap.docs.map(d => d.id);
+        const coursesSnap = await getDocs(query(collection(db, 'courses'), where('coachId', '==', user.uid)));
+        const courseIds = coursesSnap.docs.map(courseDoc => courseDoc.id);
+        const studentsMap = new Map<string, any>();
 
-        if (courseIds.length === 0) return;
-
-        const studentsMap = new Map();
-        for (const cid of courseIds) {
-          const enrollQ = query(collection(db, 'enrollments'), where('courseId', '==', cid));
-          const enrollSnap = await getDocs(enrollQ);
-          for (const eDoc of enrollSnap.docs) {
-            const sId = eDoc.data().userId;
-            if (!studentsMap.has(sId)) {
-              const sProfile = await getDoc(doc(db, 'users', sId));
-              if (sProfile.exists()) {
-                studentsMap.set(sId, { id: sId, ...sProfile.data(), courseProgress: eDoc.data().progress || 0 });
+        for (const courseId of courseIds) {
+          const enrollmentsSnap = await getDocs(query(collection(db, 'enrollments'), where('courseId', '==', courseId)));
+          for (const enrollmentDoc of enrollmentsSnap.docs) {
+            const enrollment = enrollmentDoc.data();
+            const studentId = typeof enrollment.userId === 'string' ? enrollment.userId : '';
+            if (!studentId) continue;
+            const progressValue = Number(enrollment.progress);
+            const progress = Number.isFinite(progressValue) ? Math.max(0, Math.min(100, progressValue)) : 0;
+            const activityAt = enrollment.updatedAt || enrollment.createdAt || null;
+            const existing = studentsMap.get(studentId);
+            if (existing) {
+              existing.progressTotal += progress;
+              existing.enrollmentCount += 1;
+              existing.courseIds.add(courseId);
+              if (activityAt && (!existing.lastActivityAt || (activityAt.seconds || 0) > (existing.lastActivityAt.seconds || 0))) {
+                existing.lastActivityAt = activityAt;
               }
-            }
-          }
-        }
-        
-        const studentsList = Array.from(studentsMap.values());
-        setStudents(studentsList);
-
-        // Fetch Journals to analyze team sentiment
-        if (studentsList.length > 0) {
-          setAnalyzing(true);
-          const studentIds = studentsList.map(s => s.id);
-          
-          let allJournals: string[] = [];
-          
-          // Firestore 'in' query has a limit of 10, chunk if necessary
-          const fetchJournalsChunk = async (ids: string[]) => {
-            const q = query(
-              collection(db, 'journals'), 
-              where('userId', 'in', ids)
-            );
-            const snap = await getDocs(q);
-            const sorted = [...snap.docs].sort((a, b) => {
-              const tA = a.data().createdAt?.seconds || a.data().createdAt?.getTime?.() / 1000 || 0;
-              const tB = b.data().createdAt?.seconds || b.data().createdAt?.getTime?.() / 1000 || 0;
-              return tB - tA;
-            }).slice(0, 20);
-            return sorted.map(d => d.data().content);
-          };
-
-          // Simple chunking up to 10
-          if (studentIds.length <= 10) {
-              const j = await fetchJournalsChunk(studentIds);
-              allJournals = allJournals.concat(j);
-          } else {
-              const first10 = await fetchJournalsChunk(studentIds.slice(0, 10));
-              allJournals = allJournals.concat(first10);
-          }
-
-          if (allJournals.length > 0) {
-            try {
-              const prompt = `Actúa como un psicólogo experto y coach de desempeño. Analiza las siguientes entradas de diario de mis estudiantes:
-              [${allJournals.join(" | ")}]
-              Devuelve un objeto JSON con dos claves: 
-              "summary": un párrafo corto (máx 3 oraciones) resumiendo el estado emocional y actitud predominante del grupo.
-              "mood": una sola palabra que los defina ("Positivo", "Neutral", "Estresado", "Frustrado", "Motivado").`;
-              
-              const res = await fetch('/api/gemini/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  model: 'gemini-3.5-flash',
-                  contents: prompt,
-                  config: { responseMimeType: "application/json" }
-                })
+            } else {
+              studentsMap.set(studentId, {
+                id: studentId,
+                name: 'Alumno #' + studentId.slice(-6),
+                email: '',
+                progressTotal: progress,
+                enrollmentCount: 1,
+                courseIds: new Set([courseId]),
+                lastActivityAt: activityAt,
               });
-              const data = await res.json();
-              if (data.error) throw new Error(data.error);
-
-              if (data.text) {
-                 const parsed = JSON.parse(data.text);
-                 setTeamSentiment(parsed);
-              }
-            } catch (error) {
-              console.error("AI Analysis error:", error);
             }
           }
-          setAnalyzing(false);
         }
 
-      } catch (e) {
-        console.error('Fetch Coach Students Error:', e);
-        setAnalyzing(false);
+        const list = Array.from(studentsMap.values()).map(student => ({
+          ...student,
+          courseProgress: Math.round(student.progressTotal / Math.max(1, student.enrollmentCount)),
+          courseIds: Array.from(student.courseIds),
+        }));
+        setStudents(list);
+      } catch (error) {
+        console.error('Error loading coach student enrollments:', error);
+        setStudents([]);
       }
     };
 
-    fetchStudentsAndJournals();
+    fetchStudentsAndEnrollments();
   }, [user]);
 
   const sendBulkMessage = async () => {
@@ -1806,6 +1196,7 @@ function CoachStudentsActivity() {
       for (const student of students) {
          await addDoc(collection(db, 'notifications'), {
            userId: student.id,
+           courseId: student.courseIds?.[0],
            title: 'Mensaje de tu Coach',
            message: customMessage,
            type: 'coach_message',
@@ -1834,37 +1225,17 @@ function CoachStudentsActivity() {
     if (!lastActivityAt) return { color: 'bg-slate-300', label: 'Sin Datos' };
     const date = lastActivityAt.toDate ? lastActivityAt.toDate() : new Date(lastActivityAt);
     const diffDays = Math.floor((new Date().getTime() - date.getTime()) / (1000 * 3600 * 24));
-    if (diffDays < 3) return { color: 'bg-emerald-500', label: 'Comprometido' };
-    if (diffDays < 7) return { color: 'bg-amber-500', label: 'En Riesgo' };
-    return { color: 'bg-rose-500', label: 'Desconectado' };
+    if (diffDays < 3) return { color: 'bg-emerald-500', label: 'Actividad reciente' };
+    if (diffDays < 7) return { color: 'bg-amber-500', label: 'Sin actividad reciente' };
+    return { color: 'bg-slate-400', label: 'Sin actividad registrada' };
   };
 
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-         {/* Team Emotional Insights */}
-         <div className="bg-kirateal rounded-2xl p-6 text-white shadow-xl shadow-kirateal/10 col-span-1 md:col-span-2 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
-            <div className="flex items-center gap-3 mb-4 relative z-10">
-               <Sparkles className="text-amber-300" />
-               <h3 className="font-bold text-lg">Termómetro Emocional de Equipo</h3>
-            </div>
-            {analyzing ? (
-               <div className="flex items-center gap-2 text-kirateal-light">
-                  <Loader2 size={16} className="animate-spin" /> Analizando diarios y actividad...
-               </div>
-            ) : teamSentiment ? (
-               <div className="relative z-10 animate-in fade-in">
-                  <div className="bg-white/10 border border-white/20 rounded-xl p-4 mb-4 backdrop-blur-sm">
-                    <p className="text-sm leading-relaxed text-white/90">"{teamSentiment.summary}"</p>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-kirateal-light">
-                     Estado Predominante: <span className="bg-white text-kirateal px-3 py-1 rounded-full shadow-sm">{teamSentiment.mood}</span>
-                  </div>
-               </div>
-            ) : (
-               <p className="text-indigo-200 text-sm">Aún no hay suficientes diarios de estudiantes para generar el análisis emocional.</p>
-            )}
+         <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 col-span-1 md:col-span-2">
+            <div className="flex items-center gap-3 mb-3"><ShieldCheck className="text-emerald-600" size={20} /><h3 className="font-bold text-slate-800">Privacidad del bienestar</h3></div>
+            <p className="text-sm leading-relaxed text-slate-600">Los diarios personales, conversaciones privadas con IA y notas de sesión son privados. Este panel solo muestra inscripciones y progreso académico de los cursos que gestionas.</p>
          </div>
 
          {/* Bulk Messaging Widget */}
@@ -2970,7 +2341,7 @@ function CoachProfileSettings({ profile }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: "gemini-3.5-flash",
           contents: prompt,
@@ -3028,28 +2399,11 @@ function CoachProfileSettings({ profile }: any) {
       }
     }
 
-    // Detect if storage is empty, mock, or custom placeholder to simulate download immediately
+    // Never pretend a file was uploaded. Missing Storage configuration is an explicit error.
     const storageBucket = storage.app.options.storageBucket || '';
-    const isMock = !storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value';
-
-    if (isMock) {
-      setTimeout(() => {
-        let mockUrl = '';
-        if (file.type.startsWith('image/')) {
-          mockUrl = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=600';
-        } else if (file.type.startsWith('video/')) {
-          mockUrl = 'https://www.w3schools.com/html/mov_bbb.mp4';
-        } else {
-          mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-        }
-
-        if (type === 'photo') setFormData(prev => ({ ...prev, photoURL: mockUrl }));
-        else if (type === 'welcome') setFormData(prev => ({ ...prev, welcomeVideoUrl: mockUrl }));
-        else if (type === 'resource') setNewMedia(prev => ({ ...prev, url: mockUrl, type: file.type.includes('pdf') ? 'pdf' : file.type.includes('video') ? 'video' : 'imagen' }));
-
-        setUploading(null);
-        alert(`[Simulador] Archivo "${file.name}" cargado con éxito en modo de desarrollo.`);
-      }, 1000);
+    if (!storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value') {
+      setUploading(null);
+      toastError("Firebase Storage no está configurado. El archivo no se ha cargado.");
       return;
     }
 

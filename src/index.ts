@@ -1,4 +1,5 @@
-export { CoachDashboard, CoachCourses } from './Coach';
-export { CoachHomeworkReview } from './CoachHomeworkReview';
-export { CoachCrmAudit } from './CoachCrmAudit';
-export { CoachCloudSupport } from './CoachCloudSupport';
+export { CoachDashboard } from './pages/Coach';
+export { CoachCourses } from './pages/CoachCourses';
+export { CoachHomeworkReview } from './pages/Coach/CoachHomeworkReview';
+export { CoachCrmAudit } from './pages/Coach/CoachCrmAudit';
+export { CoachCloudSupport } from './pages/Coach/CoachCloudSupport';

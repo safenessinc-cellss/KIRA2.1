@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ShoppingCart, X, Plus, Minus, Trash2, Loader2, Sparkles, CreditCard } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { auth } from '../firebase';
 import { useToast } from '../hooks/useToast';
 import { Product, CartItem } from '../types';
 
@@ -57,7 +58,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const savedCart = localStorage.getItem('kira_cart');
     if (savedCart) {
       try {
-        setCartItems(JSON.parse(savedCart));
+        const parsed = JSON.parse(savedCart);
+        if (Array.isArray(parsed)) {
+          // Marketplace items grant digital access; buying duplicate quantities is not meaningful.
+          setCartItems(parsed.filter((item) => item?.product?.id).map((item) => ({ ...item, quantity: 1 })));
+        }
       } catch (e) {
         console.warn("Failed to load cart from storage", e);
       }
@@ -72,10 +77,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCartItems((prevItems) => {
       const existingIndex = prevItems.findIndex((item) => item.product.id === product.id);
       if (existingIndex > -1) {
-        const updated = [...prevItems];
-        updated[existingIndex].quantity += 1;
-        toastSuccess(`Incrementada cantidad de "${product.title}" en el carrito`);
-        return updated;
+        toastSuccess(`"${product.title}" ya está en tu carrito`);
+        return prevItems;
       } else {
         toastSuccess(`"${product.title}" añadido al carrito`);
         return [...prevItems, { product, quantity: 1 }];
@@ -99,7 +102,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setCartItems((prevItems) =>
       prevItems.map((item) =>
-        item.product.id === productId ? { ...item, quantity } : item
+        item.product.id === productId ? { ...item, quantity: 1 } : item
       )
     );
   };
@@ -123,28 +126,44 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setCheckingOut(true);
     try {
-      const ids = cartItems.map(item => item.product.id).join(',');
-      const titles = cartItems.map(item => `${item.product.title} (x${item.quantity})`).join(', ');
-      
+      // Digital course/book access is per user; quantity does not grant duplicate access.
+      const checkoutItems = cartItems.map(({ product }) => {
+        if (product.type !== 'course' && product.type !== 'book') {
+          throw new Error(`"${product.title}" no puede comprarse desde este checkout.`);
+        }
+        return { id: product.id, itemType: product.type };
+      });
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Inicia sesión nuevamente.');
+
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          courseId: ids,
-          userId: user.uid,
-          amount: cartTotal,
-          title: titles.length > 80 ? `${cartItems.length} Productos de Kira` : titles,
-          type: 'cart_purchase'
-        })
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ items: checkoutItems }),
       });
 
-      const data = await response.json();
-      if (data.error) {
-        throw new Error(data.error);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'No se pudo iniciar el checkout.');
       }
-      
+
+      if (data.free === true && typeof data.orderId === 'string') {
+        clearCart();
+        setIsCartOpen(false);
+        toastSuccess('Acceso gratuito confirmado. Ya puedes acceder a tu contenido.');
+        window.location.assign('/dashboard?checkout=free');
+        return;
+      }
+
+      if (typeof data.url !== 'string' || !data.url.startsWith('https://checkout.stripe.com/')) {
+        throw new Error('El servidor no devolvió una URL de checkout válida.');
+      }
+
       clearCart();
-      window.location.href = data.url;
+      window.location.assign(data.url);
     } catch (e: any) {
       console.error("Cart checkout error:", e);
       toastError("Error al procesar el checkout: " + (e.message || String(e)));

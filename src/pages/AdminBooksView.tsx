@@ -86,27 +86,18 @@ export function AdminBooksView() {
     setUploadingFile(true);
     try {
       const storageBucket = storage.app.options.storageBucket || '';
-      const isMock = !storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value';
-
-      if (isMock) {
-        // Wait 1.2 seconds for simulation
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        const mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-        setUrl(mockUrl);
-        toastSuccess("Archivo cargado en modo simulación administrativa.");
-      } else {
-        const storageRef = ref(storage, `books/admin/${Date.now()}_${file.name}`);
-        const uploadResult = await uploadBytes(storageRef, file);
-        const downloadUrl = await getDownloadURL(uploadResult.ref);
-        
-        setUrl(downloadUrl);
-        toastSuccess("Libro administrativo cargado con éxito.");
+      if (!storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value') {
+        throw new Error('Firebase Storage no está configurado. El archivo no se ha cargado.');
       }
+
+      const storageRef = ref(storage, `books/admin/${Date.now()}_${file.name}`);
+      const uploadResult = await uploadBytes(storageRef, file);
+      const downloadUrl = await getDownloadURL(uploadResult.ref);
+      setUrl(downloadUrl);
+      toastSuccess("Libro administrativo cargado con éxito.");
     } catch (err: any) {
-      console.warn("Storage upload failed, using simulation mode fallback:", err);
-      const mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-      setUrl(mockUrl);
-      toastSuccess("Libro cargado en modo de respaldo (simulado).");
+      console.error("Admin book upload failed:", err);
+      toastError(err?.message || "No se pudo cargar el archivo. No se ha guardado ningún archivo.");
     } finally {
       setUploadingFile(false);
       e.target.value = '';

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import { 
   Mic, MicOff, Brain, Sparkles, AlertCircle, FileText, 
@@ -152,7 +152,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
@@ -195,7 +195,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt
@@ -362,7 +362,7 @@ export default function SessionIntelligence() {
     try {
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
@@ -448,7 +448,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,

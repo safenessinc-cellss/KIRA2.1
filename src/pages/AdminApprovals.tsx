@@ -318,3 +318,6 @@ export const AdminApprovals: React.FC = () => {
           <p className="text-muted">No se encontraron usuarios con los filtros aplicados.</p>
         </div>
       )}
+      </div>
+    );
+  }
