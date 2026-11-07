@@ -45,6 +45,7 @@ export function CoachSession() {
   const speechRecognitionRef = useRef<any>(null);
   const sessionIdRef = useRef<string | null>(null);
   const transcriptRef = useRef<TranscriptSegment[]>([]);
+  const currentTranscriptRef = useRef('');
   const manualNotesRef = useRef('');
   const sessionDurationRef = useRef(0);
   
@@ -59,6 +60,7 @@ export function CoachSession() {
 
   // Keep current values available to asynchronous recorder callbacks.
   transcriptRef.current = transcript;
+  currentTranscriptRef.current = currentTranscript;
   manualNotesRef.current = manualNotes;
   sessionDurationRef.current = sessionDuration;
 
@@ -137,7 +139,8 @@ export function CoachSession() {
           transcriptRef.current = [...transcriptRef.current, ...finalSegments];
           setTranscript(transcriptRef.current);
         }
-        setCurrentTranscript(interim.trim());
+        currentTranscriptRef.current = interim.trim();
+        setCurrentTranscript(currentTranscriptRef.current);
       };
       recognition.onerror = (event: any) => {
         if (event?.error && event.error !== 'no-speech' && event.error !== 'aborted') {
@@ -192,6 +195,7 @@ export function CoachSession() {
       setTranscript([]);
       transcriptRef.current = [];
       setCurrentTranscript('');
+      currentTranscriptRef.current = '';
       setManualNotes('');
       manualNotesRef.current = '';
       setAnalysis('');
@@ -250,7 +254,7 @@ export function CoachSession() {
     setIsAnalyzing(true);
     setAnalysisError('');
     const savedTranscript = [...transcriptRef.current];
-    const interimText = currentTranscript.trim();
+    const interimText = currentTranscriptRef.current.trim();
     if (interimText) {
       savedTranscript.push({ speaker: 'unknown', text: 'Transcripción parcial: ' + interimText, timestamp: sessionDurationRef.current });
     }
@@ -265,6 +269,7 @@ export function CoachSession() {
     transcriptRef.current = savedTranscript;
     setTranscript(savedTranscript);
     setCurrentTranscript('');
+    currentTranscriptRef.current = '';
     const transcriptText = savedTranscript.map(segment => segment.text).join('\n');
 
     try {
