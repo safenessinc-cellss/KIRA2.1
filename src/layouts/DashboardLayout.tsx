@@ -105,9 +105,9 @@ export function DashboardLayout({ title }: { title: string }) {
         </div>
       </header>
 
-      <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-        {role !== 'admin' && <section aria-label="Módulos principales" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-start lg:gap-6 lg:px-8">
+        {role !== 'admin' && <section aria-label="Módulos principales" className="w-full shrink-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4 lg:sticky lg:top-24 lg:w-64 lg:p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 lg:items-start">
             <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Espacio de trabajo</p><h2 className="mt-1 text-base font-bold text-slate-800">Módulos</h2></div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Apariencia</span>
@@ -117,20 +117,22 @@ export function DashboardLayout({ title }: { title: string }) {
               ].map((theme) => <button key={theme.id} type="button" onClick={() => changeTheme(theme.id)} aria-label={`Tema ${theme.id}`} aria-pressed={theme.id === (user?.theme || 'teal')} className={cn('h-5 w-5 rounded-full border border-white shadow-sm ring-offset-2', theme.color, theme.id === (user?.theme || 'teal') && 'ring-2 ring-slate-300')} />)}
             </div>
           </div>
-          <nav aria-label="Navegación de módulos" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <nav aria-label="Navegación de módulos" className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
             {currentLinks.map((item) => {
               const active = isActive(item.to);
-              return <Link key={item.to} to={item.to} aria-current={active ? 'page' : undefined} className={cn('group flex min-h-[5.5rem] min-w-0 items-start gap-3 rounded-xl border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary', active ? 'border-primary/40 bg-primary/[0.06] shadow-sm' : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-white')}>
+              return <Link key={item.to} to={item.to} aria-current={active ? 'page' : undefined} className={cn('group flex min-h-12 min-w-[11rem] shrink-0 items-center gap-3 rounded-xl border p-2.5 transition-all hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:min-h-0 lg:min-w-0 lg:w-full lg:shrink lg:items-start lg:p-3', active ? 'border-primary/40 bg-primary/[0.06] shadow-sm' : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-white')}>
                 <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', active ? 'bg-primary text-white' : 'bg-white text-slate-500 shadow-sm')}><item.icon size={19} /></span>
-                <span className="min-w-0 flex-1"><span className={cn('block truncate text-sm font-bold', active ? 'text-primary' : 'text-slate-800')}>{item.label}</span><span className="mt-1 block text-xs leading-4 text-slate-500">{item.detail}</span></span>
+                <span className="min-w-0 flex-1"><span className={cn('block truncate text-xs font-bold lg:text-sm', active ? 'text-primary' : 'text-slate-800')}>{item.label}</span><span className="mt-1 hidden text-xs leading-4 text-slate-500 lg:block">{item.detail}</span></span>
               </Link>;
             })}
           </nav>
         </section>}
 
+        <div className="min-w-0 w-full flex-1">
         {!user?.emailVerified && !loading && <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="text-sm font-medium text-amber-800">Verifica tu correo para asegurar tu cuenta.</div><button onClick={() => auth.currentUser && sendEmailVerification(auth.currentUser)} className="min-h-10 self-start rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700 sm:self-auto">Reenviar</button></div>}
 
         <main className="min-w-0 w-full flex-1"><Outlet /></main>
+        </div>
 
         {toast && <div role="status" className="fixed right-3 top-20 z-[100] w-[calc(100vw-1.5rem)] max-w-sm cursor-pointer sm:right-6" onClick={() => setToast(null)}><div className="flex items-start gap-3 rounded-xl border-l-4 border-primary bg-white p-4 shadow-2xl ring-1 ring-slate-200"><div className="shrink-0 rounded-lg bg-primary/10 p-2 text-primary"><BellRing size={20} /></div><div className="min-w-0 flex-1"><h4 className="mb-0.5 text-sm font-bold text-slate-800">{toast.title}</h4><p className="line-clamp-2 text-xs text-slate-500">{toast.message}</p></div><button type="button" aria-label="Descartar notificación" className="shrink-0 text-slate-400 hover:text-slate-600" onClick={(event) => { event.stopPropagation(); setToast(null); }}><X size={14} /></button></div></div>}
       </div>
