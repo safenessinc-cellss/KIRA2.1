@@ -358,7 +358,7 @@ export function StudentDetailedAnalytics({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         
         {/* Columna de Gráfica Recharts */}
-        <div className="lg:col-span-8 bg-slate-50 border border-slate-200 rounded-[32px] p-6 flex flex-col justify-between min-h-[360px]">
+        <div className="lg:col-span-8 min-w-0 bg-slate-50 border border-slate-200 rounded-[32px] p-4 sm:p-6 flex flex-col justify-between min-h-[420px]">
           
           <div>
             <div className="flex justify-between items-start mb-6">
@@ -381,7 +381,7 @@ export function StudentDetailedAnalytics({
             </div>
           </div>
 
-          <div className="flex-1 w-full min-h-[240px]">
+          <div className="h-[280px] min-h-[280px] w-full min-w-0 flex-none">
             <ResponsiveContainer width="100%" height="100%">
               {activeTab === 'progress' ? (
                 <AreaChart data={progressData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
