@@ -285,7 +285,7 @@ function NavButton({ active, onClick, icon, label, disabled = false }: { active:
 // --- MODULO: CONFIGURACIÓN SITIO WEB (BRANDING ENGINE) ---
 function WebsiteConfigView() {
   const [config, setConfig] = useState<any>({ heroImage: '', secondaryImage: '', primaryColor: '#1ec6b6', secondaryColor: '#8b5cf6' });
-  const [history, setHistory] = useState<any[]>([{ primaryColor: '#1ec6b6', secondaryColor: '#8b5cf6', date: new Date().toISOString(), label: 'Default Kira' }]);
+  const [history, setHistory] = useState<any[]>([]);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'website'), (d) => {
@@ -984,66 +984,21 @@ function TransactionsMonitorView() {
 function SettlementCenterView() {
   const [txs, setTxs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
+  const [error, setError] = useState('');
   useEffect(() => {
-    const q = query(collection(db, 'transactions'), orderBy('createdAt', 'desc'), limit(100));
-    const u = onSnapshot(q, (s) => setTxs(s.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    setLoading(false);
-    return u;
+    const q = query(collection(db, 'transactions'), orderBy('createdAt', 'desc'), limit(200));
+    const unsubscribe = onSnapshot(q, snapshot => { setTxs(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); setError(''); }, err => { console.error('Settlement transactions unavailable', err); setLoading(false); setError('No se pudieron cargar las transacciones.'); });
+    return unsubscribe;
   }, []);
-
-  return (
-    <div className="flex flex-col gap-6 animate-in fade-in">
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm mt-6">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-         <h3 className="font-bold text-slate-800 tracking-tight flex items-center gap-2 text-sm">
-           <CreditCard size={18} className="text-secondary" /> Centro de Liquidación (Split Payments)
-         </h3>
-         <div className="flex gap-2">
-            <div className="px-3 py-1 bg-purple-50 text-purple-700 rounded-full text-[10px] font-bold">
-               Split Regla: 70% Plataforma / 30% Coach
-            </div>
-         </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs">
-          <thead>
-            <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-tighter">
-              <th className="px-6 py-3">Referencia Tx</th>
-              <th className="px-6 py-3">Monto Base</th>
-              <th className="px-6 py-3">Kira Revenue (70%)</th>
-              <th className="px-6 py-3">Coach Balance (30%)</th>
-              <th className="px-6 py-3 text-right">Estado</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {txs.filter(t => t.type === 'curso' || t.amount > 0).map(t => {
-               const monto = t.amount || 0;
-               const kiraRev = monto * 0.7;
-               const coachRev = monto * 0.3;
-               return (
-                 <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                   <td className="px-6 py-4 text-slate-500 font-mono italic">#{t.id ? t.id.substring(0,6).toUpperCase() : 'N/A'}</td>
-                   <td className="px-6 py-4 font-black text-slate-700">${monto.toFixed(2)}</td>
-                   <td className="px-6 py-4 font-black text-emerald-600">+${kiraRev.toFixed(2)}</td>
-                   <td className="px-6 py-4 font-black text-purple-600">+${coachRev.toFixed(2)}</td>
-                   <td className="px-6 py-4 text-right">
-                     <span className="px-2 py-1 bg-slate-100 text-slate-500 rounded text-[9px] font-bold uppercase">Liquidado</span>
-                   </td>
-                 </tr>
-               );
-            })}
-            {txs.length === 0 && !loading && (
-              <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">No hay transacciones registradas.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+  const paid = txs.filter(t => ['paid','succeeded','successful','confirmed','complete','completed'].includes(String(t.status ?? t.paymentStatus ?? '').toLowerCase()));
+  const amount = (t:any) => Number(t.amount ?? t.total ?? 0);
+  return <div className="space-y-4 animate-in fade-in">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="text-xl font-bold text-slate-900">Liquidaciones de coaches</h2><p className="mt-1 text-sm text-slate-500">Transacciones con pago confirmado y estado de payout registrado. No se aplica un split fijo ni se declara liquidado sin evidencia.</p><div className="mt-3 text-xs text-slate-500">{paid.length} pagos confirmados · {txs.length} transacciones consultadas</div></div>
+    {error && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+    <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+      {loading ? <p className="p-5 text-sm text-slate-500">Cargando transacciones…</p> : <table className="w-full min-w-[640px] text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-4 py-3">Referencia</th><th className="px-4 py-3">Fecha</th><th className="px-4 py-3">Monto registrado</th><th className="px-4 py-3">Pago</th><th className="px-4 py-3">Liquidación</th></tr></thead><tbody className="divide-y divide-slate-100">{paid.map(t=><tr key={t.id}><td className="px-4 py-3 font-mono text-xs">{t.id}</td><td className="px-4 py-3">{t.createdAt?.toDate?.().toLocaleDateString('es-ES') || '—'}</td><td className="px-4 py-3 font-semibold">{amount(t).toLocaleString('es-ES',{style:'currency',currency:String(t.currency||'USD').toUpperCase()})}</td><td className="px-4 py-3"><span className="rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700">Confirmado</span></td><td className="px-4 py-3">{t.payoutStatus || t.settlementStatus || 'Sin estado de payout'}</td></tr>)}{!paid.length && <tr><td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">{txs.length===0?'No hay transacciones registradas.':'No hay pagos confirmados en la fuente consultada.'}</td></tr>}</tbody></table>}
     </div>
-    </div>
-  );
+  </div>;
 }
 
 // --- MODULO: HISTORIAL DE CAMPAÑAS ---
