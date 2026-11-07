@@ -6,9 +6,7 @@ import {
   signInWithPopup, 
   GoogleAuthProvider, 
   signOut,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  updateProfile
+  signInWithRedirect
 } from 'firebase/auth';
 
 export type UserRole = 'admin' | 'coach' | 'alumno' | null;
@@ -155,6 +153,9 @@ export function useAuth() {
         console.warn('Login popup was closed before completion or another request was pending.');
       } else if (error.code === 'auth/popup-closed-by-user') {
         console.log('User closed the login popup.');
+      } else if (error.code === 'auth/popup-blocked') {
+        // Mobile browsers may block popups; redirect preserves the Google-only flow.
+        await signInWithRedirect(auth, provider);
       } else {
         console.error('Authentication Error:', error);
         throw error;
@@ -162,35 +163,9 @@ export function useAuth() {
     }
   };
 
-  const loginWithEmail = async (email: string, password: string) => {
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (error: any) {
-      console.error('Email login error:', error);
-      throw error;
-    }
-  };
-
-  const signUpWithEmail = async (email: string, password: string, name: string, requestedRole: UserRole) => {
-    if (requestedRole) {
-      sessionStorage.setItem('requestedRole', requestedRole);
-    }
-    sessionStorage.setItem('requestedName', name);
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      if (userCredential.user) {
-        await updateProfile(userCredential.user, { displayName: name });
-      }
-      return userCredential.user;
-    } catch (error: any) {
-      console.error('Email signup error:', error);
-      throw error;
-    }
-  };
-  
   const logout = async () => {
     await signOut(auth);
   };
 
-  return { user, role, loading, login, loginWithEmail, signUpWithEmail, logout };
+  return { user, role, loading, login, logout };
 }

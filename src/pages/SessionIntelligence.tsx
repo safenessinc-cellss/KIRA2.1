@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
+import { generateGemini } from '../lib/gemini';
 import { useAuth } from '../hooks/useAuth';
 import { 
   Mic, MicOff, Brain, Sparkles, AlertCircle, FileText, 
@@ -40,12 +41,12 @@ interface LongitudinalAnalysis {
     pasado_problemas: number;
     presente: number;
     futuro_soluciones: number;
-  };
+  } | null;
   sugerencia_proxima_sesion: string;
   metrics?: {
-    confidence: number;
-    clarity: number;
-    energy: number;
+    confidence: number | null;
+    clarity: number | null;
+    energy: number | null;
   };
 }
 
@@ -58,7 +59,29 @@ const sanitizeArray = (value: any, defaultValue: string[] = []): string[] => {
 
 const sanitizeAnalysis = (analysis: any): LongitudinalAnalysis | null => {
   if (!analysis) return null;
-  
+  const score = (value: any): number | null =>
+    typeof value === 'number' && Number.isFinite(value)
+      ? Math.min(10, Math.max(0, value))
+      : null;
+  const rawHeatmap = analysis.focus_heatmap;
+  let focusHeatmap: LongitudinalAnalysis['focus_heatmap'] = null;
+  if (rawHeatmap && ['pasado_problemas', 'presente', 'futuro_soluciones'].every(key => typeof rawHeatmap[key] === 'number' && Number.isFinite(rawHeatmap[key]))) {
+    const values = [
+      Math.max(0, rawHeatmap.pasado_problemas),
+      Math.max(0, rawHeatmap.presente),
+      Math.max(0, rawHeatmap.futuro_soluciones),
+    ];
+    const total = values.reduce((sum, value) => sum + value, 0);
+    if (total > 0) {
+      const normalized = values.map(value => Math.round(value / total * 100));
+      normalized[2] += 100 - normalized.reduce((sum, value) => sum + value, 0);
+      focusHeatmap = {
+        pasado_problemas: normalized[0],
+        presente: normalized[1],
+        futuro_soluciones: normalized[2],
+      };
+    }
+  }
   return {
     ...analysis,
     progreso_metas_anteriores: sanitizeArray(analysis.progreso_metas_anteriores),
@@ -66,8 +89,12 @@ const sanitizeAnalysis = (analysis: any): LongitudinalAnalysis | null => {
     inconsistencias_detectadas: sanitizeArray(analysis.inconsistencias_detectadas),
     roleplay_scenarios: sanitizeArray(analysis.roleplay_scenarios),
     nuevos_compromisos: Array.isArray(analysis.nuevos_compromisos) ? analysis.nuevos_compromisos : [],
-    focus_heatmap: analysis.focus_heatmap || { pasado_problemas: 0, presente: 0, futuro_soluciones: 0 },
-    metrics: analysis.metrics || { confidence: 0, clarity: 0, energy: 0 }
+    focus_heatmap: focusHeatmap,
+    metrics: {
+      confidence: score(analysis.metrics?.confidence),
+      clarity: score(analysis.metrics?.clarity),
+      energy: score(analysis.metrics?.energy),
+    },
   };
 };
 
@@ -95,15 +122,18 @@ export default function SessionIntelligence() {
   const [showHistory, setShowHistory] = useState(false);
   
   const [sessionMode, setSessionMode] = useState<'live' | 'form'>('form');
-  const [clientName, setClientName] = useState('Sofía Ramírez');
-  const [sessionTopic, setSessionTopic] = useState('Gestión de Estrés Laboral');
+  const [clientName, setClientName] = useState('');
+  const [sessionTopic, setSessionTopic] = useState('');
   const [manualTranscript, setManualTranscript] = useState('');
-  const [selectedSentiment, setSelectedSentiment] = useState<'positivo' | 'neutral' | 'estrés' | 'motivación' | 'duda'>('estrés');
-  const [manualConfidence, setManualConfidence] = useState(7);
-  const [manualClarity, setManualClarity] = useState(6);
-  const [manualEnergy, setManualEnergy] = useState(5);
+  const [selectedSentiment, setSelectedSentiment] = useState<'positivo' | 'neutral' | 'estrés' | 'motivación' | 'duda' | ''>('');
+  const [manualConfidence, setManualConfidence] = useState(0);
+  const [manualClarity, setManualClarity] = useState(0);
+  const [manualEnergy, setManualEnergy] = useState(0);
   
   const recognitionRef = useRef<any>(null);
+  const messagesRef = useRef<Message[]>([]);
+  const insightCounterRef = useRef(0);
+  messagesRef.current = messages;
 
   useEffect(() => {
     fetchLastSession();
@@ -112,25 +142,24 @@ export default function SessionIntelligence() {
   const fetchLastSession = async () => {
     if (!user) return;
     try {
-      const q = query(
-        collection(db, 'sessions'),
-        where('userId', '==', user.uid)
-      );
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const sorted: any[] = snap.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })).sort((a: any, b: any) => {
-          const timeA = a.createdAt?.seconds || 0;
-          const timeB = b.createdAt?.seconds || 0;
-          return timeB - timeA;
-        });
-        const rawAnalysis = sorted[0].analysis;
-        setLastSession(sanitizeAnalysis(rawAnalysis));
-      }
-    } catch (e) {
-      console.error("Error fetching last session:", e);
+      const [byUser, byCoach] = await Promise.all([
+        getDocs(query(collection(db, 'sessions'), where('userId', '==', user.uid))),
+        getDocs(query(collection(db, 'sessions'), where('coachId', '==', user.uid))),
+      ]);
+      const uniqueDocs = Array.from(new Map(
+        [...byUser.docs, ...byCoach.docs].map(sessionDoc => [sessionDoc.id, sessionDoc])
+      ).values());
+      const sorted: any[] = uniqueDocs.map(sessionDoc => ({
+        id: sessionDoc.id,
+        ...sessionDoc.data(),
+      })).sort((left: any, right: any) => {
+        const timeLeft = left.createdAt?.seconds || 0;
+        const timeRight = right.createdAt?.seconds || 0;
+        return timeRight - timeLeft;
+      });
+      setLastSession(sorted.length ? sanitizeAnalysis(sorted[0].analysis) : null);
+    } catch (error) {
+      console.error('Error fetching session history:', error);
     }
   };
 
@@ -150,18 +179,8 @@ export default function SessionIntelligence() {
         "sentiment": "estrés" | "positivo" | "neutral" | "motivación" | "duda"
       }`;
 
-      const response = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "gemini-2.0-flash-exp",
-          contents: prompt,
-          config: { responseMimeType: "application/json" }
-        })
-      });
-      const dataJson = await response.json();
-      if (dataJson.error) return;
-      const data = JSON.parse(dataJson.text);
+      const raw = await generateGemini({ model: "gemini-3.5-flash", contents: prompt, config: { responseMimeType: "application/json", maxOutputTokens: 256 } });
+      const data = JSON.parse(raw);
       if (data.content) {
         const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         addInsight({
@@ -184,7 +203,7 @@ export default function SessionIntelligence() {
     setIsGeneratingReply(true);
     try {
       const history = messages.map(m => `${m.speaker}: ${m.text}`).join('\n');
-      const prompt = `Eres Kira Coach, una mentora de bienestar y psicóloga de alto rendimiento de Kira AI. 
+      const prompt = `Eres Kira Coach, una mentora profesional de coaching y bienestar; no eres una profesional clínica ni debes diagnosticar. 
       Lee la siguiente conversación de coaching en progreso y escribe una única respuesta breve, empática, profunda y relevante de máximo 2 oraciones para guiar al Cliente o responder al Coach.
       No agregues explicaciones, responde directamente en español de manera profesional y sumamente humana.
 
@@ -193,31 +212,12 @@ export default function SessionIntelligence() {
 
       Kira Coach:`;
 
-      const response = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "gemini-2.0-flash-exp",
-          contents: prompt
-        })
-      });
-      const dataJson = await response.json();
-      if (dataJson.error) throw new Error(dataJson.error);
-
-      const aiText = dataJson.text?.trim() || "";
+      const aiText = (await generateGemini({ model: "gemini-3.5-flash", contents: prompt, config: { maxOutputTokens: 512 } })).trim();
       if (aiText) {
         const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        setMessages(prev => [
-          ...prev,
-          {
-            id: Math.random().toString(36).substring(2, 9),
-            speaker: 'Coach',
-            text: aiText,
-            timestamp: now,
-            sentiment: 'neutral'
-          } as any
-        ]);
-        triggerRealtimeInsight(aiText);
+        const aiMessage = { id: crypto.randomUUID(), speaker: 'Coach' as const, text: aiText, timestamp: now };
+        messagesRef.current = [...messagesRef.current, aiMessage];
+        setMessages(messagesRef.current);
       }
     } catch (err: any) {
       console.error("Error generating AI Coach response:", err);
@@ -235,6 +235,11 @@ export default function SessionIntelligence() {
         return;
       }
 
+      messagesRef.current = [];
+      setMessages([]);
+      setInsights([]);
+      setAnalysis(null);
+      insightCounterRef.current = 0;
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
@@ -247,6 +252,7 @@ export default function SessionIntelligence() {
       };
 
       recognition.onerror = (event: any) => {
+        recognitionRef.current = null;
         console.error("Speech recognition error:", event.error);
         if (event.error === 'not-allowed') {
           alert("Acceso al micrófono denegado. Habilita los permisos en la configuración del navegador.");
@@ -256,8 +262,10 @@ export default function SessionIntelligence() {
       };
 
       recognition.onend = () => {
+        if (recognitionRef.current === recognition) recognitionRef.current = null;
         setIsRecording(false);
         setInterimTranscript('');
+        setStatus(current => current === 'running' ? 'idle' : current);
       };
 
       recognition.onresult = (event: any) => {
@@ -269,17 +277,11 @@ export default function SessionIntelligence() {
             const cleanText = transcriptSegment.trim();
             if (cleanText) {
               const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-              setMessages(prev => [
-                ...prev,
-                {
-                  id: Math.random().toString(36).substring(2, 9),
-                  speaker: activeSpeaker,
-                  text: cleanText,
-                  timestamp: now,
-                  sentiment: 'neutral'
-                } as any
-              ]);
-              triggerRealtimeInsight(cleanText);
+              const message = { id: crypto.randomUUID(), speaker: activeSpeaker, text: cleanText, timestamp: now };
+              messagesRef.current = [...messagesRef.current, message];
+              setMessages(messagesRef.current);
+              insightCounterRef.current += 1;
+              if (insightCounterRef.current % 4 === 0) triggerRealtimeInsight(cleanText);
             }
           } else {
             interim += transcriptSegment;
@@ -297,21 +299,25 @@ export default function SessionIntelligence() {
     }
   };
 
-  const stopSession = () => {
-    setIsRecording(false);
+  const stopSession = async () => {
     setStatus('summarizing');
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (err) {
-        console.error("Error stopping recognition:", err);
-      }
+    const recognition = recognitionRef.current;
+    if (recognition) {
+      await new Promise<void>(resolve => {
+        const previousOnEnd = recognition.onend;
+        recognition.onend = (event: any) => {
+          previousOnEnd?.(event);
+          resolve();
+        };
+        try { recognition.stop(); } catch { resolve(); }
+      });
     }
-    generateSummary(messages);
+    setIsRecording(false);
+    await generateSummary(messagesRef.current);
   };
 
   const generateSummary = async (customMessages?: Message[]) => {
-    const listToUse = customMessages || messages;
+    const listToUse = customMessages || messagesRef.current;
     if (!user) return;
     if (listToUse.length === 0) {
       alert("No se ha registrado ninguna transcripción para analizar.");
@@ -324,7 +330,7 @@ export default function SessionIntelligence() {
 
     const lastSessionSafe = lastSession ? sanitizeAnalysis(lastSession) : null;
     
-    const prompt = `Actúa como un Psicólogo Organizacional y Coach de Alto Rendimiento. Analiza esta sesión de coaching de Kira Coach.
+    const prompt = `Actúa como analista profesional de coaching. Resume evidencias de la transcripción; no hagas diagnósticos clínicos ni afirmes hechos no expresados.
     
     HISTORIAL PREVIO (Contexto):
     ${lastSessionSafe ? JSON.stringify({
@@ -339,10 +345,10 @@ export default function SessionIntelligence() {
     TAREA ANALÍTICA INTEGRAL:
     1. TRAYECTORIA EMOCIONAL: Analiza cómo cambió el sentimiento del cliente.
     2. IDENTIFICACIÓN DE INCONGRUENCIAS: Compara objetivos con quejas recurrentes.
-    3. ANÁLISIS PROSÓDICO SIMULADO: Infiere niveles de duda/seguridad.
+    3. PROSODIA: No evaluable; solo hay texto, no audio. No infieras tono ni estados clínicos.
     4. ESCENARIOS DE ROLEPLAY: Propón un escenario de simulación.
     5. MANTRA PERSONALIZADO: Genera una frase de poder única.
-    6. MAPA DE CALOR DE ENFOQUE: Calcula el % de la conversación.
+    6. MAPA DE CALOR DE ENFOQUE: Estima la distribución temática del texto y aclara que no es una medición objetiva.\n    No inventes métricas de confianza, claridad o energía: devuelve null si no fueron evaluadas directamente por el coach.
 
     Responde ESTRICTAMENTE en este formato JSON:
     {
@@ -351,28 +357,17 @@ export default function SessionIntelligence() {
       "nuevos_compromisos": [{"tarea": "string", "deadline": "string", "priority": "alta|media|baja"}],
       "patrones_detectados": ["string"],
       "inconsistencias_detectadas": ["string"],
-      "prosodic_inference": "string",
+      "prosodic_inference": "No evaluable a partir de texto",
       "roleplay_scenarios": ["string"],
       "personal_mantra": "string",
       "focus_heatmap": { "pasado_problemas": number, "presente": number, "futuro_soluciones": number },
-      "metrics": { "confidence": number, "clarity": number, "energy": number },
+      "metrics": { "confidence": number|null, "clarity": number|null, "energy": number|null },
       "sugerencia_proxima_sesion": "string"
     }`;
 
     try {
-      const response = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "gemini-2.0-flash-exp",
-          contents: prompt,
-          config: { responseMimeType: "application/json" }
-        })
-      });
-      const dataJson = await response.json();
-      if (dataJson.error) throw new Error(dataJson.error);
-
-      const data = JSON.parse(dataJson.text) as LongitudinalAnalysis;
+      const raw = await generateGemini({ model: "gemini-3.5-flash", contents: prompt, config: { responseMimeType: "application/json", maxOutputTokens: 1800 } });
+      const data = JSON.parse(raw) as LongitudinalAnalysis;
       const sanitizedData = sanitizeAnalysis(data);
       setAnalysis(sanitizedData);
       
@@ -384,6 +379,7 @@ export default function SessionIntelligence() {
         createdAt: serverTimestamp()
       });
 
+      await fetchLastSession();
       setStatus('idle');
     } catch (e) {
       console.error("Error parsing analysis:", e);
@@ -395,7 +391,7 @@ export default function SessionIntelligence() {
     e.preventDefault();
     if (!user) return;
     if (!manualTranscript.trim()) {
-      alert("Por favor escribe o genera un diálogo de ejemplo.");
+      alert("Por favor introduce la transcripción real de la sesión.");
       return;
     }
     setIsAnalyzing(true);
@@ -410,8 +406,8 @@ export default function SessionIntelligence() {
       DATOS GENERALES:
       - Alumno/Cliente: ${clientName}
       - Tema/Intención de la Sesión: ${sessionTopic}
-      - Sentimiento Predominante del Alumno: ${selectedSentiment}
-      - Métricas estimadas por el coach (1-10): Confianza: ${manualConfidence}, Claridad: ${manualClarity}, Energía: ${manualEnergy}
+      - Sentimiento informado por el coach: ${selectedSentiment || 'No informado'}
+      - Métricas estimadas por el coach (0 = no evaluada): Confianza: ${manualConfidence || 'No evaluada'}, Claridad: ${manualClarity || 'No evaluada'}, Energía: ${manualEnergy || 'No evaluada'}. Si se informaron, devuelve exactamente esos valores; si no, devuelve null.
 
       HISTORIAL PREVIO (Contexto):
       ${lastSessionSafe ? `
@@ -426,10 +422,10 @@ export default function SessionIntelligence() {
       TAREA ANALÍTICA INTEGRAL:
       1. TRAYECTORIA EMOCIONAL: Analiza cómo cambió el sentimiento del cliente.
       2. IDENTIFICACIÓN DE INCONGRUENCIAS: Compara objetivos con quejas recurrentes.
-      3. ANÁLISIS PROSÓDICO SIMULADO: Infiere niveles de duda/seguridad.
+      3. PROSODIA: No evaluable a partir de texto; no inventes tono ni estados clínicos.
       4. ESCENARIOS DE ROLEPLAY: Propón un escenario de simulación.
       5. MANTRA PERSONALIZADO: Genera una frase de poder única.
-      6. MAPA DE CALOR DE ENFOQUE: Calcula el % de la conversación.
+      6. MAPA DE CALOR DE ENFOQUE: Estima la distribución temática del texto, no una medición objetiva.\n      No inventes métricas: devuelve null si no fueron evaluadas por el coach.
 
       Responde ESTRICTAMENTE en este formato JSON:
       {
@@ -438,27 +434,16 @@ export default function SessionIntelligence() {
         "nuevos_compromisos": [{"tarea": "string", "deadline": "string", "priority": "alta|media|baja"}],
         "patrones_detectados": ["string"],
         "inconsistencias_detectadas": ["string"],
-        "prosodic_inference": "string",
+        "prosodic_inference": "No evaluable con texto",
         "roleplay_scenarios": ["string"],
         "personal_mantra": "string",
         "focus_heatmap": { "pasado_problemas": number, "presente": number, "futuro_soluciones": number },
-        "metrics": { "confidence": number, "clarity": number, "energy": number },
+        "metrics": { "confidence": number|null, "clarity": number|null, "energy": number|null },
         "sugerencia_proxima_sesion": "string"
       }`;
 
-      const response = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "gemini-2.0-flash-exp",
-          contents: prompt,
-          config: { responseMimeType: "application/json" }
-        })
-      });
-      const dataJson = await response.json();
-      if (dataJson.error) throw new Error(dataJson.error);
-
-      const data = JSON.parse(dataJson.text) as LongitudinalAnalysis;
+      const raw = await generateGemini({ model: "gemini-3.5-flash", contents: prompt, config: { responseMimeType: "application/json", maxOutputTokens: 1800 } });
+      const data = JSON.parse(raw) as LongitudinalAnalysis;
       const sanitizedData = sanitizeAnalysis(data);
       setAnalysis(sanitizedData);
       
@@ -467,7 +452,13 @@ export default function SessionIntelligence() {
         clientName,
         sessionTopic,
         coachId: user.uid,
-        transcript: manualTranscript,
+        sessionMode: 'manual',
+        transcript: manualTranscript.split('\n').map((line, index) => {
+          const value = line.trim();
+          const match = value.match(/^(Coach|Cliente|Alumno):\s*(.*)$/i);
+          if (!value) return null;
+          return { id: 'manual-' + index, speaker: match && match[1].toLowerCase() === 'coach' ? 'Coach' : 'Cliente', text: match ? match[2] : value, timestamp: '' };
+        }).filter(Boolean),
         analysis: sanitizedData,
         createdAt: serverTimestamp()
       });
@@ -475,6 +466,7 @@ export default function SessionIntelligence() {
     } catch (e: any) {
       console.error("Error parsing analysis:", e);
       alert("Hubo un error al procesar el análisis: " + e.message);
+      await fetchLastSession();
     } finally {
       setIsAnalyzing(false);
       setStatus('idle');
@@ -597,18 +589,7 @@ export default function SessionIntelligence() {
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
                         Transcripción de la Sesión
                       </label>
-                      <button 
-                        type="button" 
-                        onClick={() => setManualTranscript(`Coach: Hola ${clientName}, ¿cómo te sientes hoy?
-Cliente: Hola Coach, la verdad es que me siento abrumada. En el trabajo todo el mundo me pide cosas y no sé cómo decir que no.
-Coach: Entiendo. ¿Qué temores surgen cuando piensas en decir "no"?
-Cliente: Siento que si digo que no, van a pensar que no soy capaz o que no estoy comprometida.
-Coach: ¿Y qué límites consideras que podrías empezar a poner esta semana?
-Cliente: Podría empezar por silenciar Slack a las 7 PM y no responder correos hasta el día siguiente.`)}
-                        className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all"
-                      >
-                        <Sparkles size={12} /> Cargar Ejemplo
-                      </button>
+
                     </div>
                     <textarea 
                       required 
@@ -628,7 +609,7 @@ Cliente: Podría empezar por silenciar Slack a las 7 PM y no responder correos h
                         onChange={e => setSelectedSentiment(e.target.value as any)} 
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-medium outline-none"
                       >
-                        <option value="estrés">Estrés</option>
+                        <option value="">No informado</option>\n                        <option value="estrés">Estrés</option>
                         <option value="positivo">Positivo</option>
                         <option value="neutral">Neutral</option>
                         <option value="motivación">Motivación</option>
@@ -636,10 +617,10 @@ Cliente: Podría empezar por silenciar Slack a las 7 PM y no responder correos h
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Confianza ({manualConfidence})</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Confianza ({manualConfidence || "No evaluada"})</label>
                       <input 
                         type="range" 
-                        min="1" 
+                        min="0" 
                         max="10" 
                         value={manualConfidence} 
                         onChange={e => setManualConfidence(Number(e.target.value))} 
@@ -647,10 +628,10 @@ Cliente: Podría empezar por silenciar Slack a las 7 PM y no responder correos h
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Claridad ({manualClarity})</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Claridad ({manualClarity || "No evaluada"})</label>
                       <input 
                         type="range" 
-                        min="1" 
+                        min="0" 
                         max="10" 
                         value={manualClarity} 
                         onChange={e => setManualClarity(Number(e.target.value))} 
@@ -658,10 +639,10 @@ Cliente: Podría empezar por silenciar Slack a las 7 PM y no responder correos h
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Energía ({manualEnergy})</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Energía ({manualEnergy || "No evaluada"})</label>
                       <input 
                         type="range" 
-                        min="1" 
+                        min="0" 
                         max="10" 
                         value={manualEnergy} 
                         onChange={e => setManualEnergy(Number(e.target.value))} 
@@ -939,7 +920,7 @@ Cliente: Podría empezar por silenciar Slack a las 7 PM y no responder correos h
                       { label: 'Energía', val: analysis.metrics.energy, color: 'text-amber-600' }
                     ].map((m, i) => (
                       <div key={i} className="text-center">
-                        <div className="text-lg font-black text-slate-800">{m.val}/10</div>
+                        <div className="text-lg font-black text-slate-800">{m.val === null || m.val === undefined ? "No evaluado" : `${m.val}/10`}</div>
                         <div className={`text-[10px] font-bold uppercase ${m.color}`}>{m.label}</div>
                       </div>
                     ))}

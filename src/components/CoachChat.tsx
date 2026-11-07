@@ -1,3 +1,4 @@
+import { SafeImage } from './SafeImage';
 import { useState, useEffect, useRef } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, addDoc, onSnapshot, getDocs, doc, getDoc, orderBy, limit } from 'firebase/firestore';
@@ -256,7 +257,7 @@ export function CoachChat({ className }: { className?: string }) {
                   )}
                 >
                   <div className="w-11 h-11 rounded-2xl overflow-hidden shrink-0 bg-slate-100 border border-slate-200/50 shadow-sm relative">
-                    <img 
+                    <SafeImage 
                       src={s.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${s.displayName || 'U'}`} 
                       alt="" 
                       className="w-full h-full object-cover"
@@ -342,7 +343,7 @@ export function CoachChat({ className }: { className?: string }) {
                   <span>Volver</span>
                 </button>
                 <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 border border-slate-200 bg-slate-100 shadow-sm">
-                  <img 
+                  <SafeImage 
                     src={selectedStudent.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${selectedStudent.displayName || 'U'}`} 
                     alt="" 
                     className="w-full h-full object-cover"

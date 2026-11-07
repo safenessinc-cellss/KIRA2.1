@@ -1,5 +1,5 @@
 // src/helpers/notificationsHelper.ts
-import { db } from '../firebase/firebase'; // Ajusta la ruta según tu configuración
+import { db } from '../firebase'; // Ajusta la ruta según tu configuración
 import { 
   collection, 
   query, 

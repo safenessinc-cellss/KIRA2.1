@@ -1,3 +1,5 @@
+import { auth } from '../firebase';
+
 /**
  * Centralized Gemini Client Helper
  * Handles robust verification of GEMINI_API_KEY and provides clear user-friendly feedback.
@@ -40,11 +42,15 @@ export async function generateGemini(payload: GeminiPayload): Promise<string> {
     throw new Error(errorMsg);
   }
 
-  // 2. Execute call
+  // 2. Require an authenticated Firebase session.
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('Debes iniciar sesión para utilizar las funciones de IA.');
+  const idToken = await currentUser.getIdToken();
+
   try {
     const response = await fetch('/api/gemini/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
       body: JSON.stringify(payload),
     });
 

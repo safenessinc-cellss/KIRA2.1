@@ -1,5 +1,6 @@
+import { SafeImage } from '../components/SafeImage';
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { MediaUpload } from '../components/MediaUpload';
@@ -202,7 +203,7 @@ export function CoachCourses() {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: "gemini-3.5-flash",
           contents: prompt,
@@ -359,7 +360,7 @@ export function CoachCourses() {
                   editingCourse?.id === c.id ? "border-primary ring-2 ring-primary/20 animate-pulse" : "border-slate-200"
                 )}>
                   <div className="relative h-32 overflow-hidden">
-                     <img src={c.bannerUrl || `https://picsum.photos/seed/${c.title}/800/400`} alt="Banner" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                     <SafeImage src={c.bannerUrl || `https://picsum.photos/seed/${c.title}/800/400`} alt="Banner" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                      <div className="absolute top-4 right-4 px-2 py-1 bg-white/90 backdrop-blur rounded-lg text-[9px] font-black text-slate-800 uppercase shadow-sm tracking-wider">
                         {c.status}
                      </div>
@@ -423,7 +424,7 @@ export function CoachCourses() {
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 font-bold overflow-hidden shrink-0">
                           {student.studentAvatar ? (
-                            <img src={student.studentAvatar} alt={student.studentName} className="w-full h-full object-cover animate-in fade-in" referrerPolicy="no-referrer" />
+                            <SafeImage src={student.studentAvatar} alt={student.studentName} className="w-full h-full object-cover animate-in fade-in" referrerPolicy="no-referrer" />
                           ) : (
                             student.studentName.charAt(0).toUpperCase()
                           )}
