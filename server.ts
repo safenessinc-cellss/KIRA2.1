@@ -89,7 +89,12 @@ function allowAiRequest(uid: string): boolean {
   const now = Date.now();
   const current = aiRequestCounts.get(uid);
   if (!current || current.resetAt <= now) {
-    if (aiRequestCounts.size > 5000) {\n      for (const [key, value] of aiRequestCounts) if (value.resetAt <= now) aiRequestCounts.delete(key);\n    }\n    aiRequestCounts.set(uid, { count: 1, resetAt: now + 60_000 });
+    if (aiRequestCounts.size > 5000) {
+      for (const [key, value] of aiRequestCounts) {
+        if (value.resetAt <= now) aiRequestCounts.delete(key);
+      }
+    }
+    aiRequestCounts.set(uid, { count: 1, resetAt: now + 60_000 });
     return true;
   }
   if (current.count >= 20) return false;
@@ -107,7 +112,18 @@ function getCache(key: string): any | null {
   return entry.data;
 }
 
-function setCache(key: string, data: any, ttlMs: number = 120 * 1000) { // 2 minutes default
+function setCache(key: string, data: any, ttlMs: number = 120 * 1000) {
+  if (memoryCache.size > 1000) {
+    const now = Date.now();
+    for (const [cacheKey, entry] of memoryCache) {
+      if (entry.expiresAt <= now) memoryCache.delete(cacheKey);
+    }
+    while (memoryCache.size > 1000) {
+      const oldestKey = memoryCache.keys().next().value;
+      if (!oldestKey) break;
+      memoryCache.delete(oldestKey);
+    }
+  }
   memoryCache.set(key, {
     data,
     expiresAt: Date.now() + ttlMs
