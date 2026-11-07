@@ -93,3 +93,8 @@ No escribir diarios, conversaciones, respuestas psicométricas individuales ni d
 8. Solo entonces fusionar y promover el deployment revisado a Production.
 
 No desplegar reglas nuevas ni promover producción mientras el control de calidad o los tests de seguridad estén pendientes.
+
+
+## Libro de comisiones de coaches
+
+Los pagos de cursos generan partidas en coachLedger vinculadas al coach asignado al curso. El estado inicial es pending_release. El administrador puede registrar una liquidación externa únicamente con una referencia bancaria o del proveedor; esta acción audita el asiento, pero no transfiere dinero. Para automatizar pagos a coaches se requiere integrar Stripe Connect o el producto de payouts de Mercado Pago, onboarding/KYC de beneficiarios, cuentas de destino y pruebas regulatorias específicas.
