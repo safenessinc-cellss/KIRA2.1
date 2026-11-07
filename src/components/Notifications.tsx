@@ -5,12 +5,30 @@ import { useAuth } from '../hooks/useAuth';
 import { Bell, Check, Trash2, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { requestPushNotifications } from './PushNotificationManager';
 
 export function NotificationCenter() {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushFeedback, setPushFeedback] = useState('');
+  const pushPermission = typeof window !== 'undefined' && 'Notification' in window
+    ? Notification.permission
+    : 'unsupported';
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  const enablePush = async () => {
+    if (!user || pushBusy) return;
+    setPushBusy(true);
+    setPushFeedback('');
+    try {
+      const result = await requestPushNotifications(user.uid);
+      setPushFeedback(result.message);
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -75,16 +93,34 @@ export function NotificationCenter() {
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 origin-top-right"
             >
-              <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <h3 className="text-sm font-bold text-slate-800">Notificaciones</h3>
-                {unreadCount > 0 && (
-                  <button 
-                    onClick={markAllRead}
-                    className="text-[10px] font-bold text-primary uppercase tracking-widest hover:underline"
-                  >
-                    Marcar todo como leído
-                  </button>
-                )}
+              <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-slate-800">Notificaciones</h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {pushPermission === 'default' && (
+                      <button type="button" onClick={enablePush} disabled={pushBusy}
+                        className="rounded-lg bg-primary px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-white hover:opacity-90 disabled:opacity-50">
+                        {pushBusy ? 'Activando…' : 'Activar avisos'}
+                      </button>
+                    )}
+                    {pushPermission === 'granted' && (
+                      <span className="rounded-lg bg-emerald-50 px-3 py-2 text-[10px] font-bold text-emerald-700">Avisos activados</span>
+                    )}
+                    {pushPermission === 'denied' && (
+                      <span className="rounded-lg bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-700">Bloqueadas en el navegador</span>
+                    )}
+                    {pushPermission === 'unsupported' && (
+                      <span className="text-[10px] text-slate-500">Push no disponible</span>
+                    )}
+                    {unreadCount > 0 && (
+                      <button type="button" onClick={markAllRead}
+                        className="text-[10px] font-bold text-primary uppercase tracking-widest hover:underline">
+                        Marcar todo como leído
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {pushFeedback && <p role="status" className="mt-2 text-[11px] leading-relaxed text-slate-600">{pushFeedback}</p>}
               </div>
 
               <div className="max-h-[400px] overflow-y-auto">

@@ -1,3 +1,4 @@
+import { SafeImage } from '../components/SafeImage';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, handleFirestoreError, OperationType } from '../firebase';
@@ -118,7 +119,7 @@ export function UserProfile() {
           <div className="flex flex-col sm:flex-row items-center gap-6 p-6 border border-slate-100 rounded-2xl bg-slate-50/50">
             <div className="relative w-24 h-24 rounded-full overflow-hidden bg-slate-200 shrink-0 border-4 border-white shadow-md">
               {photoURL ? (
-                <img referrerPolicy="no-referrer" src={photoURL} alt="Profile" className="w-full h-full object-cover" />
+                <SafeImage referrerPolicy="no-referrer" src={photoURL} alt="Profile" className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-100">
                   <User size={32} />

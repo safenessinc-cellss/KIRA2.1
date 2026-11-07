@@ -1,3 +1,4 @@
+import { SafeImage } from '../components/SafeImage';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, handleFirestoreError, OperationType } from '../firebase';
@@ -539,8 +540,8 @@ function BIView() {
     {loading ? <div className="rounded-xl bg-white p-6 text-sm text-slate-500">Cargando datos reales…</div> : <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><StatCard title="Usuarios registrados" value={users.length.toLocaleString('es-ES')} subtitle="Registros en users" icon={<Users className="text-blue-500"/>}/><StatCard title="Inscripciones activas" value={activeEnrollments.toLocaleString('es-ES')} subtitle="Sin cancelación/refund" icon={<BookOpen className="text-teal-500"/>}/><StatCard title="Cursos disponibles" value={courses.length.toLocaleString('es-ES')} subtitle="Registros en courses" icon={<BookOpen className="text-violet-500"/>}/></div>
       <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><h3 className="font-bold text-slate-900">Nuevos usuarios e inscripciones</h3><p className="mt-1 text-xs text-slate-500">Período {range===30?'diario':'semanal'} · no se extrapolan datos faltantes.</p>{trend.some(row=>row.users||row.enrollments)?<div className="mt-4 h-72 min-w-0 w-full"><ResponsiveContainer width="100%" height="100%"><LineChart data={trend}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="label" fontSize={10}/><YAxis allowDecimals={false}/><Tooltip/><Legend/><Line dataKey="users" name="Usuarios" stroke="#0d9488" strokeWidth={2} dot={false}/><Line dataKey="enrollments" name="Inscripciones" stroke="#6366f1" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div>:<div className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No hay fechas válidas en las fuentes para graficar el período.</div>}</div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><h3 className="font-bold text-slate-900">Demanda por curso</h3><p className="mt-1 text-xs text-slate-500">Conteo de inscripciones agrupadas por courseId.</p>{coursesDemand.length?<div className="mt-4 h-72 min-w-0 w-full"><ResponsiveContainer width="100%" height="100%"><BarChart data={coursesDemand} layout="vertical"><CartesianGrid strokeDasharray="3 3" horizontal={false}/><XAxis type="number" allowDecimals={false}/><YAxis type="category" dataKey="name" width={110} fontSize={10}/><Tooltip/><Bar dataKey="enrolled" name="Inscripciones" fill="#0d9488" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div>:<div className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">Todavía no hay inscripciones vinculadas a cursos.</div>}</div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><h3 className="font-bold text-slate-900">Nuevos usuarios e inscripciones</h3><p className="mt-1 text-xs text-slate-500">Período {range===30?'diario':'semanal'} · no se extrapolan datos faltantes.</p>{trend.some(row=>row.users||row.enrollments)?<div className="mt-4 h-72 min-h-[18rem] min-w-0 w-full"><ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}><LineChart data={trend}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="label" fontSize={10}/><YAxis allowDecimals={false}/><Tooltip/><Legend/><Line dataKey="users" name="Usuarios" stroke="#0d9488" strokeWidth={2} dot={false}/><Line dataKey="enrollments" name="Inscripciones" stroke="#6366f1" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div>:<div className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No hay fechas válidas en las fuentes para graficar el período.</div>}</div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><h3 className="font-bold text-slate-900">Demanda por curso</h3><p className="mt-1 text-xs text-slate-500">Conteo de inscripciones agrupadas por courseId.</p>{coursesDemand.length?<div className="mt-4 h-72 min-h-[18rem] min-w-0 w-full"><ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}><BarChart data={coursesDemand} layout="vertical"><CartesianGrid strokeDasharray="3 3" horizontal={false}/><XAxis type="number" allowDecimals={false}/><YAxis type="category" dataKey="name" width={110} fontSize={10}/><Tooltip/><Bar dataKey="enrolled" name="Inscripciones" fill="#0d9488" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div>:<div className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">Todavía no hay inscripciones vinculadas a cursos.</div>}</div>
       </div>
     </>}
   </div>;
@@ -954,9 +955,9 @@ function TransactionsMonitorView() {
         <h3 className="font-bold text-slate-800 text-sm mb-6 flex items-center gap-2">
           <BarChart3 size={18} className="text-teal-500" /> Tendencias de Pagos (Recientes)
         </h3>
-        <div className="h-64">
+        <div className="h-64 min-h-64 w-full min-w-0">
            {txs.length > 0 ? (
-             <ResponsiveContainer width="100%" height="100%">
+             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                <BarChart data={prepareChartData(txs)}>
                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                  <XAxis dataKey="name" fontSize={10} tick={{fill: '#94a3b8'}} />
@@ -1748,7 +1749,7 @@ function PromotionsManagerView() {
                        />
                     </div>
                  </div>
-                 {imageUrl && <img src={imageUrl} alt="preview" className="mt-3 h-32 object-cover rounded-xl border border-slate-200" />}
+                 {imageUrl && <SafeImage src={imageUrl} alt="preview" className="mt-3 h-32 object-cover rounded-xl border border-slate-200" />}
               </div>
            </div>
 
@@ -1774,7 +1775,7 @@ function PromotionsManagerView() {
               
               <div className="h-32 bg-slate-100 relative">
                 {prom.imageUrl ? (
-                   <img src={prom.imageUrl} alt={prom.title} className="w-full h-full object-cover" />
+                   <SafeImage src={prom.imageUrl} alt={prom.title} className="w-full h-full object-cover" />
                 ) : (
                    <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageUpload onUploadComplete={(url) => {handleEdit(prom); setImageUrl(url);}} currentImage="" folderPath="promotions" label="Añadir Imagen" /></div>
                 )}

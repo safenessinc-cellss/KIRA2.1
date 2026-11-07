@@ -1,3 +1,4 @@
+import { SafeImage } from '../components/SafeImage';
 import React, { useState, useEffect } from 'react';
 import { storage, db, handleFirestoreError, OperationType, auth } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -369,7 +370,7 @@ export function CoachDashboard() {
         <div className="relative z-10 flex flex-col lg:flex-row gap-6">
           {/* Logo Kira Image */}
           <div className="hidden lg:flex shrink-0 items-center justify-center bg-white/60 border border-white p-4 rounded-[32px] shadow-sm w-32 h-32 aspect-square">
-            <img src="/images/11.png" alt="Kira Logo" className="w-full h-full object-contain filter drop-shadow-md" onError={(e) => (e.currentTarget.style.display = 'none')} />
+            <SafeImage src="/images/11.png" alt="Kira Logo" className="w-full h-full object-contain filter drop-shadow-md" onError={(e) => (e.currentTarget.style.display = 'none')} />
           </div>
           
           <div className="flex-1">
@@ -757,8 +758,8 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
            {loading ? (
              <div className="flex justify-center py-10"><Loader2 className="animate-spin text-kirateal" size={32}/></div>
            ) : (
-             <div className="h-64 w-full">
-               <ResponsiveContainer width="100%" height="100%">
+             <div className="h-64 min-h-64 w-full min-w-0">
+               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                  <BarChart data={sessionsData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                    <XAxis dataKey="date" fontSize={11} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
@@ -2476,7 +2477,7 @@ function CoachProfileSettings({ profile }: any) {
             </button>
             {formData.photoURL && (
               <div className="w-16 h-16 rounded-full border-2 border-kiragold/20 overflow-hidden shadow-inner">
-                <img src={formData.photoURL} alt="Preview" className="w-full h-full object-cover" />
+                <SafeImage src={formData.photoURL} alt="Preview" className="w-full h-full object-cover" />
               </div>
             )}
           </div>

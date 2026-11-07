@@ -1,3 +1,4 @@
+import { SafeImage } from '../components/SafeImage';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db } from '../firebase';
@@ -204,7 +205,7 @@ export function EliteLibrary() {
                       <GripHorizontal size={14} />
                    </div>
                 </div>
-                <img 
+                <SafeImage 
                   src={item.type === 'imagen' ? item.url : `https://picsum.photos/seed/${item.coachId}-${item.title}/400/200`} 
                   alt="Previa" 
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
@@ -214,7 +215,7 @@ export function EliteLibrary() {
               <div className="p-6 flex-1 flex flex-col bg-white">
                 <div className="flex items-center gap-2 mb-3">
                    <div className="w-5 h-5 rounded-full bg-slate-100 overflow-hidden">
-                      <img src={item.coachPhoto || `https://ui-avatars.com/api/?name=${item.coachName}`} alt={item.coachName} className="w-full h-full object-cover" />
+                      <SafeImage src={item.coachPhoto || `https://ui-avatars.com/api/?name=${item.coachName}`} alt={item.coachName} className="w-full h-full object-cover" />
                    </div>
                    <span className="text-[10px] font-bold text-slate-500">{item.coachName}</span>
                 </div>
