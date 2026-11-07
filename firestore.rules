@@ -400,8 +400,12 @@ service cloud.firestore {
     }
 
     match /course_activity/{id} {
-      allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || isApprovedCoach()));
-      allow create: if isAuthenticated(); // Allow tracking
+      allow read: if isAdmin() ||
+                  (isAuthenticated() && resource.data.userId == request.auth.uid) ||
+                  (isApprovedCoach() &&
+                   exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) &&
+                   get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 
