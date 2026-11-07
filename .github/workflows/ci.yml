@@ -7,7 +7,7 @@ on:
     branches: [main, "feat/**"]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: kira-ci-${{ github.ref }}
@@ -20,6 +20,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          persist-credentials: true
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -27,13 +30,25 @@ jobs:
           cache: npm
       - name: Install dependencies and reconcile lockfile
         run: npm install --no-audit --no-fund
+      - name: Commit reconciled lockfile to PR branch
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          cp package-lock.json /tmp/kira-package-lock.json
+          git fetch origin "$HEAD_BRANCH"
+          git checkout -B "$HEAD_BRANCH" "FETCH_HEAD"
+          cp /tmp/kira-package-lock.json package-lock.json
+          if ! git diff --quiet -- package-lock.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "chore: sync npm lockfile [skip ci]"
+            git push origin "HEAD:refs/heads/$HEAD_BRANCH"
+          fi
+      - name: Install from synchronized lockfile
+        run: npm ci
       - name: Type check
         run: npm run lint
       - name: Build
         run: npm run build
-      - name: Upload reconciled npm lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: kira-package-lock
-          path: package-lock.json
-          if-no-files-found: error
