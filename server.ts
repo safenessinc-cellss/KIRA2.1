@@ -187,7 +187,8 @@ app.post("/api/create-checkout-session", async (req, res) => {
   if (items.length !== requested.length) return res.status(400).json({ error: "Duplicate items are not allowed" });
   try {
     const firestore = getAdminDb();
-    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+    type CheckoutLineItem = NonNullable<Parameters<typeof stripe.checkout.sessions.create>[0]['line_items']>[number];
+    const lineItems: CheckoutLineItem[] = [];
     const validated: Array<{id:string;itemType:"course"|"book"}> = [];
     for (const item of items) {
       const collectionName = item.itemType === "course" ? "courses" : "books";
