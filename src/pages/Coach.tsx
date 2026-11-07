@@ -787,44 +787,18 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
           
         setTopTopics(sortedTopics);
 
-        // Fetch Journals to mock team energy heatmap
-        const journalsSnap = await getDocs(collection(db, 'journals')); // In a real app we'd filter by the coach's students
-        let pos = 0, neu = 0, neg = 0;
-        journalsSnap.docs.forEach(doc => {
-          const s = doc.data().sentiment || 'neutral';
-          if (s === 'positive') pos++;
-          else if (s === 'negative') neg++;
-          else neu++;
-        });
-
-        if (pos === 0 && neu === 0 && neg === 0) {
-          pos = 10; neu = 5; neg = 2; // mock data if empty
-        }
-
+        // Sentiment remains unavailable until a privacy-safe coach-scoped aggregate is published.
+        const pos = 0, neu = 0, neg = 0;
         // Fetch purchases for Revenue calculation & Release control
         let coachPending: any[] = [];
         let totalRevenue = 0;
         try {
-          const purchasesSnap = await getDocs(collection(db, 'purchases'));
-          const purchasesList = purchasesSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
-          
-          coachPending = purchasesList.filter(p => {
-            if (p.status !== 'pending_release') return false;
-            if (p.itemType === 'course') {
-              return courseIds.includes(p.itemId);
-            }
-            return true; // Show all ebooks/books
-          });
-
-          const releasedPurchases = purchasesList.filter(p => {
-            if (p.status !== 'released') return false;
-            if (p.itemType === 'course') {
-              return courseIds.includes(p.itemId);
-            }
-            return true;
-          });
-
-          totalRevenue = releasedPurchases.reduce((sum, p) => sum + (Number(p.itemPrice) || 0), 0);
+          const ledgerQuery = query(collection(db, 'coachLedger'), where('coachId', '==', user.uid));
+          const ledgerSnapshot = await getDocs(ledgerQuery);
+          const ledgerEntries = ledgerSnapshot.docs.map(d => ({ id: d.id, ...d.data() as any }));
+          coachPending = ledgerEntries.filter(entry => entry.status === 'pending_release');
+          const releasedEntries = ledgerEntries.filter(entry => entry.status === 'released');
+          totalRevenue = releasedEntries.reduce((sum, entry) => sum + (Number(entry.amount || entry.itemPrice) || 0), 0);
         } catch (pErr) {
           console.warn("Error fetching purchases for coach dashboard:", pErr);
         }
@@ -836,7 +810,8 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
           activeStudents,
           avgProgress: totalEnrollments > 0 ? Math.round(totalProgress / totalEnrollments) : 0,
           recentSessions: recentSessionsCount,
-          sentiment: { positive: pos, neutral: neu, negative: neg }
+          sentiment: { positive: pos, neutral: neu, negative: neg },
+          hasSentimentData: false
         });
         setLoading(false);
       } catch (error) {
@@ -1007,6 +982,8 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
            <h3 className="text-lg font-black text-slate-800 mb-6 text-center">Heatmap Energía de Equipo</h3>
            {loading ? (
               <div className="flex justify-center py-10"><Loader2 className="animate-spin text-teal-500" size={32} /></div>
+           ) : !stats.hasSentimentData ? (
+              <div className="py-10 text-center text-sm text-slate-500">No hay un agregado de bienestar autorizado para este coach. Los diarios personales no son visibles en este panel.</div>
            ) : (
               <div className="flex flex-col gap-5">
                  <div>
