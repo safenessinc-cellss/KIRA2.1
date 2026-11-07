@@ -311,7 +311,7 @@ export function Login() {
       </div>
       
       <div className="absolute bottom-6 w-full text-center text-slate-500 text-[10px] uppercase tracking-[0.2em] font-bold">
-        Avalado por Kira Coach
+        Creado por SAFENESS.INC
       </div>
     </div>
   );
