@@ -170,7 +170,7 @@ export function AdminMonitor() {
         {activeTab === 'campaign_history' && hasPerm(navItems.find(i=>i.id==='campaign_history')) && <CampaignHistoryView />}
         {activeTab === 'ai_coaches' && hasPerm(navItems.find(i=>i.id==='ai_coaches')) && <AICoachesView />}
 
-        {activeTab === 'coaches' && hasPerm(navItems.find(i=>i.id==='coaches')) && <AdminCoaches />}
+        {activeTab === 'coaches' && hasPerm(navItems.find(i=>i.id==='coaches')) && <CoachManagementView />}
         {activeTab === 'approvals' && hasPerm(navItems.find(i=>i.id==='approvals')) && <UserApprovalsView />}
         {activeTab === 'students' && hasPerm(navItems.find(i=>i.id==='students')) && <StudentManagementView />}
         {activeTab === 'books' && hasPerm(navItems.find(i=>i.id==='books')) && <AdminBooksView />}
@@ -183,11 +183,40 @@ export function AdminMonitor() {
         {activeTab === 'contracts' && hasPerm(navItems.find(i=>i.id==='contracts')) && <ContractManagerView />}
         {activeTab === 'website' && hasPerm(navItems.find(i=>i.id==='website')) && <WebsiteConfigView />}
         {activeTab === 'automation' && hasPerm(navItems.find(i=>i.id==='automation')) && <AutomationEngineView />}
-        {activeTab === 'marketplace_reviews' && hasPerm(navItems.find(i=>i.id==='marketplace_reviews')) && <AdminReviews />}
+        {activeTab === 'marketplace_reviews' && hasPerm(navItems.find(i=>i.id==='marketplace_reviews')) && <ReviewModerationView />}
         {navItems.some(item => item.id === activeTab && (item as any).planned) && <AdminPlannedModuleView item={navItems.find(item => item.id === activeTab)!} />}
       </div>
     </div>
   );
+}
+
+function CoachManagementView() {
+  const [coaches, setCoaches] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'users'), snapshot => {
+      const rows: any[] = snapshot.docs.map(d=>({id:d.id,...d.data()}));
+      setCoaches(rows.filter(row=>String(row.role || '').toLowerCase()==='coach'));
+      setLoading(false); setError('');
+    }, err => { console.error('Coach registry failed',err); setLoading(false); setError('No se pudo cargar la lista de coaches.'); });
+    return () => unsubscribe();
+  }, []);
+  const filtered=coaches.filter(row=>`${row.displayName||row.name||''} ${row.email||''} ${row.specialty||''}`.toLowerCase().includes(search.toLowerCase()));
+  return <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-xl font-bold text-slate-900">Gestión de coaches</h2><p className="mt-1 text-sm text-slate-500">{coaches.length} perfiles de coach registrados</p></div><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar coach…" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm sm:max-w-xs"/></div>{error&&<p role="alert" className="text-sm text-rose-600">{error}</p>}{loading?<p className="text-sm text-slate-500">Cargando coaches…</p>:filtered.length===0?<p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No se encontraron coaches.</p>:<div className="overflow-x-auto"><table className="w-full min-w-[550px] text-sm"><thead><tr className="text-left text-xs text-slate-500"><th className="pb-3">Coach</th><th className="pb-3">Especialidad</th><th className="pb-3">Aprobación</th><th className="pb-3">Estado</th></tr></thead><tbody className="divide-y divide-slate-100">{filtered.map(row=><tr key={row.id}><td className="py-3"><div className="font-semibold text-slate-800">{row.displayName||row.name||'Coach'}</div><div className="text-xs text-slate-500">{row.email||row.id}</div></td><td className="py-3">{row.specialty||row.specialties?.join?.(', ')||'—'}</td><td className="py-3">{row.approvalStatus||row.status|| (row.approved?'approved':'pending')}</td><td className="py-3">{row.status||'—'}</td></tr>)}</tbody></table></div>}</div>;
+}
+
+function ReviewModerationView() {
+  const { user } = useAuth();
+  const [reviews,setReviews]=useState<any[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+  const [busy,setBusy]=useState<string|null>(null);
+  const isSuperAdmin=user?.email==='safeness.c.a@gmail.com';
+  useEffect(()=>{const unsubscribe=onSnapshot(query(collection(db,'reviews'),orderBy('createdAt','desc'),limit(100)),snapshot=>{setReviews(snapshot.docs.map(d=>({id:d.id,...d.data()})));setLoading(false);setError('');},err=>{console.error('Review moderation failed',err);setLoading(false);setError('No se pudieron cargar reseñas.');});return()=>unsubscribe();},[]);
+  const toggle=async(review:any)=>{if(!isSuperAdmin||busy)return;setBusy(review.id);setError('');try{await updateDoc(doc(db,'reviews',review.id),{status:review.status==='hidden'?'published':'hidden',moderatedBy:user?.uid,moderatedAt:new Date()});}catch(err){console.error(err);setError('No se pudo actualizar la reseña.');}finally{setBusy(null);}};
+  return <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"><div><h2 className="text-xl font-bold text-slate-900">Valoraciones y reseñas</h2><p className="mt-1 text-sm text-slate-500">Moderación de reseñas reales de usuarios. No se crean reseñas de ejemplo.</p></div>{error&&<p role="alert" className="text-sm text-rose-600">{error}</p>}{loading?<p className="text-sm text-slate-500">Cargando reseñas…</p>:reviews.length===0?<p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No hay reseñas registradas.</p>:<div className="space-y-3">{reviews.map(review=><article key={review.id} className="rounded-xl border border-slate-100 p-4"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><div className="font-semibold text-slate-800">Curso: {review.courseId||'—'} · {review.rating??'—'}/5</div><p className="mt-1 text-sm text-slate-600">{review.comment||'Sin comentario'}</p><p className="mt-1 text-xs text-slate-400">Autor UID: {review.userId||'—'} · {review.status||'pending'}</p></div><button disabled={!isSuperAdmin||busy===review.id} onClick={()=>toggle(review)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">{review.status==='hidden'?'Publicar':'Ocultar'}</button></div></article>)}</div>}</div>;
 }
 
 function UserApprovalsView() {
