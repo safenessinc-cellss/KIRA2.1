@@ -290,12 +290,14 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
+    // Journals are strictly private to their owner, including from coaches and administrators.
     match /journals/{journalId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid) || isApprovedCoach();
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && isValidJournal() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() && isValidJournal() && areImmutableFieldsUnchanged(['userId', 'createdAt']) && 
-                    (isAdmin() || isCurrentUser(resource.data.userId));
-      allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow update: if isAuthenticated() && isValidJournal()
+                    && isCurrentUser(resource.data.userId)
+                    && areImmutableFieldsUnchanged(['userId', 'createdAt']);
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
     match /sessions/{sessionId} {
@@ -313,10 +315,11 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
 
+    // Financial ledger entries must be written by a trusted server/webhook (Admin SDK).
+    // Client-side writes are disabled until the verified Stripe ledger endpoint is active.
     match /transactions/{id} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow create: if isAuthenticated() && isValidTransaction(); 
-      allow update, delete: if isAdmin();
+      allow create, update, delete: if false;
     }
 
     match /coupons/{id} {
@@ -379,8 +382,14 @@ service cloud.firestore {
     }
 
     match /course_activity/{id} {
-      allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || isApprovedCoach()));
-      allow create: if isAuthenticated(); // Allow tracking
+      allow read: if isAdmin()
+        || (isAuthenticated() && resource.data.userId == request.auth.uid)
+        || (isApprovedCoach()
+          && resource.data.courseId is string
+          && exists(/databases/$(database)/documents/courses/$(resource.data.courseId))
+          && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid);
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 
