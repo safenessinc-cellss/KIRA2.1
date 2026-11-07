@@ -53,6 +53,7 @@ export function DashboardLayout({ title }: { title: string }) {
   const links = {
     admin: [{ to: '/admin', icon: LayoutDashboard, label: 'Administración KIRA', detail: 'Control, seguridad y gestión global' }],
     hr_admin: [{ to: '/hr', icon: Users, label: 'Bienestar corporativo', detail: 'Personas y organización' }],
+    company_admin: [{ to: '/hr', icon: Users, label: 'Portal empresarial', detail: 'Organización, licencias e indicadores' }],
     coach: [
       { to: '/coach', icon: Activity, label: 'Gestión académica', detail: 'Resumen, alumnos y actividad' },
       { to: '/coach/courses', icon: BookOpen, label: 'Studio de cursos', detail: 'Cursos, contenidos y programas' },
@@ -86,7 +87,7 @@ export function DashboardLayout({ title }: { title: string }) {
 
       <header className="sticky top-0 z-30 flex min-h-[4.25rem] shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-3">
-          <Link to={role === 'admin' ? '/admin' : role === 'coach' ? '/coach' : role === 'hr_admin' ? '/hr' : '/dashboard'} aria-label="Ir al inicio" className="shrink-0"><Logo size={36} /></Link>
+          <Link to={role === 'admin' ? '/admin' : role === 'coach' ? '/coach' : (role === 'hr_admin' || role === 'company_admin') ? '/hr' : '/dashboard'} aria-label="Ir al inicio" className="shrink-0"><Logo size={36} /></Link>
           <div className="min-w-0 border-l border-slate-200 pl-3">
             <p className="truncate text-sm font-bold text-slate-800">{title}</p>
             <p className="hidden truncate text-xs text-slate-400 sm:block">Bienvenido, {displayProfileName}</p>
