@@ -262,17 +262,27 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
   for (const item of order.items || []) {
     if (item.type === "course" || item.collectionName === "courses") {
       const enrollmentId = idSafe(order.userId + "_" + item.id);
-      if (!(await fsGet("enrollments", enrollmentId))) writes.push(fsCreate("enrollments", enrollmentId, {
+      const existingEnrollment = await fsGet("enrollments", enrollmentId);
+      if (!existingEnrollment) writes.push(fsCreate("enrollments", enrollmentId, {
         userId: order.userId, courseId: item.id, progress: 0, completed: false, courseCompleted: false,
         paymentOrderId: orderId, paymentStatus: "paid", createdAt: now
       }));
-      const courseRecord = await fsGet("courses", String(item.id));
-      if (courseRecord?.coachId) writes.push(fsCreate("coachLedger", idSafe(provider + "_" + paymentId + "_" + item.id), {
-        coachId: courseRecord.coachId, userId: order.userId, courseId: item.id,
-        itemId: item.id, itemType: "course", itemTitle: item.title,
-        amount: Number(item.unitPrice) * Number(item.quantity || 1), itemPrice: Number(item.unitPrice) * Number(item.quantity || 1),
-        currency: order.currency, orderId, provider, status: "pending_release", createdAt: now
+      else if (existingEnrollment.paymentStatus !== "paid") writes.push(fsUpdate("enrollments", enrollmentId, {
+        ...existingEnrollment, paymentOrderId: orderId, paymentStatus: "paid", paidAt: now
       }));
+      const courseRecord = await fsGet("courses", String(item.id));
+      if (courseRecord?.coachId) {
+        const [studentProfile, coachProfile] = await Promise.all([
+          fsGet("users", String(order.userId)), fsGet("users", String(courseRecord.coachId))
+        ]);
+        writes.push(fsCreate("coachLedger", idSafe(provider + "_" + paymentId + "_" + item.id), {
+          coachId: courseRecord.coachId, coachName: String(coachProfile?.displayName || coachProfile?.name || "Coach"),
+          userId: order.userId, studentName: String(studentProfile?.displayName || studentProfile?.name || "Alumno"),
+          courseId: item.id, itemId: item.id, itemType: "course", itemTitle: item.title,
+          amount: Number(item.unitPrice) * Number(item.quantity || 1), itemPrice: Number(item.unitPrice) * Number(item.quantity || 1),
+          currency: order.currency, orderId, provider, status: "pending_release", createdAt: now
+        }));
+      }
     } else if (item.collectionName === "books" || item.type === "book") {
       const purchaseId = idSafe(order.userId + "_" + orderId + "_" + item.id);
       writes.push(fsCreate("purchases", purchaseId, { userId: order.userId, productId: item.id, productType: "book", orderId, paymentStatus: "paid", createdAt: now }));
