@@ -59,7 +59,7 @@ export function AdminMonitor() {
     { id: 'marketplace_sessions', label: 'Sesiones de coaching', icon: <Clock size={18}/>, category: 'Marketplace', perm: 'users', planned: true },
     { id: 'marketplace_orders', label: 'Pedidos', icon: <CreditCard size={18}/>, category: 'Marketplace', perm: 'billing', planned: true },
     { id: 'marketplace_bookings', label: 'Reservas', icon: <Clock size={18}/>, category: 'Marketplace', perm: 'users', planned: true },
-    { id: 'marketplace_reviews', label: 'Valoraciones y reseñas', icon: <Star size={18}/>, category: 'Marketplace', perm: 'users', planned: true },
+    { id: 'marketplace_reviews', label: 'Valoraciones y reseñas', icon: <Star size={18}/>, category: 'Marketplace', perm: 'users' },
     { id: 'marketplace_moderation', label: 'Moderación', icon: <ShieldAlert size={18}/>, category: 'Marketplace', perm: 'system', planned: true },
     { id: 'transactions', label: 'Pagos y transacciones', icon: <CreditCard size={18}/>, category: 'Finanzas', perm: 'billing' },
     { id: 'refunds', label: 'Reembolsos', icon: <CreditCard size={18}/>, category: 'Finanzas', perm: 'billing', planned: true },
@@ -170,7 +170,7 @@ export function AdminMonitor() {
         {activeTab === 'campaign_history' && hasPerm(navItems.find(i=>i.id==='campaign_history')) && <CampaignHistoryView />}
         {activeTab === 'ai_coaches' && hasPerm(navItems.find(i=>i.id==='ai_coaches')) && <AICoachesView />}
 
-        {activeTab === 'coaches' && hasPerm(navItems.find(i=>i.id==='coaches')) && <CoachCuratorView />}
+        {activeTab === 'coaches' && hasPerm(navItems.find(i=>i.id==='coaches')) && <AdminCoaches />}
         {activeTab === 'approvals' && hasPerm(navItems.find(i=>i.id==='approvals')) && <UserApprovalsView />}
         {activeTab === 'students' && hasPerm(navItems.find(i=>i.id==='students')) && <StudentManagementView />}
         {activeTab === 'books' && hasPerm(navItems.find(i=>i.id==='books')) && <AdminBooksView />}
@@ -183,10 +183,74 @@ export function AdminMonitor() {
         {activeTab === 'contracts' && hasPerm(navItems.find(i=>i.id==='contracts')) && <ContractManagerView />}
         {activeTab === 'website' && hasPerm(navItems.find(i=>i.id==='website')) && <WebsiteConfigView />}
         {activeTab === 'automation' && hasPerm(navItems.find(i=>i.id==='automation')) && <AutomationEngineView />}
+        {activeTab === 'marketplace_reviews' && hasPerm(navItems.find(i=>i.id==='marketplace_reviews')) && <AdminReviews />}
         {navItems.some(item => item.id === activeTab && (item as any).planned) && <AdminPlannedModuleView item={navItems.find(item => item.id === activeTab)!} />}
       </div>
     </div>
   );
+}
+
+function UserApprovalsView() {
+  const { user } = useAuth();
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const isSuperAdmin = user?.email === 'safeness.c.a@gmail.com';
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'users'), snap => {
+      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setItems(rows.filter(row => String(row.status || '').toLowerCase() === 'pending' || (String(row.role || '').toLowerCase().includes('coach') && row.approved !== true && !['approved','rejected','active'].includes(String(row.status || '').toLowerCase()))));
+      setLoading(false); setError('');
+    }, err => { console.error('User approval list failed', err); setLoading(false); setError('No se pudieron cargar las aprobaciones. Revisa los permisos de Firestore.'); });
+    return () => unsub();
+  }, []);
+
+  const decide = async (row: any, approved: boolean) => {
+    if (!isSuperAdmin) { setError('Solo el superadministrador puede aprobar o rechazar usuarios.'); return; }
+    if (!user?.uid || busy) return;
+    const ok = window.confirm(approved ? '¿Aprobar este usuario?' : '¿Rechazar esta solicitud?');
+    if (!ok) return;
+    setBusy(row.id); setError('');
+    try {
+      await updateDoc(doc(db, 'users', row.id), { status: approved ? 'approved' : 'rejected', approved, approvedAt: approved ? new Date() : null, approvedBy: approved ? user.uid : null, reviewedAt: new Date(), reviewedBy: user.uid });
+    } catch (err) { console.error(err); setError('No se pudo guardar la decisión. El servidor/Firestore rechazó la operación.'); }
+    finally { setBusy(null); }
+  };
+
+  return <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+    <div><h2 className="text-xl font-bold text-slate-900">Aprobaciones y onboarding</h2><p className="mt-1 text-sm text-slate-500">Solicitudes pendientes reales de usuarios y coaches.</p></div>
+    {error && <div role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+    {loading ? <p className="text-sm text-slate-500">Cargando solicitudes…</p> : items.length===0 ? <div className="rounded-xl bg-slate-50 p-6 text-center text-sm text-slate-500">No hay solicitudes pendientes.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[600px] text-sm"><thead><tr className="text-left text-xs text-slate-500"><th className="pb-3">Usuario</th><th className="pb-3">Rol</th><th className="pb-3">Estado</th><th className="pb-3 text-right">Acciones</th></tr></thead><tbody className="divide-y divide-slate-100">{items.map(row=><tr key={row.id}><td className="py-3"><div className="font-semibold text-slate-800">{row.displayName || row.name || 'Usuario'}</div><div className="text-xs text-slate-500">{row.email || row.id}</div></td><td className="py-3">{row.role || 'Sin rol'}</td><td className="py-3"><span className="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-700">{row.status || 'Pendiente'}</span></td><td className="py-3 text-right"><div className="inline-flex gap-2"><button disabled={!isSuperAdmin || busy===row.id} onClick={()=>decide(row,true)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Aprobar</button><button disabled={!isSuperAdmin || busy===row.id} onClick={()=>decide(row,false)} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">Rechazar</button></div></td></tr>)}</tbody></table></div>}
+  </div>;
+}
+
+function StudentManagementView() {
+  const [students, setStudents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'users'), snap => {
+      setStudents(snap.docs.map(d=>({id:d.id,...d.data()})).filter(row=>['student','alumno','learner'].includes(String(row.role || row.type || '').toLowerCase())));
+      setLoading(false); setError('');
+    }, err => { console.error('Students list failed', err); setLoading(false); setError('No se pudo cargar el listado de alumnos.'); });
+    return () => unsub();
+  }, []);
+  const filtered = students.filter(row => `${row.displayName || row.name || ''} ${row.email || ''}`.toLowerCase().includes(search.toLowerCase()));
+  return <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-xl font-bold text-slate-900">Gestión de alumnos</h2><p className="mt-1 text-sm text-slate-500">{students.length} perfiles de alumno</p></div><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar por nombre o email…" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm sm:max-w-xs"/></div>{error && <p role="alert" className="text-sm text-rose-600">{error}</p>}{loading ? <p className="text-sm text-slate-500">Cargando alumnos…</p> : filtered.length===0 ? <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No se encontraron alumnos con esos criterios.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[480px] text-sm"><thead><tr className="text-left text-xs text-slate-500"><th className="pb-3">Alumno</th><th className="pb-3">Estado</th><th className="pb-3">ID</th></tr></thead><tbody className="divide-y divide-slate-100">{filtered.map(row=><tr key={row.id}><td className="py-3"><div className="font-semibold text-slate-800">{row.displayName || row.name || 'Alumno'}</div><div className="text-xs text-slate-500">{row.email || 'Email no disponible'}</div></td><td className="py-3">{row.status || (row.disabled ? 'Deshabilitado' : 'Activo')}</td><td className="py-3 font-mono text-xs text-slate-500">{row.id}</td></tr>)}</tbody></table></div>}</div>;
+}
+
+function CMSView() {
+  const [courses, setCourses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'courses'), snap => { setCourses(snap.docs.map(d=>({id:d.id,...d.data()}))); setLoading(false); setError(''); }, err => { console.error('Course admin source failed', err); setLoading(false); setError('No se pudieron cargar los cursos.'); });
+    return () => unsub();
+  }, []);
+  return <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"><div><h2 className="text-xl font-bold text-slate-900">Cursos y contenidos</h2><p className="mt-1 text-sm text-slate-500">Listado de cursos registrados en Firestore; edición/publicación segura pendiente de backend.</p></div>{error && <p role="alert" className="text-sm text-rose-600">{error}</p>}{loading ? <p className="text-sm text-slate-500">Cargando cursos…</p> : courses.length===0 ? <p className="rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No hay cursos registrados.</p> : <div className="overflow-x-auto"><table className="w-full min-w-[500px] text-sm"><thead><tr className="text-left text-xs text-slate-500"><th className="pb-3">Curso</th><th className="pb-3">Estado</th><th className="pb-3">Precio</th><th className="pb-3">Coach</th></tr></thead><tbody className="divide-y divide-slate-100">{courses.map(row=><tr key={row.id}><td className="py-3 font-semibold text-slate-800">{row.title || 'Sin título'}</td><td className="py-3">{row.status || (row.published ? 'Publicado' : 'Borrador')}</td><td className="py-3">{row.price != null ? `${row.currency || 'USD'} ${row.price}` : '—'}</td><td className="py-3">{row.coachName || row.coachId || '—'}</td></tr>)}</tbody></table></div>}</div>;
 }
 
 function AdminPlannedModuleView({ item }: { item: any }) {
