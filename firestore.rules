@@ -74,7 +74,7 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == "safeness.c.a@gmail.com" ||
+        request.auth.token.email == "safeness.c.a@gmail.com" && request.auth.token.email_verified == true ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
@@ -250,12 +250,12 @@ service cloud.firestore {
     match /users/{userId} {
       // Read: Public can see ALL coach profiles (needed for directory query). Users can read their own. Admins all.
       // And authenticated users can read profiles for chats etc.
-      allow read: if (resource.data.role == 'coach') || isAuthenticated();
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
       
       // Create: Users can create their own profile. Only admins can create an admin role.
       allow create: if isAuthenticated() && isCurrentUser(userId) && isValidUser() && 
                     ((request.resource.data.role == 'admin' && isAdmin()) ||
-                     (request.resource.data.role in ['coach', 'alumno']));
+                     request.resource.data.role == 'alumno');
       
       // Special: Allow coaches to create/refer new students
       allow create: if isApprovedCoach() && isValidUser() && request.resource.data.role == 'alumno';
