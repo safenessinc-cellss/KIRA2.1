@@ -45,8 +45,8 @@ export function AdminMonitor() {
     { id: 'students', label: 'Alumnos', icon: <Users size={18}/>, category: 'Personas y acceso', perm: 'users' },
     { id: 'coaches', label: 'Coaches', icon: <UserCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
     { id: 'organizations', label: 'Empresas y organizaciones', icon: <Users size={18}/>, category: 'Personas y acceso', perm: 'users', planned: true },
-    { id: 'security', label: 'Roles y permisos', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', superOnly: true },
-    { id: 'campaign_history', label: 'Auditoría y logs', icon: <ShieldAlert size={18}/>, category: 'Personas y acceso', perm: 'system' },
+    { id: 'security', label: 'Roles, permisos y accesos', icon: <ShieldCheck size={18}/>, category: 'Administración del sistema', superOnly: true },
+    { id: 'campaign_history', label: 'Auditoría, logs y seguridad', icon: <ShieldAlert size={18}/>, category: 'Administración del sistema', perm: 'system' },
     { id: 'content', label: 'Cursos y contenidos', icon: <ShoppingBag size={18}/>, category: 'Academia y certificados', perm: 'billing' },
     { id: 'books', label: 'Biblioteca y ebooks', icon: <BookOpen size={18}/>, category: 'Academia y certificados', perm: 'users' },
     { id: 'enrollments', label: 'Inscripciones y progreso', icon: <BookOpen size={18}/>, category: 'Academia y certificados', perm: 'users', planned: true },
@@ -83,12 +83,12 @@ export function AdminMonitor() {
     { id: 'ai_usage', label: 'Uso y consumo IA', icon: <Activity size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
     { id: 'ai_providers', label: 'Modelos y proveedores', icon: <Settings size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
     { id: 'ai_quotas', label: 'Límites y cuotas', icon: <Sliders size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
-    { id: 'website', label: 'Branding y marca', icon: <Layout size={18}/>, category: 'KIRA AI y configuración', perm: 'system' },
-    { id: 'settings', label: 'Configuración general', icon: <Settings size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
-    { id: 'integrations', label: 'Integraciones', icon: <Zap size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
-    { id: 'notifications', label: 'Notificaciones', icon: <AlertCircle size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
-    { id: 'platform', label: 'Parámetros de plataforma', icon: <Sliders size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
-    { id: 'automation', label: 'Automatizaciones', icon: <Zap size={18}/>, category: 'KIRA AI y configuración', perm: 'system' },
+    { id: 'website', label: 'Tema visual, branding y marca', icon: <Layout size={18}/>, category: 'Administración del sistema', perm: 'system' },
+    { id: 'settings', label: 'Configuración general', icon: <Settings size={18}/>, category: 'Administración del sistema', perm: 'system', planned: true },
+    { id: 'integrations', label: 'Integraciones y servicios externos', icon: <Zap size={18}/>, category: 'Administración del sistema', perm: 'system', planned: true },
+    { id: 'notifications', label: 'Notificaciones del sistema', icon: <AlertCircle size={18}/>, category: 'Administración del sistema', perm: 'system', planned: true },
+    { id: 'platform', label: 'Parámetros de plataforma', icon: <Sliders size={18}/>, category: 'Administración del sistema', perm: 'system', planned: true },
+    { id: 'automation', label: 'Automatizaciones del sistema', icon: <Zap size={18}/>, category: 'Administración del sistema', perm: 'system' },
   ];
   const filteredNav = navItems.filter(item => {
     if (searchQuery && !item.label.toLowerCase().includes(searchQuery.toLowerCase()) && !item.category.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -115,6 +115,11 @@ export function AdminMonitor() {
     <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
       {/* Sidebar Refinada */}
       <aside className="w-full lg:w-72 lg:shrink-0 lg:sticky lg:top-4 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="rounded-xl bg-gradient-to-br from-cyan-50 via-white to-indigo-50 border border-cyan-100 px-4 py-3">
+          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-700">KIRA COACH</div>
+          <div className="mt-1 text-sm font-extrabold text-slate-900">Ecosistema de Bienestar</div>
+          <div className="mt-1 text-[11px] text-slate-500">Centro de Mando</div>
+        </div>
         {/* Búsqueda rápida de módulos */}
         <div className="relative group mb-2">
            <Zap className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={16} />
