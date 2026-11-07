@@ -686,18 +686,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
           
         setTopTopics(sortedTopics);
 
-        // Fetch purchases for Revenue calculation & Release control
-        let coachPending: any[] = [];
-        let totalRevenue = 0;
-        try {
-          const purchasesSnap = await getDocs(collection(db, 'purchases'));
-          const purchasesList = purchasesSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
-          
-          coachPending = purchasesList.filter(p => {
-            if (p.status !== 'pending_release') return false;
-            if (p.itemType === 'course') {
-              return courseIds.includes(p.itemId);
-                    setStats({
+        setStats({
           activeStudents,
           avgProgress: totalEnrollments > 0 ? Math.round(totalProgress / totalEnrollments) : 0,
           recentSessions: recentSessionsCount
