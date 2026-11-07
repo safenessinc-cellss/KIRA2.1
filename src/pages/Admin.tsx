@@ -243,7 +243,9 @@ function UserApprovalsView() {
     if (!ok) return;
     setBusy(row.id); setError('');
     try {
-      await updateDoc(doc(db, 'users', row.id), { status: approved ? 'approved' : 'rejected', approved, approvedAt: approved ? new Date() : null, approvedBy: approved ? user.uid : null, reviewedAt: new Date(), reviewedBy: user.uid });
+      const update: any = { status: approved ? 'approved' : 'rejected', approvalStatus: approved ? 'approved' : 'rejected', reviewedAt: new Date(), reviewedBy: user.uid };
+      if (approved) { update.approved = true; update.approvedAt = new Date(); update.approvedBy = user.uid; }
+      await updateDoc(doc(db, 'users', row.id), update);
     } catch (err) { console.error(err); setError('No se pudo guardar la decisión. El servidor/Firestore rechazó la operación.'); }
     finally { setBusy(null); }
   };
