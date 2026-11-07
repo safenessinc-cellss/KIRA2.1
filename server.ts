@@ -6,6 +6,9 @@ import Stripe from "stripe";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { WebSocketServer } from "ws";
 import compression from "compression";
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,14 +77,143 @@ function getGeminiAI() {
   return geminiClient;
 }
 
+
+// Firebase Admin verifies identity and performs trusted payment writes.
+// Set FIREBASE_SERVICE_ACCOUNT_JSON as a Vercel encrypted secret.
+function getFirebaseAdminApp() {
+  if (getApps().length) return getApps()[0];
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (!raw) throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not configured");
+  const serviceAccount = JSON.parse(raw);
+  return initializeApp({
+    credential: cert(serviceAccount),
+    projectId: serviceAccount.project_id || process.env.VITE_FIREBASE_PROJECT_ID || "kira2-a6a20"
+  });
+}
+function getAdminDb() { return getFirestore(getFirebaseAdminApp()); }
+async function verifyFirebaseUser(req: express.Request) {
+  const header = req.headers.authorization || "";
+  if (!header.startsWith("Bearer ")) throw new Error("Missing Firebase bearer token");
+  return getAuth(getFirebaseAdminApp()).verifyIdToken(header.slice(7));
+}
+function getPublicAppUrl() { return (process.env.APP_URL || "https://kira.coach").replace(/\/$/, ""); }
+
+
 const app = express();
+
+// Raw-body Stripe webhook must be registered before express.json().
+app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  const stripe = getStripe();
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  const signature = req.headers["stripe-signature"];
+  if (!stripe || !secret) return res.status(503).json({ error: "Stripe webhook is not configured" });
+  if (!signature || !Buffer.isBuffer(req.body)) return res.status(400).json({ error: "Missing raw body/signature" });
+  let event: Stripe.Event;
+  try { event = stripe.webhooks.constructEvent(req.body, signature, secret); }
+  catch (err: any) { console.error("Stripe signature invalid", err?.message); return res.status(400).json({ error: "Invalid Stripe signature" }); }
+  if (!["checkout.session.completed", "checkout.session.async_payment_succeeded"].includes(event.type)) return res.status(200).json({ received: true, ignored: true });
+  const session = event.data.object as Stripe.Checkout.Session;
+  if (session.payment_status !== "paid") return res.status(200).json({ received: true, paymentStatus: session.payment_status });
+  const userId = session.metadata?.userId || session.client_reference_id;
+  let items: Array<{id:string; itemType:"course"|"book"}>;
+  try {
+    items = JSON.parse(session.metadata?.items || "[]");
+    if (!userId || !Array.isArray(items) || !items.length || items.some(x => !x?.id || !["course","book"].includes(x.itemType))) throw new Error("bad metadata");
+  } catch { return res.status(400).json({ error: "Invalid checkout metadata" }); }
+
+  try {
+    const firestore = getAdminDb();
+    const eventRef = firestore.collection("stripeWebhookEvents").doc(event.id);
+    const orderRef = firestore.collection("orders").doc(session.id);
+    await firestore.runTransaction(async tx => {
+      const eventSnap = await tx.get(eventRef);
+      const orderSnap = await tx.get(orderRef);
+      if (eventSnap.exists) return;
+      tx.set(eventRef, { eventId: event.id, type: event.type, processedAt: FieldValue.serverTimestamp() });
+      if (orderSnap.exists && orderSnap.data()?.status === "paid") return;
+      const amount = (session.amount_total || 0) / 100;
+      const currency = String(session.currency || "usd").toUpperCase();
+      tx.set(orderRef, { userId, items, amount, currency, status: "paid", paymentStatus: "paid", stripeSessionId: session.id, stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null, paidAt: FieldValue.serverTimestamp(), createdAt: FieldValue.serverTimestamp() });
+      tx.set(firestore.collection("transactions").doc(session.id), { userId, amount, currency, type: "marketplace_purchase", items, status: "paid", paymentStatus: "paid", stripeSessionId: session.id, stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null, paidAt: FieldValue.serverTimestamp(), createdAt: FieldValue.serverTimestamp() });
+      for (const item of items) {
+        if (item.itemType === "course") {
+          tx.set(firestore.collection("enrollments").doc(userId + "_" + item.id), { userId, courseId: item.id, progress: 0, status: "active", paymentStatus: "paid", orderId: session.id, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        } else {
+          tx.set(firestore.collection("purchases").doc(userId + "_" + item.id), { userId, itemId: item.id, itemType: "book", status: "paid", paymentStatus: "paid", orderId: session.id, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        }
+      }
+    });
+    return res.status(200).json({ received: true });
+  } catch (err: any) {
+    console.error("Stripe webhook fulfillment failed", err);
+    return res.status(500).json({ error: "Webhook processing failed; Stripe should retry" });
+  }
+});
+
 app.use(compression({
   filter: (req, res) => {
     if (req.headers['x-no-compression']) return false;
     return compression.filter(req, res);
   }
 }));
-app.use(express.json({ limit: "5mb" })); // Increased limit for payloads
+app.use(express.json({ limit: "5mb" }));
+
+// Resolve product prices and identities on the server; never trust client-supplied amount/title.
+app.post("/api/create-checkout-session", async (req, res) => {
+  const stripe = getStripe();
+  if (!stripe) return res.status(503).json({ error: "Stripe is not configured; no payment was created." });
+  let decoded: any;
+  try { decoded = await verifyFirebaseUser(req); }
+  catch { return res.status(401).json({ error: "Authentication required. Sign in again." }); }
+  const requested = req.body?.items;
+  if (!Array.isArray(requested) || requested.length < 1 || requested.length > 8 || requested.some((x:any)=>!x?.id || !["course","book"].includes(x.itemType))) return res.status(400).json({ error: "Invalid checkout items" });
+  const items = requested.filter((x:any,i:number)=>requested.findIndex((y:any)=>y.id===x.id && y.itemType===x.itemType)===i);
+  if (items.length !== requested.length) return res.status(400).json({ error: "Duplicate items are not allowed" });
+  try {
+    const firestore = getAdminDb();
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+    const validated: Array<{id:string;itemType:"course"|"book"}> = [];
+    for (const item of items) {
+      const collectionName = item.itemType === "course" ? "courses" : "books";
+      const productSnap = await firestore.collection(collectionName).doc(String(item.id)).get();
+      if (!productSnap.exists) return res.status(404).json({ error: "Product not found" });
+      const product = productSnap.data() || {};
+      if (String(product.status || "").toLowerCase() !== "published" && product.published !== true) return res.status(409).json({ error: "Product is not published" });
+      const price = Number(product.price);
+      if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: "Invalid server-side price. Free items need a separate backend enrollment flow." });
+      const title = String(product.title || product.name || "KIRA item").slice(0, 200);
+      lineItems.push({ quantity: 1, price_data: { currency: String(product.currency || "usd").toLowerCase(), unit_amount: Math.round(price * 100), product_data: { name: title, metadata: { productId: String(item.id), itemType: item.itemType } } } });
+      validated.push({ id: String(item.id), itemType: item.itemType });
+    }
+    const origin = getPublicAppUrl();
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment", payment_method_types: ["card"], line_items: lineItems,
+      client_reference_id: decoded.uid, metadata: { userId: decoded.uid, items: JSON.stringify(validated) },
+      success_url: origin + "/dashboard?checkout=return&session_id={CHECKOUT_SESSION_ID}",
+      cancel_url: origin + "/dashboard?checkout=cancelled"
+    });
+    return res.json({ url: session.url, sessionId: session.id });
+  } catch (err: any) {
+    console.error("Stripe checkout create failed", err);
+    return res.status(500).json({ error: "Could not create a secure checkout session." });
+  }
+});
+
+app.get("/api/stripe/session-status", async (req, res) => {
+  const stripe = getStripe();
+  if (!stripe) return res.status(503).json({ error: "Stripe is not configured" });
+  let decoded: any;
+  try { decoded = await verifyFirebaseUser(req); }
+  catch { return res.status(401).json({ error: "Authentication required" }); }
+  const sessionId = String(req.query.session_id || "");
+  if (!sessionId.startsWith("cs_")) return res.status(400).json({ error: "Invalid checkout session ID" });
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.client_reference_id !== decoded.uid && session.metadata?.userId !== decoded.uid) return res.status(403).json({ error: "Session belongs to another user" });
+    return res.json({ status: session.status, paymentStatus: session.payment_status, currency: session.currency, amountTotal: session.amount_total });
+  } catch { return res.status(404).json({ error: "Checkout session not found" }); }
+});
+
 
 // API Routes
 app.get("/api/health", (req, res) => {
@@ -188,47 +320,6 @@ app.post("/api/gemini/generate", async (req, res) => {
   }
 });
 
-// Stripe Integration
-app.post("/api/create-checkout-session", async (req, res) => {
-  const { courseId, userId, amount, title, type = 'course_purchase' } = req.body;
-  const stripe = getStripe();
-  
-  if (!userId || (!courseId && type === 'course_purchase')) {
-    return res.status(400).json({ error: "Faltan datos de compra" });
-  }
-
-  // IF STRIPE IS CONFIGURED
-  if (stripe) {
-    try {
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: title,
-              metadata: { courseId, type }
-            },
-            unit_amount: Math.round(amount * 100),
-          },
-          quantity: 1,
-        }],
-        mode: 'payment',
-        success_url: `${req.headers.origin}${type === 'coach_membership' ? '/coach' : '/dashboard'}?success=true&courseId=${courseId || ''}&amount=${amount}&title=${encodeURIComponent(title)}&type=${type}`,
-        cancel_url: `${req.headers.origin}${type === 'coach_membership' ? '/coach' : '/dashboard'}?canceled=true`,
-        client_reference_id: userId,
-        metadata: { userId, courseId: courseId || '', type }
-      });
-      return res.json({ url: session.url });
-    } catch (e: any) {
-      console.error("Stripe Session Error:", e);
-      return res.status(500).json({ error: e.message });
-    }
-  }
-
-  // No fake transactions. Fail closed when payment provider is not configured.
-  return res.status(503).json({ error: "Los pagos no están configurados. No se ha realizado ningún cobro." });
-});
 
 async function startLocalServer() {
   const PORT = 3000;
