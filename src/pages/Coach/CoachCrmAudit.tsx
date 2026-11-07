@@ -7,7 +7,7 @@ import {
   Loader2, TrendingUp, TrendingDown, AlertCircle, Zap, Mail, 
   ChevronRight, BarChart3, Sparkles, Users, DollarSign, 
   Eye, ShoppingCart, CheckCircle2, Target, Rocket, Brain,
-  FileText, Send, Clock, ArrowRight
+  Send, Clock, ArrowRight
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useToast } from '@/src/hooks/useToast';
@@ -319,35 +319,7 @@ export function CoachCrmAudit() {
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-slate-900">Histórico de Ingresos (6 meses)</h3>
-              <span className="text-sm font-bold text-kirateal">{stats.revenue === null ? 'No disponible' : '
-            </div>
-            <div className="h-64">
-              {revenueHistory.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-center text-sm text-slate-500">
-                  {stats.financialAvailable ? 'No hay historial financiero para el período.' : 'Datos financieros no disponibles: no se muestran ingresos estimados.'}
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={revenueHistory}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="month" fontSize={12} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                    <YAxis fontSize={12} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0'}} formatter={(value) => ['$' + value, 'Ingresos']} />
-                    <Line type="monotone" dataKey="ingresos" stroke="#1ec6b6" strokeWidth={3} dot={{fill: '#1ec6b6', strokeWidth: 2}} />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </div>
-
-          {/* Embudo de Conversión */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <h3 className="font-bold text-slate-900 mb-6">Embudo de Conversión</h3>
-            <div className="space-y-4">
-              {funnelData.map((stage, index) => (
-                <div key={index} className="relative">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-slate-700">{stage.stage}</span>
+              <span className="text-sm font-bold text-kirateal">{stats.revenue === null ? 'No disponible' : '$' + stats.revenue.toLocaleString()}</span>
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-bold text-slate-900">{stage.count}</span>
                       <span className={cn("text-xs font-bold", getConversionColor(stage.conversion))}>
@@ -404,17 +376,7 @@ export function CoachCrmAudit() {
                   {auditResult}
                 </div>
               </div>
-              <div className="flex gap-3 mt-4">
-                <button className="px-4 py-2 bg-kirateal text-white rounded-xl font-bold text-sm hover:bg-kirateal-dark transition-all flex items-center gap-2">
-                  <FileText size={16} />
-                  Exportar PDF
-                </button>
-                <button className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all flex items-center gap-2">
-                  <Share2 size={16} />
-                  Compartir
-                </button>
-              </div>
-            </div>
+/div>
           ) : (
             <div className="text-center py-12 text-slate-400">
               <Brain size={48} className="mx-auto mb-4 opacity-30" />
