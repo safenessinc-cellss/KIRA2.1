@@ -167,11 +167,14 @@ service cloud.firestore {
     
     function isValidEnrollment() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['userId', 'courseId', 'progress', 'createdAt']) &&
+      return hasOnlyAllowedFields(['userId', 'courseId', 'progress', 'createdAt', 'completed', 'courseCompleted', 'completedAt']) &&
              data.userId is string &&
              data.courseId is string &&
              data.progress is number && data.progress >= 0 && data.progress <= 100 &&
-             data.createdAt is timestamp;
+             data.createdAt is timestamp &&
+             (!('completed' in data) || data.completed is bool) &&
+             (!('courseCompleted' in data) || data.courseCompleted is bool) &&
+             (!('completedAt' in data) || data.completedAt is timestamp);
     }
     
     function isValidJournal() {
@@ -280,7 +283,7 @@ service cloud.firestore {
       allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid)));
       allow create: if isAuthenticated() && isValidEnrollment() && (request.resource.data.userId == request.auth.uid || isApprovedCoach());
       allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt']) && 
-                    (isAdmin() || (isCurrentUser(resource.data.userId)) || isApprovedCoach());
+                    (isAdmin() || (isApprovedCoach() && exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid));
       allow delete: if isAdmin();
     }
     
