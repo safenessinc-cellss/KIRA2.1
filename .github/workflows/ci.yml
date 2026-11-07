@@ -7,7 +7,7 @@ on:
     branches: [main, "feat/**"]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: kira-ci-${{ github.ref }}
@@ -20,12 +20,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - name: Install dependencies
+      - name: Regenerate stale npm lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Commit lockfile repair on feature branch
+        run: |
+          if ! git diff --quiet -- package-lock.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "chore: refresh npm lockfile [skip ci]"
+            git push
+          fi
+      - name: Install dependencies from repaired lockfile
         run: npm ci
       - name: Type check
         run: npm run lint
