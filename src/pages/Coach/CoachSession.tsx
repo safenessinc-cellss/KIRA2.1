@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/src/hooks/useAuth';
 import { db } from '@/src/firebase';
+import { generateGemini } from '@/src/lib/gemini';
 import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { 
   Mic, MicOff, Loader2, Brain, FileText, Clock, Users, 
@@ -13,7 +14,7 @@ import { cn } from '@/src/lib/utils';
 import { useToast } from '@/src/hooks/useToast';
 
 interface TranscriptSegment {
-  speaker: 'coach' | 'student';
+  speaker: 'coach' | 'student' | 'unknown';
   text: string;
   timestamp: number;
 }
@@ -28,7 +29,9 @@ export function CoachSession() {
   const [isPaused, setIsPaused] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [sessionDuration, setSessionDuration] = useState(0);
-  const [audioLevel, setAudioLevel] = useState(0);
+  const [transcriptionError, setTranscriptionError] = useState('');
+  const [manualNotes, setManualNotes] = useState('');
+  const [analysisError, setAnalysisError] = useState('');
   
   // Estados de transcripción
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
@@ -41,7 +44,11 @@ export function CoachSession() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const transcriptIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const speechRecognitionRef = useRef<any>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const transcriptRef = useRef<TranscriptSegment[]>([]);
+  const manualNotesRef = useRef('');
+  const sessionDurationRef = useRef(0);
   
   // Estado del micrófono
   const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
@@ -53,49 +60,15 @@ export function CoachSession() {
   const [isSessionStarted, setIsSessionStarted] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  // Simular transcripción en tiempo real durante la grabación
-  useEffect(() => {
-    if (isRecording && !isPaused) {
-      transcriptIntervalRef.current = setInterval(() => {
-        const mockPhrases = [
-          'Coach: ¿Cómo te sientes hoy con respecto a tu progreso?',
-          'Alumno: Me siento bien, pero creo que podría avanzar más rápido.',
-          'Coach: ¿Qué crees que te está frenando?',
-          'Alumno: A veces me distraigo con otras tareas.',
-          'Coach: Es normal. Vamos a crear un plan de acción.',
-          'Alumno: Me gustaría tener más estructura en mi día.',
-          'Coach: Excelente. Vamos a trabajar en eso.',
-          'Alumno: ¿Qué técnica de enfoque recomiendas?',
-          'Coach: La técnica Pomodoro podría funcionar muy bien para ti.'
-        ];
-        
-        const randomPhrase = mockPhrases[Math.floor(Math.random() * mockPhrases.length)];
-        const isCoach = randomPhrase.startsWith('Coach:');
-        
-        setTranscript(prev => [
-          ...prev,
-          {
-            speaker: isCoach ? 'coach' : 'student',
-            text: randomPhrase.replace(/^(Coach|Alumno): /, ''),
-            timestamp: sessionDuration
-          }
-        ]);
-        
-        setCurrentTranscript(randomPhrase);
-      }, 3000);
-    } else {
-      if (transcriptIntervalRef.current) {
-        clearInterval(transcriptIntervalRef.current);
-        transcriptIntervalRef.current = null;
-      }
-    }
-    
-    return () => {
-      if (transcriptIntervalRef.current) {
-        clearInterval(transcriptIntervalRef.current);
-      }
-    };
-  }, [isRecording, isPaused, sessionDuration]);
+  // Keep current values available to asynchronous recorder callbacks.
+  transcriptRef.current = transcript;
+  manualNotesRef.current = manualNotes;
+  sessionDurationRef.current = sessionDuration;
+
+  useEffect(() => () => {
+    try { speechRecognitionRef.current?.stop(); } catch {}
+    if (timerRef.current) clearInterval(timerRef.current);
+  }, []);
 
   // Timer de duración
   useEffect(() => {
@@ -131,6 +104,56 @@ export function CoachSession() {
     checkMicPermission();
   }, []);
 
+  const startSpeechRecognition = () => {
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionCtor) {
+      setTranscriptionError('Este navegador no ofrece transcripción automática. Puedes escribir notas manuales debajo.');
+      return;
+    }
+    try {
+      const recognition = new SpeechRecognitionCtor();
+      recognition.lang = 'es-ES';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.onresult = (event: any) => {
+        let interim = '';
+        const finalSegments: TranscriptSegment[] = [];
+        for (let index = event.resultIndex; index < event.results.length; index += 1) {
+          const result = event.results[index];
+          const spokenText = String(result?.[0]?.transcript || '').trim();
+          if (!spokenText) continue;
+          if (result.isFinal) {
+            finalSegments.push({
+              speaker: 'unknown',
+              text: spokenText,
+              timestamp: sessionDurationRef.current,
+            });
+          } else {
+            interim += spokenText + ' ';
+          }
+        }
+        if (finalSegments.length) {
+          setTranscript(previous => [...previous, ...finalSegments]);
+        }
+        setCurrentTranscript(interim.trim());
+      };
+      recognition.onerror = (event: any) => {
+        if (event?.error && event.error !== 'no-speech' && event.error !== 'aborted') {
+          setTranscriptionError('La transcripción automática se interrumpió. Puedes continuar con notas manuales.');
+        }
+      };
+      recognition.onend = () => {
+        if (speechRecognitionRef.current === recognition) speechRecognitionRef.current = null;
+      };
+      speechRecognitionRef.current = recognition;
+      recognition.start();
+      setTranscriptionError('');
+    } catch (error) {
+      console.error('Speech recognition could not start:', error);
+      setTranscriptionError('No fue posible iniciar la transcripción automática. Puedes escribir notas manuales.');
+    }
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -159,6 +182,7 @@ export function CoachSession() {
       
       const docRef = await addDoc(collection(db, 'sessions'), sessionData);
       setSessionId(docRef.id);
+      sessionIdRef.current = docRef.id;
       
       // Iniciar grabación
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -181,6 +205,7 @@ export function CoachSession() {
       mediaRecorder.start(1000);
       setIsRecording(true);
       setIsSessionStarted(true);
+      startSpeechRecognition();
       toastSuccess('Sesión iniciada. ¡Habla con claridad!');
     } catch (error) {
       console.error("Error starting session:", error);
@@ -193,9 +218,11 @@ export function CoachSession() {
       if (isPaused) {
         mediaRecorderRef.current.resume();
         setIsPaused(false);
+        startSpeechRecognition();
         toastSuccess('Sesión reanudada');
       } else {
         mediaRecorderRef.current.pause();
+        speechRecognitionRef.current?.stop();
         setIsPaused(true);
         toastSuccess('Sesión pausada');
       }
@@ -204,6 +231,7 @@ export function CoachSession() {
 
   const stopSession = () => {
     if (mediaRecorderRef.current && isRecording) {
+      speechRecognitionRef.current?.stop();
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
       setIsRecording(false);
@@ -217,48 +245,109 @@ export function CoachSession() {
     }
   };
 
-  const handleSessionComplete = async (audioBlob: Blob) => {
+  const handleSessionComplete = async (_audioBlob: Blob) => {
     setIsAnalyzing(true);
-    
+    setAnalysisError('');
+    const savedTranscript = [...transcriptRef.current];
+    const notes = manualNotesRef.current.trim();
+    if (notes) {
+      savedTranscript.push({
+        speaker: 'unknown',
+        text: 'Notas del coach: ' + notes,
+        timestamp: sessionDurationRef.current,
+      });
+    }
+    const transcriptText = savedTranscript.map(segment => segment.text).join('\n');
+
     try {
-      // Simular análisis de IA
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
+      if (!transcriptText.trim()) {
+        setAnalysisError('No se generó análisis: no hay transcripción ni notas de la sesión. El registro se guardó sin inventar contenido.');
+        if (sessionIdRef.current) {
+          await updateDoc(doc(db, 'sessions', sessionIdRef.current), {
+            status: 'completed',
+            completedAt: new Date(),
+            duration: sessionDurationRef.current,
+            transcript: savedTranscript,
+            analysis: null,
+            audioUrl: null,
+            analysisStatus: 'no_transcript',
+          });
+        }
+        return;
+      }
+
+      const prompt = `Analiza esta transcripción real de una sesión de coaching. No inventes intervenciones, hechos, diagnósticos ni resultados que no aparezcan en el texto. Si algo no se puede determinar, indícalo. Devuelve únicamente JSON válido con esta estructura: {"summary":"...","keyTopics":["..."],"sentiment":"positive|neutral|negative","recommendations":["..."],"nextSteps":"..."}. Mantén el resumen objetivo y las recomendaciones vinculadas a lo dicho.
+
+TRANSCRIPCIÓN:
+${transcriptText}`;
+
+      const raw = await generateGemini({
+        model: 'gemini-3.5-flash',
+        contents: prompt,
+        config: { temperature: 0.2, maxOutputTokens: 1800 },
+      });
+
+      let parsed: any;
+      try {
+        const jsonText = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+        parsed = JSON.parse(jsonText);
+      } catch {
+        parsed = {
+          summary: raw.trim(),
+          keyTopics: [],
+          sentiment: 'neutral',
+          recommendations: [],
+          nextSteps: 'Revisar manualmente la transcripción y acordar el siguiente paso con el alumno.',
+        };
+      }
+
       const analysisResult = {
-        summary: 'Sesión enfocada en gestión del tiempo y productividad personal. El alumno muestra conciencia sobre sus distracciones y está abierto a implementar nuevas estrategias.',
-        keyTopics: ['Gestión del tiempo', 'Productividad', 'Técnica Pomodoro', 'Distracciones', 'Estructura diaria'],
-        sentiment: 'positive' as const,
-        recommendations: [
-          'Implementar la técnica Pomodoro (25 min de trabajo, 5 de descanso)',
-          'Crear un sistema de recompensas por objetivos cumplidos',
-          'Establecer metas diarias específicas y medibles',
-          'Realizar una auditoría de distracciones digitales'
-        ],
-        nextSteps: 'Agendar sesión de seguimiento en 5 días para evaluar avances y ajustar estrategias.'
+        summary: String(parsed.summary || raw || 'No se pudo generar un resumen.'),
+        keyTopics: Array.isArray(parsed.keyTopics) ? parsed.keyTopics.map(String).slice(0, 12) : [],
+        sentiment: ['positive', 'neutral', 'negative'].includes(parsed.sentiment) ? parsed.sentiment : 'neutral',
+        recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations.map(String).slice(0, 8) : [],
+        nextSteps: String(parsed.nextSteps || 'Revisar la transcripción y definir el seguimiento.'),
       };
-      
+
       setAnalysis(analysisResult.summary);
       setKeyTopics(analysisResult.keyTopics);
-      setSentiment(analysisResult.sentiment);
-      
-      // Guardar en Firestore
-      if (sessionId) {
-        await updateDoc(doc(db, 'sessions', sessionId), {
+      setSentiment(analysisResult.sentiment as 'positive' | 'neutral' | 'negative');
+
+      if (sessionIdRef.current) {
+        await updateDoc(doc(db, 'sessions', sessionIdRef.current), {
           status: 'completed',
           completedAt: new Date(),
-          duration: sessionDuration,
-          transcript: transcript,
+          duration: sessionDurationRef.current,
+          transcript: savedTranscript,
           analysis: analysisResult,
-          audioUrl: null // En producción, subir a Storage
+          audioUrl: null,
+          analysisStatus: 'completed',
+          transcriptionSource: 'browser_speech_recognition_and_manual_notes',
         });
       }
-      
-      toastSuccess('¡Análisis completado! Revisa los insights generados.');
+      toastSuccess('Análisis generado a partir de la transcripción real.');
     } catch (error) {
-      console.error("Error analyzing session:", error);
-      toastError('Error al analizar la sesión');
+      console.error('Error analyzing real session transcript:', error);
+      setAnalysisError('La transcripción quedó disponible, pero KIRA AI no pudo generar el análisis. Puedes intentarlo nuevamente más tarde.');
+      if (sessionIdRef.current) {
+        try {
+          await updateDoc(doc(db, 'sessions', sessionIdRef.current), {
+            status: 'completed',
+            completedAt: new Date(),
+            duration: sessionDurationRef.current,
+            transcript: savedTranscript,
+            analysis: null,
+            audioUrl: null,
+            analysisStatus: 'failed',
+          });
+        } catch (saveError) {
+          console.error('Could not save completed session transcript:', saveError);
+        }
+      }
+      toastError('No se pudo completar el análisis con IA.');
     } finally {
       setIsAnalyzing(false);
+      audioChunksRef.current = [];
     }
   };
 
@@ -397,17 +486,6 @@ export function CoachSession() {
               </div>
             </div>
 
-            {/* Nivel de audio */}
-            {isRecording && !isPaused && (
-              <div className="mt-4">
-                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-kirateal to-teal-400 transition-all duration-100"
-                    style={{ width: `${Math.min(audioLevel * 100, 100)}%` }}
-                  />
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Transcripción en vivo */}
@@ -421,7 +499,7 @@ export function CoachSession() {
             </div>
             
             {transcript.length === 0 ? (
-              <p className="text-slate-400 text-sm italic">Esperando transcripción...</p>
+              <p className="text-slate-400 text-sm italic">Esperando voz o notas de la sesión. No se genera contenido de ejemplo.</p>
             ) : (
               <div className="space-y-3">
                 {transcript.map((segment, index) => (
@@ -435,7 +513,7 @@ export function CoachSession() {
                     )}
                   >
                     <span className="text-xs font-bold text-slate-500">
-                      {segment.speaker === 'coach' ? '👤 Coach' : '🎓 Alumno'}
+                      {segment.speaker === 'coach' ? '👤 Coach' : segment.speaker === 'student' ? '🎓 Alumno' : '🗣️ Voz / nota'}
                       <span className="font-normal text-slate-400 ml-2">
                         {formatTime(segment.timestamp)}
                       </span>
@@ -446,6 +524,31 @@ export function CoachSession() {
               </div>
             )}
           </div>
+
+          {currentTranscript && (
+            <div className="mb-4 rounded-xl border border-teal-100 bg-teal-50 p-3 text-sm text-teal-800">
+              <span className="font-semibold">En curso:</span> {currentTranscript}
+            </div>
+          )}
+          {transcriptionError && (
+            <div role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              {transcriptionError}
+            </div>
+          )}
+          <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4">
+            <label className="mb-2 block text-xs font-bold uppercase tracking-widest text-slate-500">Notas manuales (opcional)</label>
+            <textarea
+              value={manualNotes}
+              onChange={(event) => setManualNotes(event.target.value)}
+              rows={3}
+              maxLength={12000}
+              placeholder="Añade acuerdos, observaciones o puntos que la transcripción automática no haya captado."
+              className="w-full resize-y rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none focus:ring-2 focus:ring-teal-500/20"
+            />
+            <p className="mt-2 text-xs text-slate-500">El audio se procesa localmente en esta sesión y no se guarda. Se guardan la transcripción y el análisis textual.</p>
+          </div>
+
+          {analysisError && <div role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{analysisError}</div>}
 
           {/* Análisis de IA */}
           {isAnalyzing ? (
@@ -490,21 +593,7 @@ export function CoachSession() {
                 </div>
               )}
 
-              {/* Acciones */}
-              <div className="flex flex-wrap gap-3 pt-4 border-t border-indigo-100">
-                <button className="px-4 py-2 bg-kirateal text-white rounded-xl font-bold text-sm hover:bg-kirateal-dark transition-all flex items-center gap-2">
-                  <Download size={16} />
-                  Guardar Sesión
-                </button>
-                <button className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all flex items-center gap-2">
-                  <Share2 size={16} />
-                  Compartir con Alumno
-                </button>
-                <button className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all flex items-center gap-2">
-                  <FileText size={16} />
-                  Exportar PDF
-                </button>
-              </div>
+
             </div>
           )}
         </>
