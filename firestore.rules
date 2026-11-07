@@ -65,7 +65,7 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return isAuthenticated() && request.auth.token.email == "safeness.c.a@gmail.com";
+      return isAuthenticated() && request.auth.token.email == "safeness.c.a@gmail.com" && request.auth.token.email_verified == true;
     }
     
     function isDocOwner(userIdField) {
@@ -319,7 +319,7 @@ service cloud.firestore {
       allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid)));
       allow create: if false; // Enrollment grants must be created by trusted backend after verified access/payment.
       allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt', 'status', 'paymentStatus', 'orderId']) && 
-                    (isAdmin() || (isCurrentUser(resource.data.userId)) || isApprovedCoach());
+                    (isAdmin() || isCoachForStudent(resource.data.courseId, resource.data.userId));
       allow delete: if isAdmin();
     }
     
@@ -431,7 +431,7 @@ service cloud.firestore {
                      (request.resource.data.type in ['coach_message', 'homework_review'] &&
                       request.resource.data.courseId is string &&
                       isCoachForStudent(request.resource.data.courseId, request.resource.data.userId)));
-      allow update: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.read is bool && areImmutableFieldsUnchanged(['userId', 'title', 'message', 'type', 'createdAt', 'courseId']));
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
 
