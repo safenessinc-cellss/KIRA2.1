@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/src/hooks/useAuth';
 import { db } from '@/src/firebase';
-import { collection, query, where, getDocs, updateDoc, doc, onSnapshot, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, updateDoc, doc, onSnapshot, addDoc } from 'firebase/firestore';
 import { Loader2, CheckCircle2, Clock, AlertCircle, Sparkles, ChevronRight, BookOpen, Users, FileText, Send, Star } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useToast } from '@/src/hooks/useToast';
@@ -50,8 +50,8 @@ export function CoachHomeworkReview() {
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const list: HomeworkSubmission[] = [];
       
-      for (const doc of snapshot.docs) {
-        const data = doc.data();
+      for (const submissionDoc of snapshot.docs) {
+        const data = submissionDoc.data();
         
         // Obtener información del alumno si no está en el documento
         let studentName = data.studentName || 'Alumno';
@@ -71,7 +71,7 @@ export function CoachHomeworkReview() {
         }
         
         list.push({
-          id: doc.id,
+          id: submissionDoc.id,
           ...data,
           studentName,
           studentEmail,
