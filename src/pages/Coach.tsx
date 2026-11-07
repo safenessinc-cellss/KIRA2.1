@@ -732,46 +732,9 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
     }
   };
 
-  const handleReleasePurchase = async (purchase: any) => {
-    try {
-      await updateDoc(doc(db, 'purchases', purchase.id), {
-        status: 'released',
-        releasedAt: new Date()
-      });
-
-      if (purchase.itemType === 'course') {
-        const enrollQ = query(
-          collection(db, 'enrollments'),
-          where('userId', '==', purchase.userId),
-          where('courseId', '==', purchase.itemId)
-        );
-        const enrollSnap = await getDocs(enrollQ);
-        if (enrollSnap.empty) {
-          await addDoc(collection(db, 'enrollments'), {
-            userId: purchase.userId,
-            courseId: purchase.itemId,
-            progress: 0,
-            createdAt: new Date()
-          });
-        }
-      }
-
-      await addDoc(collection(db, 'transactions'), {
-        userId: purchase.userId,
-        amount: Number(purchase.itemPrice),
-        type: purchase.itemType === 'course' ? 'course_release' : 'book_release',
-        itemId: purchase.itemId,
-        itemTitle: purchase.itemTitle,
-        status: 'released',
-        createdAt: new Date()
-      });
-
-      alert(`¡Acceso liberado con éxito para ${purchase.userName}!`);
-      window.location.reload();
-    } catch (e: any) {
-      console.error("Error releasing purchase:", e);
-      alert("Error al liberar la compra: " + (e.message || String(e)));
-    }
+  const handleReleasePurchase = async (_purchase: any) => {
+    // Coaches cannot convert an unverified manual purchase into access or a financial transaction.
+    alert('La liberación manual está deshabilitada. El acceso se activará únicamente después de la confirmación del pago por el servidor.');
   };
 
   useEffect(() => {
