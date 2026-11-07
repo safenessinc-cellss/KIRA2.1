@@ -1129,8 +1129,6 @@ function QuickAction({ title, desc, icon, onClick }: any) {
 function CoachStudentsActivity() {
   const { user } = useAuth();
   const [students, setStudents] = useState<any[]>([]);
-  const [teamSentiment, setTeamSentiment] = useState<{ summary: string, mood: string } | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
   const [messageTemplate, setMessageTemplate] = useState('motivacion');
   const [customMessage, setCustomMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -1138,103 +1136,57 @@ function CoachStudentsActivity() {
 
   useEffect(() => {
     if (!user) return;
-    
-    // Logic: Find students enrolled in THIS coach's courses
-    const fetchStudentsAndJournals = async () => {
+
+    const fetchStudentsAndEnrollments = async () => {
       try {
-        const coursesQ = query(collection(db, 'courses'), where('coachId', '==', user.uid));
-        const coursesSnap = await getDocs(coursesQ);
-        const courseIds = coursesSnap.docs.map(d => d.id);
+        const coursesSnap = await getDocs(query(collection(db, 'courses'), where('coachId', '==', user.uid)));
+        const courseIds = coursesSnap.docs.map(courseDoc => courseDoc.id);
+        const studentsMap = new Map<string, any>();
 
-        if (courseIds.length === 0) return;
-
-        const studentsMap = new Map();
-        for (const cid of courseIds) {
-          const enrollQ = query(collection(db, 'enrollments'), where('courseId', '==', cid));
-          const enrollSnap = await getDocs(enrollQ);
-          for (const eDoc of enrollSnap.docs) {
-            const sId = eDoc.data().userId;
-            if (!studentsMap.has(sId)) {
-              const sProfile = await getDoc(doc(db, 'users', sId));
-              if (sProfile.exists()) {
-                studentsMap.set(sId, { id: sId, ...sProfile.data(), courseProgress: eDoc.data().progress || 0 });
+        for (const courseId of courseIds) {
+          const enrollmentsSnap = await getDocs(query(collection(db, 'enrollments'), where('courseId', '==', courseId)));
+          for (const enrollmentDoc of enrollmentsSnap.docs) {
+            const enrollment = enrollmentDoc.data();
+            const studentId = typeof enrollment.userId === 'string' ? enrollment.userId : '';
+            if (!studentId) continue;
+            const progressValue = Number(enrollment.progress);
+            const progress = Number.isFinite(progressValue) ? Math.max(0, Math.min(100, progressValue)) : 0;
+            const activityAt = enrollment.updatedAt || enrollment.createdAt || null;
+            const existing = studentsMap.get(studentId);
+            if (existing) {
+              existing.progressTotal += progress;
+              existing.enrollmentCount += 1;
+              existing.courseIds.add(courseId);
+              if (activityAt && (!existing.lastActivityAt || (activityAt.seconds || 0) > (existing.lastActivityAt.seconds || 0))) {
+                existing.lastActivityAt = activityAt;
               }
-            }
-          }
-        }
-        
-        const studentsList = Array.from(studentsMap.values());
-        setStudents(studentsList);
-
-        // Fetch Journals to analyze team sentiment
-        if (studentsList.length > 0) {
-          setAnalyzing(true);
-          const studentIds = studentsList.map(s => s.id);
-          
-          let allJournals: string[] = [];
-          
-          // Firestore 'in' query has a limit of 10, chunk if necessary
-          const fetchJournalsChunk = async (ids: string[]) => {
-            const q = query(
-              collection(db, 'journals'), 
-              where('userId', 'in', ids)
-            );
-            const snap = await getDocs(q);
-            const sorted = [...snap.docs].sort((a, b) => {
-              const tA = a.data().createdAt?.seconds || a.data().createdAt?.getTime?.() / 1000 || 0;
-              const tB = b.data().createdAt?.seconds || b.data().createdAt?.getTime?.() / 1000 || 0;
-              return tB - tA;
-            }).slice(0, 20);
-            return sorted.map(d => d.data().content);
-          };
-
-          // Simple chunking up to 10
-          if (studentIds.length <= 10) {
-              const j = await fetchJournalsChunk(studentIds);
-              allJournals = allJournals.concat(j);
-          } else {
-              const first10 = await fetchJournalsChunk(studentIds.slice(0, 10));
-              allJournals = allJournals.concat(first10);
-          }
-
-          if (allJournals.length > 0) {
-            try {
-              const prompt = `Actúa como un psicólogo experto y coach de desempeño. Analiza las siguientes entradas de diario de mis estudiantes:
-              [${allJournals.join(" | ")}]
-              Devuelve un objeto JSON con dos claves: 
-              "summary": un párrafo corto (máx 3 oraciones) resumiendo el estado emocional y actitud predominante del grupo.
-              "mood": una sola palabra que los defina ("Positivo", "Neutral", "Estresado", "Frustrado", "Motivado").`;
-              
-              const res = await fetch('/api/gemini/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
-                body: JSON.stringify({
-                  model: 'gemini-3.5-flash',
-                  contents: prompt,
-                  config: { responseMimeType: "application/json" }
-                })
+            } else {
+              studentsMap.set(studentId, {
+                id: studentId,
+                name: 'Alumno #' + studentId.slice(-6),
+                email: '',
+                progressTotal: progress,
+                enrollmentCount: 1,
+                courseIds: new Set([courseId]),
+                lastActivityAt: activityAt,
               });
-              const data = await res.json();
-              if (data.error) throw new Error(data.error);
-
-              if (data.text) {
-                 const parsed = JSON.parse(data.text);
-                 setTeamSentiment(parsed);
-              }
-            } catch (error) {
-              console.error("AI Analysis error:", error);
             }
           }
-          setAnalyzing(false);
         }
 
-      } catch (e) {
-        console.error('Fetch Coach Students Error:', e);
-        setAnalyzing(false);
+        const list = Array.from(studentsMap.values()).map(student => ({
+          ...student,
+          courseProgress: Math.round(student.progressTotal / Math.max(1, student.enrollmentCount)),
+          courseIds: Array.from(student.courseIds),
+        }));
+        setStudents(list);
+      } catch (error) {
+        console.error('Error loading coach student enrollments:', error);
+        setStudents([]);
       }
     };
 
-    fetchStudentsAndJournals();
+    fetchStudentsAndEnrollments();
   }, [user]);
 
   const sendBulkMessage = async () => {
@@ -1244,6 +1196,7 @@ function CoachStudentsActivity() {
       for (const student of students) {
          await addDoc(collection(db, 'notifications'), {
            userId: student.id,
+           courseId: student.courseIds?.[0],
            title: 'Mensaje de tu Coach',
            message: customMessage,
            type: 'coach_message',
@@ -1272,37 +1225,17 @@ function CoachStudentsActivity() {
     if (!lastActivityAt) return { color: 'bg-slate-300', label: 'Sin Datos' };
     const date = lastActivityAt.toDate ? lastActivityAt.toDate() : new Date(lastActivityAt);
     const diffDays = Math.floor((new Date().getTime() - date.getTime()) / (1000 * 3600 * 24));
-    if (diffDays < 3) return { color: 'bg-emerald-500', label: 'Comprometido' };
-    if (diffDays < 7) return { color: 'bg-amber-500', label: 'En Riesgo' };
-    return { color: 'bg-rose-500', label: 'Desconectado' };
+    if (diffDays < 3) return { color: 'bg-emerald-500', label: 'Actividad reciente' };
+    if (diffDays < 7) return { color: 'bg-amber-500', label: 'Sin actividad reciente' };
+    return { color: 'bg-slate-400', label: 'Sin actividad registrada' };
   };
 
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-         {/* Team Emotional Insights */}
-         <div className="bg-kirateal rounded-2xl p-6 text-white shadow-xl shadow-kirateal/10 col-span-1 md:col-span-2 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
-            <div className="flex items-center gap-3 mb-4 relative z-10">
-               <Sparkles className="text-amber-300" />
-               <h3 className="font-bold text-lg">Termómetro Emocional de Equipo</h3>
-            </div>
-            {analyzing ? (
-               <div className="flex items-center gap-2 text-kirateal-light">
-                  <Loader2 size={16} className="animate-spin" /> Analizando diarios y actividad...
-               </div>
-            ) : teamSentiment ? (
-               <div className="relative z-10 animate-in fade-in">
-                  <div className="bg-white/10 border border-white/20 rounded-xl p-4 mb-4 backdrop-blur-sm">
-                    <p className="text-sm leading-relaxed text-white/90">"{teamSentiment.summary}"</p>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-kirateal-light">
-                     Estado Predominante: <span className="bg-white text-kirateal px-3 py-1 rounded-full shadow-sm">{teamSentiment.mood}</span>
-                  </div>
-               </div>
-            ) : (
-               <p className="text-indigo-200 text-sm">Aún no hay suficientes diarios de estudiantes para generar el análisis emocional.</p>
-            )}
+         <div className="bg-slate-50 rounded-2xl border border-slate-200 p-6 col-span-1 md:col-span-2">
+            <div className="flex items-center gap-3 mb-3"><ShieldCheck className="text-emerald-600" size={20} /><h3 className="font-bold text-slate-800">Privacidad del bienestar</h3></div>
+            <p className="text-sm leading-relaxed text-slate-600">Los diarios personales, conversaciones privadas con IA y notas de sesión son privados. Este panel solo muestra inscripciones y progreso académico de los cursos que gestionas.</p>
          </div>
 
          {/* Bulk Messaging Widget */}
