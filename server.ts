@@ -251,7 +251,7 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
   const now = new Date().toISOString();
   const writes: any[] = [
     fsCreate("paymentEvents", idSafe(provider + "_" + eventId), { provider, eventId, orderId, status: "processed", processedAt: now }),
-    fsCreate("transactions", idSafe(provider + "_" + paymentId), { userId: order.userId, orderId, provider, providerPaymentId: paymentId, amount: order.amount, currency: order.currency, status: "paid", createdAt: now }),
+    fsCreate("transactions", idSafe(provider + "_" + paymentId), { userId: order.userId, orderId, courseId: (order.items || []).find((item: any) => item.type === "course")?.id || "", courseIds: (order.items || []).filter((item: any) => item.type === "course").map((item: any) => item.id), provider, providerPaymentId: paymentId, amount: order.amount, currency: order.currency, status: "paid", createdAt: now }),
     fsUpdate("orders", orderId, { ...order, status: "paid", providerPaymentId: paymentId, paidAt: now, updatedAt: now })
   ];
   for (const item of order.items || []) {
@@ -395,16 +395,18 @@ app.post("/api/create-checkout-session", async (req, res) => {
   try {
     const user = await verifiedUser(req, res);
     if (!user) return;
-    const ids = Array.isArray(req.body?.itemIds) ? req.body.itemIds : (typeof req.body?.courseId === "string" ? req.body.courseId.split(",") : []);
+    const requestedItems = Array.isArray(req.body?.items) ? req.body.items : (Array.isArray(req.body?.itemIds) ? req.body.itemIds : (typeof req.body?.courseId === "string" ? req.body.courseId.split(",") : []));
+    const ids = requestedItems.map((item: any) => typeof item === "string" ? { id: item, quantity: 1 } : item);
     const provider = req.body?.provider === "mercadopago" ? "mercadopago" : "stripe";
-    if (!ids.length || ids.length > 20 || ids.some((id: any) => typeof id !== "string" || id.length > 160)) return res.status(400).json({ error: "Selecciona productos válidos." });
+    if (!ids.length || ids.length > 20 || ids.some((item: any) => !item || typeof item.id !== "string" || item.id.length > 160 || !Number.isInteger(Number(item.quantity || 1)) || Number(item.quantity || 1) < 1 || Number(item.quantity || 1) > 20)) return res.status(400).json({ error: "Selecciona productos válidos." });
     const items: any[] = [];
-    for (const id of [...new Set(ids)]) {
+    for (const requested of ids) {
+      const id = requested.id;
       const product = await catalogItem(id);
       if (!product || product.status === "draft" || product.status === "archived" || product.published === false) return res.status(400).json({ error: "Producto no disponible: " + id });
       const price = Number(product.price ?? product.amount);
       if (!Number.isFinite(price) || price <= 0 || price > 100000) return res.status(400).json({ error: "Precio inválido en catálogo para " + id });
-      items.push({ id, title: String(product.title || product.name || "Producto KIRA").slice(0, 250), type: product.type === "membership" ? "membership" : (product.collectionName === "courses" ? "course" : (product.type || "product")), collectionName: product.collectionName, quantity: 1, unitPrice: price, currency: String(product.currency || "usd").toLowerCase() });
+      items.push({ id, title: String(product.title || product.name || "Producto KIRA").slice(0, 250), type: product.type === "membership" ? "membership" : (product.collectionName === "courses" ? "course" : (product.type || "product")), collectionName: product.collectionName, quantity: 1, unitPrice: price, currency: String(product.currency || (provider === "mercadopago" ? "brl" : "usd")).toLowerCase(), quantity: Number(requested.quantity || 1) });
     }
     if (new Set(items.map(x => x.currency)).size !== 1) return res.status(400).json({ error: "Los productos deben usar la misma moneda." });
     const orderId = randomBytes(18).toString("hex");
@@ -501,11 +503,15 @@ app.post("/api/certificates/issue", async (req, res) => {
     const profile = await fsGet("users", user.uid);
     const admin = user.email?.toLowerCase() === "safeness.c.a@gmail.com" || profile?.role === "admin";
     if (!profile || (!admin && profile.role !== "coach")) return res.status(403).json({ error: "No tienes permiso para emitir certificados." });
-    const enrollmentId = String(req.body?.enrollmentId || "");
+    const requestId = String(req.body?.requestId || "");
+    const certificateRequest = requestId ? await fsGet("certificateRequests", requestId) : null;
+    const enrollmentId = String(req.body?.enrollmentId || certificateRequest?.enrollmentId || "");
+    if (requestId && (!certificateRequest || certificateRequest.status !== "approved")) return res.status(409).json({ error: "La solicitud debe estar aprobada antes de emitir." });
     const enrollment = enrollmentId ? await fsGet("enrollments", enrollmentId) : null;
     if (!enrollment || (Number(enrollment.progress) < 100 && enrollment.completed !== true && enrollment.courseCompleted !== true)) return res.status(409).json({ error: "El alumno aún no ha completado el curso." });
     const course = await fsGet("courses", String(enrollment.courseId || ""));
     if (!course || (!admin && course.coachId !== user.uid)) return res.status(403).json({ error: "Curso no autorizado para este coach." });
+    if (Number(course.price || 0) > 0 && enrollment.paymentStatus !== "paid") return res.status(409).json({ error: "No hay una confirmación de pago verificada en la matrícula." });
     const student = await fsGet("users", String(enrollment.userId || ""));
     const coach = await fsGet("users", String(course.coachId || ""));
     if (!student || !coach) return res.status(409).json({ error: "No se pudo verificar la identidad del alumno o del coach." });
@@ -521,7 +527,9 @@ app.post("/api/certificates/issue", async (req, res) => {
     if (!Number.isFinite(payload.hours) || payload.hours <= 0 || payload.hours > 10000) return res.status(409).json({ error: "El curso no tiene horas válidas configuradas." });
     const signature = certSignature(payload);
     const publicRecord = { certificateNumber: number, validationToken: token, studentName: payload.studentName, courseTitle: payload.courseTitle, coachName: payload.coachName, hours: payload.hours, issuerName: payload.issuerName, issuedBy: user.uid, issuedAt: payload.issuedAt, status: "issued", signature };
-    await fsCommit([fsCreate("certificates", number, { ...payload, signature, signatureAlgorithm: "HMAC-SHA256" }), fsCreate("certificatePublic", token, { ...publicRecord, signatureAlgorithm: "HMAC-SHA256" })]);
+    const certificateWrites: any[] = [fsCreate("certificates", number, { ...payload, signature, signatureAlgorithm: "HMAC-SHA256" }), fsCreate("certificatePublic", token, { ...publicRecord, signatureAlgorithm: "HMAC-SHA256" })];
+    if (requestId && certificateRequest) certificateWrites.push(fsUpdate("certificateRequests", requestId, { ...certificateRequest, status: "issued", certificateNumber: number, certificateId: token, issuedBy: user.uid, issuedAt: payload.issuedAt }));
+    await fsCommit(certificateWrites);
     return res.status(201).json({ certificateNumber: number, validationUrl: (process.env.KIRA_APP_URL || "https://kira.coach") + "/validate/" + token });
   } catch (error: any) {
     console.error("[Certificates] Issue failed:", error);
