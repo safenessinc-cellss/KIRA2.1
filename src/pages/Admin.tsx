@@ -445,7 +445,7 @@ function GlobalDashboardView() {
         <StatCard title="Ingresos confirmados" value={loading ? "—" : revenueLabel} subtitle="Importes por moneda; solo transacciones pagadas" icon={<BarChart3 className="text-kirateal" />} />
         <StatCard title="Transacciones pagadas" value={loading ? "—" : String(paidTransactions)} subtitle="Confirmadas por webhook" icon={<CreditCard className="text-emerald-500" />} />
         <StatCard title="Usuarios activos" value={loading ? "—" : String(dailyActive)} subtitle={weeklyActive + " activos en los últimos 7 días"} icon={<Users className="text-blue-500" />} color="blue" />
-        <StatCard title="Progreso académico" value={loading || !enrollments.length ? "—" : completionRate.toFixed(1) + "%"} subtitle={enrollments.length + " matrículas registradas"} icon={<GraduationCap className="text-violet-500" />} />
+        <StatCard title="Progreso académico" value={loading || !enrollments.length ? "—" : completionRate.toFixed(1) + "%"} subtitle={enrollments.length + " matrículas registradas"} icon={<BookOpen className="text-violet-500" />} />
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
