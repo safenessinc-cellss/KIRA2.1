@@ -382,8 +382,8 @@ service cloud.firestore {
 
     match /contracts/{contractId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
-      allow create: if isAdmin() || isApprovedCoach();
-      allow update: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+      allow create: if isAdmin() || (isApprovedCoach() && request.resource.data.coachId == request.auth.uid);
+      allow update: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid && request.resource.data.coachId == request.auth.uid && areImmutableFieldsUnchanged(['coachId', 'createdAt']));
       allow delete: if isAdmin();
     }
 
@@ -491,9 +491,7 @@ service cloud.firestore {
     match /course_activity/{id} {
       allow read: if isAdmin() ||
                   (isAuthenticated() && resource.data.userId == request.auth.uid) ||
-                  (isApprovedCoach() &&
-                   exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) &&
-                   get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid);
+                  isCoachForStudent(resource.data.courseId, resource.data.userId);
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
