@@ -309,32 +309,11 @@ export function CoachDashboard() {
     }
   }, [user]);
 
-  const handlePaymentSuccess = async () => {
-    const success = searchParams.get('success');
-    const type = searchParams.get('type');
-    const amount = searchParams.get('amount');
-
-    if (success === 'true' && type === 'coach_membership' && user) {
-      try {
-        console.log("[Membresía] Registrando pago de membresía en paralelo...");
-        await Promise.all([
-          updateDoc(doc(db, 'users', user.uid), {
-            membershipStatus: 'active',
-            membershipPaidAt: new Date(),
-            role: 'coach'
-          }),
-          addDoc(collection(db, 'transactions'), {
-            userId: user.uid,
-            amount: Number(amount),
-            type: 'coach_membership',
-            createdAt: new Date()
-          })
-        ]);
-        console.log("[Membresía] Actualización de membresía y transacción registradas exitosamente.");
-        setSearchParams({});
-      } catch (e) {
-        console.error('Error recording membership success:', e);
-      }
+  const handlePaymentSuccess = () => {
+    // Never activate a membership from URL parameters; only a verified backend webhook may.
+    if (searchParams.get('success') === 'true') {
+      console.warn('[Payments] Membership checkout returned; awaiting verified server confirmation.');
+      setSearchParams({});
     }
   };
   
