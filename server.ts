@@ -66,7 +66,7 @@ function getGeminiAI() {
       apiKey: key,
       httpOptions: {
         headers: {
-          "User-Agent": "aistudio-build",
+          "User-Agent": "KIRA-Coach-SAFENESS.INC",
         }
       }
     });
