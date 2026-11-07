@@ -1326,7 +1326,8 @@ export function Journal() {
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken())
         },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
