@@ -8,6 +8,12 @@ import { MediaUpload } from '../components/MediaUpload';
 import { CoachAnalytics } from '../components/CoachAnalytics';
 import { useToast } from '../hooks/useToast';
 
+async function getCoachAiHeaders() {
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+  return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
+}
+
 export type UserRole = 'admin' | 'coach' | 'alumno' | 'hr_admin' | 'company_admin' | 'company_member' | null;
 
 export function useAuth() {
@@ -325,7 +331,7 @@ export function CoachDashboard() {
     try {
       const resp = await fetch('/api/create-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getCoachAiHeaders(),
         body: JSON.stringify({
           userId: user.uid,
           amount: 49.99,
@@ -517,7 +523,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getCoachAiHeaders(),
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -587,7 +593,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getCoachAiHeaders(),
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -638,7 +644,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getCoachAiHeaders(),
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -2788,7 +2794,7 @@ function CoachProfileSettings({ profile }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getCoachAiHeaders(),
         body: JSON.stringify({
           model: "gemini-3.5-flash",
           contents: prompt,
