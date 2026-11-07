@@ -10,39 +10,6 @@ import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, Shiel
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
 
-const DEFAULT_BOOKS = [
-  {
-    id: 'cio-robert-teran',
-    title: 'Cio',
-    author: 'Robert Teran',
-    price: 0,
-    imageUrl: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=400',
-    description: 'Soy un hombre que llegó al mundo sin saber quién era y que aprendió a nombrarse en el silencio. Estas páginas son mi despedida de quien fui y mi bienvenida a quien aún no sé que soy. Aquí encontrarás preguntas que tal vez también te has hecho: ¿Quién soy? ¿De dónde vengo? ¿Hacia dónde voy? ¿Por qué las cosas terribles se aprenden rápido y las hermosas nos cuestan la vida? No esperes respuestas. Espera caminos. "Caminante, no hay camino, el camino se hace al andar."',
-    status: 'published',
-    authorType: 'coach'
-  },
-  {
-    id: 'diario-diosa-kira',
-    title: 'Diario de una Diosa',
-    author: 'Kira Zurita',
-    price: 0,
-    imageUrl: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=400',
-    description: 'Un libro canalizado y estructurado con herramientas de arteterapia, respiración consciente y introspección guiada.',
-    status: 'published',
-    authorType: 'admin'
-  },
-  {
-    id: 'habitos-atomicos-ideas',
-    title: 'Las diez ideas clave de Hábitos Atómicos',
-    author: 'Kira Coach',
-    price: 5,
-    imageUrl: 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?auto=format&fit=crop&q=80&w=400',
-    description: 'Un libro canalizado y estructurado con herramientas de arteterapia, respiración consciente e introspección inspirada en el best-seller de James Clear.',
-    status: 'published',
-    authorType: 'coach'
-  }
-];
-
 export function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -51,7 +18,7 @@ export function Dashboard() {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
-  const [availableBooks, setAvailableBooks] = useState<any[]>(DEFAULT_BOOKS);
+  const [availableBooks, setAvailableBooks] = useState<any[]>([]);
   const [myEnrollments, setMyEnrollments] = useState<any[]>([]);
   const [myEnrollmentRecords, setMyEnrollmentRecords] = useState<any[]>([]);
   const [myCertificateRequests, setMyCertificateRequests] = useState<any[]>([]);
@@ -271,16 +238,10 @@ export function Dashboard() {
         const booksQ = query(collection(db, 'books'), where('status', '==', 'published'));
         const booksSnap = await getDocs(booksQ);
         const fbBooks = booksSnap.docs.map(d => ({id: d.id, ...d.data()}));
-        const merged = [...DEFAULT_BOOKS];
-        fbBooks.forEach((fbB: any) => {
-          if (!merged.some(m => m.id === fbB.id)) {
-            merged.push(fbB);
-          }
-        });
-        setAvailableBooks(merged);
+        setAvailableBooks(fbBooks);
       } catch (booksErr) {
         console.warn("Dynamic books fetch failed:", booksErr);
-        setAvailableBooks(DEFAULT_BOOKS);
+        setAvailableBooks([]);
       }
 
       const enrollQ = query(collection(db, 'enrollments'), where('userId', '==', user.uid));
