@@ -279,8 +279,7 @@ service cloud.firestore {
     match /enrollments/{enrollmentId} {
       allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid)));
       allow create: if isAdmin() && isValidEnrollment();
-      allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt']) && 
-                    (isAdmin() || (isCurrentUser(resource.data.userId)) || isApprovedCoach());
+      allow update: if isAdmin() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt']);
       allow delete: if isAdmin();
     }
     
