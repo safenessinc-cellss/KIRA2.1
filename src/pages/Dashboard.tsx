@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, getDocs, addDoc, onSnapshot, doc, updateDoc, setDoc, orderBy, limit } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
@@ -10,39 +10,6 @@ import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, Shiel
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
 
-const DEFAULT_BOOKS = [
-  {
-    id: 'cio-robert-teran',
-    title: 'Cio',
-    author: 'Robert Teran',
-    price: 0,
-    imageUrl: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=400',
-    description: 'Soy un hombre que llegó al mundo sin saber quién era y que aprendió a nombrarse en el silencio. Estas páginas son mi despedida de quien fui y mi bienvenida a quien aún no sé que soy. Aquí encontrarás preguntas que tal vez también te has hecho: ¿Quién soy? ¿De dónde vengo? ¿Hacia dónde voy? ¿Por qué las cosas terribles se aprenden rápido y las hermosas nos cuestan la vida? No esperes respuestas. Espera caminos. "Caminante, no hay camino, el camino se hace al andar."',
-    status: 'published',
-    authorType: 'coach'
-  },
-  {
-    id: 'diario-diosa-kira',
-    title: 'Diario de una Diosa',
-    author: 'Kira Zurita',
-    price: 0,
-    imageUrl: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=400',
-    description: 'Un libro canalizado y estructurado con herramientas de arteterapia, respiración consciente y introspección guiada.',
-    status: 'published',
-    authorType: 'admin'
-  },
-  {
-    id: 'habitos-atomicos-ideas',
-    title: 'Las diez ideas clave de Hábitos Atómicos',
-    author: 'Kira Coach',
-    price: 5,
-    imageUrl: 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?auto=format&fit=crop&q=80&w=400',
-    description: 'Un libro canalizado y estructurado con herramientas de arteterapia, respiración consciente e introspección inspirada en el best-seller de James Clear.',
-    status: 'published',
-    authorType: 'coach'
-  }
-];
-
 export function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -51,14 +18,14 @@ export function Dashboard() {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
-  const [availableBooks, setAvailableBooks] = useState<any[]>(DEFAULT_BOOKS);
+  const [availableBooks, setAvailableBooks] = useState<any[]>([]);
   const [myEnrollments, setMyEnrollments] = useState<any[]>([]);
   const [favoriteCoaches, setFavoriteCoaches] = useState<any[]>([]);
   const [unlockedHistory, setUnlockedHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
+  const [checkingOutId, setCheckingOutId] = useState<string | null>(null);\n  const [checkoutNotice, setCheckoutNotice] = useState('');
 
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [showCart, setShowCart] = useState(false);
@@ -186,36 +153,42 @@ export function Dashboard() {
 
   useEffect(() => {
     fetchData();
-    handlePaymentSuccess();
-  }, [user]);
+    verifyCheckoutReturn();
+  }, [user, searchParams]);
 
-  const handlePaymentSuccess = async () => {
-    const success = searchParams.get('success');
-    const courseId = searchParams.get('courseId');
-    const amount = searchParams.get('amount');
-
-    if (success === 'true' && courseId && user) {
-      try {
-        await addDoc(collection(db, 'enrollments'), {
-          userId: user.uid,
-          courseId,
-          progress: 0,
-          createdAt: new Date()
-        });
-
-        await addDoc(collection(db, 'transactions'), {
-          userId: user.uid,
-          amount: Number(amount),
-          type: 'course_purchase',
-          courseId,
-          createdAt: new Date()
-        });
-
-        setSearchParams({});
-        fetchData();
-      } catch (e) {
-        console.error('Error recording payment success:', e);
+  const verifyCheckoutReturn = async () => {
+    if (!user) return;
+    const checkout = searchParams.get('checkout');
+    const sessionId = searchParams.get('session_id');
+    if (searchParams.get('success') === 'true') {
+      setCheckoutNotice('El retorno antiguo success=true no es prueba de pago. No se concedió acceso. Usa el checkout seguro.');
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    if (checkout === 'cancelled') {
+      setCheckoutNotice('Checkout cancelado. No se confirmó ningún pago ni se concedió acceso.');
+      setSearchParams({}, { replace: true });
+      return;
+    }
+    if (checkout !== 'return' || !sessionId) return;
+    setCheckoutNotice('Verificando el pago con Stripe…');
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('No hay sesión autenticada');
+      const response = await fetch('/api/stripe/session-status?session_id=' + encodeURIComponent(sessionId), { headers: { Authorization: 'Bearer ' + token } });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'No se pudo verificar el checkout');
+      if (result.paymentStatus === 'paid') {
+        setCheckoutNotice('Stripe confirma el pago. El acceso se habilita únicamente cuando el webhook firmado registra la compra.');
+        await fetchData();
+      } else {
+        setCheckoutNotice('El pago todavía no está confirmado por Stripe. No se concedió acceso.');
       }
+    } catch (err) {
+      console.error('Stripe return verification failed', err);
+      setCheckoutNotice('No se pudo verificar el pago. No se concedió acceso; revisa el historial de pedidos o contacta soporte.');
+    } finally {
+      setSearchParams({}, { replace: true });
     }
   };
 
@@ -239,7 +212,7 @@ export function Dashboard() {
         setAvailableBooks(merged);
       } catch (booksErr) {
         console.warn("Dynamic books fetch failed:", booksErr);
-        setAvailableBooks(DEFAULT_BOOKS);
+        setAvailableBooks([]);
       }
 
       const enrollQ = query(collection(db, 'enrollments'), where('userId', '==', user.uid));
