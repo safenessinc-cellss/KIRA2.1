@@ -656,7 +656,6 @@ function StudentManagementView() {
 
 function StudentActivityDashboard({ student, enrollments, onClose }: any) {
   const [activity, setActivity] = useState<any[]>([]);
-  const [journals, setJournals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -675,17 +674,6 @@ function StudentActivityDashboard({ student, enrollments, onClose }: any) {
           .slice(0, 10);
         setActivity(sortedAct);
 
-        const journalQ = query(collection(db, 'journals'), where('userId', '==', student.id));
-        const journalSnap = await getDocs(journalQ);
-        const sortedJournal = journalSnap.docs
-          .map(d => ({id: d.id, ...d.data()}))
-          .sort((a: any, b: any) => {
-             const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-             const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-             return dateB.getTime() - dateA.getTime();
-          })
-          .slice(0, 5);
-        setJournals(sortedJournal);
       } catch (e) {
         console.error(e);
       } finally {
@@ -772,21 +760,7 @@ function StudentActivityDashboard({ student, enrollments, onClose }: any) {
                 </section>
               </div>
 
-              {/* Sidebar: Journals & Trends */}
               <div className="flex flex-col gap-8 border-l border-slate-100 pl-8">
-                <section>
-                  <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">Insight Emocional (Reciente)</h3>
-                  <div className="flex flex-col gap-3">
-                    {journals.map((j, i) => (
-                      <div key={i} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                        <p className="text-[12px] text-slate-700 line-clamp-3 leading-relaxed">"{j.content}"</p>
-                        <p className="text-[9px] text-slate-400 mt-2 font-bold uppercase">{j.createdAt?.toDate?.().toLocaleDateString()}</p>
-                      </div>
-                    ))}
-                    {journals.length === 0 && <p className="text-[11px] italic text-slate-400">Sin entradas en el diario.</p>}
-                  </div>
-                </section>
-
                 <section className="mt-auto pt-6 border-t border-slate-100">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-[11px] font-bold text-slate-400">PROGRESO GLOBAL</span>
@@ -2808,38 +2782,33 @@ function PillsEditor() {
 
 // --- MODULO 5: BI / ANALÍTICAS ---
 function BIView() {
-  const [stats, setStats] = useState({ sentiment: { positive: 0, neutral: 0, negative: 0 }, courseDist: [] as any[] });
+function BIView() {
+  const [stats, setStats] = useState({ sentiment: { positive: 0, neutral: 0, negative: 0 }, courseDist: [] as any[], hasWellbeingSummary: false });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const journalsSnap = await getDocs(collection(db, 'journals'));
-        const counts = { positive: 0, neutral: 0, negative: 0 };
-        journalsSnap.forEach(d => {
-          const s = d.data().sentiment;
-          if (s === 'positive') counts.positive++;
-          else if (s === 'neutral') counts.neutral++;
-          else if (s === 'negative') counts.negative++;
-        });
-
-        const enrollSnap = await getDocs(collection(db, 'enrollments'));
+        const [summarySnap, enrollSnap, courseSnap] = await Promise.all([
+          getDoc(doc(db, 'stats', 'wellbeingSummary')),
+          getDocs(collection(db, 'enrollments')),
+          getDocs(collection(db, 'courses'))
+        ]);
+        const summary = summarySnap.exists() ? summarySnap.data() : null;
+        const sentiment = summary?.sentimentCounts || summary?.sentiment || { positive: 0, neutral: 0, negative: 0 };
         const courseMap: Record<string, number> = {};
         enrollSnap.forEach(d => {
-          const cid = d.data().courseId;
-          courseMap[cid] = (courseMap[cid] || 0) + 1;
+          const courseId = d.data().courseId;
+          courseMap[courseId] = (courseMap[courseId] || 0) + 1;
         });
-
-        const courseSnap = await getDocs(collection(db, 'courses'));
-        const dist = courseSnap.docs.map(d => ({
-          name: (d.data().title || 'Curso Sin Nombre').substring(0, 15) + '...',
+        const courseDist = courseSnap.docs.map(d => ({
+          name: String(d.data().title || 'Curso').substring(0, 24),
           value: courseMap[d.id] || 0
-        })).filter(d => d.value > 0);
-
-        setStats({ sentiment: counts, courseDist: dist });
-      } catch (e) {
-        console.error(e);
+        })).filter(row => row.value > 0);
+        setStats({ sentiment, courseDist, hasWellbeingSummary: Boolean(summary) });
+      } catch (error) {
+        console.error('Business intelligence load failed:', error);
       } finally {
         setLoading(false);
       }
@@ -2860,14 +2829,14 @@ function BIView() {
              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Sliders size={20}/></div>
              <div>
                 <h3 className="font-bold text-slate-900 text-lg">Inteligencia de Negocio</h3>
-                <p className="text-sm text-slate-500">Métricas avanzadas y comportamiento de comunidad.</p>
+                <p className="text-sm text-slate-500">Matrículas reales y métricas agregadas autorizadas; no se consultan diarios personales.</p>
              </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {/* Balance Emocional */}
             <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-100 flex flex-col items-center">
-              <h4 className="w-full text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Balance Emocional Global</h4>
+              <h4 className="w-full text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Balance agregado de bienestar</h4>
               <div className="h-56 w-full">
                 {pieData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
