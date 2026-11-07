@@ -144,6 +144,8 @@ function serviceAccount(): ServiceAccount {
   if (!raw) throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON no está configurada.");
   const account = JSON.parse(raw) as ServiceAccount;
   if (!account.project_id || !account.client_email || !account.private_key) throw new Error("La cuenta de servicio de Firebase está incompleta.");
+  const expectedProject = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "kira2-a6a20";
+  if (account.project_id !== expectedProject) throw new Error("La cuenta de servicio no pertenece al proyecto Firebase configurado.");
   account.private_key = account.private_key.replace(/\\n/g, "\n");
   return account;
 }
@@ -231,7 +233,7 @@ async function verifiedUser(req: express.Request, res: express.Response): Promis
 }
 function idSafe(value: string): string { return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120); }
 async function catalogItem(id: string): Promise<any | null> {
-  for (const collectionName of ["courses", "books", "products"]) {
+  for (const collectionName of ["courses", "books", "products", "membershipPlans", "marketplace"]) {
     const item = await fsGet(collectionName, id);
     if (item) return { ...item, id, collectionName };
   }
@@ -243,11 +245,11 @@ function certSignature(data: any): string {
   const canonical = JSON.stringify(Object.keys(data).sort().reduce((result: any, key) => { result[key] = data[key]; return result; }, {}));
   return createHmac("sha256", secret).update(canonical).digest("hex");
 }
-async function fulfillOrder(orderId: string, provider: string, paymentId: string, eventId: string, paidMinor: number, currency: string): Promise<void> {
+async function fulfillOrder(orderId: string, provider: string, paymentId: string, eventId: string, paidMinor: number, currency: string, expectedUserId?: string): Promise<void> {
   const order = await fsGet("orders", orderId);
   if (!order) throw new Error("La orden no existe.");
   if (order.status === "paid") return;
-  if (order.provider !== provider || Math.abs(Math.round(Number(order.amount) * 100) - paidMinor) > 1 || String(order.currency).toLowerCase() !== currency.toLowerCase()) throw new Error("El importe, la moneda o el proveedor no coincide con la orden.");
+  if (order.provider !== provider || (expectedUserId && order.userId !== expectedUserId) || Math.abs(Math.round(Number(order.amount) * 100) - paidMinor) > 1 || String(order.currency).toLowerCase() !== currency.toLowerCase()) throw new Error("El importe, la moneda, el usuario o el proveedor no coincide con la orden.");
   const now = new Date().toISOString();
   const writes: any[] = [
     fsCreate("paymentEvents", idSafe(provider + "_" + eventId), { provider, eventId, orderId, status: "processed", processedAt: now }),
@@ -411,7 +413,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
       if (!product || product.status === "draft" || product.status === "archived" || product.published === false) return res.status(400).json({ error: "Producto no disponible: " + id });
       const price = Number(product.price ?? product.amount);
       if (!Number.isFinite(price) || price <= 0 || price > 100000) return res.status(400).json({ error: "Precio inválido en catálogo para " + id });
-      items.push({ id, title: String(product.title || product.name || "Producto KIRA").slice(0, 250), type: product.type === "membership" ? "membership" : (product.collectionName === "courses" ? "course" : (product.type || "product")), collectionName: product.collectionName, quantity: 1, unitPrice: price, currency: String(product.currency || (provider === "mercadopago" ? "brl" : "usd")).toLowerCase(), quantity: Number(requested.quantity || 1) });
+      items.push({ id, title: String(product.title || product.name || "Producto KIRA").slice(0, 250), type: (product.type === "membership" || product.collectionName === "membershipPlans") ? "membership" : (product.collectionName === "courses" ? "course" : (product.collectionName === "books" ? "book" : (product.type || "product")) ), collectionName: product.collectionName, quantity: 1, unitPrice: price, currency: String(product.currency || (provider === "mercadopago" ? "brl" : "usd")).toLowerCase(), quantity: Number(requested.quantity || 1) });
     }
     if (new Set(items.map(x => x.currency)).size !== 1) return res.status(400).json({ error: "Los productos deben usar la misma moneda." });
     const orderId = randomBytes(18).toString("hex");
@@ -465,7 +467,7 @@ app.post("/api/webhooks/stripe", async (req: any, res) => {
     if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
       const session = await stripe.checkout.sessions.retrieve((event.data.object as Stripe.Checkout.Session).id);
       if (session.payment_status !== "paid" || !session.metadata?.orderId) return res.status(200).json({ received: true, ignored: true });
-      await fulfillOrder(session.metadata.orderId, "stripe", String(session.payment_intent || session.id), event.id, session.amount_total || 0, session.currency || "usd");
+      await fulfillOrder(session.metadata.orderId, "stripe", String(session.payment_intent || session.id), event.id, session.amount_total || 0, session.currency || "usd", session.metadata.userId);
     }
     return res.status(200).json({ received: true });
   } catch (error: any) {
