@@ -304,17 +304,8 @@ app.post("/api/create-checkout-session", async (req, res) => {
     }
   }
 
-  // MOCK MODE (Fallback)
-  console.log(`[MOCK] Simulando compra Stripe para ${userId}: ${type} ${title} por $${amount}`);
-  
-  const redirectUrl = type === 'coach_membership' 
-    ? `/coach?success=true&type=coach_membership&amount=${amount}`
-    : `/dashboard?success=true&courseId=${courseId}&amount=${amount}&title=${encodeURIComponent(title)}`;
-
-  res.json({ 
-    url: redirectUrl,
-    sessionId: `mock_session_${Date.now()}`
-  });
+  // No fake transactions. Fail closed when payment provider is not configured.
+  return res.status(503).json({ error: "Los pagos no están configurados. No se ha realizado ningún cobro." });
 });
 
 async function startLocalServer() {
