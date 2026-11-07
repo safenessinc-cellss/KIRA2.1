@@ -834,6 +834,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
         const coursesQ = query(collection(db, 'courses'), where('coachId', '==', user.uid));
         const coursesSnap = await getDocs(coursesQ);
         const courseIds = coursesSnap.docs.map(d => d.id);
+        const coursesById = new Map(coursesSnap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
 
         let activeStudents = 0;
         let totalProgress = 0;
@@ -1697,6 +1698,7 @@ function CoachStudentsActivity() {
   const [customMessage, setCustomMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [completionBusy, setCompletionBusy] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -1719,7 +1721,8 @@ function CoachStudentsActivity() {
             if (!studentsMap.has(sId)) {
               const sProfile = await getDoc(doc(db, 'users', sId));
               if (sProfile.exists()) {
-                studentsMap.set(sId, { id: sId, ...sProfile.data(), courseProgress: eDoc.data().progress || 0 });
+                const course = coursesById.get(cid) as any;
+                studentsMap.set(sId, { id: sId, ...sProfile.data(), courseProgress: eDoc.data().progress || 0, enrollmentId: eDoc.id, courseId: cid, courseTitle: course?.title || 'Curso', courseHours: course?.hours || course?.courseHours || course?.durationHours || 0 });
               }
             }
           }
@@ -1821,6 +1824,28 @@ function CoachStudentsActivity() {
     } finally {
       setSending(false);
     }
+  };
+
+  const markCourseCompleted = async (student: any) => {
+    if (!user || !student.enrollmentId || completionBusy) return;
+    if (!confirm('¿Confirmas que ' + (student.displayName || 'el alumno') + ' concluyó ' + (student.courseTitle || 'el curso') + '?')) return;
+    setCompletionBusy(student.enrollmentId);
+    try {
+      await updateDoc(doc(db, 'enrollments', student.enrollmentId), {
+        progress: 100, completed: true, courseCompleted: true, completedAt: new Date()
+      });
+      setStudents(prev => prev.map(item => item.id === student.id ? { ...item, courseProgress: 100, completed: true } : item));
+      await addDoc(collection(db, 'notifications'), {
+        userId: student.id, title: 'Curso concluido',
+        message: 'Tu coach confirmó la conclusión de ' + (student.courseTitle || 'tu curso') + '. Ya puedes solicitar tu certificado en KIRA COACH.',
+        type: 'course', read: false, createdAt: new Date()
+      });
+      setSuccessMsg('Conclusión confirmada. El alumno ya puede solicitar su certificado.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (error) {
+      console.error('Could not mark course complete', error);
+      alert('No se pudo confirmar la conclusión. Verifica los permisos del curso.');
+    } finally { setCompletionBusy(null); }
   };
 
   const applyTemplate = (val: string) => {
@@ -1950,9 +1975,7 @@ function CoachStudentsActivity() {
                   </div>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <button className="p-2 text-slate-400 hover:text-primary transition-colors">
-                    <ChevronRight size={16} />
-                  </button>
+                  {s.courseProgress >= 100 ? <span className="text-[10px] font-bold text-emerald-700">Concluido</span> : <button onClick={() => markCourseCompleted(s)} disabled={completionBusy === s.enrollmentId} className="px-3 py-2 rounded-lg bg-teal-700 text-white text-[10px] font-bold disabled:opacity-50">{completionBusy === s.enrollmentId ? 'Guardando…' : 'Marcar concluido'}</button>}
                 </td>
               </tr>
             );
