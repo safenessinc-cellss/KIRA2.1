@@ -2941,14 +2941,23 @@ function SecurityView() {
     }
   };
 
-  const toggleStatus = async (userId: string, currentStatus: string) => {
+  const toggleStatus = async (itemId: string, currentStatus: string) => {
+    try {
+      const next = currentStatus === 'published' ? 'draft' : 'published';
+      await updateDoc(doc(db, 'courses', itemId), { status: next, updatedAt: new Date() });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `courses/${itemId}`);
+    }
+  };
+
+  const toggleUserSuspension = async (userId: string, currentStatus: string) => {
     try {
       const next = currentStatus === 'suspended' ? 'approved' : 'suspended';
       await updateDoc(doc(db, 'users', userId), { approvalStatus: next, updatedAt: new Date() });
     } catch (e) {
-       handleFirestoreError(e, OperationType.UPDATE, `users/${userId}`);
+      handleFirestoreError(e, OperationType.UPDATE, `users/${userId}`);
     }
-  }
+  };
 
   const roleColors: Record<string, string> = {
     'admin': 'text-purple-400 bg-purple-500/10 border-purple-500/30',
@@ -3075,10 +3084,10 @@ function SecurityView() {
                                     {member.role}
                                  </span>
                                  <button 
-                                    onClick={() => toggleStatus(member.id, member.status || 'active')}
-                                    className={cn("text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border transition-colors", member.status === 'frozen' ? "text-rose-400 bg-rose-500/10 border-rose-500/30 hover:bg-rose-500/20" : "text-emerald-400 bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20")}
+                                    onClick={() => toggleUserSuspension(member.id, member.approvalStatus || 'approved')}
+                                    className={cn("text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border transition-colors", member.approvalStatus === 'suspended' ? "text-rose-400 bg-rose-500/10 border-rose-500/30 hover:bg-rose-500/20" : "text-emerald-400 bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20")}
                                  >
-                                    {member.status === 'frozen' ? 'Congelado' : 'Activo'}
+                                    {member.approvalStatus === 'suspended' ? 'Suspendido' : 'Activo'}
                                  </button>
                               </div>
                            </div>
