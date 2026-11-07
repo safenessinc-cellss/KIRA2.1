@@ -162,3 +162,26 @@ test('superadmin email alone is insufficient without verified email claim', asyn
   await assertFails(getDoc(doc(unverified, 'stats/global')));
   await assertSucceeds(getDoc(doc(verified, 'stats/global')));
 });
+
+test('learners may edit profile content but cannot self-promote or grant staff permissions', async () => {
+  const student = testEnv.authenticatedContext('studentA').firestore();
+  const profile = doc(student, 'users/studentA');
+
+  await assertSucceeds(updateDoc(profile, { displayName: 'Learner A' }));
+  await assertFails(updateDoc(profile, { role: 'admin' }));
+  await assertFails(updateDoc(profile, { staffPermissions: ['users:write', 'billing:write'] }));
+  await assertFails(updateDoc(profile, { approvalStatus: 'approved' }));
+});
+
+test('notification creation is restricted to the authenticated recipient', async () => {
+  const student = testEnv.authenticatedContext('studentA').firestore();
+  const ownNotification = {
+    userId: 'studentA', title: 'Welcome', message: 'Welcome to KIRA',
+    type: 'system', read: false, createdAt: Timestamp.now(),
+  };
+
+  await assertSucceeds(setDoc(doc(student, 'notifications/own'), ownNotification));
+  await assertFails(setDoc(doc(student, 'notifications/other'), {
+    ...ownNotification, userId: 'studentB',
+  }));
+});
