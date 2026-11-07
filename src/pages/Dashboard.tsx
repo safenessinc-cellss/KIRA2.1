@@ -25,7 +25,8 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [checkingOutId, setCheckingOutId] = useState<string | null>(null);\n  const [checkoutNotice, setCheckoutNotice] = useState('');
+  const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
+  const [checkoutNotice, setCheckoutNotice] = useState('');
 
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [showCart, setShowCart] = useState(false);
