@@ -2936,18 +2936,6 @@ function SecurityView() {
       const next = current?.includes(perm) ? current.filter(p => p !== perm) : [...(current || []), perm];
       await updateDoc(doc(db, 'users', userId), { staffPermissions: next });
       
-      // Auto-freeze balance demo logic for Coaches losing 'billing'
-      if (perm === 'billing' && current?.includes(perm)) {
-         // Coach lost billing permission, would trigger freeze logic
-         // For demo, we just add a log
-         addDoc(collection(db, 'logs'), {
-           action: 'PAYMENT_FROZEN',
-           targetId: userId,
-           reason: 'Billing permission revoked',
-           createdAt: new Date()
-         });
-      }
-
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `users/${userId}`);
     }
@@ -2955,8 +2943,8 @@ function SecurityView() {
 
   const toggleStatus = async (userId: string, currentStatus: string) => {
     try {
-      const next = currentStatus === 'frozen' ? 'active' : 'frozen';
-      await updateDoc(doc(db, 'users', userId), { status: next });
+      const next = currentStatus === 'suspended' ? 'approved' : 'suspended';
+      await updateDoc(doc(db, 'users', userId), { approvalStatus: next, updatedAt: new Date() });
     } catch (e) {
        handleFirestoreError(e, OperationType.UPDATE, `users/${userId}`);
     }
