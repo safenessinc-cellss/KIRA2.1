@@ -409,14 +409,15 @@ service cloud.firestore {
         && request.resource.data.courseCompleted == true
         && request.resource.data.progress >= 100
         && request.resource.data.paid == true;
-      allow update, delete: if isAdmin();
+      allow update, delete: if isKiraOwner();
     }
 
     match /certificates/{certificateId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.studentId == request.auth.uid);
       allow create: if isKiraOwner()
         && request.resource.data.status == 'issued'
-        && request.resource.data.validationToken == certificateId;
+        && request.resource.data.validationToken == certificateId
+        && request.resource.data.issuedBy == request.auth.uid;
       allow update, delete: if false;
     }
 
