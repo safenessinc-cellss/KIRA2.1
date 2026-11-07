@@ -6,6 +6,7 @@ import Stripe from "stripe";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { WebSocketServer } from "ws";
 import compression from "compression";
+import { createVerify } from "node:crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,6 +26,77 @@ interface CacheEntry {
   expiresAt: number;
 }
 const memoryCache = new Map<string, CacheEntry>();
+
+// Firebase ID-token verification (Google Secure Token signing certificates).
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "kira2-a6a20";
+const FIREBASE_CERTS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+let firebaseCerts: Record<string, string> = {};
+let firebaseCertsExpiresAt = 0;
+
+async function getFirebaseCerts(): Promise<Record<string, string>> {
+  if (Date.now() < firebaseCertsExpiresAt && Object.keys(firebaseCerts).length) return firebaseCerts;
+  const response = await fetch(FIREBASE_CERTS_URL);
+  if (!response.ok) throw new Error("Unable to load Firebase signing certificates");
+  const keys = await response.json() as Record<string, string>;
+  firebaseCerts = keys;
+  const cacheControl = response.headers.get("cache-control") || "";
+  const maxAge = Number(cacheControl.match(/max-age=(\\d+)/)?.[1] || 3600);
+  firebaseCertsExpiresAt = Date.now() + Math.max(60, maxAge) * 1000;
+  return firebaseCerts;
+}
+
+async function verifyFirebaseIdToken(token: string): Promise<any> {
+  const parts = token.split(".");
+  if (parts.length !== 3) throw new Error("Invalid token");
+  const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+  const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+  if (header.alg !== "RS256" || typeof header.kid !== "string") throw new Error("Invalid token header");
+  const certs = await getFirebaseCerts();
+  const cert = certs[header.kid];
+  if (!cert) {
+    firebaseCertsExpiresAt = 0;
+    const refreshed = await getFirebaseCerts();
+    if (!refreshed[header.kid]) throw new Error("Unknown signing key");
+  }
+  const verifier = createVerify("RSA-SHA256");
+  verifier.update(parts[0] + "." + parts[1]);
+  verifier.end();
+  if (!verifier.verify(certs[header.kid], Buffer.from(parts[2], "base64url"))) throw new Error("Invalid token signature");
+  const now = Math.floor(Date.now() / 1000);
+  if (claims.aud !== FIREBASE_PROJECT_ID ||
+      claims.iss !== `https://securetoken.google.com/${FIREBASE_PROJECT_ID}` ||
+      typeof claims.sub !== "string" || !claims.sub ||
+      typeof claims.exp !== "number" || claims.exp <= now ||
+      typeof claims.iat !== "number" || claims.iat > now + 60) {
+    throw new Error("Invalid token claims");
+  }
+  return claims;
+}
+
+async function requireFirebaseUser(req: express.Request, res: express.Response, next: express.NextFunction) {
+  try {
+    const authorization = req.headers.authorization || "";
+    const match = authorization.match(/^Bearer (.+)$/i);
+    if (!match) return res.status(401).json({ error: "Autenticación requerida." });
+    (req as any).firebaseUser = await verifyFirebaseIdToken(match[1]);
+    return next();
+  } catch {
+    return res.status(401).json({ error: "Sesión inválida o expirada. Inicia sesión nuevamente." });
+  }
+}
+
+const aiRequestCounts = new Map<string, { count: number; resetAt: number }>();
+function allowAiRequest(uid: string): boolean {
+  const now = Date.now();
+  const current = aiRequestCounts.get(uid);
+  if (!current || current.resetAt <= now) {
+    aiRequestCounts.set(uid, { count: 1, resetAt: now + 60_000 });
+    return true;
+  }
+  if (current.count >= 20) return false;
+  current.count += 1;
+  return true;
+}
 
 function getCache(key: string): any | null {
   const entry = memoryCache.get(key);
@@ -113,17 +185,23 @@ function extractPromptText(contents: any): string {
 }
 
 // Gemini Content Generation Proxy with Cache, Retry, Timeout, and robust Simulated Fallback logic
-app.post("/api/gemini/generate", async (req, res) => {
+app.post("/api/gemini/generate", requireFirebaseUser, async (req, res) => {
   try {
     const key = process.env.GEMINI_API_KEY;
     const { model, contents, config } = req.body;
+    const firebaseUser = (req as any).firebaseUser;
+    const uid = firebaseUser.uid as string;
+    if (!allowAiRequest(uid)) return res.status(429).json({ error: "Has alcanzado el límite temporal de solicitudes de IA. Inténtalo más tarde." });
+    if (!contents || JSON.stringify(contents).length > 100_000) return res.status(413).json({ error: "La solicitud supera el tamaño permitido." });
+    if (model !== undefined && (typeof model !== "string" || !/^gemini-[a-z0-9.-]{1,80}$/.test(model))) return res.status(400).json({ error: "Modelo de IA no válido." });
+    if (config?.maxOutputTokens !== undefined && (!Number.isInteger(config.maxOutputTokens) || config.maxOutputTokens < 1 || config.maxOutputTokens > 8192)) return res.status(400).json({ error: "Límite de salida no válido." });
 
     if (!isValidGeminiKey(key)) {
       return res.status(503).json({ error: "El servicio de IA no está configurado. Contacta al administrador." });
     }
     
     // Create cache key based on contents and config to avoid repeating identical AI calls
-    const cacheKey = JSON.stringify({ model, contents, config });
+    const cacheKey = JSON.stringify({ uid, model, contents, config });
     const cachedResponse = getCache(cacheKey);
     if (cachedResponse) {
       console.log("[Cache Backend] Sirviendo respuesta de Gemini desde caché en memoria.");
@@ -184,7 +262,7 @@ app.post("/api/gemini/generate", async (req, res) => {
     res.json({ text: textResult, cached: false });
   } catch (error: any) {
     console.error("Gemini API server proxy error:", error);
-    res.status(500).json({ error: error.message || "Un error ocurrió al llamar a la API de Gemini en el servidor." });
+    res.status(502).json({ error: "No fue posible completar la solicitud de IA. Inténtalo nuevamente." });
   }
 });
 
