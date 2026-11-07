@@ -2,6 +2,9 @@ import { useEffect, useRef } from 'react';
 import { db, messaging } from '../firebase';
 import { collection, query, where, onSnapshot, orderBy, limit, doc, setDoc } from 'firebase/firestore';
 import { getToken, onMessage } from 'firebase/messaging';
+
+const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string | undefined;
+const FCM_WORKER_SCOPE = '/firebase-cloud-messaging-push-scope';
 import { useAuth } from '../hooks/useAuth';
 
 export function PushNotificationManager() {
@@ -9,41 +12,52 @@ export function PushNotificationManager() {
   const initialLoadRef = useRef(true);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function setupPush() {
-      if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-        const perm = await Notification.requestPermission();
-        if (perm === 'granted' && messaging && user) {
-          try {
-            const currentToken = await getToken(messaging, {
-              // vapidKey: 'YOUR_PUBLIC_VAPID_KEY_HERE' 
-            });
-            if (currentToken) {
-              await setDoc(doc(db, 'users', user.uid, 'tokens', currentToken), {
-                token: currentToken,
-                createdAt: new Date(),
-                userAgent: navigator.userAgent
-              });
-            }
-          } catch (err) {
-            console.log('FCM Token error or VAPID required', err);
-          }
+      if (!user || !messaging || !('Notification' in window) || !('serviceWorker' in navigator)) return;
+
+      // FCM requires the project's public VAPID key. Do not start a doomed
+      // registration attempt when the deployment has not been configured.
+      if (!VAPID_KEY) {
+        console.info('[FCM] Push notifications are disabled: VITE_FIREBASE_VAPID_KEY is not configured.');
+        return;
+      }
+
+      try {
+        let permission = Notification.permission;
+        if (permission === 'default') permission = await Notification.requestPermission();
+        if (permission !== 'granted' || cancelled) return;
+
+        // Keep FCM in its own scope; VitePWA owns the root /sw.js scope.
+        const registration = await navigator.serviceWorker.register(
+          '/firebase-messaging-sw.js',
+          { scope: FCM_WORKER_SCOPE, updateViaCache: 'none' }
+        );
+        await navigator.serviceWorker.ready;
+        if (cancelled) return;
+
+        const currentToken = await getToken(messaging, {
+          vapidKey: VAPID_KEY,
+          serviceWorkerRegistration: registration,
+        });
+
+        if (currentToken && !cancelled) {
+          await setDoc(doc(db, 'users', user.uid, 'tokens', currentToken), {
+            token: currentToken,
+            createdAt: new Date(),
+            userAgent: navigator.userAgent,
+          });
         }
-      } else if (Notification.permission === 'granted' && messaging && user) {
-         try {
-            const currentToken = await getToken(messaging);
-            if (currentToken) {
-              await setDoc(doc(db, 'users', user.uid, 'tokens', currentToken), {
-                token: currentToken,
-                createdAt: new Date(),
-                userAgent: navigator.userAgent
-              });
-            }
-          } catch (err) {
-            console.log('FCM Token error or VAPID required', err);
-          }
+      } catch (err) {
+        // Push is an optional enhancement; never block the dashboard if a
+        // browser, permission policy, or service worker does not support it.
+        console.warn('[FCM] Push setup unavailable; in-app notifications remain active.', err);
       }
     }
-    setupPush();
+
+    void setupPush();
+    return () => { cancelled = true; };
   }, [user]);
 
   useEffect(() => {
