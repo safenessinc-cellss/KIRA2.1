@@ -161,10 +161,16 @@ export function Dashboard() {
   }, [user]);
 
   const handlePaymentSuccess = () => {
-    // A browser redirect is not proof of payment. Only a verified server webhook may
-    // create an enrollment or transaction; this legacy handler deliberately grants nothing.
-    if (searchParams.get('success') === 'true') {
-      console.warn('[Payments] Checkout returned; awaiting server-side payment confirmation.');
+    // The return URL is not proof of payment. The signed provider webhook is authoritative.
+    const paymentState = searchParams.get('payment');
+    if (paymentState === 'processing' || paymentState === 'pending') {
+      alert('Estamos verificando el pago con el proveedor. El acceso se habilitará automáticamente cuando KIRA reciba la confirmación segura.');
+      setSearchParams({});
+      fetchData();
+    } else if (paymentState === 'cancelled') {
+      alert('El proceso de pago fue cancelado. No se concedió acceso ni se registró un cobro confirmado.');
+      setSearchParams({});
+    } else if (searchParams.get('success') === 'true') {
       setSearchParams({});
       fetchData();
     }
@@ -273,23 +279,9 @@ export function Dashboard() {
 
   const handleStripeCheckout = async (course: any) => {
     if (!user) return;
-    setCheckingOutId(course.id);
-    try {
-      const idToken = await auth.currentUser?.getIdToken();
-      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
-      const resp = await fetch('/api/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
-        body: JSON.stringify({ items: [{ id: course.id, quantity: 1 }], provider: checkoutProvider })
-      });
-      const data = await resp.json();
-      if (!resp.ok || data.error || !data.url) throw new Error(data.error || 'No se pudo iniciar el pago.');
-      window.location.href = data.url;
-    } catch (e: any) {
-      console.error('Checkout redirect error:', e);
-      alert('Error al iniciar el pago: ' + (e.message || String(e)));
-      setCheckingOutId(null);
-    }
+    setCheckoutProvider('stripe');
+    setCartItems([{ ...course, itemType: 'course' }]);
+    setShowPaymentModal(true);
   };
 
   const addToCart = (item: any, type: 'course' | 'book') => {
