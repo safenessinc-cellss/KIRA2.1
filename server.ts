@@ -40,7 +40,7 @@ async function getFirebaseCerts(): Promise<Record<string, string>> {
   const keys = await response.json() as Record<string, string>;
   firebaseCerts = keys;
   const cacheControl = response.headers.get("cache-control") || "";
-  const maxAge = Number(cacheControl.match(/max-age=(\\d+)/)?.[1] || 3600);
+  const maxAge = Number(cacheControl.match(/max-age=(\d+)/)?.[1] || 3600);
   firebaseCertsExpiresAt = Date.now() + Math.max(60, maxAge) * 1000;
   return firebaseCerts;
 }
