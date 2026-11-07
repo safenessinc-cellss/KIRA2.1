@@ -433,7 +433,6 @@ service cloud.firestore {
                     hasOnlyAllowedFields(['studentId', 'studentName', 'studentEmail', 'courseId', 'courseTitle',
                       'assignmentTitle', 'assignmentDescription', 'submissionText', 'submissionUrl',
                       'coachId', 'status', 'submittedAt']) &&
-                    isCoachForStudent(request.resource.data.courseId, request.auth.uid) == false &&
                     exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId)) &&
                     get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.coachId == request.resource.data.coachId &&
                     exists(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + request.resource.data.courseId)) &&
