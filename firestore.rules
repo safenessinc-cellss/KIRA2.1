@@ -284,7 +284,28 @@ service cloud.firestore {
     
     match /enrollments/{enrollmentId} {
       allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid)));
-      allow create: if isAuthenticated() && isValidEnrollment() && request.resource.data.progress == 0 && (!('completed' in request.resource.data) || request.resource.data.completed == false) && (!('courseCompleted' in request.resource.data) || request.resource.data.courseCompleted == false) && (request.resource.data.userId == request.auth.uid || (isApprovedCoach() && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.coachId == request.auth.uid));
+      // Enrollment is a business entitlement, not a client-side payment flag.
+      // Students may self-enroll only in published free courses. Paid enrollments
+      // must be created by a trusted backend after a verified payment webhook.
+      // Coaches may enroll students only in their own courses; admins may support operations.
+      allow create: if isAuthenticated()
+        && isValidEnrollment()
+        && request.resource.data.progress == 0
+        && (!('completed' in request.resource.data) || request.resource.data.completed == false)
+        && (!('courseCompleted' in request.resource.data) || request.resource.data.courseCompleted == false)
+        && exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId))
+        && (
+          isAdmin()
+          || (
+            isApprovedCoach()
+            && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.coachId == request.auth.uid
+          )
+          || (
+            request.resource.data.userId == request.auth.uid
+            && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.status == 'published'
+            && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.price <= 0
+          )
+        );
       allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt']) && 
                     (isAdmin() || (isApprovedCoach() && exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid));
       allow delete: if isAdmin();
