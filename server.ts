@@ -509,12 +509,13 @@ app.post("/api/certificates/issue", async (req, res) => {
     if (!user) return;
     const profile = await fsGet("users", user.uid);
     const admin = user.email?.toLowerCase() === "safeness.c.a@gmail.com" || profile?.role === "admin";
-    if (!profile || (!admin && profile.role !== "coach")) return res.status(403).json({ error: "No tienes permiso para emitir certificados." });
+    if (!profile || (!admin && (profile.role !== "coach" || profile.approvalStatus !== "approved"))) return res.status(403).json({ error: "No tienes permiso para emitir certificados." });
     const requestId = String(req.body?.requestId || "");
     const certificateRequest = requestId ? await fsGet("certificateRequests", requestId) : null;
     const enrollmentId = String(req.body?.enrollmentId || certificateRequest?.enrollmentId || "");
     if (requestId && (!certificateRequest || certificateRequest.status !== "approved")) return res.status(409).json({ error: "La solicitud debe estar aprobada antes de emitir." });
     const enrollment = enrollmentId ? await fsGet("enrollments", enrollmentId) : null;
+    if (requestId && certificateRequest && (certificateRequest.enrollmentId !== enrollmentId || certificateRequest.userId !== enrollment?.userId || certificateRequest.courseId !== enrollment?.courseId)) return res.status(409).json({ error: "La solicitud no coincide con la matrícula y el alumno." });
     if (!enrollment || (Number(enrollment.progress) < 100 && enrollment.completed !== true && enrollment.courseCompleted !== true)) return res.status(409).json({ error: "El alumno aún no ha completado el curso." });
     const course = await fsGet("courses", String(enrollment.courseId || ""));
     if (!course || (!admin && course.coachId !== user.uid)) return res.status(403).json({ error: "Curso no autorizado para este coach." });
