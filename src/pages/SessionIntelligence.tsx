@@ -68,7 +68,7 @@ const sanitizeAnalysis = (analysis: any): LongitudinalAnalysis | null => {
     roleplay_scenarios: sanitizeArray(analysis.roleplay_scenarios),
     nuevos_compromisos: Array.isArray(analysis.nuevos_compromisos) ? analysis.nuevos_compromisos : [],
     focus_heatmap: analysis.focus_heatmap || { pasado_problemas: 0, presente: 0, futuro_soluciones: 0 },
-    metrics: analysis.metrics || { confidence: 0, clarity: 0, energy: 0 }
+    metrics: analysis.metrics || { confidence: null, clarity: null, energy: null }
   };
 };
 
@@ -99,10 +99,10 @@ export default function SessionIntelligence() {
   const [clientName, setClientName] = useState('');
   const [sessionTopic, setSessionTopic] = useState('');
   const [manualTranscript, setManualTranscript] = useState('');
-  const [selectedSentiment, setSelectedSentiment] = useState<'positivo' | 'neutral' | 'estrés' | 'motivación' | 'duda'>('neutral');
-  const [manualConfidence, setManualConfidence] = useState(7);
-  const [manualClarity, setManualClarity] = useState(6);
-  const [manualEnergy, setManualEnergy] = useState(5);
+  const [selectedSentiment, setSelectedSentiment] = useState<'positivo' | 'neutral' | 'estrés' | 'motivación' | 'duda' | ''>('');
+  const [manualConfidence, setManualConfidence] = useState(0);
+  const [manualClarity, setManualClarity] = useState(0);
+  const [manualEnergy, setManualEnergy] = useState(0);
   
   const recognitionRef = useRef<any>(null);
   const messagesRef = useRef<Message[]>([]);
@@ -178,7 +178,7 @@ export default function SessionIntelligence() {
     setIsGeneratingReply(true);
     try {
       const history = messages.map(m => `${m.speaker}: ${m.text}`).join('\n');
-      const prompt = `Eres Kira Coach, una mentora de bienestar y psicóloga de alto rendimiento de Kira AI. 
+      const prompt = `Eres Kira Coach, una mentora profesional de coaching y bienestar; no eres una profesional clínica ni debes diagnosticar. 
       Lee la siguiente conversación de coaching en progreso y escribe una única respuesta breve, empática, profunda y relevante de máximo 2 oraciones para guiar al Cliente o responder al Coach.
       No agregues explicaciones, responde directamente en español de manera profesional y sumamente humana.
 
@@ -320,7 +320,7 @@ export default function SessionIntelligence() {
     3. PROSODIA: No evaluable; solo hay texto, no audio. No infieras tono ni estados clínicos.
     4. ESCENARIOS DE ROLEPLAY: Propón un escenario de simulación.
     5. MANTRA PERSONALIZADO: Genera una frase de poder única.
-    6. MAPA DE CALOR DE ENFOQUE: Calcula el % de la conversación.
+    6. MAPA DE CALOR DE ENFOQUE: Estima la distribución temática del texto y aclara que no es una medición objetiva.\n    No inventes métricas de confianza, claridad o energía: devuelve null si no fueron evaluadas directamente por el coach.
 
     Responde ESTRICTAMENTE en este formato JSON:
     {
@@ -333,7 +333,7 @@ export default function SessionIntelligence() {
       "roleplay_scenarios": ["string"],
       "personal_mantra": "string",
       "focus_heatmap": { "pasado_problemas": number, "presente": number, "futuro_soluciones": number },
-      "metrics": { "confidence": number, "clarity": number, "energy": number },
+      "metrics": { "confidence": number|null, "clarity": number|null, "energy": number|null },
       "sugerencia_proxima_sesion": "string"
     }`;
 
@@ -378,8 +378,8 @@ export default function SessionIntelligence() {
       DATOS GENERALES:
       - Alumno/Cliente: ${clientName}
       - Tema/Intención de la Sesión: ${sessionTopic}
-      - Sentimiento Predominante del Alumno: ${selectedSentiment}
-      - Métricas estimadas por el coach (1-10): Confianza: ${manualConfidence}, Claridad: ${manualClarity}, Energía: ${manualEnergy}
+      - Sentimiento informado por el coach: ${selectedSentiment || 'No informado'}
+      - Métricas estimadas por el coach (0 = no evaluada): Confianza: ${manualConfidence || 'No evaluada'}, Claridad: ${manualClarity || 'No evaluada'}, Energía: ${manualEnergy || 'No evaluada'}
 
       HISTORIAL PREVIO (Contexto):
       ${lastSessionSafe ? `
@@ -397,7 +397,7 @@ export default function SessionIntelligence() {
       3. PROSODIA: No evaluable a partir de texto; no inventes tono ni estados clínicos.
       4. ESCENARIOS DE ROLEPLAY: Propón un escenario de simulación.
       5. MANTRA PERSONALIZADO: Genera una frase de poder única.
-      6. MAPA DE CALOR DE ENFOQUE: Calcula el % de la conversación.
+      6. MAPA DE CALOR DE ENFOQUE: Estima la distribución temática del texto, no una medición objetiva.\n      No inventes métricas: devuelve null si no fueron evaluadas por el coach.
 
       Responde ESTRICTAMENTE en este formato JSON:
       {
@@ -581,7 +581,7 @@ export default function SessionIntelligence() {
                         onChange={e => setSelectedSentiment(e.target.value as any)} 
                         className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-medium outline-none"
                       >
-                        <option value="estrés">Estrés</option>
+                        <option value="">No informado</option>\n                        <option value="estrés">Estrés</option>
                         <option value="positivo">Positivo</option>
                         <option value="neutral">Neutral</option>
                         <option value="motivación">Motivación</option>
@@ -589,7 +589,7 @@ export default function SessionIntelligence() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Confianza ({manualConfidence})</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Confianza ({manualConfidence || "No evaluada"})</label>
                       <input 
                         type="range" 
                         min="1" 
@@ -600,7 +600,7 @@ export default function SessionIntelligence() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Claridad ({manualClarity})</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Claridad ({manualClarity || "No evaluada"})</label>
                       <input 
                         type="range" 
                         min="1" 
@@ -611,7 +611,7 @@ export default function SessionIntelligence() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Energía ({manualEnergy})</label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Energía ({manualEnergy || "No evaluada"})</label>
                       <input 
                         type="range" 
                         min="1" 
@@ -892,7 +892,7 @@ export default function SessionIntelligence() {
                       { label: 'Energía', val: analysis.metrics.energy, color: 'text-amber-600' }
                     ].map((m, i) => (
                       <div key={i} className="text-center">
-                        <div className="text-lg font-black text-slate-800">{m.val}/10</div>
+                        <div className="text-lg font-black text-slate-800">{m.val === null || m.val === undefined ? "No evaluado" : `${m.val}/10`}</div>
                         <div className={`text-[10px] font-bold uppercase ${m.color}`}>{m.label}</div>
                       </div>
                     ))}
