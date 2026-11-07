@@ -2941,15 +2941,6 @@ function SecurityView() {
     }
   };
 
-  const toggleStatus = async (itemId: string, currentStatus: string) => {
-    try {
-      const next = currentStatus === 'published' ? 'draft' : 'published';
-      await updateDoc(doc(db, 'courses', itemId), { status: next, updatedAt: new Date() });
-    } catch (e) {
-      handleFirestoreError(e, OperationType.UPDATE, `courses/${itemId}`);
-    }
-  };
-
   const toggleUserSuspension = async (userId: string, currentStatus: string) => {
     try {
       const next = currentStatus === 'suspended' ? 'approved' : 'suspended';
