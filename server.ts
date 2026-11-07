@@ -190,17 +190,36 @@ app.post("/api/create-checkout-session", async (req, res) => {
     type CheckoutLineItem = NonNullable<Parameters<typeof stripe.checkout.sessions.create>[0]['line_items']>[number];
     const lineItems: CheckoutLineItem[] = [];
     const validated: Array<{id:string;itemType:"course"|"book"}> = [];
+    let cartCurrency: string | null = null;
     for (const item of items) {
+      const productId = String(item.id);
       const collectionName = item.itemType === "course" ? "courses" : "books";
-      const productSnap = await firestore.collection(collectionName).doc(String(item.id)).get();
+      const productSnap = await firestore.collection(collectionName).doc(productId).get();
       if (!productSnap.exists) return res.status(404).json({ error: "Product not found" });
       const product = productSnap.data() || {};
       if (String(product.status || "").toLowerCase() !== "published" && product.published !== true) return res.status(409).json({ error: "Product is not published" });
+
+      // Do not charge users twice for digital access they already own.
+      const accessCollection = item.itemType === "course" ? "enrollments" : "purchases";
+      const accessRef = firestore.collection(accessCollection).doc(decoded.uid + "_" + productId);
+      const accessSnap = await accessRef.get();
+      if (accessSnap.exists) {
+        const accessStatus = String(accessSnap.data()?.status || "").toLowerCase();
+        if (!["cancelled", "refunded", "revoked"].includes(accessStatus)) {
+          return res.status(409).json({ error: "You already have access to this product." });
+        }
+      }
+
       const price = Number(product.price);
       if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: "Invalid server-side price" });
+      const currency = String(product.currency || "usd").toLowerCase();
+      if (!/^[a-z]{3}$/.test(currency)) return res.status(400).json({ error: "Invalid product currency" });
+      if (cartCurrency && cartCurrency !== currency) return res.status(400).json({ error: "All cart items must use the same currency." });
+      cartCurrency = currency;
+
       const title = String(product.title || product.name || "KIRA item").slice(0, 200);
-      lineItems.push({ quantity: 1, price_data: { currency: String(product.currency || "usd").toLowerCase(), unit_amount: Math.round(price * 100), product_data: { name: title, metadata: { productId: String(item.id), itemType: item.itemType } } } });
-      validated.push({ id: String(item.id), itemType: item.itemType });
+      lineItems.push({ quantity: 1, price_data: { currency, unit_amount: Math.round(price * 100), product_data: { name: title, metadata: { productId, itemType: item.itemType } } } });
+      validated.push({ id: productId, itemType: item.itemType });
     }
     const origin = getPublicAppUrl();
     if (lineItems.every(line => Number(line.price_data?.unit_amount || 0) === 0)) {
@@ -218,12 +237,16 @@ app.post("/api/create-checkout-session", async (req, res) => {
       });
       return res.json({ free: true, orderId: freeOrderId });
     }
+    // A five-minute stable key makes identical retry requests return the same Stripe session.
+    const idempotencyKey = createHash("sha256")
+      .update(decoded.uid + "|" + JSON.stringify(validated) + "|" + Math.floor(Date.now() / 300000))
+      .digest("hex");
     const session = await stripe.checkout.sessions.create({
       mode: "payment", payment_method_types: ["card"], line_items: lineItems,
       client_reference_id: decoded.uid, metadata: { userId: decoded.uid, items: JSON.stringify(validated) },
       success_url: origin + "/dashboard?checkout=return&session_id={CHECKOUT_SESSION_ID}",
       cancel_url: origin + "/dashboard?checkout=cancelled"
-    });
+    }, { idempotencyKey });
     return res.json({ url: session.url, sessionId: session.id });
   } catch (err: any) {
     console.error("Stripe checkout create failed", err);
