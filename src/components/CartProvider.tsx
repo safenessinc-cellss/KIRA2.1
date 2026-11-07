@@ -123,28 +123,43 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setCheckingOut(true);
     try {
-      const ids = cartItems.map(item => item.product.id).join(',');
-      const titles = cartItems.map(item => `${item.product.title} (x${item.quantity})`).join(', ');
-      
+      // Digital course/book access is per user; quantity does not grant duplicate access.
+      const checkoutItems = cartItems.map(({ product }) => {
+        if (product.type !== 'course' && product.type !== 'book') {
+          throw new Error(`"${product.title}" no puede comprarse desde este checkout.`);
+        }
+        return { id: product.id, itemType: product.type };
+      });
+      const idToken = await user.getIdToken();
+
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          courseId: ids,
-          userId: user.uid,
-          amount: cartTotal,
-          title: titles.length > 80 ? `${cartItems.length} Productos de Kira` : titles,
-          type: 'cart_purchase'
-        })
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ items: checkoutItems }),
       });
 
-      const data = await response.json();
-      if (data.error) {
-        throw new Error(data.error);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.error) {
+        throw new Error(data.error || 'No se pudo iniciar el checkout.');
       }
-      
+
+      if (data.free === true && typeof data.orderId === 'string') {
+        clearCart();
+        setIsCartOpen(false);
+        toastSuccess('Acceso gratuito confirmado. Ya puedes acceder a tu contenido.');
+        window.location.assign('/dashboard?checkout=free');
+        return;
+      }
+
+      if (typeof data.url !== 'string' || !data.url.startsWith('https://checkout.stripe.com/')) {
+        throw new Error('El servidor no devolvió una URL de checkout válida.');
+      }
+
       clearCart();
-      window.location.href = data.url;
+      window.location.assign(data.url);
     } catch (e: any) {
       console.error("Cart checkout error:", e);
       toastError("Error al procesar el checkout: " + (e.message || String(e)));
