@@ -173,6 +173,7 @@ async function firestoreToken(): Promise<string> {
 }
 function fsValue(value: any): any {
   if (value === null || value === undefined) return { nullValue: null };
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(value)) return { timestampValue: value };
   if (typeof value === "string") return { stringValue: value };
   if (typeof value === "boolean") return { booleanValue: value };
   if (typeof value === "number") return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
