@@ -596,8 +596,14 @@ async function startLocalServer() {
   });
 
   const wss = new WebSocketServer({ noServer: true });
+  const liveConnections = new Map<string, number>();
 
-  wss.on("connection", async (clientWs) => {
+  wss.on("connection", async (clientWs: any) => {
+    const uid = clientWs.firebaseUser?.uid as string | undefined;
+    if (!uid) { clientWs.close(1008, "Authentication required"); return; }
+    const activeConnections = liveConnections.get(uid) || 0;
+    if (activeConnections >= 2) { clientWs.close(1008, "Live session limit reached"); return; }
+    liveConnections.set(uid, activeConnections + 1);
     let session: any = null;
     
     clientWs.on("message", async (data) => {
@@ -643,6 +649,9 @@ async function startLocalServer() {
     });
 
     clientWs.on("close", () => {
+      const remaining = Math.max(0, (liveConnections.get(uid) || 1) - 1);
+      if (remaining === 0) liveConnections.delete(uid);
+      else liveConnections.set(uid, remaining);
       if (session) {
         try {
           session.close();
@@ -653,12 +662,30 @@ async function startLocalServer() {
     });
   });
 
-  server.on("upgrade", (request, socket, head) => {
-    const pathname = request.url ? new URL(request.url, `http://${request.headers.host}`).pathname : "";
-    if (pathname === "/api/live") {
-      wss.handleUpgrade(request, socket, head, (ws) => {
+  server.on("upgrade", async (request, socket, head) => {
+    const url = request.url ? new URL(request.url, `http://${request.headers.host || "localhost"}`) : null;
+    if (!url || url.pathname !== "/api/live") { socket.destroy(); return; }
+    try {
+      const token = url.searchParams.get("token");
+      if (!token) throw new Error("Missing Firebase ID token");
+      const decoded = await getAuth(getFirebaseAuthApp()).verifyIdToken(
+        token,
+        Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
+      );
+      const profileSnap = await getAdminDb().collection("users").doc(decoded.uid).get();
+      const profile = profileSnap.data() || {};
+      const authorizedCoach = profile.role === "coach" && profile.approvalStatus === "approved";
+      const authorizedAdmin = profile.role === "admin" && (
+        decoded.email_verified === true || String(decoded.email || "").toLowerCase() !== "safeness.c.a@gmail.com"
+      );
+      if (!authorizedCoach && !authorizedAdmin) throw new Error("Live access denied");
+      wss.handleUpgrade(request, socket, head, (ws: any) => {
+        ws.firebaseUser = decoded;
         wss.emit("connection", ws, request);
       });
+    } catch {
+      socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+      socket.destroy();
     }
   });
 
