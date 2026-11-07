@@ -517,20 +517,14 @@ function StudentManagementView() {
 
   const getTrafficLight = (student: any) => {
     const lastActivityAt = student.lastActivityAt;
-    const hasPendingInvoice = student.pendingInvoiceAmount > 0; // Mock simulado
 
     if (!lastActivityAt) return { color: 'bg-slate-300', text: 'Sin Actividad', icon: <Clock size={12} />, isRisk: false };
     const date = lastActivityAt.toDate ? lastActivityAt.toDate() : new Date(lastActivityAt);
     const diffDays = Math.floor((new Date().getTime() - date.getTime()) / (1000 * 3600 * 24));
     
-    // Algoritmo de Salud Predictivo: inactivo > 7 días + factura pendiente = Riesgo Abandonamiento
-    if (diffDays >= 7 && student.displayName?.length % 2 === 0 /* Fake mock condition for display */) {
-       return { color: 'bg-purple-500', text: 'Riesgo de Abandono', icon: <AlertCircle size={12} className="text-purple-500" />, isRisk: true };
-    }
-
     if (diffDays < 3) return { color: 'bg-emerald-500', text: 'Activo', icon: <CheckCircle2 size={12} className="text-emerald-500" />, isRisk: false };
     if (diffDays < 7) return { color: 'bg-amber-500', text: 'Inactivo', icon: <AlertTriangle size={12} className="text-amber-500" />, isRisk: false };
-    return { color: 'bg-rose-500', text: 'Crítico', icon: <XCircle size={12} className="text-rose-500" />, isRisk: false };
+    return { color: 'bg-rose-500', text: 'Requiere seguimiento', icon: <XCircle size={12} className="text-rose-500" />, isRisk: true };
   };
 
   const handleNotifyCoach = (studentName: string) => {
@@ -1143,53 +1137,7 @@ function CoachCuratorView() {
     suspended: 'bg-red-100 text-red-700'
   };
 
-  const seedDemoCoaches = async () => {
-    const demos = [
-      {
-        uid: 'demo_coach_1',
-        displayName: 'Ana María Silva',
-        email: 'ana@demo.com',
-        role: 'coach',
-        specialty: 'Arte Terapia y Sanación',
-        bio: 'Sanadora emocional certificada internacionalmente en Arte Terapia integrativa.',
-        photoURL: 'https://picsum.photos/seed/coach_ana/800/1000',
-        approvalStatus: 'approved',
-        createdAt: new Date()
-      },
-      {
-        uid: 'demo_coach_2',
-        displayName: 'Carlos Méndez',
-        email: 'carlos@demo.com',
-        role: 'coach',
-        specialty: 'Liderazgo John Maxwell',
-        bio: 'Mentor certificado de la John Maxwell Team para ejecutivos.',
-        photoURL: 'https://picsum.photos/seed/coach_carlos/800/1000',
-        approvalStatus: 'approved',
-        createdAt: new Date()
-      },
-      {
-        uid: 'demo_coach_3',
-        displayName: 'Elena Ferrán',
-        email: 'elena@demo.com',
-        role: 'coach',
-        specialty: 'Mindfulness para Mujeres',
-        bio: 'Experta en mindfulness enfocada al bienestar de la mujer moderna.',
-        photoURL: 'https://picsum.photos/seed/coach_elena/800/1000',
-        approvalStatus: 'approved',
-        createdAt: new Date()
-      }
-    ];
 
-    try {
-      for (const demo of demos) {
-        await setDoc(doc(db, 'users', demo.uid), demo);
-      }
-      alert('Nuevos Coaches de demostración cargados exitosamente. Visita la página de inicio.');
-    } catch (e) {
-      console.error(e);
-      alert('Error al cargar demos.');
-    }
-  };
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in">
