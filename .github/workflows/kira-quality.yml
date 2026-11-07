@@ -1,4 +1,4 @@
-name: KIRA quality gate
+name: KIRA full quality and security gate
 
 on:
   pull_request:
