@@ -135,7 +135,12 @@ function getAdminDb() { return getFirestore(getFirebaseAdminApp()); }
 async function verifyFirebaseUser(req: express.Request) {
   const header = req.headers.authorization || "";
   if (!header.startsWith("Bearer ")) throw new Error("Missing Firebase bearer token");
-  return getAuth(getFirebaseAuthApp()).verifyIdToken(header.slice(7), Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON));
+  const decoded = await getAuth(getFirebaseAuthApp()).verifyIdToken(header.slice(7), Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON));
+  // The application accepts Google-authenticated Firebase sessions only.
+  if ((decoded as any).firebase?.sign_in_provider !== "google.com") {
+    throw new Error("Google authentication is required");
+  }
+  return decoded;
 }
 function getPublicAppUrl() { return (process.env.APP_URL || "https://kira.coach").replace(/\/$/, ""); }
 
