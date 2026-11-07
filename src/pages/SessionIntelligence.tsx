@@ -41,7 +41,7 @@ interface LongitudinalAnalysis {
     pasado_problemas: number;
     presente: number;
     futuro_soluciones: number;
-  };
+  } | null;
   sugerencia_proxima_sesion: string;
   metrics?: {
     confidence: number | null;
@@ -59,7 +59,29 @@ const sanitizeArray = (value: any, defaultValue: string[] = []): string[] => {
 
 const sanitizeAnalysis = (analysis: any): LongitudinalAnalysis | null => {
   if (!analysis) return null;
-  
+  const score = (value: any): number | null =>
+    typeof value === 'number' && Number.isFinite(value)
+      ? Math.min(10, Math.max(0, value))
+      : null;
+  const rawHeatmap = analysis.focus_heatmap;
+  let focusHeatmap: LongitudinalAnalysis['focus_heatmap'] = null;
+  if (rawHeatmap && ['pasado_problemas', 'presente', 'futuro_soluciones'].every(key => typeof rawHeatmap[key] === 'number' && Number.isFinite(rawHeatmap[key]))) {
+    const values = [
+      Math.max(0, rawHeatmap.pasado_problemas),
+      Math.max(0, rawHeatmap.presente),
+      Math.max(0, rawHeatmap.futuro_soluciones),
+    ];
+    const total = values.reduce((sum, value) => sum + value, 0);
+    if (total > 0) {
+      const normalized = values.map(value => Math.round(value / total * 100));
+      normalized[2] += 100 - normalized.reduce((sum, value) => sum + value, 0);
+      focusHeatmap = {
+        pasado_problemas: normalized[0],
+        presente: normalized[1],
+        futuro_soluciones: normalized[2],
+      };
+    }
+  }
   return {
     ...analysis,
     progreso_metas_anteriores: sanitizeArray(analysis.progreso_metas_anteriores),
@@ -67,8 +89,12 @@ const sanitizeAnalysis = (analysis: any): LongitudinalAnalysis | null => {
     inconsistencias_detectadas: sanitizeArray(analysis.inconsistencias_detectadas),
     roleplay_scenarios: sanitizeArray(analysis.roleplay_scenarios),
     nuevos_compromisos: Array.isArray(analysis.nuevos_compromisos) ? analysis.nuevos_compromisos : [],
-    focus_heatmap: analysis.focus_heatmap || { pasado_problemas: 0, presente: 0, futuro_soluciones: 0 },
-    metrics: { confidence: analysis.metrics?.confidence ?? null, clarity: analysis.metrics?.clarity ?? null, energy: analysis.metrics?.energy ?? null }
+    focus_heatmap: focusHeatmap,
+    metrics: {
+      confidence: score(analysis.metrics?.confidence),
+      clarity: score(analysis.metrics?.clarity),
+      energy: score(analysis.metrics?.energy),
+    },
   };
 };
 
@@ -381,7 +407,7 @@ export default function SessionIntelligence() {
       - Alumno/Cliente: ${clientName}
       - Tema/Intención de la Sesión: ${sessionTopic}
       - Sentimiento informado por el coach: ${selectedSentiment || 'No informado'}
-      - Métricas estimadas por el coach (0 = no evaluada): Confianza: ${manualConfidence || 'No evaluada'}, Claridad: ${manualClarity || 'No evaluada'}, Energía: ${manualEnergy || 'No evaluada'}
+      - Métricas estimadas por el coach (0 = no evaluada): Confianza: ${manualConfidence || 'No evaluada'}, Claridad: ${manualClarity || 'No evaluada'}, Energía: ${manualEnergy || 'No evaluada'}. Si se informaron, devuelve exactamente esos valores; si no, devuelve null.
 
       HISTORIAL PREVIO (Contexto):
       ${lastSessionSafe ? `
