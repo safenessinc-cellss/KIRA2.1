@@ -1709,6 +1709,7 @@ function CoachStudentsActivity() {
         const coursesQ = query(collection(db, 'courses'), where('coachId', '==', user.uid));
         const coursesSnap = await getDocs(coursesQ);
         const courseIds = coursesSnap.docs.map(d => d.id);
+        const coursesById = new Map(coursesSnap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
 
         if (courseIds.length === 0) return;
 
@@ -1718,18 +1719,17 @@ function CoachStudentsActivity() {
           const enrollSnap = await getDocs(enrollQ);
           for (const eDoc of enrollSnap.docs) {
             const sId = eDoc.data().userId;
+            const course = coursesById.get(cid) as any;
+            const enrollmentInfo = { enrollmentId: eDoc.id, courseId: cid, courseTitle: course?.title || 'Curso', courseHours: course?.hours || course?.courseHours || course?.durationHours || 0, progress: Number(eDoc.data().progress || 0) };
             if (!studentsMap.has(sId)) {
               const sProfile = await getDoc(doc(db, 'users', sId));
               if (sProfile.exists()) {
-                const course = coursesById.get(cid) as any;
-                const enrollmentInfo = { enrollmentId: eDoc.id, courseId: cid, courseTitle: course?.title || 'Curso', courseHours: course?.hours || course?.courseHours || course?.durationHours || 0, progress: Number(eDoc.data().progress || 0) };
                 studentsMap.set(sId, { id: sId, ...sProfile.data(), courseProgress: enrollmentInfo.progress, enrollmentId: eDoc.id, courseId: cid, courseTitle: enrollmentInfo.courseTitle, courseHours: enrollmentInfo.courseHours, courseEnrollments: [enrollmentInfo] });
-              } else {
-                const existingStudent = studentsMap.get(sId);
-                if (existingStudent && !existingStudent.courseEnrollments.some((item: any) => item.enrollmentId === eDoc.id)) {
-                  const course = coursesById.get(cid) as any;
-                  existingStudent.courseEnrollments.push({ enrollmentId: eDoc.id, courseId: cid, courseTitle: course?.title || 'Curso', courseHours: course?.hours || course?.courseHours || course?.durationHours || 0, progress: Number(eDoc.data().progress || 0) });
-                }
+              }
+            } else {
+              const existingStudent = studentsMap.get(sId);
+              if (existingStudent && !existingStudent.courseEnrollments.some((item: any) => item.enrollmentId === eDoc.id)) {
+                existingStudent.courseEnrollments.push(enrollmentInfo);
               }
             }
           }
