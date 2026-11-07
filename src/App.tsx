@@ -120,7 +120,7 @@ export default function App() {
                     </Route>
       
                     {/* HR B2B */}
-                    <Route element={<ProtectedRoute allowedRoles={['hr_admin']} />}>
+                    <Route element={<ProtectedRoute allowedRoles={['hr_admin', 'company_admin']} />}>
                       <Route element={<DashboardLayout title="Portal Empresa" />}>
                         <Route path="/hr" element={<HRDashboard />} />
                       </Route>
