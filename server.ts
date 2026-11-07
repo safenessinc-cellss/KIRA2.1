@@ -88,9 +88,10 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-// Endpoint to verify Gemini configuration - we return true so client-side calls are never blocked
+// Report configuration truthfully; never claim the AI is ready when no key is configured.
 app.get("/api/gemini/config", (req, res) => {
-  res.json({ configured: true, isRealKey: isValidGeminiKey(process.env.GEMINI_API_KEY) });
+  const configured = isValidGeminiKey(process.env.GEMINI_API_KEY);
+  res.status(configured ? 200 : 503).json({ configured, isRealKey: configured });
 });
 
 // Helper to extract plain text prompt from any content format passed to Gemini API
@@ -117,7 +118,10 @@ app.post("/api/gemini/generate", async (req, res) => {
     const key = process.env.GEMINI_API_KEY;
     const { model, contents, config } = req.body;
 
-    // SIMULATED FALLBACK ENGINE: Active when GEMINI_API_KEY is missing or is a placeholder
+    // Keep the simulated response engine strictly local to development.
+    if (!isValidGeminiKey(key) && process.env.NODE_ENV === "production") {
+      return res.status(503).json({ error: "El servicio de IA no está configurado. Contacta al administrador." });
+    }
     if (!isValidGeminiKey(key)) {
       const promptText = extractPromptText(contents);
       let simulatedText = "";
