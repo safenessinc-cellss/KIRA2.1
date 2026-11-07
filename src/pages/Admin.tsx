@@ -37,21 +37,21 @@ export function AdminMonitor() {
   };
 
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard Ejecutivo', icon: <LayoutDashboard size={18}/>, category: 'Centro de Mando' },
-    { id: 'analytics', label: 'Business Intelligence', icon: <TrendingUp size={18}/>, category: 'Centro de Mando', perm: 'system' },
+    { id: 'dashboard', label: 'Resumen Ejecutivo', icon: <LayoutDashboard size={18}/>, category: 'Visión y Analítica' },
+    { id: 'analytics', label: 'Business Intelligence', icon: <TrendingUp size={18}/>, category: 'Visión y Analítica', perm: 'system' },
 
-    { id: 'security', label: 'Control de Identidad', icon: <ShieldCheck size={18}/>, category: 'Gobernanza y Acceso', superOnly: true },
+    { id: 'security', label: 'Control de Identidad', icon: <ShieldCheck size={18}/>, category: 'Seguridad y Gobernanza', superOnly: true },
     { id: 'campaign_history', label: 'Ciberseguridad y Logs', icon: <ShieldAlert size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
     { id: 'ai_coaches', label: 'IA para Coaches', icon: <Sparkles size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
 
-    { id: 'approvals', label: 'Aprobaciones de Usuarios', icon: <ShieldCheck size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
+    { id: 'approvals', label: 'Aprobaciones de Usuarios', icon: <ShieldCheck size={18}/>, category: 'Personas y Academia', perm: 'users' },
     { id: 'coaches', label: 'Estrategia de Coaches', icon: <UserCheck size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
     { id: 'students', label: 'Directorio 360 de Alumnos', icon: <Users size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
     { id: 'books', label: 'Biblioteca de Libros', icon: <BookOpen size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
     { id: 'content', label: 'CMS Académico', icon: <ShoppingBag size={18}/>, category: 'Operaciones Académicas', perm: 'billing' },
 
-    { id: 'promotions', label: 'Gestión de Promociones', icon: <Star size={18}/>, category: 'Crecimiento y Marketing', perm: 'billing' },
-    { id: 'settlement', label: 'Centro de Liquidación', icon: <PieChartIcon size={18}/>, category: 'Motor Financiero', perm: 'billing' },
+    { id: 'promotions', label: 'Gestión de Promociones', icon: <Star size={18}/>, category: 'Catálogo y Marketing', perm: 'billing' },
+    { id: 'settlement', label: 'Centro de Liquidación', icon: <PieChartIcon size={18}/>, category: 'Finanzas y Liquidaciones', perm: 'billing' },
     { id: 'transactions', label: 'Finanzas Globales', icon: <CreditCard size={18}/>, category: 'Motor Financiero', perm: 'billing' },
   ];
 
@@ -63,11 +63,11 @@ export function AdminMonitor() {
   });
 
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-    'Centro de Mando': true,
-    'Gobernanza y Acceso': true,
-    'Operaciones Académicas': true,
-    'Crecimiento y Marketing': true,
-    'Motor Financiero': true
+    'Visión y Analítica': true,
+    'Seguridad y Gobernanza': true,
+    'Personas y Academia': true,
+    'Catálogo y Marketing': true,
+    'Finanzas y Liquidaciones': true
   });
 
   const categories = Array.from(new Set(filteredNav.map(n => n.category)));
@@ -85,7 +85,7 @@ export function AdminMonitor() {
            <Zap className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={16} />
            <input 
              type="text" 
-             placeholder="Omnibar: Búsqueda y acciones..." 
+             placeholder="Buscar módulos y secciones..." 
              value={searchQuery}
              onChange={e => setSearchQuery(e.target.value)}
              className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-12 py-3 text-[13px] outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm transition-all"
@@ -94,39 +94,6 @@ export function AdminMonitor() {
              ⌘K
            </div>
         </div>
-        {isSuperAdmin && (
-           <button 
-             onClick={async () => {
-               const confirmSeed = window.confirm("¿Generar datos de prueba en la base de datos vacía? Esto simulará promociones, transacciones y alumnos.");
-               if (!confirmSeed) return;
-               try {
-                  await addDoc(collection(db, 'promotions'), {
-                     title: 'Beca KIRA 2026',
-                     description: 'Descuento especial por registro.',
-                     code: 'Beca2026',
-                     type: 'Descuento',
-                     status: 'active',
-                     priority: 1,
-                     createdAt: new Date().toISOString()
-                  });
-                  await addDoc(collection(db, 'transactions'), {
-                     amount: 149.00,
-                     type: 'payment',
-                     status: 'completed',
-                     description: 'Plan Premium',
-                     userEmail: 'demo@user.com',
-                     createdAt: new Date().toISOString()
-                  });
-                  alert('Datos semilla generados con éxito.');
-               } catch(e) {
-                  console.error(e);
-               }
-             }}
-             className="w-full justify-center flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition shadow-md"
-           >
-             <Zap size={14} className="text-amber-400" /> Cargar Demo Data Inicial
-           </button>
-        )}
 
         <div className="flex flex-col gap-2">
           {categories.map(cat => (
@@ -538,7 +505,7 @@ function GlobalDashboardView() {
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2">
       <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200">
         <h2 className="font-black text-slate-800 tracking-tight flex items-center gap-2">
-          <Activity size={20} className="text-kirateal" /> Command Center Executive
+          <Activity size={20} className="text-kirateal" /> Resumen Ejecutivo
         </h2>
         <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
           {[7, 30, 90].map(d => (
@@ -1427,54 +1394,6 @@ function CoachCuratorView() {
     suspended: 'bg-red-100 text-red-700'
   };
 
-  const seedDemoCoaches = async () => {
-    const demos = [
-      {
-        uid: 'demo_coach_1',
-        displayName: 'Ana María Silva',
-        email: 'ana@demo.com',
-        role: 'coach',
-        specialty: 'Arte Terapia y Sanación',
-        bio: 'Sanadora emocional certificada internacionalmente en Arte Terapia integrativa.',
-        photoURL: 'https://picsum.photos/seed/coach_ana/800/1000',
-        approvalStatus: 'approved',
-        createdAt: new Date()
-      },
-      {
-        uid: 'demo_coach_2',
-        displayName: 'Carlos Méndez',
-        email: 'carlos@demo.com',
-        role: 'coach',
-        specialty: 'Liderazgo John Maxwell',
-        bio: 'Mentor certificado de la John Maxwell Team para ejecutivos.',
-        photoURL: 'https://picsum.photos/seed/coach_carlos/800/1000',
-        approvalStatus: 'approved',
-        createdAt: new Date()
-      },
-      {
-        uid: 'demo_coach_3',
-        displayName: 'Elena Ferrán',
-        email: 'elena@demo.com',
-        role: 'coach',
-        specialty: 'Mindfulness para Mujeres',
-        bio: 'Experta en mindfulness enfocada al bienestar de la mujer moderna.',
-        photoURL: 'https://picsum.photos/seed/coach_elena/800/1000',
-        approvalStatus: 'approved',
-        createdAt: new Date()
-      }
-    ];
-
-    try {
-      for (const demo of demos) {
-        await setDoc(doc(db, 'users', demo.uid), demo);
-      }
-      alert('Nuevos Coaches de demostración cargados exitosamente. Visita la página de inicio.');
-    } catch (e) {
-      console.error(e);
-      alert('Error al cargar demos.');
-    }
-  };
-
   return (
     <div className="flex flex-col gap-6 animate-in fade-in">
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
@@ -1483,17 +1402,7 @@ function CoachCuratorView() {
             <h3 className="font-bold text-slate-800 text-sm">Panel de Control de Coaches</h3>
             <p className="text-[11px] text-slate-500 mt-0.5">Gestión de identidad, aprobación y catálogo.</p>
           </div>
-          <div className="flex gap-2">
-             <button 
-               onClick={seedDemoCoaches}
-               className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold hover:bg-slate-200 transition-colors"
-             >
-                Cargar Demos
-             </button>
-             <div className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-[10px] font-bold">
-                Coaches: {coaches.length}
-             </div>
-          </div>
+          <div className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-[10px] font-bold">Coaches: {coaches.length}</div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
