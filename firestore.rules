@@ -333,8 +333,8 @@ service cloud.firestore {
     
     match /sessions/{sessionId} {
       allow read: if isAdmin() || (isAuthenticated() && (resource.data.coachId == request.auth.uid || resource.data.userId == request.auth.uid));
-      allow create: if isAuthenticated() && (isAdmin() || request.resource.data.coachId == request.auth.uid);
-      allow update: if isAuthenticated() && (isAdmin() || resource.data.coachId == request.auth.uid);
+      allow create: if isAdmin() || (isApprovedCoach() && request.resource.data.coachId == request.auth.uid);
+      allow update: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid && request.resource.data.coachId == request.auth.uid && areImmutableFieldsUnchanged(['coachId', 'userId', 'createdAt', 'startedAt']));
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
     }
     
@@ -375,8 +375,8 @@ service cloud.firestore {
     }
 
     match /messages/{messageId} {
-      allow read: if isAuthenticated() && (isAdmin() || resource.data.chatId.matches('.*' + request.auth.uid + '.*'));
-      allow create: if isAuthenticated() && isValidMessage() && request.auth.uid == request.resource.data.senderId;
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.chatId.matches('(^|.*_)' + request.auth.uid + '(_.*|$)'));
+      allow create: if isAuthenticated() && isValidMessage() && request.auth.uid == request.resource.data.senderId && request.resource.data.chatId.matches('(^|.*_)' + request.auth.uid + '(_.*|$)');
       allow update, delete: if isAdmin();
     }
 
@@ -442,7 +442,8 @@ service cloud.firestore {
     }
 
     match /campaign_logs/{id} {
-      allow read, create: if isAdmin() || isApprovedCoach();
+      allow read: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+      allow create: if isAdmin() || (isApprovedCoach() && request.resource.data.coachId == request.auth.uid);
       allow update, delete: if false;
     }
 
@@ -507,8 +508,7 @@ service cloud.firestore {
     }
 
     match /stats/{id} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if isAdmin();
     }
 
     
