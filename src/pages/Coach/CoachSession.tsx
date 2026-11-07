@@ -53,49 +53,36 @@ export function CoachSession() {
   const [isSessionStarted, setIsSessionStarted] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  // Simular transcripción en tiempo real durante la grabación
+  // Transcripción de voz real del navegador; no insertar diálogos ficticios.
   useEffect(() => {
-    if (isRecording && !isPaused) {
-      transcriptIntervalRef.current = setInterval(() => {
-        const mockPhrases = [
-          'Coach: ¿Cómo te sientes hoy con respecto a tu progreso?',
-          'Alumno: Me siento bien, pero creo que podría avanzar más rápido.',
-          'Coach: ¿Qué crees que te está frenando?',
-          'Alumno: A veces me distraigo con otras tareas.',
-          'Coach: Es normal. Vamos a crear un plan de acción.',
-          'Alumno: Me gustaría tener más estructura en mi día.',
-          'Coach: Excelente. Vamos a trabajar en eso.',
-          'Alumno: ¿Qué técnica de enfoque recomiendas?',
-          'Coach: La técnica Pomodoro podría funcionar muy bien para ti.'
-        ];
-        
-        const randomPhrase = mockPhrases[Math.floor(Math.random() * mockPhrases.length)];
-        const isCoach = randomPhrase.startsWith('Coach:');
-        
-        setTranscript(prev => [
-          ...prev,
-          {
-            speaker: isCoach ? 'coach' : 'student',
-            text: randomPhrase.replace(/^(Coach|Alumno): /, ''),
-            timestamp: sessionDuration
-          }
-        ]);
-        
-        setCurrentTranscript(randomPhrase);
-      }, 3000);
-    } else {
-      if (transcriptIntervalRef.current) {
-        clearInterval(transcriptIntervalRef.current);
-        transcriptIntervalRef.current = null;
-      }
+    if (!isRecording || isPaused) return;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      toastError('Transcripción no disponible en este navegador. La grabación de audio continuará.');
+      return;
     }
-    
-    return () => {
-      if (transcriptIntervalRef.current) {
-        clearInterval(transcriptIntervalRef.current);
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'es-ES';
+    recognition.onresult = (event: any) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const text = String(result[0]?.transcript || '').trim();
+        if (result.isFinal && text) {
+          setTranscript(prev => [...prev, { speaker: 'student', text, timestamp: sessionDuration }]);
+          setCurrentTranscript('');
+        } else interim += text;
       }
+      setCurrentTranscript(interim);
     };
-  }, [isRecording, isPaused, sessionDuration]);
+    recognition.onerror = (event: any) => {
+      if (event.error === 'not-allowed') toastError('Permiso de micrófono/transcripción denegado.');
+    };
+    try { recognition.start(); } catch (error) { console.warn('Speech recognition start:', error); }
+    return () => { try { recognition.stop(); } catch {} };
+  }, [isRecording, isPaused]);
 
   // Timer de duración
   useEffect(() => {
@@ -154,6 +141,8 @@ export function CoachSession() {
         startedAt: new Date(),
         transcript: [],
         analysis: null,
+        transcriptionMode: 'browser-speech-recognition',
+        consentConfirmed: true,
         createdAt: new Date()
       };
       
@@ -369,6 +358,7 @@ export function CoachSession() {
                      isPaused ? 'Pausado' : 'Sesión finalizada'}
                   </span>
                   <p className="text-xs text-slate-500">{sessionTitle}</p>
+              <p className="text-[11px] text-amber-700 mt-1">Confirma el consentimiento de todas las personas antes de grabar. El audio no se sube automáticamente.</p>
                 </div>
               </div>
               
@@ -421,7 +411,7 @@ export function CoachSession() {
             </div>
             
             {transcript.length === 0 ? (
-              <p className="text-slate-400 text-sm italic">Esperando transcripción...</p>
+              <p className="text-slate-400 text-sm italic">Esperando voz real. No se generan diálogos ficticios.</p>
             ) : (
               <div className="space-y-3">
                 {transcript.map((segment, index) => (
@@ -445,6 +435,7 @@ export function CoachSession() {
                 ))}
               </div>
             )}
+            {currentTranscript && <p className="text-sm text-slate-500 italic mt-3">{currentTranscript}</p>}
           </div>
 
           {/* Análisis de IA */}
