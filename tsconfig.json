@@ -24,5 +24,8 @@
     "resolveJsonModule": true,
     "incremental": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "src/pages/coach/**"
+  ]
 }
