@@ -247,8 +247,8 @@ export function Dashboard() {
       }
       const studentName = user.displayName || user.name || user.email || 'Alumno KIRA';
       const created = await addDoc(collection(db, 'certificateRequests'), {
-        userId: user.uid, studentName, courseId: enrollment.courseId, courseTitle: course.title,
-        coachId: course.coachId || '', coachName, hours, paid: true, courseCompleted: true,
+        userId: user.uid, enrollmentId: enrollment.id, studentName, courseId: enrollment.courseId, courseTitle: course.title,
+        coachId: course.coachId || '', coachName, hours, paid: false, paymentStatus: 'pending_verification', courseCompleted: true,
         progress: Number(enrollment.progress || 100), status: 'pending', requestedAt: new Date()
       });
       setMyCertificateRequests(prev => [...prev, { id: created.id, courseId: enrollment.courseId, status: 'pending', courseTitle: course.title }]);
