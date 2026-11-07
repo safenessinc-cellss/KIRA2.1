@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import { 
   Mic, MicOff, Brain, Sparkles, AlertCircle, FileText, 
@@ -13,6 +13,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 // ============================================
 // INTERFACES
 // ============================================
+async function getSessionAiHeaders() {
+  const token = await auth.currentUser?.getIdToken();
+  if (!token) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+  return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
+}
+
 interface Insight {
   type: 'moment' | 'action' | 'sentiment' | 'pattern';
   content: string;
@@ -152,7 +158,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getSessionAiHeaders(),
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
@@ -195,7 +201,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getSessionAiHeaders(),
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt
@@ -362,7 +368,7 @@ export default function SessionIntelligence() {
     try {
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getSessionAiHeaders(),
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
@@ -448,7 +454,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getSessionAiHeaders(),
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
