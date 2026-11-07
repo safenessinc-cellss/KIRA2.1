@@ -237,7 +237,8 @@ export function Dashboard() {
       const coachName = course.coachName || coach?.displayName || coach?.name || '';
       const hours = Number(course.hours || course.courseHours || course.durationHours || course.totalHours || 0);
       const txSnap = await getDocs(query(collection(db, 'transactions'), where('userId', '==', user.uid), where('courseId', '==', enrollment.courseId)));
-      if (!txSnap.size && enrollment.paid !== true && enrollment.paymentStatus !== 'paid') {
+      const paymentRequired = Number(course.price || 0) > 0;
+      if (paymentRequired && !txSnap.size && enrollment.paid !== true && enrollment.paymentStatus !== 'paid') {
         alert('No encontramos un pago confirmado para este curso. Contacta con soporte si ya pagaste.');
         return;
       }
@@ -248,7 +249,7 @@ export function Dashboard() {
       const studentName = user.displayName || user.name || user.email || 'Alumno KIRA';
       const created = await addDoc(collection(db, 'certificateRequests'), {
         userId: user.uid, enrollmentId: enrollment.id, studentName, courseId: enrollment.courseId, courseTitle: course.title,
-        coachId: course.coachId || '', coachName, hours, paid: false, paymentStatus: 'pending_verification', courseCompleted: true,
+        coachId: course.coachId || '', coachName, hours, paymentRequired, paid: !paymentRequired, paymentStatus: paymentRequired ? 'pending_verification' : 'not_required', courseCompleted: true,
         progress: Number(enrollment.progress || 100), status: 'pending', requestedAt: new Date()
       });
       setMyCertificateRequests(prev => [...prev, { id: created.id, courseId: enrollment.courseId, status: 'pending', courseTitle: course.title }]);
