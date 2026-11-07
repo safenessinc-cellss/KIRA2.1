@@ -7,7 +7,7 @@ import {
   Loader2, TrendingUp, TrendingDown, AlertCircle, Zap, Mail, 
   ChevronRight, BarChart3, Sparkles, Users, DollarSign, 
   Eye, ShoppingCart, CheckCircle2, Target, Rocket, Brain,
-  FileText, Send, Clock, ArrowRight
+  FileText, Send, Clock, ArrowRight, Share2
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useToast } from '@/src/hooks/useToast';
@@ -92,18 +92,18 @@ export function CoachCrmAudit() {
       });
 
       setStats({
-        prospects: prospectCount || Math.floor(Math.random() * 50) + 10,
-        studioViews: totalViews || Math.floor(Math.random() * 200) + 50,
-        checkouts: checkouts || Math.floor(Math.random() * 30) + 5,
-        enrollments: enrollments || Math.floor(Math.random() * 20) + 3,
-        revenue: totalRevenue || Math.floor(Math.random() * 5000) + 500
+        prospects: prospectCount,
+        studioViews: totalViews,
+        checkouts,
+        enrollments,
+        revenue: totalRevenue
       });
 
       // Construir datos del embudo
-      const p = prospectCount || Math.floor(Math.random() * 50) + 10;
-      const v = totalViews || Math.floor(Math.random() * 200) + 50;
-      const c = checkouts || Math.floor(Math.random() * 30) + 5;
-      const e = enrollments || Math.floor(Math.random() * 20) + 3;
+      const p = prospectCount;
+      const v = totalViews;
+      const c = checkouts;
+      const e = enrollments;
 
       setFunnelData([
         { stage: 'Prospectos', count: p, conversion: 100 },
@@ -118,14 +118,9 @@ export function CoachCrmAudit() {
   };
 
   const fetchRevenueHistory = async () => {
-    // Datos simulados para el gráfico
-    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    const data = months.slice(0, 6).map((month, i) => ({
-      month,
-      ingresos: Math.floor(Math.random() * 2000) + 500 + (i * 200),
-      alumnos: Math.floor(Math.random() * 10) + 2 + (i * 1.5)
-    }));
-    setRevenueHistory(data);
+    // No fabricated revenue: a real monthly ledger aggregation will populate this
+    // once verified server-side transactions are available to the coach scope.
+    setRevenueHistory([]);
   };
 
   const runAudit = async () => {
