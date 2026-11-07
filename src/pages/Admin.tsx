@@ -200,7 +200,7 @@ function UserApprovalsView() {
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'users'), snap => {
-      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const rows: any[] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setItems(rows.filter(row => String(row.status || '').toLowerCase() === 'pending' || (String(row.role || '').toLowerCase().includes('coach') && row.approved !== true && !['approved','rejected','active'].includes(String(row.status || '').toLowerCase()))));
       setLoading(false); setError('');
     }, err => { console.error('User approval list failed', err); setLoading(false); setError('No se pudieron cargar las aprobaciones. Revisa los permisos de Firestore.'); });
@@ -233,7 +233,7 @@ function StudentManagementView() {
   const [search, setSearch] = useState('');
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'users'), snap => {
-      setStudents(snap.docs.map(d=>({id:d.id,...d.data()})).filter(row=>['student','alumno','learner'].includes(String(row.role || row.type || '').toLowerCase())));
+      const rows: any[] = snap.docs.map(d=>({id:d.id,...d.data()})); setStudents(rows.filter(row=>['student','alumno','learner'].includes(String(row.role || row.type || '').toLowerCase())));
       setLoading(false); setError('');
     }, err => { console.error('Students list failed', err); setLoading(false); setError('No se pudo cargar el listado de alumnos.'); });
     return () => unsub();
