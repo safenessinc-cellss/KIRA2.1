@@ -81,21 +81,28 @@ function getGeminiAI() {
 
 // Firebase Admin verifies identity and performs trusted payment writes.
 // Set FIREBASE_SERVICE_ACCOUNT_JSON as a Vercel encrypted secret.
+function getFirebaseAuthApp() {
+  const existing = getApps().find(app => app.name === "kira-auth");
+  if (existing) return existing;
+  // Firebase ID-token verification uses Google's public signing keys and project ID.
+  return initializeApp({ projectId: process.env.VITE_FIREBASE_PROJECT_ID || "kira2-a6a20" }, "kira-auth");
+}
 function getFirebaseAdminApp() {
-  if (getApps().length) return getApps()[0];
+  const existing = getApps().find(app => app.name === "kira-admin");
+  if (existing) return existing;
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not configured");
   const serviceAccount = JSON.parse(raw);
   return initializeApp({
     credential: cert(serviceAccount),
     projectId: serviceAccount.project_id || process.env.VITE_FIREBASE_PROJECT_ID || "kira2-a6a20"
-  });
+  }, "kira-admin");
 }
 function getAdminDb() { return getFirestore(getFirebaseAdminApp()); }
 async function verifyFirebaseUser(req: express.Request) {
   const header = req.headers.authorization || "";
   if (!header.startsWith("Bearer ")) throw new Error("Missing Firebase bearer token");
-  return getAuth(getFirebaseAdminApp()).verifyIdToken(header.slice(7));
+  return getAuth(getFirebaseAuthApp()).verifyIdToken(header.slice(7));
 }
 function getPublicAppUrl() { return (process.env.APP_URL || "https://kira.coach").replace(/\/$/, ""); }
 
