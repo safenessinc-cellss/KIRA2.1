@@ -90,6 +90,17 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved';
     }
     
+    function isCoachForStudent(courseId, studentId) {
+      return isApprovedCoach() &&
+             courseId is string && studentId is string &&
+             exists(/databases/$(database)/documents/courses/$(courseId)) &&
+             get(/databases/$(database)/documents/courses/$(courseId)).data.coachId == request.auth.uid &&
+             exists(/databases/$(database)/documents/enrollments/$(studentId + '_' + courseId)) &&
+             get(/databases/$(database)/documents/enrollments/$(studentId + '_' + courseId)).data.userId == studentId &&
+             get(/databases/$(database)/documents/enrollments/$(studentId + '_' + courseId)).data.courseId == courseId &&
+             get(/databases/$(database)/documents/enrollments/$(studentId + '_' + courseId)).data.status in ['active', 'completed'];
+    }
+
     function hasOnlyAllowedFields(allowedFields) {
       return request.resource.data.keys().hasOnly(allowedFields);
     }
@@ -246,10 +257,11 @@ service cloud.firestore {
 
     function isValidNotification() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['userId', 'title', 'message', 'type', 'read', 'createdAt']) &&
+      return hasOnlyAllowedFields(['userId', 'title', 'message', 'type', 'read', 'createdAt', 'courseId']) &&
              data.userId is string && data.title is string && data.message is string &&
-             data.type in ['system', 'message', 'course', 'ai'] &&
-             data.read is bool && data.createdAt is timestamp;
+             data.type in ['system', 'message', 'course', 'ai', 'coach_message', 'homework_review'] &&
+             data.read is bool && data.createdAt is timestamp &&
+             (!('courseId' in data) || data.courseId is string);
     }
 
     function isValidAutomation() {
@@ -378,7 +390,12 @@ service cloud.firestore {
 
     match /notifications/{id} {
       allow read: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
-      allow create: if isAuthenticated() && isValidNotification();
+      allow create: if isAuthenticated() && isValidNotification() &&
+                    (isAdmin() ||
+                     request.resource.data.userId == request.auth.uid ||
+                     (request.resource.data.type in ['coach_message', 'homework_review'] &&
+                      request.resource.data.courseId is string &&
+                      isCoachForStudent(request.resource.data.courseId, request.resource.data.userId)));
       allow update: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
@@ -397,6 +414,43 @@ service cloud.firestore {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
       allow create: if isApprovedCoach() && request.resource.data.coachId == request.auth.uid;
       allow update, delete: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+    }
+
+    match /homework_submissions/{submissionId} {
+      allow read: if isAdmin() ||
+                  (isAuthenticated() && resource.data.studentId == request.auth.uid) ||
+                  (isApprovedCoach() && resource.data.coachId == request.auth.uid &&
+                   isCoachForStudent(resource.data.courseId, resource.data.studentId));
+      allow create: if isAuthenticated() &&
+                    request.resource.data.studentId == request.auth.uid &&
+                    request.resource.data.coachId is string &&
+                    request.resource.data.courseId is string &&
+                    request.resource.data.assignmentTitle is string &&
+                    request.resource.data.submissionText is string &&
+                    request.resource.data.submissionText.size() <= 20000 &&
+                    request.resource.data.status == 'pending' &&
+                    request.resource.data.submittedAt is timestamp &&
+                    hasOnlyAllowedFields(['studentId', 'studentName', 'studentEmail', 'courseId', 'courseTitle',
+                      'assignmentTitle', 'assignmentDescription', 'submissionText', 'submissionUrl',
+                      'coachId', 'status', 'submittedAt']) &&
+                    isCoachForStudent(request.resource.data.courseId, request.auth.uid) == false &&
+                    exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId)) &&
+                    get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.coachId == request.resource.data.coachId &&
+                    exists(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + request.resource.data.courseId)) &&
+                    get(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + request.resource.data.courseId)).data.userId == request.auth.uid &&
+                    get(/databases/$(database)/documents/enrollments/$(request.auth.uid + '_' + request.resource.data.courseId)).data.status in ['active', 'completed'];
+      allow update: if isAdmin() ||
+                    (isApprovedCoach() && resource.data.coachId == request.auth.uid &&
+                     isCoachForStudent(resource.data.courseId, resource.data.studentId) &&
+                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['score', 'feedback', 'status', 'reviewedAt', 'reviewedBy']) &&
+                     request.resource.data.status == 'reviewed' &&
+                     request.resource.data.reviewedBy == request.auth.uid &&
+                     request.resource.data.reviewedAt is timestamp &&
+                     request.resource.data.score is number &&
+                     request.resource.data.score >= 0 && request.resource.data.score <= 100 &&
+                     request.resource.data.feedback is string &&
+                     request.resource.data.feedback.size() <= 5000);
+      allow delete: if isAdmin();
     }
 
     match /course_activity/{id} {
