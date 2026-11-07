@@ -9,7 +9,7 @@ import { AdminBooksView } from './AdminBooksView';
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books';
+type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates';
 
 export function AdminMonitor() {
   const { user } = useAuth();
@@ -37,37 +37,35 @@ export function AdminMonitor() {
   };
 
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard Ejecutivo', icon: <LayoutDashboard size={18}/>, category: 'Centro de Mando' },
-    { id: 'analytics', label: 'Business Intelligence', icon: <TrendingUp size={18}/>, category: 'Centro de Mando', perm: 'system' },
-
-    { id: 'security', label: 'Control de Identidad', icon: <ShieldCheck size={18}/>, category: 'Gobernanza y Acceso', superOnly: true },
-    { id: 'campaign_history', label: 'Ciberseguridad y Logs', icon: <ShieldAlert size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
-    { id: 'ai_coaches', label: 'IA para Coaches', icon: <Sparkles size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
-
-    { id: 'approvals', label: 'Aprobaciones de Usuarios', icon: <ShieldCheck size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
-    { id: 'coaches', label: 'Estrategia de Coaches', icon: <UserCheck size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
-    { id: 'students', label: 'Directorio 360 de Alumnos', icon: <Users size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
-    { id: 'books', label: 'Biblioteca de Libros', icon: <BookOpen size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
-    { id: 'content', label: 'CMS Académico', icon: <ShoppingBag size={18}/>, category: 'Operaciones Académicas', perm: 'billing' },
-
-    { id: 'promotions', label: 'Gestión de Promociones', icon: <Star size={18}/>, category: 'Crecimiento y Marketing', perm: 'billing' },
-    { id: 'settlement', label: 'Centro de Liquidación', icon: <PieChartIcon size={18}/>, category: 'Motor Financiero', perm: 'billing' },
-    { id: 'transactions', label: 'Finanzas Globales', icon: <CreditCard size={18}/>, category: 'Motor Financiero', perm: 'billing' },
+    { id: 'dashboard', label: 'Resumen ejecutivo', icon: <LayoutDashboard size={18}/>, category: 'Inicio y métricas' },
+    { id: 'analytics', label: 'Analítica e indicadores', icon: <TrendingUp size={18}/>, category: 'Inicio y métricas', perm: 'system' },
+    { id: 'approvals', label: 'Aprobaciones y onboarding', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
+    { id: 'students', label: 'Gestión de alumnos', icon: <Users size={18}/>, category: 'Personas y acceso', perm: 'users' },
+    { id: 'coaches', label: 'Gestión de coaches', icon: <UserCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
+    { id: 'security', label: 'Roles y seguridad', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', superOnly: true },
+    { id: 'campaign_history', label: 'Auditoría y logs', icon: <ShieldAlert size={18}/>, category: 'Personas y acceso', perm: 'system' },
+    { id: 'content', label: 'Cursos y contenidos', icon: <ShoppingBag size={18}/>, category: 'Academia y certificados', perm: 'billing' },
+    { id: 'books', label: 'Biblioteca y ebooks', icon: <BookOpen size={18}/>, category: 'Academia y certificados', perm: 'users' },
+    { id: 'certificates', label: 'Solicitudes de certificados', icon: <FileText size={18}/>, category: 'Academia y certificados', perm: 'users' },
+    { id: 'ai_coaches', label: 'Herramientas IA para coaches', icon: <Sparkles size={18}/>, category: 'Academia y certificados', perm: 'system' },
+    { id: 'transactions', label: 'Pagos y transacciones', icon: <CreditCard size={18}/>, category: 'Finanzas', perm: 'billing' },
+    { id: 'settlement', label: 'Liquidaciones de coaches', icon: <PieChartIcon size={18}/>, category: 'Finanzas', perm: 'billing' },
+    { id: 'promotions', label: 'Promociones y descuentos', icon: <Star size={18}/>, category: 'Marketing y ventas', perm: 'billing' },
   ];
 
   const filteredNav = navItems.filter(item => {
-    if (item.superOnly && !isSuperAdmin) return false;
-    if (!item.superOnly && !hasPerm(item)) return false;
     if (searchQuery && !item.label.toLowerCase().includes(searchQuery.toLowerCase()) && !item.category.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
 
+  const canOpen = (item: any) => item.superOnly ? isSuperAdmin : hasPerm(item);
+
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-    'Centro de Mando': true,
-    'Gobernanza y Acceso': true,
-    'Operaciones Académicas': true,
-    'Crecimiento y Marketing': true,
-    'Motor Financiero': true
+    'Inicio y métricas': true,
+    'Personas y acceso': true,
+    'Academia y certificados': true,
+    'Finanzas': true,
+    'Marketing y ventas': true
   });
 
   const categories = Array.from(new Set(filteredNav.map(n => n.category)));
@@ -77,15 +75,15 @@ export function AdminMonitor() {
   };
 
   return (
-    <div className="flex flex-col md:flex-row gap-8">
+    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
       {/* Sidebar Refinada */}
-      <div className="w-full md:w-72 flex flex-col gap-4">
-        {/* Command Center Omnibar */}
+      <aside className="w-full lg:w-72 lg:shrink-0 lg:sticky lg:top-4 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        {/* Búsqueda rápida de módulos */}
         <div className="relative group mb-2">
            <Zap className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={16} />
            <input 
              type="text" 
-             placeholder="Omnibar: Búsqueda y acciones..." 
+             placeholder="Buscar módulo..." 
              value={searchQuery}
              onChange={e => setSearchQuery(e.target.value)}
              className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-12 py-3 text-[13px] outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm transition-all"
@@ -94,41 +92,9 @@ export function AdminMonitor() {
              ⌘K
            </div>
         </div>
-        {isSuperAdmin && (
-           <button 
-             onClick={async () => {
-               const confirmSeed = window.confirm("¿Generar datos de prueba en la base de datos vacía? Esto simulará promociones, transacciones y alumnos.");
-               if (!confirmSeed) return;
-               try {
-                  await addDoc(collection(db, 'promotions'), {
-                     title: 'Beca KIRA 2026',
-                     description: 'Descuento especial por registro.',
-                     code: 'Beca2026',
-                     type: 'Descuento',
-                     status: 'active',
-                     priority: 1,
-                     createdAt: new Date().toISOString()
-                  });
-                  await addDoc(collection(db, 'transactions'), {
-                     amount: 149.00,
-                     type: 'payment',
-                     status: 'completed',
-                     description: 'Plan Premium',
-                     userEmail: 'demo@user.com',
-                     createdAt: new Date().toISOString()
-                  });
-                  alert('Datos semilla generados con éxito.');
-               } catch(e) {
-                  console.error(e);
-               }
-             }}
-             className="w-full justify-center flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition shadow-md"
-           >
-             <Zap size={14} className="text-amber-400" /> Cargar Demo Data Inicial
-           </button>
-        )}
 
-        <div className="flex flex-col gap-2">
+
+        <div className="flex flex-col gap-2 max-h-[70vh] overflow-y-auto pr-1">
           {categories.map(cat => (
             <div key={cat} className="flex flex-col mb-1">
               <button 
@@ -146,7 +112,8 @@ export function AdminMonitor() {
                   <NavButton 
                     key={item.id}
                     active={activeTab === item.id} 
-                    onClick={() => setActiveTab(item.id as AdminTab)} 
+                    disabled={!canOpen(item)}
+                    onClick={() => canOpen(item) && setActiveTab(item.id as AdminTab)} 
                     icon={item.icon} 
                     label={item.label} 
                   />
@@ -155,9 +122,9 @@ export function AdminMonitor() {
             </div>
           ))}
         </div>
-      </div>
+      </aside>
 
-      {/* Area de Contenido del Módulo */}
+      {/* Área principal: dashboard inicial y contenido del módulo seleccionado */}
       <div className="flex-1 min-w-0">
         {activeTab === 'dashboard' && hasPerm(navItems.find(i=>i.id==='dashboard')) && <GlobalDashboardView />}
         {activeTab === 'analytics' && hasPerm(navItems.find(i=>i.id==='analytics')) && <BIView />}
@@ -170,6 +137,7 @@ export function AdminMonitor() {
         {activeTab === 'approvals' && hasPerm(navItems.find(i=>i.id==='approvals')) && <UserApprovalsView />}
         {activeTab === 'students' && hasPerm(navItems.find(i=>i.id==='students')) && <StudentManagementView />}
         {activeTab === 'books' && hasPerm(navItems.find(i=>i.id==='books')) && <AdminBooksView />}
+        {activeTab === 'certificates' && hasPerm(navItems.find(i=>i.id==='certificates')) && <CertificateRequestsAdminView />}
         {activeTab === 'content' && hasPerm(navItems.find(i=>i.id==='content')) && <CMSView />}
         {activeTab === 'promotions' && hasPerm(navItems.find(i=>i.id==='promotions')) && <PromotionsManagerView />}
 
@@ -180,18 +148,23 @@ export function AdminMonitor() {
   );
 }
 
-function NavButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
+function NavButton({ active, onClick, icon, label, disabled = false }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, disabled?: boolean }) {
   return (
     <button 
       onClick={onClick}
-      className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[13px] font-medium transition-all ${
+      disabled={disabled}
+      title={disabled ? 'Tu rol no tiene permiso para abrir este módulo' : label}
+      className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left text-[13px] font-medium transition-all ${
         active 
           ? 'bg-kirateal text-white shadow-md shadow-kirateal/10' 
-          : 'text-slate-600 hover:bg-white hover:text-kirateal'
+          : disabled
+            ? 'text-slate-400 opacity-70 cursor-not-allowed'
+            : 'text-slate-600 hover:bg-slate-50 hover:text-kirateal'
       }`}
     >
       {icon}
-      {label}
+      <span className="flex-1">{label}</span>
+      {disabled && <ShieldAlert size={13} aria-label="Sin permisos" />}
     </button>
   );
 }
@@ -4553,6 +4526,78 @@ function PromotionsManagerView() {
       )}
     </div>
   );
+}
+
+
+function CertificateRequestsAdminView() {
+  const { user } = useAuth();
+  const [requests, setRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const isSuperAdmin = user?.email === 'safeness.c.a@gmail.com';
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'certificateRequests'), snap => {
+      setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+      setError('');
+    }, err => {
+      console.error('certificateRequests subscription failed', err);
+      setError('No se pudieron cargar solicitudes. Revisa las reglas de Firestore y la colección certificateRequests.');
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  const decide = async (request: any, status: 'approved' | 'rejected') => {
+    if (!isSuperAdmin) { setError('Solo el superadministrador puede tomar esta decisión.'); return; }
+    if (status === 'approved') {
+      const paid = request.paymentStatus === 'paid' || request.paid === true;
+      const completed = request.courseCompleted === true || Number(request.progress) >= 100;
+      if (!paid || !completed) {
+        setError('No se aprueba: la solicitud no contiene evidencia de pago confirmado y curso completado. La validación autoritativa debe ejecutarse en backend.');
+        return;
+      }
+    }
+    try {
+      await updateDoc(doc(db, 'certificateRequests', request.id), {
+        status, reviewedBy: user?.uid, reviewedAt: new Date()
+      });
+      setError('');
+    } catch (err) {
+      console.error(err);
+      setError('No se pudo actualizar la solicitud. Verifica permisos de Firestore.');
+    }
+  };
+
+  const pending = requests.filter(r => !['approved','rejected','issued'].includes(String(r.status || 'pending')));
+  return <div className="space-y-5">
+    <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+      <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2"><FileText className="text-kirateal"/> Certificados y credenciales</h2>
+      <p className="text-sm text-slate-500 mt-2">Revisión de solicitudes de alumnos. La aprobación administrativa no equivale a emitir, firmar o publicar un certificado.</p>
+      <div className="flex gap-2 flex-wrap mt-4 text-xs">
+        <span className="rounded-full bg-amber-50 text-amber-700 px-3 py-1">Pendientes: {pending.length}</span>
+        <span className="rounded-full bg-emerald-50 text-emerald-700 px-3 py-1">Aprobadas: {requests.filter(r=>r.status==='approved').length}</span>
+        <span className="rounded-full bg-slate-100 text-slate-600 px-3 py-1">Emitidas: {requests.filter(r=>r.status==='issued').length}</span>
+        <span className="rounded-full bg-rose-50 text-rose-700 px-3 py-1">Rechazadas: {requests.filter(r=>r.status==='rejected').length}</span>
+      </div>
+    </section>
+    {error && <div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 p-3 text-sm">{error}</div>}
+    {loading ? <div className="p-8 text-center text-slate-500">Cargando solicitudes reales…</div> :
+      requests.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500">Todavía no hay solicitudes en certificateRequests.</div> :
+      <div className="space-y-3">{requests.map(req => <article key={req.id} className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col md:flex-row md:items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-slate-900">{req.courseTitle || req.courseName || req.title || 'Curso no identificado'}</div>
+          <div className="text-sm text-slate-500 mt-1">Alumno: {req.studentName || req.userName || req.userEmail || req.userId || 'Sin identificar'}</div>
+          <div className="text-xs text-slate-400 mt-1">Coach: {req.coachName || req.coachId || 'No especificado'} · Estado: {req.status || 'pending'}</div>
+          <div className="text-xs text-slate-400 mt-1">ID: {req.id}</div>
+        </div>
+        {req.status !== 'issued' && <div className="flex gap-2">
+          {req.status !== 'approved' && <button onClick={()=>decide(req,'approved')} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold">Aprobar solicitud</button>}
+          {req.status !== 'rejected' && <button onClick={()=>decide(req,'rejected')} className="px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold">Rechazar</button>}
+        </div>}
+      </article>)}</div>}
+  </div>;
 }
 
 // Compatibilidad con rutas anteriores
