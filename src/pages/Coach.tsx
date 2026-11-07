@@ -2851,7 +2851,7 @@ function CoachProfileSettings({ profile }: any) {
       }
     }
 
-    // Detect if storage is empty, mock, or custom placeholder to simulate download immediately
+    // Require a real Firebase Storage bucket for non-image uploads.
     const storageBucket = storage.app.options.storageBucket || '';
     const isMock = !storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value';
 
