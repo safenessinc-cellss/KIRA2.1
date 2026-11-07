@@ -30,10 +30,16 @@ interface CacheEntry {
 }
 const memoryCache = new Map<string, CacheEntry>();
 const aiRequestWindows = new Map<string, { start: number; count: number }>();
-function allowAiRequest(uid: string, maxRequests = 60) {
+function allowAiRequest(uid: string, maxRequests = 20) {
   const now = Date.now();
   const current = aiRequestWindows.get(uid);
-  if (!current || now - current.start >= 60_000) { aiRequestWindows.set(uid, { start: now, count: 1 }); return true; }
+  if (!current || now - current.start >= 60_000) {
+    if (aiRequestWindows.size > 5000) {
+      for (const [key, value] of aiRequestWindows) if (now - value.start >= 60_000) aiRequestWindows.delete(key);
+    }
+    aiRequestWindows.set(uid, { start: now, count: 1 });
+    return true;
+  }
   if (current.count >= maxRequests) return false;
   current.count += 1; return true;
 }
@@ -48,7 +54,16 @@ function getCache(key: string): any | null {
   return entry.data;
 }
 
-function setCache(key: string, data: any, ttlMs: number = 120 * 1000) { // 2 minutes default
+function setCache(key: string, data: any, ttlMs: number = 120 * 1000) {
+  if (memoryCache.size > 1000) {
+    const now = Date.now();
+    for (const [cacheKey, entry] of memoryCache) if (entry.expiresAt <= now) memoryCache.delete(cacheKey);
+    while (memoryCache.size > 1000) {
+      const oldestKey = memoryCache.keys().next().value;
+      if (!oldestKey) break;
+      memoryCache.delete(oldestKey);
+    }
+  }
   memoryCache.set(key, {
     data,
     expiresAt: Date.now() + ttlMs
@@ -110,7 +125,7 @@ function getAdminDb() { return getFirestore(getFirebaseAdminApp()); }
 async function verifyFirebaseUser(req: express.Request) {
   const header = req.headers.authorization || "";
   if (!header.startsWith("Bearer ")) throw new Error("Missing Firebase bearer token");
-  return getAuth(getFirebaseAuthApp()).verifyIdToken(header.slice(7));
+  return getAuth(getFirebaseAuthApp()).verifyIdToken(header.slice(7), true);
 }
 function getPublicAppUrl() { return (process.env.APP_URL || "https://kira.coach").replace(/\/$/, ""); }
 
@@ -281,7 +296,7 @@ app.get("/api/b2b/analytics", async (req, res) => {
     const profileSnap = await firestore.collection("users").doc(decoded.uid).get();
     const profile = profileSnap.data() || {};
     const role = String(profile.role || "");
-    const isSuperAdmin = String(decoded.email || "").toLowerCase() === "safeness.c.a@gmail.com";
+    const isSuperAdmin = decoded.email_verified === true && String(decoded.email || "").toLowerCase() === "safeness.c.a@gmail.com";
     if (!isSuperAdmin && role !== "hr_admin" && role !== "admin") {
       return res.status(403).json({ error: "Corporate analytics access denied." });
     }
@@ -472,7 +487,10 @@ app.post("/api/gemini/generate", async (req, res) => {
     }
     
     // Create cache key based on contents and config to avoid repeating identical AI calls
-    const cacheKey = JSON.stringify({ model, contents, config });
+    if (!contents || JSON.stringify(contents).length > 100_000) return res.status(413).json({ error: "La solicitud supera el tamaño permitido." });
+    if (model !== undefined && (typeof model !== "string" || !/^gemini-[a-z0-9.-]{1,80}$/.test(model))) return res.status(400).json({ error: "Modelo de IA no válido." });
+    if (config?.maxOutputTokens !== undefined && (!Number.isInteger(config.maxOutputTokens) || config.maxOutputTokens < 1 || config.maxOutputTokens > 8192)) return res.status(400).json({ error: "Límite de salida no válido." });
+    const cacheKey = JSON.stringify({ uid: decoded.uid, model, contents, config });
     const cachedResponse = getCache(cacheKey);
     if (cachedResponse) {
       console.log("[Cache Backend] Sirviendo respuesta de Gemini desde caché en memoria.");
@@ -533,7 +551,7 @@ app.post("/api/gemini/generate", async (req, res) => {
     res.json({ text: textResult, cached: false });
   } catch (error: any) {
     console.error("Gemini API server proxy error:", error);
-    res.status(500).json({ error: error.message || "Un error ocurrió al llamar a la API de Gemini en el servidor." });
+    res.status(502).json({ error: "No fue posible completar la solicitud de IA. Inténtalo nuevamente." });
   }
 });
 
