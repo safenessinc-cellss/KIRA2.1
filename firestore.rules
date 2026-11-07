@@ -93,9 +93,10 @@ service cloud.firestore {
     }
 
     function isCompanyMember(companyId) {
-      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == companyId
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['hr_admin', 'company_admin', 'company_member'];
+        && exists(/databases/$(database)/documents/companies/$(companyId)/members/$(request.auth.uid));
     }
 
     function hasOnlyAllowedFields(allowedFields) {
