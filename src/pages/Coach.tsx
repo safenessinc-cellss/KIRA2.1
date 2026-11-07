@@ -362,9 +362,9 @@ export function CoachDashboard() {
   };
 
   return (
-    <div className="flex flex-col gap-8 animate-in fade-in duration-500">
+    <div className="flex w-full min-w-0 flex-col gap-4 sm:gap-6 lg:gap-8 animate-in fade-in duration-500">
       {/* Header Panel */}
-      <div className="bg-white/40 backdrop-blur-xl border border-white/60 p-10 rounded-[40px] shadow-sm relative overflow-hidden">
+      <div className="bg-white/40 backdrop-blur-xl border border-white/60 p-4 sm:p-6 lg:p-10 rounded-2xl sm:rounded-3xl lg:rounded-[40px] shadow-sm relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-violet-100/30 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
         <div className="relative z-10 flex flex-col lg:flex-row gap-6">
           {/* Logo Kira Image */}
@@ -375,8 +375,8 @@ export function CoachDashboard() {
           <div className="flex-1">
             <div className="flex flex-wrap items-center justify-between gap-6">
               <div>
-                <h1 className="text-4xl font-black text-slate-900 tracking-tighter mb-2">Academic Command Center</h1>
-                <p className="text-slate-500 font-medium max-w-lg">Gestión de alto nivel de tu claustro de alumnos y activos digitales.</p>
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 tracking-tighter mb-2">Academic Command Center</h1>
+                <p className="text-slate-500 text-sm sm:text-base font-medium max-w-lg">Gestión de alto nivel de tu claustro de alumnos y activos digitales.</p>
               </div>
               {!isApproved && (
                 <div className="px-6 py-3 bg-amber-50 border border-amber-100 rounded-3xl flex items-center gap-3">
@@ -416,7 +416,7 @@ export function CoachDashboard() {
       )}
 
       {/* Navegación Modular CRM */}
-      <div className="flex flex-wrap gap-2 p-1.5 bg-slate-100 rounded-[32px] w-fit shadow-sm border border-slate-200/50">
+      <div className="flex w-full max-w-full flex-wrap gap-2 p-2 sm:p-3 bg-slate-100 rounded-2xl sm:rounded-[28px] shadow-sm border border-slate-200/50">
         <TabBtn active={activeTab === 'dashboard'} onClick={() => handleTabChange('dashboard')} icon={<Layout size={16}/>} label="Panel de Control" />
         <TabBtn active={activeTab === 'courses'} onClick={() => handleTabChange('courses')} icon={<BookOpen size={16}/>} label="Studio de Cursos" disabled={!isApproved} />
         <TabBtn active={activeTab === 'tracking'} onClick={() => handleTabChange('tracking')} icon={<BadgeCheck size={16}/>} label="Academic Tracking" disabled={!isApproved} />
@@ -449,7 +449,7 @@ function TabBtn({ active, onClick, icon, label, disabled }: any) {
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex items-center gap-2.5 px-6 py-2.5 rounded-[24px] text-[13px] font-bold tracking-tight transition-all",
+        "flex items-center gap-2 px-3 sm:px-4 lg:px-6 py-2.5 rounded-xl sm:rounded-[24px] text-xs sm:text-[13px] font-bold tracking-tight whitespace-nowrap transition-all",
         active 
           ? "bg-white text-indigo-600 shadow-sm border border-indigo-50" 
           : "text-slate-500 hover:text-slate-800",
