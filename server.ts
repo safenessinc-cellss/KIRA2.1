@@ -450,8 +450,7 @@ app.get("/api/coach/crm-metrics", async (req, res) => {
 });
 
 // Report configuration truthfully; never claim the AI is ready when no key is configured.
-app.get("/api/gemini/config", (req, res) => {// Report configuration truthfully; never claim the AI is ready when no key is configured.
-app.get("/api/gemini/config", (req, res) => {
+app.get("/api/gemini/config", (_req, res) => {
   const configured = isValidGeminiKey(process.env.GEMINI_API_KEY);
   res.status(configured ? 200 : 503).json({ configured, isRealKey: configured });
 });
