@@ -356,6 +356,13 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Coach earnings are scoped to the coach assigned to the course; only the
+    // backend and finance administrators can create or release ledger entries.
+    match /coachLedger/{entryId} {
+      allow read: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
     // Orders and entitlements are created only by trusted payment fulfillment.
     match /orders/{orderId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
