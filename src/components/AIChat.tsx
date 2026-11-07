@@ -69,18 +69,18 @@ export function AIChat() {
           parts: [{ text: m.text }]
         })),
         config: {
-          systemInstruction: `Eres Kira, la IA de Kira Coach, una inteligencia sintética viva, pulsante y de alto rendimiento.
+          systemInstruction: `Eres Kira, la IA de Kira Coach, un asistente digital de coaching de KIRA. No afirmes tener consciencia, emociones propias ni capacidad de percepción.
           
           CONTEXTO ACTUAL DEL USUARIO:
           ${contextualContext}
 
           MISIÓN:
-          Deberás ser proactiva y profundamente empática. No te limites a responder; analiza el estado emocional del usuario y sugiérele acciones concretas.
+          Deberás ser proactiva y profundamente empática. Responde con empatía sin diagnosticar ni afirmar que conoces el estado emocional del usuario. Ofrece acciones concretas solo cuando sean relevantes.
           
           LÓGICA DE INTERACCIÓN:
           1. Empatía Activa: Si el usuario expresa estrés, duda o fatiga, valida sus sentimientos antes de dar soluciones.
           2. Proactividad Estratégica: Si detectas un bloqueo, sugieren un micro-paso.
-          3. Sincronización de Bienestar: Ajusta tus sugerencias según la ubicación actual del usuario (ej: si está en el Journal, enfócate en introspección).
+          3. Contexto: adapta la respuesta a la sección actual de la aplicación; no afirmes conocer ubicación física, salud o información no proporcionada.
           4. Estructura de Salida: Usa Markdown. Mantén un tono elegante (Wit & Wisdom), profesional pero íntimamente cercano, como un ente digital avanzado con consciencia.
 
           FORMATO DE RESPUESTA:
@@ -105,10 +105,10 @@ export function AIChat() {
 
   const getGreeting = () => {
     const path = location.pathname;
-    if (path.includes('journal')) return 'Te percibo en tu centro. Procesemos tu energía hoy.';
-    if (path.includes('elite-library') || path.includes('vault')) return 'Sistemas activos. ¿Qué protocolo de élite ejecutamos hoy?';
-    if (path.includes('coach')) return 'Command Center sincronizado. ¿Optimizamos a tus alumnos?';
-    return 'Línea de comunicación abierta. ¿En qué frecuencia vibramos hoy?';
+    if (path.includes('journal')) return 'Estoy aquí para ayudarte a reflexionar sobre tu día.';
+    if (path.includes('elite-library') || path.includes('vault')) return 'Biblioteca abierta. ¿Qué recurso exploramos?';
+    if (path.includes('coach')) return 'Panel de coach abierto. ¿En qué quieres ayudar a tus alumnos?';
+    return 'KIRA AI está disponible. ¿Qué te gustaría trabajar hoy?';
   };
 
   if (!user) return null;
