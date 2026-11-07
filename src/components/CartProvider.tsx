@@ -58,7 +58,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const savedCart = localStorage.getItem('kira_cart');
     if (savedCart) {
       try {
-        setCartItems(JSON.parse(savedCart));
+        const parsed = JSON.parse(savedCart);
+        if (Array.isArray(parsed)) {
+          // Marketplace items grant digital access; buying duplicate quantities is not meaningful.
+          setCartItems(parsed.filter((item) => item?.product?.id).map((item) => ({ ...item, quantity: 1 })));
+        }
       } catch (e) {
         console.warn("Failed to load cart from storage", e);
       }
@@ -73,10 +77,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setCartItems((prevItems) => {
       const existingIndex = prevItems.findIndex((item) => item.product.id === product.id);
       if (existingIndex > -1) {
-        const updated = [...prevItems];
-        updated[existingIndex].quantity += 1;
-        toastSuccess(`Incrementada cantidad de "${product.title}" en el carrito`);
-        return updated;
+        toastSuccess(`"${product.title}" ya está en tu carrito`);
+        return prevItems;
       } else {
         toastSuccess(`"${product.title}" añadido al carrito`);
         return [...prevItems, { product, quantity: 1 }];
@@ -100,7 +102,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setCartItems((prevItems) =>
       prevItems.map((item) =>
-        item.product.id === productId ? { ...item, quantity } : item
+        item.product.id === productId ? { ...item, quantity: 1 } : item
       )
     );
   };
