@@ -3447,12 +3447,14 @@ function SettlementCenterView() {
 function CampaignHistoryView() {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [campaignLogs, setCampaignLogs] = useState<any[]>([]);
+  const [systemLogs, setSystemLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
     const auditQuery = query(collection(db, "auditLogs"), orderBy("createdAt", "desc"), limit(100));
     const campaignQuery = query(collection(db, "campaign_logs"), orderBy("createdAt", "desc"), limit(50));
+    const systemQuery = query(collection(db, "logs"), orderBy("createdAt", "desc"), limit(50));
     const stopAudit = onSnapshot(auditQuery, snapshot => {
       setAuditLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
@@ -3464,7 +3466,10 @@ function CampaignHistoryView() {
     const stopCampaigns = onSnapshot(campaignQuery, snapshot => setCampaignLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), err => {
       console.warn("Campaign log read failed:", err);
     });
-    return () => { stopAudit(); stopCampaigns(); };
+    const stopSystem = onSnapshot(systemQuery, snapshot => setSystemLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), err => {
+      console.warn("System log read failed:", err);
+    });
+    return () => { stopAudit(); stopCampaigns(); stopSystem(); };
   }, []);
 
   const formatDate = (value: any) => {
@@ -3480,6 +3485,7 @@ function CampaignHistoryView() {
         <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
           <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">Eventos críticos: {auditLogs.length}</span>
           <span className="rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-700">Campañas: {campaignLogs.length}</span>
+          <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-700">Acciones administrativas: {systemLogs.length}</span>
         </div>
       </header>
       {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
@@ -3499,6 +3505,15 @@ function CampaignHistoryView() {
               </tr>)}
             </tbody>
           </table></div>
+        }
+      </section>
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-5 py-4"><h4 className="font-bold text-slate-900">Acciones administrativas</h4></div>
+        {systemLogs.length === 0 ? <div className="p-6 text-sm text-slate-500">Sin acciones administrativas registradas.</div> :
+          <div className="divide-y divide-slate-100">{systemLogs.map(log => <div key={log.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+            <div><p className="text-sm font-semibold text-slate-800">{log.action || "Acción administrativa"}</p><p className="mt-1 text-xs text-slate-500">Destino: {log.targetId || "—"} · {log.reason || log.role || ""}</p></div>
+            <div className="text-right text-xs text-slate-500">{formatDate(log.createdAt)}</div>
+          </div>)}</div>
         }
       </section>
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
