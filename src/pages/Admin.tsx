@@ -2952,7 +2952,10 @@ function SecurityView() {
 
   const roleColors: Record<string, string> = {
     'admin': 'text-purple-400 bg-purple-500/10 border-purple-500/30',
-    'coach': 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30'
+    'coach': 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
+    'hr_admin': 'text-amber-400 bg-amber-500/10 border-amber-500/30',
+    'company_admin': 'text-teal-400 bg-teal-500/10 border-teal-500/30',
+    'company_member': 'text-slate-300 bg-slate-500/10 border-slate-500/30'
   };
 
   return (
@@ -3078,7 +3081,7 @@ function SecurityView() {
                                     onClick={() => toggleUserSuspension(member.id, member.approvalStatus || 'approved')}
                                     className={cn("text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border transition-colors", member.approvalStatus === 'suspended' ? "text-rose-400 bg-rose-500/10 border-rose-500/30 hover:bg-rose-500/20" : "text-emerald-400 bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20")}
                                  >
-                                    {member.approvalStatus === 'suspended' ? 'Suspendido' : 'Activo'}
+                                    {member.approvalStatus === 'suspended' ? 'Suspendido' : member.approvalStatus === 'pending' ? 'Pendiente' : 'Activo'}
                                  </button>
                               </div>
                            </div>
