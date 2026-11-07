@@ -335,7 +335,6 @@ function GlobalDashboardView() {
   const [stats, setStats] = useState({ 
     users: 0, 
     sales: 0, 
-    activeIA: 0, 
     sentiment: { positive: 0, neutral: 0, negative: 0 },
     engagement: { dailyActive: 0, weeklyActive: 0 },
     courses: [] as any[],
@@ -627,49 +626,18 @@ function GlobalDashboardView() {
         </div>
       </div>
 
-      {/* NUEVA SECCIÓN: INSIGHTS SUGERIDOS POR IA */}
-      <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg overflow-hidden relative group">
-        <div className="absolute -right-8 -top-8 opacity-10 group-hover:scale-110 transition-transform duration-700">
-           <Zap size={180} />
+      {/* Insights are intentionally not fabricated when the AI service has no verified result. */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex items-center gap-2 text-slate-700 font-semibold">
+          <Sparkles size={18} className="text-kirateal" />
+          Insights de KIRA
         </div>
-        <div className="flex items-center gap-3 mb-6 relative z-10">
-           <Sparkles className="text-amber-300 animate-pulse" size={24} />
-           <h3 className="font-bold text-lg tracking-tight">Kira Intelligence: AI-Suggested Insights</h3>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
-           <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 hover:bg-white/20 transition-colors">
-              <div className="flex items-center gap-2 mb-2">
-                 <ShieldAlert size={16} className="text-rose-300" />
-                 <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-100">Detección de Fugas</span>
-              </div>
-              <p className="text-sm font-medium leading-relaxed">
-                 Bajada del 15% en retención detectada en "Curso Nivel 2". Causa probable: Inactividad del Coach en chats grupales (últ. 4 días).
-              </p>
-           </div>
-           
-           <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 hover:bg-white/20 transition-colors">
-              <div className="flex items-center gap-2 mb-2">
-                 <TrendingUp size={16} className="text-amber-300" />
-                 <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-100">Oportunidad de Tracción</span>
-              </div>
-              <p className="text-sm font-medium leading-relaxed">
-                 Tendencia 'Burnout Laboral' creció +34%. Sugerencia: Notificación Push con descuento [BURN20] vinculando a mentoría asíncrona.
-              </p>
-           </div>
-
-           <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 hover:bg-white/20 transition-colors">
-              <div className="flex items-center gap-2 mb-2">
-                 <Zap size={16} className="text-emerald-300" />
-                 <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-100">Optimización B2B</span>
-              </div>
-              <p className="text-sm font-medium leading-relaxed">
-                 Corporación [TechX] muestra incremento en Sentiment negativo. El Algoritmo de Horizonte sugiere revisión de KPIs trimestrales.
-              </p>
-           </div>
-        </div>
+        <p className="mt-2 text-sm text-slate-500">
+          Los insights automáticos aparecerán únicamente cuando exista un análisis real generado por el servicio de IA.
+          No se muestran recomendaciones simuladas ni datos inventados.
+        </p>
       </div>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
           <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
