@@ -1212,7 +1212,7 @@ export function Dashboard() {
                       <p>${cartItems.reduce((acc, item) => acc + Number(item.price), 0).toFixed(2)} USD</p>
                     </div>
                     <p className="mt-0.5 text-xs text-slate-500 mb-6 leading-relaxed">
-                      El pago se procesará a través de nuestro simulador de pasarela segura. Una vez completado, el Coach liberará tu acceso de forma inmediata o manual.
+                      El pago se realizará en Stripe o Mercado Pago. KIRA habilitará el acceso únicamente cuando el proveedor confirme el pago mediante webhook.
                     </p>
                     <div>
                       <button
