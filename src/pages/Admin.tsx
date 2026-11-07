@@ -3397,66 +3397,109 @@ function TransactionsMonitorView() {
 
 // --- MODULO: CENTRO DE LIQUIDACION ---
 function SettlementCenterView() {
-  const [txs, setTxs] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [ledger, setLedger] = useState<any[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [payoutReference, setPayoutReference] = useState("");
   const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
+  const [message, setMessage] = useState("");
+  const [messageError, setMessageError] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, 'transactions'), orderBy('createdAt', 'desc'), limit(100));
-    const u = onSnapshot(q, (s) => setTxs(s.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    setLoading(false);
-    return u;
+    const stopTransactions = onSnapshot(query(collection(db, "transactions"), orderBy("createdAt", "desc"), limit(100)), snapshot => {
+      setTransactions(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    }, error => { console.error("Transactions load failed:", error); setLoading(false); });
+    const stopLedger = onSnapshot(query(collection(db, "coachLedger"), orderBy("createdAt", "desc"), limit(200)), snapshot => {
+      setLedger(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, error => console.error("Coach ledger load failed:", error));
+    return () => { stopTransactions(); stopLedger(); };
   }, []);
+
+  const pending = ledger.filter(entry => entry.status === "pending_release");
+  const released = ledger.filter(entry => entry.status === "released");
+  const formatAmount = (entry: any) => new Intl.NumberFormat("es-ES", { style: "currency", currency: String(entry.currency || "usd").toUpperCase() }).format(Number(entry.amount || 0));
+  const formatDate = (value: any) => {
+    const date = value?.toDate ? value.toDate() : value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : "—";
+  };
+
+  const registerPayout = async () => {
+    if (!selectedIds.length || payoutReference.trim().length < 4) return;
+    setProcessing(true); setMessage(""); setMessageError(false);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
+      const response = await fetch("/api/finance/coach-payouts/release", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + idToken },
+        body: JSON.stringify({ entryIds: selectedIds, payoutReference: payoutReference.trim() })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "No se pudo registrar la liquidación.");
+      setSelectedIds([]); setPayoutReference("");
+      setMessage("Se registraron " + data.released + " partidas con referencia " + data.payoutReference + ". Recuerda: KIRA registra una transferencia externa ya realizada; no envía fondos.");
+    } catch (error: any) {
+      setMessage(error.message || "Error al registrar la liquidación.");
+      setMessageError(true);
+    } finally { setProcessing(false); }
+  };
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in">
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm mt-6">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-         <h3 className="font-bold text-slate-800 tracking-tight flex items-center gap-2 text-sm">
-           <CreditCard size={18} className="text-secondary" /> Centro de Liquidación (Split Payments)
-         </h3>
-         <div className="flex gap-2">
-            <div className="px-3 py-1 bg-purple-50 text-purple-700 rounded-full text-[10px] font-bold">
-               Split Regla: 70% Plataforma / 30% Coach
-            </div>
-         </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs">
-          <thead>
-            <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-tighter">
-              <th className="px-6 py-3">Referencia Tx</th>
-              <th className="px-6 py-3">Monto Base</th>
-              <th className="px-6 py-3">Kira Revenue (70%)</th>
-              <th className="px-6 py-3">Coach Balance (30%)</th>
-              <th className="px-6 py-3 text-right">Estado</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {txs.filter(t => t.type === 'curso' || t.amount > 0).map(t => {
-               const monto = t.amount || 0;
-               const kiraRev = monto * 0.7;
-               const coachRev = monto * 0.3;
-               return (
-                 <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                   <td className="px-6 py-4 text-slate-500 font-mono italic">#{t.id ? t.id.substring(0,6).toUpperCase() : 'N/A'}</td>
-                   <td className="px-6 py-4 font-black text-slate-700">${monto.toFixed(2)}</td>
-                   <td className="px-6 py-4 font-black text-emerald-600">+${kiraRev.toFixed(2)}</td>
-                   <td className="px-6 py-4 font-black text-purple-600">+${coachRev.toFixed(2)}</td>
-                   <td className="px-6 py-4 text-right">
-                     <span className="px-2 py-1 bg-slate-100 text-slate-500 rounded text-[9px] font-bold uppercase">Liquidado</span>
-                   </td>
-                 </tr>
-               );
-            })}
-            {txs.length === 0 && !loading && (
-              <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">No hay transacciones registradas.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
+      <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900"><CreditCard size={20} className="text-teal-700" /> Libro financiero y liquidación de coaches</h3>
+        <p className="mt-2 text-sm text-slate-500">Importes y monedas proceden de pagos confirmados por webhook. No se aplica un reparto porcentual ficticio.</p>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-500">Transacciones pagadas</p><p className="mt-1 text-2xl font-black text-slate-900">{transactions.filter(t => t.status === "paid").length}</p></div>
+          <div className="rounded-xl bg-amber-50 p-4"><p className="text-xs text-amber-700">Partidas pendientes</p><p className="mt-1 text-2xl font-black text-amber-900">{pending.length}</p></div>
+          <div className="rounded-xl bg-emerald-50 p-4"><p className="text-xs text-emerald-700">Partidas registradas como pagadas</p><p className="mt-1 text-2xl font-black text-emerald-900">{released.length}</p></div>
+        </div>
+      </header>
+
+      {message && <div role="status" className={cn("rounded-xl border p-4 text-sm", messageError ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-800")}>{message}</div>}
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 p-5"><h4 className="font-bold text-slate-900">Comisiones de cursos pendientes de liquidación</h4><p className="mt-1 text-xs text-slate-500">Selecciona solo partidas cuyo pago al coach ya fue realizado fuera de KIRA.</p></div>
+        {loading ? <div className="p-8 text-center text-sm text-slate-500">Cargando libro…</div> : pending.length === 0 ? <div className="p-8 text-center text-sm text-slate-500">No hay partidas pendientes de liquidación.</div> :
+          <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs">
+            <thead className="bg-slate-50 uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-3">Seleccionar</th><th className="px-5 py-3">Coach / Curso</th><th className="px-5 py-3">Importe</th><th className="px-5 py-3">Orden</th><th className="px-5 py-3">Fecha</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{pending.map(entry => <tr key={entry.id}>
+              <td className="px-5 py-3"><input type="checkbox" checked={selectedIds.includes(entry.id)} onChange={e => setSelectedIds(current => e.target.checked ? [...current, entry.id] : current.filter(id => id !== entry.id))} aria-label={"Seleccionar " + entry.id} /></td>
+              <td className="px-5 py-3"><p className="font-semibold text-slate-800">{entry.coachName || entry.coachId}</p><p className="mt-1 text-slate-500">{entry.itemTitle || entry.courseId}</p></td>
+              <td className="px-5 py-3 font-bold text-slate-800">{formatAmount(entry)}</td><td className="px-5 py-3 font-mono text-slate-500">{entry.orderId}</td><td className="px-5 py-3 text-slate-500">{formatDate(entry.createdAt)}</td>
+            </tr>)}</tbody>
+          </table></div>
+        }
+        <div className="flex flex-col gap-3 border-t border-slate-100 p-5 sm:flex-row">
+          <input value={payoutReference} onChange={e => setPayoutReference(e.target.value)} placeholder="Referencia bancaria / ID de transferencia externa" className="min-h-11 flex-1 rounded-xl border border-slate-200 px-3 text-sm" />
+          <button type="button" disabled={processing || !selectedIds.length || payoutReference.trim().length < 4} onClick={registerPayout} className="min-h-11 rounded-xl bg-teal-700 px-5 text-xs font-bold text-white disabled:opacity-40">{processing ? "Registrando…" : "Registrar liquidación externa (" + selectedIds.length + ")"}</button>
+        </div>
+        <p className="px-5 pb-5 text-[11px] leading-relaxed text-slate-400">Esta acción actualiza el libro y la auditoría. No ejecuta una transferencia bancaria, Stripe Connect ni un payout de Mercado Pago.</p>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 p-5"><h4 className="font-bold text-slate-900">Liquidaciones registradas</h4></div>
+        {released.length === 0 ? <div className="p-6 text-sm text-slate-500">Todavía no hay pagos externos registrados.</div> :
+          <div className="divide-y divide-slate-100">{released.map(entry => <div key={entry.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <div><p className="text-sm font-semibold text-slate-800">{entry.coachName || entry.coachId} · {entry.itemTitle || entry.courseId}</p><p className="mt-1 text-xs text-slate-500">Referencia: {entry.payoutReference || "—"} · {formatDate(entry.releasedAt)}</p></div>
+            <span className="font-bold text-emerald-700">{formatAmount(entry)}</span>
+          </div>)}</div>
+        }
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 p-5"><h4 className="font-bold text-slate-900">Transacciones confirmadas por proveedor</h4></div>
+        {transactions.length === 0 ? <div className="p-6 text-sm text-slate-500">No hay transacciones confirmadas.</div> :
+          <div className="overflow-x-auto"><table className="w-full min-w-[640px] text-left text-xs">
+            <thead className="bg-slate-50 uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-3">Referencia</th><th className="px-5 py-3">Proveedor</th><th className="px-5 py-3">Importe</th><th className="px-5 py-3">Estado</th><th className="px-5 py-3">Fecha</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{transactions.slice(0, 100).map(tx => <tr key={tx.id}>
+              <td className="px-5 py-3 font-mono text-slate-500">{tx.id}</td><td className="px-5 py-3 text-slate-600">{tx.provider || "—"}</td><td className="px-5 py-3 font-bold text-slate-800">{formatAmount(tx)}</td><td className="px-5 py-3">{tx.status || "—"}</td><td className="px-5 py-3 text-slate-500">{formatDate(tx.createdAt)}</td>
+            </tr>)}</tbody>
+          </table></div>
+        }
+      </section>
     </div>
   );
 }
