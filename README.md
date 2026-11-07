@@ -1,20 +1,20 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# KIRA Coach — Plataforma de coaching y bienestar
 
-# Run and deploy your AI Studio app
+Aplicación web KIRA Coach, desarrollada por **SAFENESS.INC**.
 
-This contains everything you need to run your app locally.
+## Desarrollo local
 
-View your app in AI Studio: https://ai.studio/apps/717df3da-0b67-4949-8b54-0dde0ce52381
+Requisitos: Node.js 20+.
 
-## Run Locally
+1. Instala dependencias: `npm install`
+2. Configura las variables de entorno localmente en `.env.local` (no subir secretos al repositorio).
+3. Ejecuta `npm run dev`.
+4. Genera la compilación: `npm run build`.
 
-**Prerequisites:**  Node.js
+## Variables de entorno
 
+Consulta `.env.example`. Nunca compartas ni commits claves de Gemini, Stripe, Firebase Admin u otros servicios.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Créditos
+
+Creado por **SAFENESS.INC**.
