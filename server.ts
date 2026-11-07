@@ -271,6 +271,11 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
         ...existingEnrollment, paymentOrderId: orderId, paymentStatus: "paid", paidAt: now
       }));
       const courseRecord = await fsGet("courses", String(item.id));
+      writes.push(fsCreate("purchases", idSafe(order.userId + "_" + orderId + "_" + item.id), {
+        userId: order.userId, itemId: item.id, itemType: "course", itemTitle: item.title,
+        itemPrice: Number(item.unitPrice) * Number(item.quantity || 1), imageUrl: courseRecord?.imageUrl || "",
+        courseId: item.id, orderId, paymentStatus: "paid", status: "released", createdAt: now
+      }));
       if (courseRecord?.coachId) {
         const [studentProfile, coachProfile] = await Promise.all([
           fsGet("users", String(order.userId)), fsGet("users", String(courseRecord.coachId))
@@ -285,7 +290,11 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
       }
     } else if (item.collectionName === "books" || item.type === "book") {
       const purchaseId = idSafe(order.userId + "_" + orderId + "_" + item.id);
-      writes.push(fsCreate("purchases", purchaseId, { userId: order.userId, productId: item.id, productType: "book", orderId, paymentStatus: "paid", createdAt: now }));
+      writes.push(fsCreate("purchases", purchaseId, {
+        userId: order.userId, productId: item.id, itemId: item.id, productType: "book",
+        itemType: "book", itemTitle: item.title, itemPrice: Number(item.unitPrice) * Number(item.quantity || 1),
+        orderId, paymentStatus: "paid", status: "released", createdAt: now
+      }));
     } else if (item.type === "membership") {
       const profile = await fsGet("users", order.userId);
       if (profile) writes.push(fsUpdate("users", order.userId, { ...profile, membershipStatus: "active", membershipPaidAt: now }));
