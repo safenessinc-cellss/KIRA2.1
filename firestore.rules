@@ -155,14 +155,17 @@ service cloud.firestore {
     
     function isValidCourse() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['title', 'description', 'price', 'coachId', 'status', 'bannerUrl', 'createdAt']) &&
+      return hasOnlyAllowedFields(['title', 'description', 'price', 'coachId', 'status', 'bannerUrl', 'createdAt', 'hours', 'coachName', 'studentsCount']) &&
              data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
              data.price is number && data.price >= 0 &&
              data.coachId is string &&
              data.status in ['draft', 'pending', 'published'] &&
              data.createdAt is timestamp &&
              (!('description' in data) || (data.description is string && data.description.size() < 10000)) &&
-             (!('bannerUrl' in data) || (data.bannerUrl is string && data.bannerUrl.size() < 1000));
+             (!('bannerUrl' in data) || (data.bannerUrl is string && data.bannerUrl.size() < 1000)) &&
+             (!('hours' in data) || (data.hours is number && data.hours >= 0 && data.hours <= 10000)) &&
+             (!('coachName' in data) || (data.coachName is string && data.coachName.size() < 150)) &&
+             (!('studentsCount' in data) || (data.studentsCount is number && data.studentsCount >= 0));
     }
     
     function isValidEnrollment() {
