@@ -171,11 +171,15 @@ service cloud.firestore {
     
     function isValidEnrollment() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['userId', 'courseId', 'progress', 'createdAt']) &&
+      return hasOnlyAllowedFields(['userId', 'courseId', 'progress', 'createdAt', 'status', 'paymentStatus', 'orderId', 'updatedAt']) &&
              data.userId is string &&
              data.courseId is string &&
              data.progress is number && data.progress >= 0 && data.progress <= 100 &&
-             data.createdAt is timestamp;
+             data.createdAt is timestamp &&
+             (!('status' in data) || data.status in ['active', 'completed', 'cancelled']) &&
+             (!('paymentStatus' in data) || data.paymentStatus in ['paid', 'free', 'pending']) &&
+             (!('orderId' in data) || data.orderId is string) &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
     }
     
     function isValidJournal() {
@@ -284,7 +288,7 @@ service cloud.firestore {
     match /enrollments/{enrollmentId} {
       allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid)));
       allow create: if false; // Enrollment grants must be created by trusted backend after verified access/payment.
-      allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt']) && 
+      allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt', 'status', 'paymentStatus', 'orderId']) && 
                     (isAdmin() || (isCurrentUser(resource.data.userId)) || isApprovedCoach());
       allow delete: if isAdmin();
     }
@@ -400,6 +404,10 @@ service cloud.firestore {
 
     
     // Backend-created commerce and credentials. Clients cannot mint paid access or certificates.
+    match /purchases/{purchaseId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if false; // Fulfilled by trusted Stripe/free-access backend only.
+    }
     match /orders/{orderId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
       allow create, update, delete: if false;
