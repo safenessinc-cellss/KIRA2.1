@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../hooks/useAuth';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, Menu, X } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
@@ -4603,15 +4603,19 @@ function CertificateRequestsAdminView() {
     if (!(r.paymentStatus === 'paid' || r.paid === true) || !(r.courseCompleted === true || r.completed === true || Number(r.progress) >= 100) || !r.studentName || !r.courseTitle || !r.coachName || hours <= 0) return setError('No se emite: verifica pago, curso concluido, alumno, coach y horas.');
     setIssuing(r.id);
     try {
-      const token = crypto.randomUUID().replace(/-/g, '').toUpperCase();
-      const number = 'KIRA-' + new Date().getFullYear() + '-' + token.slice(0, 10);
-      const issuedAt = new Date(); const issuerName = user.displayName || user.email || 'KIRA COACH';
-      const safe = { certificateNumber: number, studentName: r.studentName, courseTitle: r.courseTitle, coachName: r.coachName, hours, issuedAt, issuerName, status: 'issued', validationToken: token };
-      const batch = writeBatch(db);
-      batch.set(doc(db, 'certificates', token), { ...safe, requestId: r.id, studentId: r.userId || r.studentId || '', issuedBy: user.uid, signatureType: 'KIRA electronic issuance record' });
-      batch.set(doc(db, 'certificatePublic', token), safe);
-      batch.update(doc(db, 'certificateRequests', r.id), { status: 'issued', certificateNumber: number, certificateId: token, issuedBy: user.uid, issuedByName: issuerName, issuedAt });
-      await batch.commit();
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+      const issueResponse = await fetch('/api/certificates/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
+        body: JSON.stringify({ requestId: r.id, enrollmentId: r.enrollmentId })
+      });
+      const issueData = await issueResponse.json();
+      if (!issueResponse.ok || !issueData.certificateNumber || !issueData.validationUrl) throw new Error(issueData.error || 'No se pudo emitir el certificado firmado.');
+      const number = issueData.certificateNumber;
+      const token = issueData.validationUrl.split('/').pop() || '';
+      const issuedAt = new Date();
+      const issuerName = user.displayName || user.email || 'KIRA COACH';
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
       pdf.setFillColor(250,252,253); pdf.rect(0,0,297,210,'F'); pdf.setDrawColor(25,166,160); pdf.setLineWidth(1.5); pdf.roundedRect(9,9,279,192,4,4,'S');
       pdf.setTextColor(229,237,238); pdf.setFont('helvetica','bold'); pdf.setFontSize(58); pdf.text('KIRA',148.5,112,{align:'center'});
@@ -4622,7 +4626,7 @@ function CertificateRequestsAdminView() {
       pdf.setFont('helvetica','normal'); pdf.setFontSize(11); pdf.text(hours + ' horas académicas · Coach: ' + r.coachName,148.5,123,{align:'center',maxWidth:240});
       pdf.setDrawColor(25,166,160); pdf.line(28,151,104,151); pdf.line(193,151,269,151); pdf.setTextColor(55,65,75); pdf.setFontSize(9); pdf.setFont('times','italic'); pdf.setFontSize(17); pdf.text(issuerName,66,151,{align:'center',maxWidth:72}); pdf.setFont('helvetica','normal'); pdf.setFontSize(9); pdf.text(issuerName,66,158,{align:'center',maxWidth:72}); pdf.text('Registro de emisor autenticado por KIRA',66,164,{align:'center'}); pdf.text('KIRA COACH · SAFENESS.INC',231,157,{align:'center'});
       pdf.setTextColor(20,75,82); pdf.setFont('helvetica','bold'); pdf.text(number,148.5,179,{align:'center'});
-      const url = window.location.origin + '/validar-certificado/' + token; pdf.setFont('helvetica','normal'); pdf.setFontSize(8); pdf.text('Validación QR: ' + url,148.5,187,{align:'center',maxWidth:250});
+      const url = issueData.validationUrl; pdf.setFont('helvetica','normal'); pdf.setFontSize(8); pdf.text('Validación QR: ' + url,148.5,187,{align:'center',maxWidth:250});
       try { const response = await fetch('https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url)); if (response.ok) { const blob = await response.blob(); const data = await new Promise<string>((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(blob); }); pdf.addImage(data,'PNG',263,15,20,20); } } catch (e) { console.warn('QR no incrustado; la URL queda impresa.',e); }
       pdf.save(number + '.pdf'); setError('');
     } catch (e) { console.error(e); setError('No se pudo emitir el certificado. Revisa permisos y conexión.'); } finally { setIssuing(null); }
