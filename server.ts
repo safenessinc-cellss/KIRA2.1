@@ -595,7 +595,7 @@ async function startLocalServer() {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 1_000_000 });
   const liveConnections = new Map<string, number>();
 
   wss.on("connection", async (clientWs: any) => {
@@ -618,7 +618,7 @@ async function startLocalServer() {
               model: "gemini-3.1-flash-live-preview",
               config: {
                 responseModalities: [Modality.AUDIO],
-                systemInstruction: msg.systemInstruction || "You are a helpful assistant.",
+                systemInstruction: typeof msg.systemInstruction === "string" ? msg.systemInstruction.slice(0, 8000) : "You are a helpful assistant.",
                 inputAudioTranscription: {},
               },
               callbacks: {
@@ -636,7 +636,7 @@ async function startLocalServer() {
             }
             clientWs.close();
           }
-        } else if (msg.audio) {
+        } else if (typeof msg.audio === "string" && msg.audio.length <= 900_000) {
           if (session) {
             session.sendRealtimeInput({
               audio: { data: msg.audio, mimeType: "audio/pcm;rate=16000" },
