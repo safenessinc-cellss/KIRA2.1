@@ -338,8 +338,8 @@ export function CoachDashboard() {
     }
   };
   
-  const isApproved = true;
-  const hasMembership = true;
+  const isApproved = user?.approvalStatus === 'approved';
+  const hasMembership = user?.membershipStatus === 'active';
 
   const handleMembershipCheckout = async () => {
     if(!user) return;
@@ -904,9 +904,6 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
           sesiones: sessionCountsByDate[date]
         }));
         
-        if (sData.every(d => d.sesiones === 0)) {
-          sData.forEach(d => d.sesiones = Math.floor(Math.random() * 4));
-        }
         setSessionsData(sData);
 
         const sortedTopics = Array.from(topicsMap.entries())
@@ -914,11 +911,6 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
           .slice(0, 5)
           .map(([topic, count]) => ({ topic, count }));
           
-        if (sortedTopics.length === 0) {
-          sortedTopics.push({ topic: 'Manejo de ansiedad', count: 8 });
-          sortedTopics.push({ topic: 'Liderazgo de equipo', count: 5 });
-          sortedTopics.push({ topic: 'Gestión del tiempo', count: 4 });
-        }
         setTopTopics(sortedTopics);
 
         // Fetch Journals to mock team energy heatmap
