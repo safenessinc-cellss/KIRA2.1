@@ -1283,47 +1283,7 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* PAYMENT SUCCESS MODAL */}
-      {paymentSuccessData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setPaymentSuccessData(null)} />
-          <div className="bg-white rounded-[40px] w-full max-w-md p-8 relative z-10 shadow-2xl text-center flex flex-col items-center animate-in zoom-in-95 duration-500">
-            <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-6">
-              <CheckCircle2 size={40} className="stroke-[2.5]" />
-            </div>
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight mb-2">¡Pago Realizado con Éxito!</h3>
-            <p className="text-slate-500 text-sm leading-relaxed mb-6">
-              Hemos registrado el pago de tu orden de forma segura en Firestore.
-            </p>
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-left w-full mb-6 space-y-2">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Detalle de la Transacción</p>
-              {paymentSuccessData.items.map((it: any, i: number) => (
-                <div key={i} className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-700">{it.title}</span>
-                  <span className="font-black text-slate-900">${it.price} USD</span>
-                </div>
-              ))}
-              <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-xs font-black text-slate-900">
-                <span>Total pagado</span>
-                <span>${paymentSuccessData.total.toFixed(2)} USD</span>
-              </div>
-            </div>
-            <div className="bg-amber-50 border border-amber-200/50 rounded-2xl p-4 text-amber-800 text-xs text-left leading-relaxed mb-8 flex gap-3 items-start">
-              <span className="text-lg">⏳</span>
-              <div>
-                <strong className="font-bold block mb-0.5">Pendiente de liberación por el Coach:</strong>
-                Según las políticas de Kira Coach, tu material/acceso será liberado y habilitado manualmente por tu Coach o Administrador desde su Panel de Control. ¡Te avisaremos por correo!
-              </div>
-            </div>
-            <button 
-              onClick={() => setPaymentSuccessData(null)}
-              className="w-full py-4 bg-slate-900 hover:bg-black text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-all duration-300"
-            >
-              Cerrar y Ver Mis Compras
-            </button>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }
