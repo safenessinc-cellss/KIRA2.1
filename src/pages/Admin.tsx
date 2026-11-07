@@ -136,6 +136,7 @@ export function AdminMonitor() {
         {activeTab === 'approvals' && hasPerm(navItems.find(i=>i.id==='approvals')) && <UserApprovalsView />}
         {activeTab === 'students' && hasPerm(navItems.find(i=>i.id==='students')) && <StudentManagementView />}
         {activeTab === 'books' && hasPerm(navItems.find(i=>i.id==='books')) && <AdminBooksView />}
+        {activeTab === 'certificates' && hasPerm(navItems.find(i=>i.id==='certificates')) && <CertificateRequestsAdminView />}
         {activeTab === 'content' && hasPerm(navItems.find(i=>i.id==='content')) && <CMSView />}
         {activeTab === 'promotions' && hasPerm(navItems.find(i=>i.id==='promotions')) && <PromotionsManagerView />}
 
@@ -4519,6 +4520,78 @@ function PromotionsManagerView() {
       )}
     </div>
   );
+}
+
+
+function CertificateRequestsAdminView() {
+  const { user } = useAuth();
+  const [requests, setRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const isSuperAdmin = user?.email === 'safeness.c.a@gmail.com';
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'certificateRequests'), snap => {
+      setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+      setError('');
+    }, err => {
+      console.error('certificateRequests subscription failed', err);
+      setError('No se pudieron cargar solicitudes. Revisa las reglas de Firestore y la colección certificateRequests.');
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  const decide = async (request: any, status: 'approved' | 'rejected') => {
+    if (!isSuperAdmin) { setError('Solo el superadministrador puede tomar esta decisión.'); return; }
+    if (status === 'approved') {
+      const paid = request.paymentStatus === 'paid' || request.paid === true;
+      const completed = request.courseCompleted === true || Number(request.progress) >= 100;
+      if (!paid || !completed) {
+        setError('No se aprueba: la solicitud no contiene evidencia de pago confirmado y curso completado. La validación autoritativa debe ejecutarse en backend.');
+        return;
+      }
+    }
+    try {
+      await updateDoc(doc(db, 'certificateRequests', request.id), {
+        status, reviewedBy: user?.uid, reviewedAt: new Date()
+      });
+      setError('');
+    } catch (err) {
+      console.error(err);
+      setError('No se pudo actualizar la solicitud. Verifica permisos de Firestore.');
+    }
+  };
+
+  const pending = requests.filter(r => !['approved','rejected','issued'].includes(String(r.status || 'pending')));
+  return <div className="space-y-5">
+    <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+      <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2"><FileText className="text-kirateal"/> Certificados y credenciales</h2>
+      <p className="text-sm text-slate-500 mt-2">Revisión de solicitudes de alumnos. La aprobación administrativa no equivale a emitir, firmar o publicar un certificado.</p>
+      <div className="flex gap-2 flex-wrap mt-4 text-xs">
+        <span className="rounded-full bg-amber-50 text-amber-700 px-3 py-1">Pendientes: {pending.length}</span>
+        <span className="rounded-full bg-emerald-50 text-emerald-700 px-3 py-1">Aprobadas: {requests.filter(r=>r.status==='approved').length}</span>
+        <span className="rounded-full bg-slate-100 text-slate-600 px-3 py-1">Emitidas: {requests.filter(r=>r.status==='issued').length}</span>
+        <span className="rounded-full bg-rose-50 text-rose-700 px-3 py-1">Rechazadas: {requests.filter(r=>r.status==='rejected').length}</span>
+      </div>
+    </section>
+    {error && <div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 p-3 text-sm">{error}</div>}
+    {loading ? <div className="p-8 text-center text-slate-500">Cargando solicitudes reales…</div> :
+      requests.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500">Todavía no hay solicitudes en certificateRequests.</div> :
+      <div className="space-y-3">{requests.map(req => <article key={req.id} className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col md:flex-row md:items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-slate-900">{req.courseTitle || req.courseName || req.title || 'Curso no identificado'}</div>
+          <div className="text-sm text-slate-500 mt-1">Alumno: {req.studentName || req.userName || req.userEmail || req.userId || 'Sin identificar'}</div>
+          <div className="text-xs text-slate-400 mt-1">Coach: {req.coachName || req.coachId || 'No especificado'} · Estado: {req.status || 'pending'}</div>
+          <div className="text-xs text-slate-400 mt-1">ID: {req.id}</div>
+        </div>
+        {req.status !== 'issued' && <div className="flex gap-2">
+          {req.status !== 'approved' && <button onClick={()=>decide(req,'approved')} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold">Aprobar solicitud</button>}
+          {req.status !== 'rejected' && <button onClick={()=>decide(req,'rejected')} className="px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold">Rechazar</button>}
+        </div>}
+      </article>)}</div>}
+  </div>;
 }
 
 // Compatibilidad con rutas anteriores
