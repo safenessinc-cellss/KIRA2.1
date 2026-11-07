@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { MediaUpload } from '../components/MediaUpload';
@@ -202,7 +202,7 @@ export function CoachCourses() {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: "gemini-3.5-flash",
           contents: prompt,
