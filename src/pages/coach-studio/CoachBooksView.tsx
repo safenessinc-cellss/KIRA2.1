@@ -1,3 +1,4 @@
+import { SafeImage } from '../../components/SafeImage';
 import React, { useState, useEffect } from 'react';
 import { db, storage } from '@/src/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -416,7 +417,7 @@ export function CoachBooksView() {
               {books.map((book) => (
                 <div key={book.id} className="group bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col h-full hover:shadow-lg transition-all duration-300">
                   <div className="relative h-44 bg-slate-50 overflow-hidden shrink-0">
-                    <img 
+                    <SafeImage 
                       src={book.coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400'} 
                       alt={book.title} 
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 

@@ -30,10 +30,16 @@ interface CacheEntry {
 }
 const memoryCache = new Map<string, CacheEntry>();
 const aiRequestWindows = new Map<string, { start: number; count: number }>();
-function allowAiRequest(uid: string, maxRequests = 60) {
+function allowAiRequest(uid: string, maxRequests = 20) {
   const now = Date.now();
   const current = aiRequestWindows.get(uid);
-  if (!current || now - current.start >= 60_000) { aiRequestWindows.set(uid, { start: now, count: 1 }); return true; }
+  if (!current || now - current.start >= 60_000) {
+    if (aiRequestWindows.size > 5000) {
+      for (const [key, value] of aiRequestWindows) if (now - value.start >= 60_000) aiRequestWindows.delete(key);
+    }
+    aiRequestWindows.set(uid, { start: now, count: 1 });
+    return true;
+  }
   if (current.count >= maxRequests) return false;
   current.count += 1; return true;
 }
@@ -48,7 +54,16 @@ function getCache(key: string): any | null {
   return entry.data;
 }
 
-function setCache(key: string, data: any, ttlMs: number = 120 * 1000) { // 2 minutes default
+function setCache(key: string, data: any, ttlMs: number = 120 * 1000) {
+  if (memoryCache.size > 1000) {
+    const now = Date.now();
+    for (const [cacheKey, entry] of memoryCache) if (entry.expiresAt <= now) memoryCache.delete(cacheKey);
+    while (memoryCache.size > 1000) {
+      const oldestKey = memoryCache.keys().next().value;
+      if (!oldestKey) break;
+      memoryCache.delete(oldestKey);
+    }
+  }
   memoryCache.set(key, {
     data,
     expiresAt: Date.now() + ttlMs
@@ -92,8 +107,18 @@ function getGeminiAI() {
 function getFirebaseAuthApp() {
   const existing = getApps().find(app => app.name === "kira-auth");
   if (existing) return existing;
-  // Firebase ID-token verification uses Google's public signing keys and project ID.
-  return initializeApp({ projectId: process.env.VITE_FIREBASE_PROJECT_ID || "kira2-a6a20" }, "kira-auth");
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID || "kira2-a6a20";
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (raw) {
+    const serviceAccount = JSON.parse(raw);
+    return initializeApp({
+      credential: cert(serviceAccount),
+      projectId: serviceAccount.project_id || projectId
+    }, "kira-auth");
+  }
+  // Signature and issuer validation still work without Admin credentials;
+  // revocation lookup is enabled only when service-account credentials exist.
+  return initializeApp({ projectId }, "kira-auth");
 }
 function getFirebaseAdminApp() {
   const existing = getApps().find(app => app.name === "kira-admin");
@@ -110,7 +135,12 @@ function getAdminDb() { return getFirestore(getFirebaseAdminApp()); }
 async function verifyFirebaseUser(req: express.Request) {
   const header = req.headers.authorization || "";
   if (!header.startsWith("Bearer ")) throw new Error("Missing Firebase bearer token");
-  return getAuth(getFirebaseAuthApp()).verifyIdToken(header.slice(7));
+  const decoded = await getAuth(getFirebaseAuthApp()).verifyIdToken(header.slice(7), Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON));
+  // The application accepts Google-authenticated Firebase sessions only.
+  if ((decoded as any).firebase?.sign_in_provider !== "google.com") {
+    throw new Error("Google authentication is required");
+  }
+  return decoded;
 }
 function getPublicAppUrl() { return (process.env.APP_URL || "https://kira.coach").replace(/\/$/, ""); }
 
@@ -213,7 +243,9 @@ app.post("/api/create-checkout-session", async (req, res) => {
       const price = Number(product.price);
       if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: "Invalid server-side price" });
       const currency = String(product.currency || "usd").toLowerCase();
-      if (!/^[a-z]{3}$/.test(currency)) return res.status(400).json({ error: "Invalid product currency" });
+      // This checkout path currently supports only two-decimal currencies.
+      if (!["usd", "brl", "eur", "gbp"].includes(currency)) return res.status(400).json({ error: "Unsupported product currency" });
+      if (Math.abs(price * 100 - Math.round(price * 100)) > 0.000001) return res.status(400).json({ error: "Product price must have at most two decimal places" });
       if (cartCurrency && cartCurrency !== currency) return res.status(400).json({ error: "All cart items must use the same currency." });
       cartCurrency = currency;
 
@@ -229,7 +261,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
         const orderRef = firestore.collection("orders").doc(freeOrderId);
         const existing = await tx.get(orderRef);
         if (existing.exists) return;
-        tx.set(orderRef, { userId: decoded.uid, items: validated, amount: 0, currency: "USD", status: "free", paymentStatus: "free", createdAt: FieldValue.serverTimestamp() });
+        tx.set(orderRef, { userId: decoded.uid, items: validated, amount: 0, currency: (cartCurrency || "usd").toUpperCase(), status: "free", paymentStatus: "free", createdAt: FieldValue.serverTimestamp() });
         for (const item of validated) {
           if (item.itemType === "course") tx.set(firestore.collection("enrollments").doc(decoded.uid + "_" + item.id), { userId: decoded.uid, courseId: item.id, progress: 0, status: "active", paymentStatus: "free", orderId: freeOrderId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
           else tx.set(firestore.collection("purchases").doc(decoded.uid + "_" + item.id), { userId: decoded.uid, itemId: item.id, itemType: "book", status: "free", paymentStatus: "free", orderId: freeOrderId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
@@ -281,7 +313,7 @@ app.get("/api/b2b/analytics", async (req, res) => {
     const profileSnap = await firestore.collection("users").doc(decoded.uid).get();
     const profile = profileSnap.data() || {};
     const role = String(profile.role || "");
-    const isSuperAdmin = String(decoded.email || "").toLowerCase() === "safeness.c.a@gmail.com";
+    const isSuperAdmin = decoded.email_verified === true && String(decoded.email || "").toLowerCase() === "safeness.c.a@gmail.com";
     if (!isSuperAdmin && role !== "hr_admin" && role !== "admin") {
       return res.status(403).json({ error: "Corporate analytics access denied." });
     }
@@ -433,8 +465,7 @@ app.get("/api/coach/crm-metrics", async (req, res) => {
 });
 
 // Report configuration truthfully; never claim the AI is ready when no key is configured.
-app.get("/api/gemini/config", (req, res) => {// Report configuration truthfully; never claim the AI is ready when no key is configured.
-app.get("/api/gemini/config", (req, res) => {
+app.get("/api/gemini/config", (_req, res) => {
   const configured = isValidGeminiKey(process.env.GEMINI_API_KEY);
   res.status(configured ? 200 : 503).json({ configured, isRealKey: configured });
 });
@@ -472,7 +503,10 @@ app.post("/api/gemini/generate", async (req, res) => {
     }
     
     // Create cache key based on contents and config to avoid repeating identical AI calls
-    const cacheKey = JSON.stringify({ model, contents, config });
+    if (!contents || JSON.stringify(contents).length > 100_000) return res.status(413).json({ error: "La solicitud supera el tamaño permitido." });
+    if (model !== undefined && (typeof model !== "string" || !/^gemini-[a-z0-9.-]{1,80}$/.test(model))) return res.status(400).json({ error: "Modelo de IA no válido." });
+    if (config?.maxOutputTokens !== undefined && (!Number.isInteger(config.maxOutputTokens) || config.maxOutputTokens < 1 || config.maxOutputTokens > 8192)) return res.status(400).json({ error: "Límite de salida no válido." });
+    const cacheKey = JSON.stringify({ uid: decoded.uid, model, contents, config });
     const cachedResponse = getCache(cacheKey);
     if (cachedResponse) {
       console.log("[Cache Backend] Sirviendo respuesta de Gemini desde caché en memoria.");
@@ -533,7 +567,7 @@ app.post("/api/gemini/generate", async (req, res) => {
     res.json({ text: textResult, cached: false });
   } catch (error: any) {
     console.error("Gemini API server proxy error:", error);
-    res.status(500).json({ error: error.message || "Un error ocurrió al llamar a la API de Gemini en el servidor." });
+    res.status(502).json({ error: "No fue posible completar la solicitud de IA. Inténtalo nuevamente." });
   }
 });
 
@@ -566,9 +600,15 @@ async function startLocalServer() {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 1_000_000 });
+  const liveConnections = new Map<string, number>();
 
-  wss.on("connection", async (clientWs) => {
+  wss.on("connection", async (clientWs: any) => {
+    const uid = clientWs.firebaseUser?.uid as string | undefined;
+    if (!uid) { clientWs.close(1008, "Authentication required"); return; }
+    const activeConnections = liveConnections.get(uid) || 0;
+    if (activeConnections >= 2) { clientWs.close(1008, "Live session limit reached"); return; }
+    liveConnections.set(uid, activeConnections + 1);
     let session: any = null;
     
     clientWs.on("message", async (data) => {
@@ -583,7 +623,7 @@ async function startLocalServer() {
               model: "gemini-3.1-flash-live-preview",
               config: {
                 responseModalities: [Modality.AUDIO],
-                systemInstruction: msg.systemInstruction || "You are a helpful assistant.",
+                systemInstruction: typeof msg.systemInstruction === "string" ? msg.systemInstruction.slice(0, 8000) : "You are a helpful assistant.",
                 inputAudioTranscription: {},
               },
               callbacks: {
@@ -601,7 +641,7 @@ async function startLocalServer() {
             }
             clientWs.close();
           }
-        } else if (msg.audio) {
+        } else if (typeof msg.audio === "string" && msg.audio.length <= 900_000) {
           if (session) {
             session.sendRealtimeInput({
               audio: { data: msg.audio, mimeType: "audio/pcm;rate=16000" },
@@ -614,6 +654,9 @@ async function startLocalServer() {
     });
 
     clientWs.on("close", () => {
+      const remaining = Math.max(0, (liveConnections.get(uid) || 1) - 1);
+      if (remaining === 0) liveConnections.delete(uid);
+      else liveConnections.set(uid, remaining);
       if (session) {
         try {
           session.close();
@@ -624,12 +667,28 @@ async function startLocalServer() {
     });
   });
 
-  server.on("upgrade", (request, socket, head) => {
-    const pathname = request.url ? new URL(request.url, `http://${request.headers.host}`).pathname : "";
-    if (pathname === "/api/live") {
-      wss.handleUpgrade(request, socket, head, (ws) => {
+  server.on("upgrade", async (request, socket, head) => {
+    const url = request.url ? new URL(request.url, `http://${request.headers.host || "localhost"}`) : null;
+    if (!url || url.pathname !== "/api/live") { socket.destroy(); return; }
+    try {
+      const token = url.searchParams.get("token");
+      if (!token) throw new Error("Missing Firebase ID token");
+      const decoded = await getAuth(getFirebaseAuthApp()).verifyIdToken(
+        token,
+        Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
+      );
+      const profileSnap = await getAdminDb().collection("users").doc(decoded.uid).get();
+      const profile = profileSnap.data() || {};
+      const authorizedCoach = profile.role === "coach" && profile.approvalStatus === "approved";
+      const authorizedAdmin = profile.role === "admin" && decoded.email_verified === true;
+      if (!authorizedCoach && !authorizedAdmin) throw new Error("Live access denied");
+      wss.handleUpgrade(request, socket, head, (ws: any) => {
+        ws.firebaseUser = decoded;
         wss.emit("connection", ws, request);
       });
+    } catch {
+      socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+      socket.destroy();
     }
   });
 

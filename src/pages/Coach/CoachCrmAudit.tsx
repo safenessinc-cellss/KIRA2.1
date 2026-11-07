@@ -1,13 +1,13 @@
 // src/pages/coach/CoachCrmAudit.tsx
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/src/hooks/useAuth';
-import { db } from '@/src/firebase';
+import { auth, db } from '@/src/firebase';
 import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { 
   Loader2, TrendingUp, TrendingDown, AlertCircle, Zap, Mail, 
   ChevronRight, BarChart3, Sparkles, Users, DollarSign, 
   Eye, ShoppingCart, CheckCircle2, Target, Rocket, Brain,
-  FileText, Send, Clock, ArrowRight
+  Send, Clock, ArrowRight
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useToast } from '@/src/hooks/useToast';
@@ -25,12 +25,20 @@ export function CoachCrmAudit() {
   const [loading, setLoading] = useState(true);
   const [auditResult, setAuditResult] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<{
+    prospects: number;
+    studioViews: number;
+    checkouts: number | null;
+    enrollments: number;
+    revenue: number | null;
+    financialAvailable: boolean;
+  }>({
     prospects: 0,
     studioViews: 0,
-    checkouts: 0,
+    checkouts: null,
     enrollments: 0,
-    revenue: 0
+    revenue: null,
+    financialAvailable: false,
   });
   const [funnelData, setFunnelData] = useState<FunnelData[]>([]);
   const [revenueHistory, setRevenueHistory] = useState<any[]>([]);
@@ -311,7 +319,9 @@ export function CoachCrmAudit() {
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-slate-900">Histórico de Ingresos (6 meses)</h3>
-              <span className="text-sm font-bold text-kirateal">{stats.revenue === null ? 'No disponible' : '
+              <span className="text-sm font-bold text-kirateal">
+                {stats.revenue === null ? 'No disponible' : '$' + stats.revenue.toLocaleString()}
+              </span>
             </div>
             <div className="h-64">
               {revenueHistory.length === 0 ? (
@@ -322,10 +332,10 @@ export function CoachCrmAudit() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={revenueHistory}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="month" fontSize={12} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                    <YAxis fontSize={12} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0'}} formatter={(value) => ['$' + value, 'Ingresos']} />
-                    <Line type="monotone" dataKey="ingresos" stroke="#1ec6b6" strokeWidth={3} dot={{fill: '#1ec6b6', strokeWidth: 2}} />
+                    <XAxis dataKey="month" fontSize={12} tick={{ fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                    <YAxis fontSize={12} tick={{ fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }} formatter={(value) => ['$' + value, 'Ingresos']} />
+                    <Line type="monotone" dataKey="ingresos" stroke="#1ec6b6" strokeWidth={3} dot={{ fill: '#1ec6b6', strokeWidth: 2 }} />
                   </LineChart>
                 </ResponsiveContainer>
               )}
@@ -335,38 +345,42 @@ export function CoachCrmAudit() {
           {/* Embudo de Conversión */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <h3 className="font-bold text-slate-900 mb-6">Embudo de Conversión</h3>
-            <div className="space-y-4">
-              {funnelData.map((stage, index) => (
-                <div key={index} className="relative">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-slate-700">{stage.stage}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-slate-900">{stage.count}</span>
-                      <span className={cn("text-xs font-bold", getConversionColor(stage.conversion))}>
-                        {stage.conversion}%
-                      </span>
+            {funnelData.length === 0 ? (
+              <p className="text-sm text-slate-500">No hay datos suficientes para mostrar el embudo.</p>
+            ) : (
+              <div className="space-y-4">
+                {funnelData.map((stage, index) => (
+                  <div key={stage.stage} className="relative">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium text-slate-700">{stage.stage}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-bold text-slate-900">{stage.count}</span>
+                        <span className={cn("text-xs font-bold", getConversionColor(stage.conversion))}>
+                          {stage.conversion}%
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                    <div 
-                      className={cn(
-                        "h-full rounded-full transition-all duration-1000",
-                        index === 0 ? "bg-indigo-500" :
-                        index === 1 ? "bg-blue-500" :
-                        index === 2 ? "bg-amber-500" :
-                        "bg-emerald-500"
-                      )}
-                      style={{ width: `${Math.min((stage.count / funnelData[0].count) * 100, 100)}%` }}
-                    />
-                  </div>
-                  {index < funnelData.length - 1 && (
-                    <div className="flex justify-center my-1">
-                      <ArrowRight size={16} className="text-slate-300" />
+                    <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-all duration-1000",
+                          index === 0 ? "bg-indigo-500" :
+                          index === 1 ? "bg-blue-500" :
+                          index === 2 ? "bg-amber-500" :
+                          "bg-emerald-500"
+                        )}
+                        style={{ width: `${Math.min((stage.count / Math.max(funnelData[0].count, 1)) * 100, 100)}%` }}
+                      />
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                    {index < funnelData.length - 1 && (
+                      <div className="flex justify-center my-1">
+                        <ArrowRight size={16} className="text-slate-300" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}
@@ -395,16 +409,6 @@ export function CoachCrmAudit() {
                 <div className="whitespace-pre-wrap text-slate-700 leading-relaxed">
                   {auditResult}
                 </div>
-              </div>
-              <div className="flex gap-3 mt-4">
-                <button className="px-4 py-2 bg-kirateal text-white rounded-xl font-bold text-sm hover:bg-kirateal-dark transition-all flex items-center gap-2">
-                  <FileText size={16} />
-                  Exportar PDF
-                </button>
-                <button className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all flex items-center gap-2">
-                  <Share2 size={16} />
-                  Compartir
-                </button>
               </div>
             </div>
           ) : (
@@ -440,7 +444,7 @@ export function CoachCrmAudit() {
             <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
               <div className="flex items-center gap-2 text-amber-700">
                 <AlertCircle size={16} />
-                <span className="text-sm font-medium">Los mensajes de recuperación con descuento tienen 40% más de conversión</span>
+                <span className="text-sm font-medium">El formulario guarda un borrador de recuperación; todavía no envía correos.</span>
               </div>
             </div>
 
@@ -470,186 +474,14 @@ export function CoachCrmAudit() {
                 ) : (
                   <Send size={18} />
                 )}
-                {isSendingRecovery ? 'Enviando...' : 'Enviar Campaña'}
+                {isSendingRecovery ? 'Enviando...' : 'Guardar borrador'}
               </button>
             </div>
 
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
               <div className="flex items-center gap-2 text-slate-500">
                 <Clock size={14} />
-                <span className="text-xs">La campaña se enviará en segundo plano y los prospectos recibirán un correo personalizado</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
- + stats.revenue.toLocaleString()}</span>
-            </div>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={revenueHistory}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="month" fontSize={12} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                  <YAxis fontSize={12} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0'}}
-                    formatter={(value) => [`$${value}`, 'Ingresos']}
-                  />
-                  <Line type="monotone" dataKey="ingresos" stroke="#1ec6b6" strokeWidth={3} dot={{fill: '#1ec6b6', strokeWidth: 2}} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Embudo de Conversión */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <h3 className="font-bold text-slate-900 mb-6">Embudo de Conversión</h3>
-            <div className="space-y-4">
-              {funnelData.map((stage, index) => (
-                <div key={index} className="relative">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-slate-700">{stage.stage}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-slate-900">{stage.count}</span>
-                      <span className={cn("text-xs font-bold", getConversionColor(stage.conversion))}>
-                        {stage.conversion}%
-                      </span>
-                    </div>
-                  </div>
-                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                    <div 
-                      className={cn(
-                        "h-full rounded-full transition-all duration-1000",
-                        index === 0 ? "bg-indigo-500" :
-                        index === 1 ? "bg-blue-500" :
-                        index === 2 ? "bg-amber-500" :
-                        "bg-emerald-500"
-                      )}
-                      style={{ width: `${Math.min((stage.count / funnelData[0].count) * 100, 100)}%` }}
-                    />
-                  </div>
-                  {index < funnelData.length - 1 && (
-                    <div className="flex justify-center my-1">
-                      <ArrowRight size={16} className="text-slate-300" />
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Tab: Auditoría IA */}
-      {activeTab === 'audit' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-          {isGenerating ? (
-            <div className="text-center py-12">
-              <Loader2 className="animate-spin text-kirateal mx-auto mb-4" size={48} />
-              <p className="text-slate-600 font-medium">Kira AI está analizando tu embudo...</p>
-              <p className="text-xs text-slate-400 mt-1">Esto puede tomar unos segundos</p>
-            </div>
-          ) : auditResult ? (
-            <div className="animate-in slide-in-from-bottom-4">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-8 h-8 rounded-full bg-kirateal/10 text-kirateal flex items-center justify-center">
-                  <Sparkles size={18} />
-                </div>
-                <h3 className="font-black text-slate-900">Diagnóstico de Kira AI</h3>
-                <span className="text-xs text-slate-400 ml-auto">
-                  Generado el {new Date().toLocaleDateString()}
-                </span>
-              </div>
-              <div className="prose prose-sm max-w-none bg-slate-50 rounded-xl p-6 border border-slate-100">
-                <div className="whitespace-pre-wrap text-slate-700 leading-relaxed">
-                  {auditResult}
-                </div>
-              </div>
-              <div className="flex gap-3 mt-4">
-                <button className="px-4 py-2 bg-kirateal text-white rounded-xl font-bold text-sm hover:bg-kirateal-dark transition-all flex items-center gap-2">
-                  <FileText size={16} />
-                  Exportar PDF
-                </button>
-                <button className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all flex items-center gap-2">
-                  <Share2 size={16} />
-                  Compartir
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-12 text-slate-400">
-              <Brain size={48} className="mx-auto mb-4 opacity-30" />
-              <p className="font-medium">Ejecuta una auditoría para obtener insights</p>
-              <p className="text-sm">Kira AI analizará tu embudo y te dará recomendaciones</p>
-              <button
-                onClick={runAudit}
-                className="mt-4 px-6 py-2 bg-kirateal text-white rounded-xl font-bold hover:bg-kirateal-dark transition-all"
-              >
-                Ejecutar Auditoría
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tab: Recuperación */}
-      {activeTab === 'recovery' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <Mail className="text-kirateal" size={24} />
-            <div>
-              <h3 className="font-bold text-slate-900">Campaña de Recuperación</h3>
-              <p className="text-xs text-slate-500">
-                {stats.checkouts === null ? 'Datos de checkout no disponibles' : stats.checkouts + ' checkouts pendientes'}
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
-              <div className="flex items-center gap-2 text-amber-700">
-                <AlertCircle size={16} />
-                <span className="text-sm font-medium">Los mensajes de recuperación con descuento tienen 40% más de conversión</span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">
-                Mensaje de Recuperación
-              </label>
-              <textarea
-                value={recoveryEmail}
-                onChange={(e) => setRecoveryEmail(e.target.value)}
-                className="w-full h-40 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm resize-none focus:ring-2 focus:ring-kirateal/20 outline-none transition-all"
-                placeholder="Escribe tu mensaje de recuperación...\n\nEjemplo:\nHola [nombre],\n\nVeo que comenzaste el proceso de inscripción en [curso]. ¿Tuviste algún problema?\n\nTe ofrezco un 20% de descuento si completas tu registro hoy.\n\n¡Te espero! 🚀"
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-slate-400">
-                <span className="font-bold">{stats.checkouts === null ? 'Audiencia no disponible' : stats.checkouts}</span> prospectos en la audiencia
-              </div>
-              <button
-                onClick={sendRecoveryCampaign}
-                disabled={isSendingRecovery || !recoveryEmail.trim()}
-                className="px-6 py-3 bg-kirateal text-white rounded-xl font-bold hover:bg-kirateal-dark transition-all flex items-center gap-2 disabled:opacity-50"
-              >
-                {isSendingRecovery ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <Send size={18} />
-                )}
-                {isSendingRecovery ? 'Enviando...' : 'Enviar Campaña'}
-              </button>
-            </div>
-
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-              <div className="flex items-center gap-2 text-slate-500">
-                <Clock size={14} />
-                <span className="text-xs">La campaña se enviará en segundo plano y los prospectos recibirán un correo personalizado</span>
+                <span className="text-xs">Este borrador queda guardado para una futura integración de envíos.</span>
               </div>
             </div>
           </div>

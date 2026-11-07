@@ -1,14 +1,16 @@
+import { SafeImage } from '../components/SafeImage';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
-import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search } from 'lucide-react';
+import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, Menu, X } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
 import { AdminBooksView } from './AdminBooksView';
 import { cn } from '../lib/utils';
 import { AdminExecutiveDashboard } from './AdminExecutiveDashboard';
 import { useToast } from '../hooks/useToast';
+import { Logo } from '../components/Brand';
 
 type AdminTab = string;
 
@@ -17,6 +19,7 @@ export function AdminMonitor() {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [profile, setProfile] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -111,14 +114,23 @@ export function AdminMonitor() {
     setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
   };
 
+  const selectAdminTab = (tab: AdminTab) => {
+    setActiveTab(tab);
+    setMobileMenuOpen(false);
+  };
+
   return (
-    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
-      {/* Sidebar Refinada */}
-      <aside className="w-full lg:w-72 lg:shrink-0 lg:sticky lg:top-4 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="rounded-xl bg-gradient-to-br from-cyan-50 via-white to-indigo-50 border border-cyan-100 px-4 py-3">
-          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-700">KIRA COACH</div>
-          <div className="mt-1 text-sm font-extrabold text-slate-900">Ecosistema de Bienestar</div>
-          <div className="mt-1 text-[11px] text-slate-500">Centro de Mando</div>
+    <div className="relative flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm lg:hidden">
+        <div className="flex min-w-0 items-center gap-2"><Logo size={34} /><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-800">Centro de Mando</p><p className="truncate text-xs text-slate-500">Administración KIRA</p></div></div>
+        <button type="button" onClick={() => setMobileMenuOpen(true)} aria-label="Abrir menú de módulos" aria-expanded={mobileMenuOpen} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-700"><Menu size={20}/></button>
+      </div>
+      {mobileMenuOpen && <button type="button" aria-label="Cerrar menú" onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-[70] bg-slate-950/40 lg:hidden" />}
+      {/* Único menú administrativo: drawer en móvil y sidebar en escritorio */}
+      <aside className={cn("flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl lg:sticky lg:top-4 lg:z-auto lg:w-72 lg:shrink-0 lg:shadow-sm", mobileMenuOpen ? "fixed inset-y-0 left-0 z-[80] w-[min(20rem,88vw)] overflow-y-auto rounded-none" : "hidden lg:flex")}>
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-cyan-100 bg-gradient-to-br from-cyan-50 via-white to-indigo-50 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3"><Logo size={38}/><div className="min-w-0"><div className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-700">KIRA COACH</div><div className="mt-1 text-sm font-extrabold text-slate-900">Ecosistema de Bienestar</div><div className="mt-1 text-[11px] text-slate-500">Centro de Mando</div></div></div>
+          <button type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Cerrar menú" className="rounded-lg p-2 text-slate-500 hover:bg-white lg:hidden"><X size={18}/></button>
         </div>
         {/* Búsqueda rápida de módulos */}
         <div className="relative group mb-2">
@@ -155,7 +167,7 @@ export function AdminMonitor() {
                     key={item.id}
                     active={activeTab === item.id} 
                     disabled={!canOpen(item)}
-                    onClick={() => canOpen(item) && setActiveTab(item.id as AdminTab)} 
+                    onClick={() => canOpen(item) && selectAdminTab(item.id as AdminTab)} 
                     icon={item.icon} 
                     label={item.label} 
                   />
@@ -167,7 +179,7 @@ export function AdminMonitor() {
       </aside>
 
       {/* Área principal: dashboard inicial y contenido del módulo seleccionado */}
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 flex-1 w-full">
         {activeTab === 'dashboard' && hasPerm(navItems.find(i=>i.id==='dashboard')) && <GlobalDashboardView onNavigate={(tab) => setActiveTab(tab)} />}
         {activeTab === 'analytics' && hasPerm(navItems.find(i=>i.id==='analytics')) && <BIView />}
 
@@ -527,9 +539,9 @@ function BIView() {
     {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
     {loading ? <div className="rounded-xl bg-white p-6 text-sm text-slate-500">Cargando datos reales…</div> : <>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><StatCard title="Usuarios registrados" value={users.length.toLocaleString('es-ES')} subtitle="Registros en users" icon={<Users className="text-blue-500"/>}/><StatCard title="Inscripciones activas" value={activeEnrollments.toLocaleString('es-ES')} subtitle="Sin cancelación/refund" icon={<BookOpen className="text-teal-500"/>}/><StatCard title="Cursos disponibles" value={courses.length.toLocaleString('es-ES')} subtitle="Registros en courses" icon={<BookOpen className="text-violet-500"/>}/></div>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><h3 className="font-bold text-slate-900">Nuevos usuarios e inscripciones</h3><p className="mt-1 text-xs text-slate-500">Período {range===30?'diario':'semanal'} · no se extrapolan datos faltantes.</p>{trend.some(row=>row.users||row.enrollments)?<div className="mt-4 h-72"><ResponsiveContainer width="100%" height="100%"><LineChart data={trend}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="label" fontSize={10}/><YAxis allowDecimals={false}/><Tooltip/><Legend/><Line dataKey="users" name="Usuarios" stroke="#0d9488" strokeWidth={2} dot={false}/><Line dataKey="enrollments" name="Inscripciones" stroke="#6366f1" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div>:<div className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No hay fechas válidas en las fuentes para graficar el período.</div>}</div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><h3 className="font-bold text-slate-900">Demanda por curso</h3><p className="mt-1 text-xs text-slate-500">Conteo de inscripciones agrupadas por courseId.</p>{coursesDemand.length?<div className="mt-4 h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={coursesDemand} layout="vertical"><CartesianGrid strokeDasharray="3 3" horizontal={false}/><XAxis type="number" allowDecimals={false}/><YAxis type="category" dataKey="name" width={110} fontSize={10}/><Tooltip/><Bar dataKey="enrolled" name="Inscripciones" fill="#0d9488" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div>:<div className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">Todavía no hay inscripciones vinculadas a cursos.</div>}</div>
+      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><h3 className="font-bold text-slate-900">Nuevos usuarios e inscripciones</h3><p className="mt-1 text-xs text-slate-500">Período {range===30?'diario':'semanal'} · no se extrapolan datos faltantes.</p>{trend.some(row=>row.users||row.enrollments)?<div className="mt-4 h-72 min-h-[18rem] min-w-0 w-full  "><ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}><LineChart data={trend}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="label" fontSize={10}/><YAxis allowDecimals={false}/><Tooltip/><Legend/><Line dataKey="users" name="Usuarios" stroke="#0d9488" strokeWidth={2} dot={false}/><Line dataKey="enrollments" name="Inscripciones" stroke="#6366f1" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div>:<div className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No hay fechas válidas en las fuentes para graficar el período.</div>}</div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><h3 className="font-bold text-slate-900">Demanda por curso</h3><p className="mt-1 text-xs text-slate-500">Conteo de inscripciones agrupadas por courseId.</p>{coursesDemand.length?<div className="mt-4 h-72 min-h-[18rem] min-w-0 w-full  "><ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}><BarChart data={coursesDemand} layout="vertical"><CartesianGrid strokeDasharray="3 3" horizontal={false}/><XAxis type="number" allowDecimals={false}/><YAxis type="category" dataKey="name" width={110} fontSize={10}/><Tooltip/><Bar dataKey="enrolled" name="Inscripciones" fill="#0d9488" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div>:<div className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">Todavía no hay inscripciones vinculadas a cursos.</div>}</div>
       </div>
     </>}
   </div>;
@@ -945,7 +957,7 @@ function TransactionsMonitorView() {
         </h3>
         <div className="h-64">
            {txs.length > 0 ? (
-             <ResponsiveContainer width="100%" height="100%">
+             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                <BarChart data={prepareChartData(txs)}>
                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                  <XAxis dataKey="name" fontSize={10} tick={{fill: '#94a3b8'}} />
@@ -1737,7 +1749,7 @@ function PromotionsManagerView() {
                        />
                     </div>
                  </div>
-                 {imageUrl && <img src={imageUrl} alt="preview" className="mt-3 h-32 object-cover rounded-xl border border-slate-200" />}
+                 {imageUrl && <SafeImage src={imageUrl} alt="preview" className="mt-3 h-32 object-cover rounded-xl border border-slate-200" />}
               </div>
            </div>
 
@@ -1763,7 +1775,7 @@ function PromotionsManagerView() {
               
               <div className="h-32 bg-slate-100 relative">
                 {prom.imageUrl ? (
-                   <img src={prom.imageUrl} alt={prom.title} className="w-full h-full object-cover" />
+                   <SafeImage src={prom.imageUrl} alt={prom.title} className="w-full h-full object-cover" />
                 ) : (
                    <div className="w-full h-full flex items-center justify-center text-slate-300"><ImageUpload onUploadComplete={(url) => {handleEdit(prom); setImageUrl(url);}} currentImage="" folderPath="promotions" label="Añadir Imagen" /></div>
                 )}

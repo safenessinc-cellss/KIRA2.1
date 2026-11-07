@@ -354,6 +354,16 @@ export default function CertificateGenerator() {
     });
 
     const isLogoUrl = cert.logoUrl.startsWith('http://') || cert.logoUrl.startsWith('https://') || cert.logoUrl.startsWith('data:');
+    const isExpiredSocialCdn = (() => {
+      try {
+        const host = new URL(cert.logoUrl).hostname.toLowerCase();
+        return host === 'fbcdn.net' || host.endsWith('.fbcdn.net') ||
+          host === 'facebook.com' || host.endsWith('.facebook.com');
+      } catch {
+        return false;
+      }
+    })();
+    const safeLogoUrl = isExpiredSocialCdn ? '/images/image-unavailable.svg' : cert.logoUrl;
 
     return `
       <div class="relative w-[11in] h-[8.5in] flex flex-col justify-between p-12 bg-[#F0F4FA] text-[#142B44] font-sans border-[16px] border-[#142B44] overflow-hidden" style="box-sizing: border-box;">
@@ -374,7 +384,7 @@ export default function CertificateGenerator() {
         <div class="relative z-10 flex flex-col items-center text-center mt-4">
           <div class="mb-4">
             ${isLogoUrl ? `
-              <img src="${cert.logoUrl}" alt="Logo" class="h-14 object-contain" />
+              <img src="${safeLogoUrl}" alt="Logo" class="h-14 object-contain" />
             ` : `
               <div class="flex items-center gap-2">
                 <span class="text-2xl font-black tracking-tighter text-[#142B44]">${cert.logoUrl}</span>

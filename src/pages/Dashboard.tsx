@@ -1,3 +1,4 @@
+import { SafeImage } from '../components/SafeImage';
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
@@ -203,7 +204,7 @@ export function Dashboard() {
         const booksQ = query(collection(db, 'books'), where('status', '==', 'published'));
         const booksSnap = await getDocs(booksQ);
         const fbBooks = booksSnap.docs.map(d => ({id: d.id, ...d.data()}));
-        const merged = [...DEFAULT_BOOKS];
+        const merged: any[] = [];
         fbBooks.forEach((fbB: any) => {
           if (!merged.some(m => m.id === fbB.id)) {
             merged.push(fbB);
@@ -352,7 +353,7 @@ export function Dashboard() {
   };
   
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-10 animate-in fade-in duration-700">
+    <div className="mx-auto w-full min-w-0 max-w-7xl space-y-6 px-3 py-4 sm:space-y-8 sm:px-4 sm:py-6 lg:space-y-10 lg:py-8 animate-in fade-in duration-700">
       {checkoutNotice && <div role="status" className="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">{checkoutNotice}</div>}
       {/* Header Ejecutivo para Alumno */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-100 pb-10">
@@ -365,13 +366,13 @@ export function Dashboard() {
             <span className="text-slate-300">/</span>
             <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Workspace Personal</span>
           </div>
-          <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-none">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight">
             Hola, <span className="text-transparent bg-clip-text bg-gradient-to-r from-kirateal to-violet-600">{(user?.displayName || user?.name || user?.email || 'Alumno').split(' ')[0]}</span>
           </h1>
-          <p className="text-slate-500 mt-4 font-medium text-lg max-w-xl">Tu centro de comando para el alto rendimiento y la expansión de consciencia.</p>
+          <p className="text-slate-500 mt-3 sm:mt-4 font-medium text-sm sm:text-base lg:text-lg max-w-xl">Tu centro de comando para el alto rendimiento y la expansión de consciencia.</p>
         </div>
-               <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-[24px] border border-slate-100 shadow-inner">
-          <div className="px-6 py-3 bg-white rounded-2xl shadow-sm border border-slate-200/60">
+               <div className="flex w-full md:w-auto min-w-0 flex-wrap items-center gap-2 sm:gap-3 bg-slate-50 p-2 rounded-2xl sm:rounded-[24px] border border-slate-100 shadow-inner">
+          <div className="px-3 sm:px-5 py-3 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200/60">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">Energy Pts</p>
             <div className="flex items-center gap-2">
               <Zap size={16} className="text-kiragold fill-kiragold" />
@@ -409,7 +410,7 @@ export function Dashboard() {
             title="Mi Perfil"
           >
             {(user?.photoURL || user?.photoUrl) ? (
-              <img src={user.photoURL || user.photoUrl} alt="Profile" className="w-full h-full object-cover" />
+              <SafeImage src={user.photoURL || user.photoUrl} alt="Profile" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center font-black text-slate-400 text-2xl">
                 {(user?.displayName || user?.name || '?')[0].toUpperCase()}
@@ -439,7 +440,7 @@ export function Dashboard() {
             <div className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-teal-400 tracking-widest bg-teal-500/15 px-2.5 py-0.5 rounded-full border border-teal-500/20">
               <Sparkles size={10} className="fill-current" /> Especial de Aniversario
             </div>
-            <h3 className="text-xl font-black">Nuevo Ebook de Coaching Ontológico & Arteterapia</h3>
+            <h3 className="text-lg sm:text-xl font-black">Nuevo Ebook de Coaching Ontológico & Arteterapia</h3>
             <p className="text-xs text-slate-300 max-w-xl text-left">
               ¡Disfruta del microaprendizaje interactivo! Convierte la lectura en acción con preguntas de reflexión de Kira Moreno, mándalas virtuales y gana +50 Zaps por capítulo.
             </p>
@@ -604,7 +605,7 @@ export function Dashboard() {
                     <div key={course.id} className="w-full flex-shrink-0 px-1">
                       <div className="border border-slate-100 rounded-[32px] overflow-hidden bg-slate-50/40 hover:border-kirateal transition-all duration-500 flex flex-col md:flex-row h-72">
                         <div className="md:w-5/12 bg-slate-200 relative shrink-0">
-                          {course.bannerUrl && <img src={course.bannerUrl} alt={course.title} className="w-full h-full object-cover" />}
+                          {course.bannerUrl && <SafeImage src={course.bannerUrl} alt={course.title} className="w-full h-full object-cover" />}
                           <div className="absolute top-5 left-5 bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-2xl text-[13px] font-black shadow-lg text-slate-900 border border-white/20">
                             ${course.price}
                           </div>
@@ -712,14 +713,11 @@ export function Dashboard() {
                   <div key={book.id} className="border border-white/5 rounded-[32px] overflow-hidden bg-slate-950/60 hover:border-emerald-400/40 transition-all duration-500 flex flex-col min-h-[460px] justify-between">
                     <div className="h-44 bg-slate-950/80 relative overflow-hidden shrink-0 flex items-center justify-center p-4 border-b border-white/5">
                       {book.imageUrl && (
-                        <div 
-                          className="absolute inset-0 bg-cover bg-center opacity-20 blur-md scale-110 pointer-events-none"
-                          style={{ backgroundImage: `url(${book.imageUrl})` }}
-                        />
+                        <div className="absolute inset-0 bg-gradient-to-br from-slate-800 via-slate-900 to-slate-950 opacity-70 blur-md scale-110 pointer-events-none" />
                       )}
                       
                       {book.imageUrl ? (
-                        <img 
+                        <SafeImage 
                           src={book.imageUrl} 
                           alt={book.title} 
                           className="h-28 max-w-[85px] object-contain transition-transform duration-500 hover:scale-105 drop-shadow-2xl z-10 rounded-lg shadow-lg border border-white/10" 
@@ -825,7 +823,7 @@ export function Dashboard() {
                     <div className="flex gap-4 items-start">
                       <div className="w-16 h-16 rounded-2xl bg-slate-100 overflow-hidden shrink-0 border border-slate-150">
                         {purchase.imageUrl ? (
-                          <img src={purchase.imageUrl} alt={purchase.itemTitle} className="w-full h-full object-cover" />
+                          <SafeImage src={purchase.imageUrl} alt={purchase.itemTitle} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full bg-slate-200 flex items-center justify-center font-black text-slate-400 uppercase text-xs">
                             {purchase.itemType === 'course' ? 'C' : 'B'}
@@ -910,7 +908,7 @@ export function Dashboard() {
                   {favoriteCoaches.map(coach => (
                     <div key={coach.id} className="p-6 rounded-3xl border border-slate-100 bg-slate-50/40 hover:bg-white hover:shadow-2xl hover:border-kirateal/20 transition-all duration-300 group flex flex-col items-center text-center">
                        <div className="w-24 h-24 rounded-full overflow-hidden mb-5 border-4 border-white shadow-lg ring-4 ring-slate-100 group-hover:scale-110 transition-transform duration-500">
-                          <img src={coach.photoURL} alt={coach.displayName} className="w-full h-full object-cover" />
+                          <SafeImage src={coach.photoURL} alt={coach.displayName} className="w-full h-full object-cover" />
                        </div>
                        <h4 className="text-base font-black text-slate-900 mb-1">{coach.displayName}</h4>
                        <p className="text-[11px] text-slate-400 mb-6 line-clamp-1 w-full font-bold uppercase tracking-tight">{coach.specialty}</p>
@@ -976,7 +974,7 @@ export function Dashboard() {
                    className="flex items-center gap-4 p-4 rounded-3xl border border-slate-50 bg-slate-50/50 hover:bg-white hover:border-kiragold/30 hover:shadow-2xl transition-all duration-300 group"
                  >
                     <div className="w-14 h-14 rounded-2xl bg-white shadow-sm overflow-hidden shrink-0 relative p-1 border border-slate-100">
-                       <img src={item.type === 'imagen' ? item.url : `https://picsum.photos/seed/${item.title}/100/100`} alt={item.title} className="w-full h-full object-cover rounded-xl" />
+                       <SafeImage src={item.type === 'imagen' ? item.url : `https://picsum.photos/seed/${item.title}/100/100`} alt={item.title} className="w-full h-full object-cover rounded-xl" />
                     </div>
                     <div className="flex-1 min-w-0">
                        <h4 className="text-[14px] font-black text-slate-800 truncate group-hover:text-kirateal transition-colors leading-tight mb-1">{item.title}</h4>
@@ -1165,7 +1163,7 @@ export function Dashboard() {
                           {cartItems.map((item) => (
                             <li key={item.id} className="py-6 flex gap-4">
                               <div className="flex-shrink-0 w-24 h-16 rounded-xl bg-slate-100 overflow-hidden border border-slate-200">
-                                <img src={item.imageUrl || item.bannerUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=150'} alt={item.title} className="w-full h-full object-cover" />
+                                <SafeImage src={item.imageUrl || item.bannerUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=150'} alt={item.title} className="w-full h-full object-cover" />
                               </div>
                               <div className="flex-1 flex flex-col">
                                 <div>

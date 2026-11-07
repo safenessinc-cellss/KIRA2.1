@@ -28,7 +28,6 @@ function ClockIcon({ size = 16, className = '' }: { size?: number; className?: s
 }
 
 export function ChatWidget() {
-  console.log('🔵 [ChatWidget] Componente montado en la aplicación');
   
   const { user, role } = useAuth();
   const { success, error: toastError, warning: toastWarning } = useToast();
@@ -54,14 +53,11 @@ export function ChatWidget() {
 
   // ✅ ESCUCHAR AMBOS EVENTOS
   useEffect(() => {
-    console.log('🔵 [ChatWidget] useEffect de eventos registrado');
 
     // Handler para 'open-kira-chat'
     const handleOpenKiraChat = (e: Event) => {
-      console.log('🟢 [ChatWidget] Evento open-kira-chat recibido');
       const customEvent = e as CustomEvent;
       const coach = customEvent.detail?.coach;
-      console.log('🟢 Coach recibido:', coach);
 
       if (coach) {
         const resolvedCoach = {
@@ -78,16 +74,13 @@ export function ChatWidget() {
         });
         setSelectedContact(resolvedCoach);
         setIsOpen(true);
-        console.log('🟢 Chat abierto con:', resolvedCoach.displayName);
       }
     };
 
     // Handler para 'open-mentor-chat' (Dashboard)
     const handleOpenMentorChat = (e: Event) => {
-      console.log('🔵 [ChatWidget] Evento open-mentor-chat recibido');
       const customEvent = e as CustomEvent;
       const mentor = customEvent.detail;
-      console.log('🔵 Mentor recibido:', mentor);
 
       if (mentor) {
         const resolvedMentor = {
@@ -106,17 +99,14 @@ export function ChatWidget() {
         });
         setSelectedContact(resolvedMentor);
         setIsOpen(true);
-        console.log('🔵 Chat abierto con mentor:', resolvedMentor.displayName);
       }
     };
 
     window.addEventListener('open-kira-chat', handleOpenKiraChat);
     window.addEventListener('open-mentor-chat', handleOpenMentorChat);
 
-    console.log('✅ [ChatWidget] Listeners registrados');
 
     return () => {
-      console.log('🔴 [ChatWidget] Removiendo listeners');
       window.removeEventListener('open-kira-chat', handleOpenKiraChat);
       window.removeEventListener('open-mentor-chat', handleOpenMentorChat);
     };

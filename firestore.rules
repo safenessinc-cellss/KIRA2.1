@@ -61,11 +61,12 @@ service cloud.firestore {
     // ===============================================================
     
     function isAuthenticated() {
-      return request.auth != null;
+      return request.auth != null &&
+             request.auth.token.firebase.sign_in_provider == 'google.com';
     }
 
     function isSuperAdmin() {
-      return isAuthenticated() && request.auth.token.email == "safeness.c.a@gmail.com";
+      return isAuthenticated() && request.auth.token.email == "safeness.c.a@gmail.com" && request.auth.token.email_verified == true;
     }
     
     function isDocOwner(userIdField) {
@@ -319,7 +320,7 @@ service cloud.firestore {
       allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid)));
       allow create: if false; // Enrollment grants must be created by trusted backend after verified access/payment.
       allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt', 'status', 'paymentStatus', 'orderId']) && 
-                    (isAdmin() || (isCurrentUser(resource.data.userId)) || isApprovedCoach());
+                    (isAdmin() || isCoachForStudent(resource.data.courseId, resource.data.userId));
       allow delete: if isAdmin();
     }
     
@@ -333,8 +334,8 @@ service cloud.firestore {
     
     match /sessions/{sessionId} {
       allow read: if isAdmin() || (isAuthenticated() && (resource.data.coachId == request.auth.uid || resource.data.userId == request.auth.uid));
-      allow create: if isAuthenticated() && (isAdmin() || request.resource.data.coachId == request.auth.uid);
-      allow update: if isAuthenticated() && (isAdmin() || resource.data.coachId == request.auth.uid);
+      allow create: if isAdmin() || (isApprovedCoach() && request.resource.data.coachId == request.auth.uid);
+      allow update: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid && request.resource.data.coachId == request.auth.uid && areImmutableFieldsUnchanged(['coachId', 'userId', 'createdAt', 'startedAt']));
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
     }
     
@@ -348,8 +349,7 @@ service cloud.firestore {
 
     match /transactions/{id} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow create: if false; // Transactions are created only by trusted Stripe/backend handlers. 
-      allow update, delete: if isAdmin();
+      allow create, update, delete: if false; // Ledger entries are immutable; corrections use trusted backend workflows.
     }
 
     match /coupons/{id} {
@@ -376,15 +376,15 @@ service cloud.firestore {
     }
 
     match /messages/{messageId} {
-      allow read: if isAuthenticated() && (isAdmin() || resource.data.chatId.matches('.*' + request.auth.uid + '.*'));
-      allow create: if isAuthenticated() && isValidMessage() && request.auth.uid == request.resource.data.senderId;
+      allow read: if isAuthenticated() && (isAdmin() || resource.data.chatId.matches('(^|.*_)' + request.auth.uid + '(_.*|$)'));
+      allow create: if isAuthenticated() && isValidMessage() && request.auth.uid == request.resource.data.senderId && request.resource.data.chatId.matches('(^|.*_)' + request.auth.uid + '(_.*|$)');
       allow update, delete: if isAdmin();
     }
 
     match /contracts/{contractId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
-      allow create: if isAdmin() || isApprovedCoach();
-      allow update: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+      allow create: if isAdmin() || (isApprovedCoach() && request.resource.data.coachId == request.auth.uid);
+      allow update: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid && request.resource.data.coachId == request.auth.uid && areImmutableFieldsUnchanged(['coachId', 'createdAt']));
       allow delete: if isAdmin();
     }
 
@@ -431,17 +431,20 @@ service cloud.firestore {
                      (request.resource.data.type in ['coach_message', 'homework_review'] &&
                       request.resource.data.courseId is string &&
                       isCoachForStudent(request.resource.data.courseId, request.resource.data.userId)));
-      allow update: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.read is bool && areImmutableFieldsUnchanged(['userId', 'title', 'message', 'type', 'createdAt', 'courseId']));
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
 
     match /automations/{id} {
-      allow read: if isAdmin() || isApprovedCoach();
-      allow create, update, delete: if isAdmin() || isApprovedCoach();
+      allow read: if isAdmin() || (isApprovedCoach() && resource.data.ownerId == request.auth.uid);
+      allow create: if isAdmin() || (isApprovedCoach() && isValidAutomation() && request.resource.data.ownerId == request.auth.uid);
+      allow update: if isAdmin() || (isApprovedCoach() && isValidAutomation() && resource.data.ownerId == request.auth.uid && request.resource.data.ownerId == request.auth.uid && areImmutableFieldsUnchanged(['ownerId', 'createdAt']));
+      allow delete: if isAdmin() || (isApprovedCoach() && resource.data.ownerId == request.auth.uid);
     }
 
     match /campaign_logs/{id} {
-      allow read, create: if isAdmin() || isApprovedCoach();
+      allow read: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+      allow create: if isAdmin() || (isApprovedCoach() && request.resource.data.coachId == request.auth.uid);
       allow update, delete: if false;
     }
 
@@ -490,9 +493,7 @@ service cloud.firestore {
     match /course_activity/{id} {
       allow read: if isAdmin() ||
                   (isAuthenticated() && resource.data.userId == request.auth.uid) ||
-                  (isApprovedCoach() &&
-                   exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) &&
-                   get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid);
+                  isCoachForStudent(resource.data.courseId, resource.data.userId);
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
@@ -508,8 +509,7 @@ service cloud.firestore {
     }
 
     match /stats/{id} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if isAdmin();
     }
 
     
