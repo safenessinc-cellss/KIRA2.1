@@ -6,6 +6,7 @@ import Stripe from "stripe";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { WebSocketServer } from "ws";
 import compression from "compression";
+import { createHash } from "crypto";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
@@ -180,12 +181,27 @@ app.post("/api/create-checkout-session", async (req, res) => {
       const product = productSnap.data() || {};
       if (String(product.status || "").toLowerCase() !== "published" && product.published !== true) return res.status(409).json({ error: "Product is not published" });
       const price = Number(product.price);
-      if (!Number.isFinite(price) || price <= 0) return res.status(400).json({ error: "Invalid server-side price. Free items need a separate backend enrollment flow." });
+      if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: "Invalid server-side price" });
       const title = String(product.title || product.name || "KIRA item").slice(0, 200);
       lineItems.push({ quantity: 1, price_data: { currency: String(product.currency || "usd").toLowerCase(), unit_amount: Math.round(price * 100), product_data: { name: title, metadata: { productId: String(item.id), itemType: item.itemType } } } });
       validated.push({ id: String(item.id), itemType: item.itemType });
     }
     const origin = getPublicAppUrl();
+    if (lineItems.every(line => Number(line.price_data?.unit_amount || 0) === 0)) {
+      const digest = createHash("sha256").update(decoded.uid + "|" + JSON.stringify(validated)).digest("hex");
+      const freeOrderId = "free_" + decoded.uid + "_" + digest;
+      await firestore.runTransaction(async tx => {
+        const orderRef = firestore.collection("orders").doc(freeOrderId);
+        const existing = await tx.get(orderRef);
+        if (existing.exists) return;
+        tx.set(orderRef, { userId: decoded.uid, items: validated, amount: 0, currency: "USD", status: "free", paymentStatus: "free", createdAt: FieldValue.serverTimestamp() });
+        for (const item of validated) {
+          if (item.itemType === "course") tx.set(firestore.collection("enrollments").doc(decoded.uid + "_" + item.id), { userId: decoded.uid, courseId: item.id, progress: 0, status: "active", paymentStatus: "free", orderId: freeOrderId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+          else tx.set(firestore.collection("purchases").doc(decoded.uid + "_" + item.id), { userId: decoded.uid, itemId: item.id, itemType: "book", status: "free", paymentStatus: "free", orderId: freeOrderId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        }
+      });
+      return res.json({ free: true, orderId: freeOrderId });
+    }
     const session = await stripe.checkout.sessions.create({
       mode: "payment", payment_method_types: ["card"], line_items: lineItems,
       client_reference_id: decoded.uid, metadata: { userId: decoded.uid, items: JSON.stringify(validated) },
