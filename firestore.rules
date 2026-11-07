@@ -182,7 +182,7 @@ service cloud.firestore {
     
     function isValidEnrollment() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['userId', 'courseId', 'progress', 'createdAt', 'completed', 'courseCompleted', 'completedAt']) &&
+      return hasOnlyAllowedFields(['userId', 'courseId', 'progress', 'createdAt', 'completed', 'courseCompleted', 'completedAt', 'paymentOrderId', 'paymentStatus']) &&
              data.userId is string &&
              data.courseId is string &&
              data.progress is number && data.progress >= 0 && data.progress <= 100 &&
@@ -318,7 +318,7 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.price <= 0
           )
         );
-      allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt']) && 
+      allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt', 'paymentOrderId', 'paymentStatus']) && 
                     (isAdmin() || (isApprovedCoach() && exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid));
       allow delete: if isAdmin();
     }
