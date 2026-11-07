@@ -107,8 +107,18 @@ function getGeminiAI() {
 function getFirebaseAuthApp() {
   const existing = getApps().find(app => app.name === "kira-auth");
   if (existing) return existing;
-  // Firebase ID-token verification uses Google's public signing keys and project ID.
-  return initializeApp({ projectId: process.env.VITE_FIREBASE_PROJECT_ID || "kira2-a6a20" }, "kira-auth");
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID || "kira2-a6a20";
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (raw) {
+    const serviceAccount = JSON.parse(raw);
+    return initializeApp({
+      credential: cert(serviceAccount),
+      projectId: serviceAccount.project_id || projectId
+    }, "kira-auth");
+  }
+  // Signature and issuer validation still work without Admin credentials;
+  // revocation lookup is enabled only when service-account credentials exist.
+  return initializeApp({ projectId }, "kira-auth");
 }
 function getFirebaseAdminApp() {
   const existing = getApps().find(app => app.name === "kira-admin");
@@ -125,7 +135,7 @@ function getAdminDb() { return getFirestore(getFirebaseAdminApp()); }
 async function verifyFirebaseUser(req: express.Request) {
   const header = req.headers.authorization || "";
   if (!header.startsWith("Bearer ")) throw new Error("Missing Firebase bearer token");
-  return getAuth(getFirebaseAuthApp()).verifyIdToken(header.slice(7), true);
+  return getAuth(getFirebaseAuthApp()).verifyIdToken(header.slice(7), Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON));
 }
 function getPublicAppUrl() { return (process.env.APP_URL || "https://kira.coach").replace(/\/$/, ""); }
 
