@@ -226,6 +226,7 @@ export default function SessionIntelligence() {
       };
 
       recognition.onerror = (event: any) => {
+        recognitionRef.current = null;
         console.error("Speech recognition error:", event.error);
         if (event.error === 'not-allowed') {
           alert("Acceso al micrófono denegado. Habilita los permisos en la configuración del navegador.");
@@ -235,6 +236,7 @@ export default function SessionIntelligence() {
       };
 
       recognition.onend = () => {
+        if (recognitionRef.current === recognition) recognitionRef.current = null;
         setIsRecording(false);
         setInterimTranscript('');
         setStatus(current => current === 'running' ? 'idle' : current);
