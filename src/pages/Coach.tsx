@@ -495,82 +495,14 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
   const totalCrmRevenue = closes * crmTicketPrice;
   const valuePerLead = leads > 0 ? Number((totalCrmRevenue / leads).toFixed(1)) : 0;
 
-  // Envíos de prueba estáticos de alta calidad por si no existen registros aún
-  const mockSubmissions = [
-    {
-      id: 'sub-1',
-      studentName: 'Sofía Alarcón',
-      studentEmail: 'sofia.alarcon@example.com',
-      moduleName: 'Módulo 1: Desbloqueo Emocional',
-      submissionDate: 'Hace 2 horas',
-      content: 'Me he sentido increíblemente conectada durante la sesión de hoy. Logré identificar que mi estrés físico se acumula en los hombros. Hice un dibujo de trazos circulares con tonos fríos para drenar mi frustración del trabajo y de inmediato sentí un gran alivio en el pecho.',
-      status: 'pending',
-      sentiment: 'positive'
-    },
-    {
-      id: 'sub-2',
-      studentName: 'Mateo Castillo',
-      studentEmail: 'mateo.c@example.com',
-      moduleName: 'Módulo 2: Reconfiguración de Creencias',
-      submissionDate: 'Ayer',
-      content: 'Siento mucha resistencia al intentar reprogramar mis pensamientos limitantes sobre la abundancia. Cada vez que pienso en cobrar lo que realmente vale mi trabajo, me da un nudo fuerte en el estómago y me asalta la culpa de no ser lo suficientemente humilde.',
-      status: 'pending',
-      sentiment: 'negative'
-    },
-    {
-      id: 'sub-3',
-      studentName: 'María Soler',
-      studentEmail: 'maria.soler@example.com',
-      moduleName: 'Módulo 3: El Poder de la Presencia',
-      submissionDate: 'Hace 3 días',
-      content: 'He estado haciendo las meditaciones diarias de 10 minutos recomendadas en el programa. Noto que mi mente se distrae menos durante el día y logro volver a mi centro con mayor facilidad cuando hay caos alrededor. Me siento muy estable y en paz.',
-      status: 'reviewed',
-      sentiment: 'neutral',
-      feedback: '¡Excelente proceso, María! Mantener la constancia de 10 minutos diarios es la clave del momentum. Has logrado estabilizar tu ritmo interno de manera espectacular. ¡Sigue así!'
-    }
-  ];
-
-  // Cargar registros de diarios reales y fusionar
+  // Los diarios personales son privados; las entregas académicas se gestionan en CoachHomeworkReview.
   useEffect(() => {
-    if (showRevisarTareas && user) {
-      const fetchJournalsForReview = async () => {
-        try {
-          const q = query(collection(db, 'journals'), orderBy('createdAt', 'desc'), limit(15));
-          const snap = await getDocs(q);
-          const dbJournals = snap.docs.map(docSnap => {
-            const data = docSnap.data();
-            const dateStr = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : 'Reciente';
-            return {
-              id: docSnap.id,
-              studentName: data.userId === user.uid ? 'Tú (Registro de Prueba)' : 'Alumno de la Escuela',
-              studentEmail: 'alumno@kira.coach',
-              moduleName: 'Diario Emocional del Programa',
-              submissionDate: dateStr,
-              content: data.content,
-              status: reviewedSubmissions[docSnap.id] ? 'reviewed' : 'pending',
-              sentiment: data.sentiment || 'neutral',
-              feedback: reviewedSubmissions[docSnap.id] || ''
-            };
-          });
-          
-          const combined = [...dbJournals, ...mockSubmissions];
-          setSubmissionsList(combined);
-          if (combined.length > 0) {
-            setSelectedSubmission(combined[0]);
-            setFeedbackText(combined[0].feedback || '');
-          }
-        } catch (e) {
-          console.error("Error fetching journals for review:", e);
-          setSubmissionsList(mockSubmissions);
-          if (mockSubmissions.length > 0) {
-            setSelectedSubmission(mockSubmissions[0]);
-            setFeedbackText(mockSubmissions[0].feedback || '');
-          }
-        }
-      };
-      fetchJournalsForReview();
+    if (showRevisarTareas) {
+      setSubmissionsList([]);
+      setSelectedSubmission(null);
+      setFeedbackText('');
     }
-  }, [showRevisarTareas, user]);
+  }, [showRevisarTareas]);
 
   // Co-piloto de Feedback IA con Gemini
   const handleGenerateAiFeedback = async () => {
@@ -1177,7 +1109,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
                          </div>
                          <div>
                            <h3 className="text-xl font-black text-slate-900 tracking-tight">Feedback de Módulos (Revisar Tareas)</h3>
-                           <p className="text-xs text-slate-500 font-medium">Revisa las entregas y reflexiones de tus alumnos con el Co-piloto de Inteligencia Artificial de Kira Moreno.</p>
+                           <p className="text-xs text-slate-500 font-medium">Revisa las entregas académicas de tus alumnos. Los diarios personales permanecen privados.</p>
                          </div>
                        </div>
 
@@ -1297,7 +1229,9 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
                            ) : (
                              <div className="flex-1 flex flex-col items-center justify-center text-center py-20 text-slate-400">
                                <BookOpen size={48} className="text-slate-200 mb-4" />
-                               <p className="font-bold">Selecciona una entrega de la lista para comenzar a revisar.</p>
+                               <p className="font-bold">No hay entregas académicas cargadas en esta vista.</p>
+                                <p className="mt-2 max-w-sm text-xs leading-relaxed">Las reflexiones privadas no se comparten con el coach. Para revisar tareas y entregas, utiliza el módulo académico dedicado.</p>
+                                <Link to="/coach/homework" className="mt-4 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white">Abrir entregas académicas</Link>
                              </div>
                            )}
                          </div>
@@ -1638,7 +1572,7 @@ function CoachStudentsActivity() {
     if (!user) return;
     
     // Logic: Find students enrolled in THIS coach's courses
-    const fetchStudentsAndJournals = async () => {
+    const fetchStudents = async () => {
       try {
         const coursesQ = query(collection(db, 'courses'), where('coachId', '==', user.uid));
         const coursesSnap = await getDocs(coursesQ);
@@ -1672,67 +1606,10 @@ function CoachStudentsActivity() {
         const studentsList = Array.from(studentsMap.values());
         setStudents(studentsList);
 
-        // Fetch Journals to analyze team sentiment
-        if (studentsList.length > 0) {
-          setAnalyzing(true);
-          const studentIds = studentsList.map(s => s.id);
-          
-          let allJournals: string[] = [];
-          
-          // Firestore 'in' query has a limit of 10, chunk if necessary
-          const fetchJournalsChunk = async (ids: string[]) => {
-            const q = query(
-              collection(db, 'journals'), 
-              where('userId', 'in', ids)
-            );
-            const snap = await getDocs(q);
-            const sorted = [...snap.docs].sort((a, b) => {
-              const tA = a.data().createdAt?.seconds || a.data().createdAt?.getTime?.() / 1000 || 0;
-              const tB = b.data().createdAt?.seconds || b.data().createdAt?.getTime?.() / 1000 || 0;
-              return tB - tA;
-            }).slice(0, 20);
-            return sorted.map(d => d.data().content);
-          };
-
-          // Simple chunking up to 10
-          if (studentIds.length <= 10) {
-              const j = await fetchJournalsChunk(studentIds);
-              allJournals = allJournals.concat(j);
-          } else {
-              const first10 = await fetchJournalsChunk(studentIds.slice(0, 10));
-              allJournals = allJournals.concat(first10);
-          }
-
-          if (allJournals.length > 0) {
-            try {
-              const prompt = `Actúa como un psicólogo experto y coach de desempeño. Analiza las siguientes entradas de diario de mis estudiantes:
-              [${allJournals.join(" | ")}]
-              Devuelve un objeto JSON con dos claves: 
-              "summary": un párrafo corto (máx 3 oraciones) resumiendo el estado emocional y actitud predominante del grupo.
-              "mood": una sola palabra que los defina ("Positivo", "Neutral", "Estresado", "Frustrado", "Motivado").`;
-              
-              const res = await fetch('/api/gemini/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  model: 'gemini-3.5-flash',
-                  contents: prompt,
-                  config: { responseMimeType: "application/json" }
-                })
-              });
-              const data = await res.json();
-              if (data.error) throw new Error(data.error);
-
-              if (data.text) {
-                 const parsed = JSON.parse(data.text);
-                 setTeamSentiment(parsed);
-              }
-            } catch (error) {
-              console.error("AI Analysis error:", error);
-            }
-          }
-          setAnalyzing(false);
-        }
+        // No se accede a diarios privados ni se infiere el estado emocional de los alumnos.
+        // El panel solo mostrará indicadores agregados cuando exista una fuente autorizada.
+        setTeamSentiment(null);
+        setAnalyzing(false);
 
       } catch (e) {
         console.error('Fetch Coach Students Error:', e);
@@ -1740,7 +1617,7 @@ function CoachStudentsActivity() {
       }
     };
 
-    fetchStudentsAndJournals();
+    fetchStudents();
   }, [user]);
 
   const sendBulkMessage = async () => {
