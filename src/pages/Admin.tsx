@@ -3729,171 +3729,75 @@ function SettlementCenterView() {
 
 // --- MODULO: HISTORIAL DE CAMPAÑAS ---
 function CampaignHistoryView() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [campaignLogs, setCampaignLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [rules, setRules] = useState<Record<string, string>>({});
-  const [selectedLog, setSelectedLog] = useState<any>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const qLogs = query(collection(db, 'campaign_logs'), orderBy('createdAt', 'desc'), limit(50));
-    const unsubLogs = onSnapshot(qLogs, (snap) => {
-      setLogs(snap.docs.map(d => ({id: d.id, ...d.data()})));
+    const auditQuery = query(collection(db, "auditLogs"), orderBy("createdAt", "desc"), limit(100));
+    const campaignQuery = query(collection(db, "campaign_logs"), orderBy("createdAt", "desc"), limit(50));
+    const stopAudit = onSnapshot(auditQuery, snapshot => {
+      setAuditLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    }, err => {
+      console.error("Audit log read failed:", err);
+      setError("No se pudieron cargar los registros de auditoría.");
       setLoading(false);
     });
-
-    const unsubRules = onSnapshot(collection(db, 'automations'), (snap) => {
-      const rMap: Record<string, string> = {};
-      snap.forEach(d => { rMap[d.id] = d.data().name; });
-      setRules(rMap);
+    const stopCampaigns = onSnapshot(campaignQuery, snapshot => setCampaignLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), err => {
+      console.warn("Campaign log read failed:", err);
     });
-
-    return () => { unsubLogs(); unsubRules(); };
+    return () => { stopAudit(); stopCampaigns(); };
   }, []);
 
+  const formatDate = (value: any) => {
+    const date = value?.toDate ? value.toDate() : value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : "Fecha no disponible";
+  };
+
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in">
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <h3 className="font-bold text-slate-900 tracking-tight">Historial de Campañas Directas y Upselling Automático</h3>
-        <p className="text-[12px] text-slate-500 mt-1">Traza de ejecuciones del motor de automatización por usuario. Monitorea conversiones de recomendaciones cruzadas.</p>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
-          <h3 className="font-bold text-slate-800 text-[11px] uppercase tracking-widest text-slate-400">Registros de Actividad Recientes</h3>
-          <span className="text-[10px] text-indigo-500 font-black uppercase">Live Updates</span>
+    <div className="flex flex-col gap-6">
+      <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="text-xl font-bold text-slate-900">Auditoría de operaciones KIRA</h3>
+        <p className="mt-1 text-sm text-slate-500">Eventos de pago, emisión de certificados y acciones del sistema registrados por servicios autorizados.</p>
+        <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
+          <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">Eventos críticos: {auditLogs.length}</span>
+          <span className="rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-700">Campañas: {campaignLogs.length}</span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-tighter">
-                <th className="px-6 py-3">Fecha y Hora</th>
-                <th className="px-6 py-3">Regla / Campaña</th>
-                <th className="px-6 py-3 font-mono">ID Usuario</th>
-                <th className="px-6 py-3 text-center">Canal</th>
-                <th className="px-6 py-3 text-right">Estado </th>
-              </tr>
-            </thead>
+      </header>
+      {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-5 py-4"><h4 className="font-bold text-slate-900">Registro financiero y de certificados</h4></div>
+        {loading ? <div className="p-8 text-center text-sm text-slate-500">Cargando auditoría…</div> :
+          auditLogs.length === 0 ? <div className="p-8 text-center text-sm text-slate-500">Todavía no hay eventos críticos registrados.</div> :
+          <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-xs">
+            <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-3">Fecha</th><th className="px-5 py-3">Acción</th><th className="px-5 py-3">Actor</th><th className="px-5 py-3">Destino</th><th className="px-5 py-3">Proveedor</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
-              <tr className="hover:bg-slate-50 transition-colors cursor-pointer bg-emerald-50/30">
-                <td className="px-6 py-4 text-slate-500 font-mono italic">Hace 5 mins</td>
-                <td className="px-6 py-4">
-                  <span className="font-bold text-slate-700">Upselling Automático</span>
-                  <span className="block text-[9px] text-slate-400 mt-0.5">TRIGGER: Terminó Libro "Básico"</span>
-                </td>
-                <td className="px-6 py-4 text-slate-400 font-mono text-[10px]">alumno.test</td>
-                <td className="px-6 py-4 text-center">
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase transition-colors">
-                    Recomendación Cross-sell
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right flex flex-col items-end gap-1 top-2 relative">
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-50 text-emerald-600">
-                    Convertido
-                  </span>
-                  <span className="text-[10px] text-emerald-600 font-bold">+ Venta Curso</span>
-                </td>
-              </tr>
-              {logs.map(log => (
-                <tr 
-                  key={log.id} 
-                  className="hover:bg-slate-50 transition-colors cursor-pointer"
-                  onClick={() => setSelectedLog(log)}
-                >
-                  <td className="px-6 py-4 text-slate-500 font-mono italic">
-                    {log.createdAt?.toDate?.().toLocaleString() || 'Processando...'}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="font-bold text-slate-700">{rules[log.ruleId] || 'Regla Desconocida'}</span>
-                    <span className="block text-[9px] text-slate-400 mt-0.5">ID: {log.ruleId ? log.ruleId.substring(0,8) + '...' : 'N/A'}</span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-400 font-mono text-[10px]">{log.userId}</td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[10px] font-bold uppercase">
-                      {log.actionType}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className={cn(
-                      "px-2.5 py-1 rounded-full text-[10px] font-black uppercase",
-                      log.status === 'sent' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
-                    )}>
-                      {log.status === 'sent' ? 'Ejecutado' : 'Fallido'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {logs.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">Esperando ejecuciones del motor...</td>
-                </tr>
-              )}
+              {auditLogs.map(log => <tr key={log.id}>
+                <td className="whitespace-nowrap px-5 py-3 text-slate-500">{formatDate(log.createdAt)}</td>
+                <td className="px-5 py-3 font-semibold text-slate-800">{log.action || "Evento"}</td>
+                <td className="px-5 py-3 font-mono text-slate-500">{log.actorId || "system"}</td>
+                <td className="px-5 py-3 font-mono text-slate-500">{log.targetId || "—"}</td>
+                <td className="px-5 py-3 text-slate-500">{log.provider || "KIRA"}</td>
+              </tr>)}
             </tbody>
-          </table>
-        </div>
-      </div>
-
-      {selectedLog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <FileText size={16} className="text-indigo-500" /> Detalles de Ejecución
-              </h3>
-              <button 
-                onClick={() => setSelectedLog(null)} 
-                className="text-slate-400 hover:text-slate-600 p-1 bg-white rounded-full border border-slate-200 shadow-sm transition-all hover:bg-slate-50 hover:scale-105 active:scale-95"
-              >
-                 <XCircle size={18} />
-              </button>
-            </div>
-            <div className="p-6 space-y-4 text-sm">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Regla Disparada</span>
-                  <div className="font-medium text-slate-800">{rules[selectedLog.ruleId] || selectedLog.ruleId}</div>
-                </div>
-                <div>
-                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Estado</span>
-                  <div className={cn("font-bold text-xs uppercase tracking-wider", selectedLog.status === 'sent' ? 'text-emerald-600' : 'text-rose-600')}>
-                    {selectedLog.status === 'sent' ? 'Enviado Correctamente' : 'Fallo en Envío'}
-                  </div>
-                </div>
-              </div>
-              <div>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">ID Destinatario</span>
-                <div className="font-mono text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-md border border-slate-200 shadow-inner">{selectedLog.userId}</div>
-              </div>
-              <div>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Mensaje Generado</span>
-                <div className="bg-slate-100/50 p-4 rounded-xl border border-slate-200 text-slate-700 italic text-[13px] leading-relaxed break-words shadow-inner">
-                  "{selectedLog.messageBody || 'Contenido del mensaje original no disponible. Revisa la plantilla en la configuración de la automatización.'}"
-                </div>
-              </div>
-              {selectedLog.errorDetails && (
-                <div>
-                  <span className="block text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-1">Detalles del Error Técnico</span>
-                  <div className="bg-rose-50 p-3 rounded-lg border border-rose-100 text-rose-700 font-mono text-[11px] overflow-x-auto shadow-inner">
-                    {selectedLog.errorDetails}
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-              <button 
-                onClick={() => setSelectedLog(null)}
-                className="px-6 py-2.5 bg-slate-900 justify-center flex text-white text-[11px] font-bold rounded-xl shadow-lg shadow-slate-900/20 hover:shadow-xl hover:bg-slate-800 transition uppercase tracking-wider active:scale-95"
-              >
-                Cerrar Panel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </table></div>
+        }
+      </section>
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-5 py-4"><h4 className="font-bold text-slate-900">Automatizaciones y campañas</h4></div>
+        {campaignLogs.length === 0 ? <div className="p-6 text-sm text-slate-500">Sin ejecuciones de campañas registradas.</div> :
+          <div className="divide-y divide-slate-100">{campaignLogs.map(log => <div key={log.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+            <div><p className="text-sm font-semibold text-slate-800">{log.action || log.ruleName || log.ruleId || "Campaña"}</p><p className="mt-1 text-xs text-slate-400">Usuario: {log.userId || "No especificado"}</p></div>
+            <div className="text-right text-xs text-slate-500">{formatDate(log.createdAt)}</div>
+          </div>)}</div>
+        }
+      </section>
     </div>
   );
 }
 
-// --- MODULO 7: MOTOR DE AUTOMATIZACIÓN ---
 function AutomationEngineView() {
   const { user } = useAuth();
   const [rules, setRules] = useState<any[]>([]);
