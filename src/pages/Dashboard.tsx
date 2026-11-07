@@ -133,8 +133,7 @@ export function Dashboard() {
     if (!user) return;
     try {
       await updateDoc(doc(db, 'users', user.uid), {
-        hasCompletedOnboarding: true,
-        points: (user.points || 0) + 50
+        hasCompletedOnboarding: true
       });
       setShowOnboarding(false);
     } catch(e) {
@@ -1314,9 +1313,6 @@ export function Journal() {
   const handleSave = async () => {
     if(!content.trim() || !user) return;
     try {
-      const currentPoints = user.points || 0;
-      const userRef = doc(db, 'users', user.uid);
-      
       await addDoc(collection(db, 'journals'), {
         userId: user.uid,
         content: content.trim(),
@@ -1324,12 +1320,8 @@ export function Journal() {
         createdAt: new Date()
       });
 
-      await updateDoc(userRef, {
-        points: currentPoints + 20
-      });
-
       setContent('');
-      alert("¡Entrada sincronizada! Has generado +20 Energy Pts.");
+      alert("Tu entrada privada se guardó correctamente.");
     } catch(e) {
       handleFirestoreError(e, OperationType.WRITE, 'journals');
     }
