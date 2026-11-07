@@ -29,7 +29,7 @@ const memoryCache = new Map<string, CacheEntry>();
 
 // Firebase ID-token verification (Google Secure Token signing certificates).
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "kira2-a6a20";
-const FIREBASE_CERTS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+const FIREBASE_CERTS_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
 let firebaseCerts: Record<string, string> = {};
 let firebaseCertsExpiresAt = 0;
 
@@ -51,12 +51,11 @@ async function verifyFirebaseIdToken(token: string): Promise<any> {
   const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
   const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
   if (header.alg !== "RS256" || typeof header.kid !== "string") throw new Error("Invalid token header");
-  const certs = await getFirebaseCerts();
-  const cert = certs[header.kid];
-  if (!cert) {
+  let certs = await getFirebaseCerts();
+  if (!certs[header.kid]) {
     firebaseCertsExpiresAt = 0;
-    const refreshed = await getFirebaseCerts();
-    if (!refreshed[header.kid]) throw new Error("Unknown signing key");
+    certs = await getFirebaseCerts();
+    if (!certs[header.kid]) throw new Error("Unknown signing key");
   }
   const verifier = createVerify("RSA-SHA256");
   verifier.update(parts[0] + "." + parts[1]);
@@ -267,45 +266,12 @@ app.post("/api/gemini/generate", requireFirebaseUser, async (req, res) => {
 });
 
 // Stripe Integration
-app.post("/api/create-checkout-session", async (req, res) => {
-  const { courseId, userId, amount, title, type = 'course_purchase' } = req.body;
-  const stripe = getStripe();
-  
-  if (!userId || (!courseId && type === 'course_purchase')) {
-    return res.status(400).json({ error: "Faltan datos de compra" });
-  }
-
-  // IF STRIPE IS CONFIGURED
-  if (stripe) {
-    try {
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [{
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: title,
-              metadata: { courseId, type }
-            },
-            unit_amount: Math.round(amount * 100),
-          },
-          quantity: 1,
-        }],
-        mode: 'payment',
-        success_url: `${req.headers.origin}${type === 'coach_membership' ? '/coach' : '/dashboard'}?success=true&courseId=${courseId || ''}&amount=${amount}&title=${encodeURIComponent(title)}&type=${type}`,
-        cancel_url: `${req.headers.origin}${type === 'coach_membership' ? '/coach' : '/dashboard'}?canceled=true`,
-        client_reference_id: userId,
-        metadata: { userId, courseId: courseId || '', type }
-      });
-      return res.json({ url: session.url });
-    } catch (e: any) {
-      console.error("Stripe Session Error:", e);
-      return res.status(500).json({ error: e.message });
-    }
-  }
-
-  // No fake transactions. Fail closed when payment provider is not configured.
-  return res.status(503).json({ error: "Los pagos no están configurados. No se ha realizado ningún cobro." });
+// Checkout is intentionally fail-closed until server-side catalog pricing,
+// verified Firebase identity, and a signed Stripe webhook are configured together.
+app.post("/api/create-checkout-session", (_req, res) => {
+  return res.status(503).json({
+    error: "Los pagos están temporalmente deshabilitados mientras se completa la verificación segura del catálogo y del webhook. No se ha realizado ningún cobro."
+  });
 });
 
 async function startLocalServer() {
