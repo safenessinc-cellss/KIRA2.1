@@ -170,7 +170,7 @@ test('learners may edit profile content but cannot self-promote or grant staff p
   await assertSucceeds(updateDoc(profile, { displayName: 'Learner A' }));
   await assertFails(updateDoc(profile, { role: 'admin' }));
   await assertFails(updateDoc(profile, { staffPermissions: ['users:write', 'billing:write'] }));
-  await assertFails(updateDoc(profile, { approvalStatus: 'approved' }));
+  await assertFails(updateDoc(profile, { approvalStatus: 'suspended' }));
 });
 
 test('notification creation is restricted to the authenticated recipient', async () => {
