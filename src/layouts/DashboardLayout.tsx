@@ -180,13 +180,7 @@ export function DashboardLayout({ title }: { title: string }) {
               )}
             </div>
           </div>
-          <button 
-            onClick={logout}
-            className="flex items-center gap-3 py-3 text-sm font-medium text-red-500 hover:text-red-600 transition"
-          >
-            <LogOut size={16} />
-            Cerrar Sesión
-          </button>
+          
         </div>
       </aside>
 
