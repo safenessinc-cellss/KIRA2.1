@@ -105,7 +105,7 @@ export function DashboardLayout({ title }: { title: string }) {
       </header>
 
       <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-        <section aria-label="Módulos principales" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        {role !== 'admin' && <section aria-label="Módulos principales" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
             <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Espacio de trabajo</p><h2 className="mt-1 text-base font-bold text-slate-800">Módulos</h2></div>
             <div className="flex items-center gap-2">
@@ -125,7 +125,7 @@ export function DashboardLayout({ title }: { title: string }) {
               </Link>;
             })}
           </nav>
-        </section>
+        </section>}
 
         {!user?.emailVerified && !loading && <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="text-sm font-medium text-amber-800">Verifica tu correo para asegurar tu cuenta.</div><button onClick={() => auth.currentUser && sendEmailVerification(auth.currentUser)} className="min-h-10 self-start rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700 sm:self-auto">Reenviar</button></div>}
 
