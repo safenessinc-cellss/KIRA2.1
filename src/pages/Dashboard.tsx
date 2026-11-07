@@ -311,51 +311,10 @@ export function Dashboard() {
 
   const handleProcessPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
-    setIsProcessingPayment(true);
-    
-    try {
-      for (const item of cartItems) {
-        await addDoc(collection(db, 'purchases'), {
-          userId: user.uid,
-          userEmail: user.email || '',
-          userName: user.displayName || user.name || 'Alumno',
-          itemId: item.id,
-          itemType: item.itemType || (item.bannerUrl ? 'course' : 'book'),
-          itemTitle: item.title,
-          itemPrice: Number(item.price),
-          imageUrl: item.imageUrl || item.bannerUrl || '',
-          status: 'pending_release',
-          createdAt: new Date()
-        });
-
-        await addDoc(collection(db, 'transactions'), {
-          userId: user.uid,
-          amount: Number(item.price),
-          type: item.itemType === 'course' ? 'course_purchase' : 'book_purchase',
-          itemId: item.id,
-          itemTitle: item.title,
-          status: 'pending_release',
-          createdAt: new Date()
-        });
-      }
-
-      setPaymentSuccessData({
-        items: [...cartItems],
-        total: cartItems.reduce((acc, it) => acc + Number(it.price), 0)
-      });
-      
-      setCartItems([]);
-      setPaymentForm({ cardName: '', cardNumber: '', expiry: '', cvv: '' });
-      setShowPaymentModal(false);
-      
-      fetchData();
-    } catch (err: any) {
-      console.error("Error creating purchases:", err);
-      alert("Ocurrió un error al registrar el pago: " + (err.message || String(err)));
-    } finally {
-      setIsProcessingPayment(false);
-    }
+    // Do not collect or persist card data and do not create fake purchases.
+    // The secure Stripe Checkout + signed webhook flow must be deployed before payments resume.
+    alert('Los pagos están temporalmente deshabilitados. No introduzcas datos de tarjeta; KIRA habilitará la compra cuando Stripe y su webhook estén verificados.');
+    setShowPaymentModal(false);
   };
 
   const submitReview = async () => {
