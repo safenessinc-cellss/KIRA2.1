@@ -4,7 +4,6 @@ import { Logo } from '../components/Brand';
 import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart } from 'lucide-react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
-import { SafeImage } from '../components/SafeImage';
 import { NotificationCenter } from '../components/Notifications';
 import { useCart } from '../components/CartProvider';
 import { auth, db } from '../firebase';
@@ -98,7 +97,7 @@ export function DashboardLayout({ title }: { title: string }) {
           <NotificationCenter />
           <button type="button" onClick={() => setIsCartOpen(true)} aria-label={`Ver carrito, ${cartCount} artículos`} className="relative flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"><ShoppingCart size={18} />{cartCount > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-rose-500 px-1 text-[9px] font-black text-white">{cartCount}</span>}</button>
           <div className="hidden items-center gap-2 sm:flex">
-            {user?.photoURL ? <SafeImage src={user.photoURL} alt="Foto de perfil" referrerPolicy="no-referrer" className="h-8 w-8 rounded-full object-cover" /> : <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{displayProfileInitial}</span>}
+            {user?.photoURL ? <img src={user.photoURL} alt="Foto de perfil" referrerPolicy="no-referrer" className="h-8 w-8 rounded-full object-cover" /> : <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{displayProfileInitial}</span>}
             <span className="max-w-36 truncate text-xs font-semibold text-slate-600">{displayProfileName}</span>
           </div>
           <button type="button" onClick={logout} aria-label="Cerrar sesión" className="flex h-10 w-10 items-center justify-center rounded-xl border border-rose-100 bg-rose-50 text-rose-600 hover:bg-rose-100 sm:w-auto sm:gap-2 sm:px-3"><LogOut size={16} /><span className="hidden text-xs font-bold sm:inline">Salir</span></button>
