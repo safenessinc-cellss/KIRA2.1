@@ -236,11 +236,6 @@ export function DashboardLayout({ title }: { title: string }) {
               )}
             </button>
 
-            {role === 'coach' && (
-              <span className="text-xs px-2 py-1 bg-emerald-50 text-emerald-600 rounded-full font-semibold">
-                Membresía Activa
-              </span>
-            )}
             <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
                <Palette size={16} />
             </div>
