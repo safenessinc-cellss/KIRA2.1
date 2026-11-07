@@ -388,6 +388,41 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /audits/{auditId} {
+      allow read: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+      allow create: if isApprovedCoach() &&
+                    request.resource.data.coachId == request.auth.uid &&
+                    request.resource.data.type == 'crm_audit' &&
+                    request.resource.data.result is string &&
+                    request.resource.data.result.size() <= 15000 &&
+                    request.resource.data.stats is map &&
+                    request.resource.data.createdAt is timestamp &&
+                    hasOnlyAllowedFields(['coachId', 'type', 'result', 'stats', 'createdAt']);
+      allow update, delete: if isAdmin();
+    }
+
+    match /recovery_campaigns/{campaignId} {
+      allow read: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+      allow create: if isApprovedCoach() &&
+                    request.resource.data.coachId == request.auth.uid &&
+                    request.resource.data.status == 'draft' &&
+                    request.resource.data.deliveryConfigured == false &&
+                    request.resource.data.recipients == 0 &&
+                    request.resource.data.message is string &&
+                    request.resource.data.message.size() <= 5000 &&
+                    request.resource.data.target == 'abandoned_checkouts' &&
+                    request.resource.data.createdAt is timestamp &&
+                    hasOnlyAllowedFields(['coachId', 'message', 'target', 'status', 'recipients', 'createdAt', 'deliveryConfigured']);
+      allow update: if isAdmin() ||
+                    (isApprovedCoach() && resource.data.coachId == request.auth.uid &&
+                     resource.data.status == 'draft' &&
+                     request.resource.data.status == 'draft' &&
+                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['message', 'updatedAt']) &&
+                     request.resource.data.message is string &&
+                     request.resource.data.message.size() <= 5000);
+      allow delete: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid && resource.data.status == 'draft');
+    }
+
     match /notifications/{id} {
       allow read: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
       allow create: if isAuthenticated() && isValidNotification() &&
