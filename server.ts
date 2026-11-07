@@ -29,6 +29,14 @@ interface CacheEntry {
   expiresAt: number;
 }
 const memoryCache = new Map<string, CacheEntry>();
+const aiRequestWindows = new Map<string, { start: number; count: number }>();
+function allowAiRequest(uid: string, maxRequests = 60) {
+  const now = Date.now();
+  const current = aiRequestWindows.get(uid);
+  if (!current || now - current.start >= 60_000) { aiRequestWindows.set(uid, { start: now, count: 1 }); return true; }
+  if (current.count >= maxRequests) return false;
+  current.count += 1; return true;
+}
 
 function getCache(key: string): any | null {
   const entry = memoryCache.get(key);
@@ -267,8 +275,12 @@ function extractPromptText(contents: any): string {
   return "";
 }
 
-// Gemini Content Generation Proxy with Cache, Retry, Timeout, and robust Simulated Fallback logic
+// Authenticated Gemini proxy with rate limit, cache, retry and explicit errors (no simulated AI output).
 app.post("/api/gemini/generate", async (req, res) => {
+  let decoded: any;
+  try { decoded = await verifyFirebaseUser(req); }
+  catch { return res.status(401).json({ error: "Authentication required for KIRA AI." }); }
+  if (!allowAiRequest(decoded.uid)) return res.status(429).json({ error: "AI request limit reached. Try again in one minute." });
   try {
     const key = process.env.GEMINI_API_KEY;
     const { model, contents, config } = req.body;
