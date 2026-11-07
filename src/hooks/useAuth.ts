@@ -11,7 +11,7 @@ import {
   updateProfile
 } from 'firebase/auth';
 
-export type UserRole = 'admin' | 'coach' | 'alumno' | null;
+export type UserRole = 'admin' | 'coach' | 'alumno' | 'hr_admin' | null;
 
 export function useAuth() {
   const [user, setUser] = useState<any>(null);
