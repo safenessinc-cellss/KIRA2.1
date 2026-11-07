@@ -4,7 +4,6 @@ import { Logo } from '../components/Brand';
 import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart } from 'lucide-react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
-import { ChatWidget } from '../components/Chat';
 import { NotificationCenter } from '../components/Notifications';
 import { useCart } from '../components/CartProvider';
 import { auth, db } from '../firebase';
@@ -20,39 +19,25 @@ export function DashboardLayout({ title }: { title: string }) {
   const emailLower = user?.email?.toLowerCase();
   const rawDisplayName = user?.displayName || '';
   const isSafeness = emailLower === 'safeness.c.a@gmail.com' || rawDisplayName.toLowerCase() === 'safeness' || rawDisplayName.toLowerCase() === 'safeness.c.a';
-  
   const displayProfileName = isSafeness ? 'Kira Coach' : (user?.displayName || 'Usuario');
   const displayProfileInitial = isSafeness ? 'K' : (user?.displayName?.charAt(0).toUpperCase() || 'U');
 
   useEffect(() => {
-    if (user?.theme) {
-      document.documentElement.setAttribute('data-theme', user.theme);
-    } else {
-      document.documentElement.setAttribute('data-theme', 'teal');
-    }
+    if (user?.theme) document.documentElement.setAttribute('data-theme', user.theme);
+    else document.documentElement.setAttribute('data-theme', 'teal');
   }, [user?.theme]);
 
-  // Real-time Push Notification Simulation (Toast)
   useEffect(() => {
     if (!user) return;
-    const q = query(
-      collection(db, 'notifications'), 
-      where('userId', '==', user.uid),
-      where('read', '==', false),
-      orderBy('createdAt', 'desc'),
-      limit(1)
-    );
-
+    const q = query(collection(db, 'notifications'), where('userId', '==', user.uid), where('read', '==', false), orderBy('createdAt', 'desc'), limit(1));
     const unsub = onSnapshot(q, (snap) => {
       snap.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          const data = change.doc.data();
-          // Only show toast if it's very recent (last 10 seconds) to avoid historical toasts
-          const isRecent = (new Date().getTime() - data.createdAt.toDate().getTime()) < 10000;
-          if (isRecent) {
-             setToast({ title: data.title, message: data.message });
-             setTimeout(() => setToast(null), 5000);
-          }
+        if (change.type !== 'added') return;
+        const data = change.doc.data();
+        const createdAt = data.createdAt?.toDate?.()?.getTime?.();
+        if (createdAt && Date.now() - createdAt < 10000) {
+          setToast({ title: data.title || 'Notificación', message: data.message || '' });
+          window.setTimeout(() => setToast(null), 5000);
         }
       });
     });
@@ -61,233 +46,93 @@ export function DashboardLayout({ title }: { title: string }) {
 
   const changeTheme = async (theme: string) => {
     if (!user) return;
-    try {
-      await updateDoc(doc(db, 'users', user.uid), { theme });
-    } catch (e) {
-      console.error('Failed to update theme:', e);
-    }
+    try { await updateDoc(doc(db, 'users', user.uid), { theme }); }
+    catch (error) { console.error('Failed to update theme:', error); }
   };
 
   const links = {
-    admin: [
-      { to: "/admin", icon: LayoutDashboard, label: "Command Center" },
-    ],
-    hr_admin: [
-      { to: "/hr", icon: Users, label: "Culture & Health" },
-    ],
+    admin: [{ to: '/admin', icon: LayoutDashboard, label: 'Administración KIRA', detail: 'Control, seguridad y gestión global' }],
+    hr_admin: [{ to: '/hr', icon: Users, label: 'Bienestar corporativo', detail: 'Personas y organización' }],
     coach: [
-      { to: "/coach", icon: Activity, label: "Gestión Académica" },
-      { to: "/coach/courses", icon: BookOpen, label: "Studio de Cursos" },
-      { to: "/coach/profile", icon: Users, label: "Perfil Coach" },
+      { to: '/coach', icon: Activity, label: 'Gestión académica', detail: 'Resumen, alumnos y actividad' },
+      { to: '/coach/courses', icon: BookOpen, label: 'Studio de cursos', detail: 'Cursos, contenidos y programas' },
+      { to: '/coach/profile', icon: Users, label: 'Perfil profesional', detail: 'Datos y presencia del coach' },
     ],
     alumno: [
-      { to: "/dashboard", icon: BookOpen, label: "Plan Maestro" },
-      { to: "/dashboard/elite-library", icon: Sparkles, label: "Elite Vault" },
-      { to: "/dashboard/journal", icon: Activity, label: "Journaling IA" },
-      { to: "/dashboard/community", icon: Users, label: "Comunidad Estelar" },
-      { to: "/dashboard/profile", icon: Users, label: "Perfil Personal" },
-    ]
+      { to: '/dashboard', icon: BookOpen, label: 'Mi aprendizaje', detail: 'Plan de aprendizaje y progreso' },
+      { to: '/dashboard/elite-library', icon: Sparkles, label: 'Biblioteca', detail: 'Recursos y contenidos exclusivos' },
+      { to: '/dashboard/journal', icon: Activity, label: 'Diario inteligente', detail: 'Reflexión y seguimiento personal' },
+      { to: '/dashboard/community', icon: Users, label: 'Comunidad', detail: 'Conexión y participación' },
+      { to: '/dashboard/profile', icon: Palette, label: 'Mi perfil', detail: 'Preferencias y datos personales' },
+    ],
   };
-
   const currentLinks = links[role as keyof typeof links] || links.alumno;
+  const isActive = (path: string) => path === '/coach'
+    ? location.pathname === '/coach' && !location.search.includes('tab=courses')
+    : path === '/coach/courses'
+      ? location.pathname === '/coach/courses' || (location.pathname === '/coach' && location.search.includes('tab=courses'))
+      : location.pathname === path || (location.pathname.startsWith(path + '/') && path !== '/');
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col py-6">
-        <div className="px-6 pb-10 flex items-center gap-2">
-          <Logo withText size={40} />
+    <div className="flex min-h-[100dvh] w-full flex-col bg-slate-50 text-slate-900">
+      {(user?.approvalStatus === 'suspended' || user?.approvalStatus === 'pending') && role !== 'admin' && (
+        <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-white/95 p-6 text-center backdrop-blur-sm">
+          <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-amber-200 bg-amber-100 text-amber-600"><Activity size={30} /></div>
+          <h2 className="mb-3 text-2xl font-bold text-slate-800">{user?.approvalStatus === 'suspended' ? 'Servicio suspendido' : 'Cuenta en revisión'}</h2>
+          <p className="mb-7 max-w-md text-sm leading-relaxed text-slate-500">{user?.approvalStatus === 'suspended' ? 'Tu acceso a la plataforma ha sido pausado. Contacta a soporte o a tu administrador si necesitas ayuda.' : 'Estamos revisando tu solicitud para habilitar el acceso a la comunidad.'}</p>
+          <button onClick={logout} className="flex min-h-11 items-center gap-2 rounded-xl bg-slate-800 px-6 py-3 font-bold text-white"><LogOut size={18} /> Cerrar sesión</button>
         </div>
-        
-        <nav className="flex-1 space-y-1">
-          {currentLinks.map((l) => {
-            const isActive = (() => {
-              if (l.to === "/coach") {
-                return location.pathname === "/coach" && !location.search.includes("tab=courses") && !location.pathname.startsWith("/coach/courses");
-              }
-              if (l.to === "/coach/courses") {
-                return location.pathname === "/coach/courses" || (location.pathname === "/coach" && location.search.includes("tab=courses"));
-              }
-              const [lPath, lQuery] = l.to.split('?');
-              if (lQuery) {
-                return location.pathname === lPath && location.search.includes(lQuery);
-              }
-              return location.pathname === lPath || (location.pathname.startsWith(l.to + '/') && l.to !== '/');
-            })();
-            return (
-              <Link 
-                key={l.to} 
-                to={l.to}
-                className={cn(
-                  "flex items-center gap-3 px-6 py-3 text-sm transition-all duration-200 cursor-pointer border-r-[4px]",
-                  isActive 
-                    ? "bg-primary/10 text-primary border-primary font-bold shadow-[inset_-2px_0_10px_rgba(0,0,0,0.02)]" 
-                    : "text-slate-500 border-transparent hover:text-slate-900 hover:bg-slate-50 font-medium"
-                )}
-              >
-                <l.icon size={isActive ? 20 : 18} className={cn("transition-colors", isActive && "text-primary")} />
-                {l.label}
-              </Link>
-            );
-          })}
-        </nav>
+      )}
 
-        <div className="px-6 mb-4">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Tema Visual</p>
-          <div className="flex gap-2">
-            {[
-              { id: 'teal', color: 'bg-[#1B4D5D]' }, 
-              { id: 'gold', color: 'bg-[#C5A059]' }, 
-              { id: 'indigo', color: 'bg-indigo-500' }, 
-              { id: 'rose', color: 'bg-rose-500' }
-            ].map(t => (
-              <button 
-                key={t.id}
-                onClick={() => changeTheme(t.id)}
-                className={cn(
-                  "w-5 h-5 rounded-full border border-white shadow-sm transition-transform active:scale-95",
-                  t.id === (user?.theme || 'teal') ? "scale-125 ring-2 ring-slate-200" : "hover:scale-110",
-                  t.color
-                )}
-                title={t.id}
-              />
-            ))}
+      <header className="sticky top-0 z-30 flex min-h-[4.25rem] shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
+        <div className="flex min-w-0 items-center gap-3">
+          <Link to={role === 'admin' ? '/admin' : role === 'coach' ? '/coach' : role === 'hr_admin' ? '/hr' : '/dashboard'} aria-label="Ir al inicio" className="shrink-0"><Logo size={36} /></Link>
+          <div className="min-w-0 border-l border-slate-200 pl-3">
+            <p className="truncate text-sm font-bold text-slate-800">{title}</p>
+            <p className="hidden truncate text-xs text-slate-400 sm:block">Bienvenido, {displayProfileName}</p>
           </div>
         </div>
-
-        <div className="mt-auto px-6 pt-6">
-          <div className="flex items-center gap-3 mb-4">
-            {user?.photoURL ? (
-              <img 
-                src={user.photoURL} 
-                alt="avatar" 
-                referrerPolicy="no-referrer"
-                className="w-8 h-8 rounded-full shadow-sm" 
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                {displayProfileInitial}
-              </div>
-            )}
-            <div className="text-sm truncate">
-              <p className="font-semibold text-slate-600 truncate">
-                {displayProfileName}
-              </p>
-              {user?.email && (
-                <p className="text-[11px] text-slate-400 truncate mt-0.5" title={user.email}>
-                  {user.email}
-                </p>
-              )}
-            </div>
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          {role === 'coach' && <span className="hidden rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 sm:inline-flex">Membresía activa</span>}
+          <NotificationCenter />
+          <button type="button" onClick={() => setIsCartOpen(true)} aria-label={`Ver carrito, ${cartCount} artículos`} className="relative flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"><ShoppingCart size={18} />{cartCount > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-rose-500 px-1 text-[9px] font-black text-white">{cartCount}</span>}</button>
+          <div className="hidden items-center gap-2 sm:flex">
+            {user?.photoURL ? <img src={user.photoURL} alt="Foto de perfil" referrerPolicy="no-referrer" className="h-8 w-8 rounded-full object-cover" /> : <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{displayProfileInitial}</span>}
+            <span className="max-w-36 truncate text-xs font-semibold text-slate-600">{displayProfileName}</span>
           </div>
-          <button 
-            onClick={logout}
-            className="flex items-center gap-3 py-3 text-sm font-medium text-red-500 hover:text-red-600 transition"
-          >
-            <LogOut size={16} />
-            Cerrar Sesión
-          </button>
+          <button type="button" onClick={logout} aria-label="Cerrar sesión" className="flex h-10 w-10 items-center justify-center rounded-xl border border-rose-100 bg-rose-50 text-rose-600 hover:bg-rose-100 sm:w-auto sm:gap-2 sm:px-3"><LogOut size={16} /><span className="hidden text-xs font-bold sm:inline">Salir</span></button>
         </div>
-      </aside>
+      </header>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden relative">
-        {(user?.approvalStatus === 'suspended' || user?.approvalStatus === 'pending') && role !== 'admin' && (
-          <div className="absolute inset-0 z-50 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in duration-500">
-             <div className="w-20 h-20 bg-amber-100 rounded-full flex flex-col items-center justify-center text-amber-600 mb-6 drop-shadow-md border border-amber-200">
-                {user?.approvalStatus === 'suspended' ? <Activity size={32} /> : <Activity size={32} />}
-             </div>
-             <h2 className="text-3xl font-serif font-bold text-slate-800 mb-4">
-                {user?.approvalStatus === 'suspended' ? 'Servicio Suspendido' : 'Cuenta en Revisión'}
-             </h2>
-             <p className="max-w-md text-slate-500 text-lg leading-relaxed mb-8">
-                {user?.approvalStatus === 'suspended' 
-                  ? 'Tu acceso a la plataforma ha sido pausado. Si esto es un error o necesitas regularizar tu situación administrativa, por favor contacta a soporte o a tu administrador.'
-                  : 'Nuestros curadores están revisando tu solicitud. Queremos asegurarnos de que toda la comunidad comparta nuestra filosofía de crecimiento conectada y segura.'}
-             </p>
-             <button 
-                onClick={logout}
-                className="bg-slate-800 text-white font-bold px-8 py-3 rounded-full hover:bg-black transition-colors flex items-center gap-2 drop-shadow-lg"
-             >
-                <LogOut size={18} /> Cerrar Sesión
-             </button>
-          </div>
-        )}
-
-        <header className="h-16 bg-white border-b border-slate-200 px-8 flex items-center justify-between">
-          <div className="font-semibold text-slate-500">
-            Bienvenido, {displayProfileName}
-          </div>
-          <div className="flex items-center gap-4">
-            <NotificationCenter />
-            
-            {/* Shopping Cart Trigger Icon */}
-            <button
-              onClick={() => setIsCartOpen(true)}
-              className="relative w-10 h-10 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-900 transition-all cursor-pointer border border-slate-200/40 active:scale-95"
-              title="Ver Carrito"
-              id="header-cart-trigger"
-            >
-              <ShoppingCart size={18} />
-              {cartCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white font-black text-[9px] w-5 h-5 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
-                  {cartCount}
-                </span>
-              )}
-            </button>
-
-            {role === 'coach' && (
-              <span className="text-xs px-2 py-1 bg-emerald-50 text-emerald-600 rounded-full font-semibold">
-                Membresía Activa
-              </span>
-            )}
-            <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-               <Palette size={16} />
+      <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
+        {role !== 'admin' && <section aria-label="Módulos principales" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+            <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Espacio de trabajo</p><h2 className="mt-1 text-base font-bold text-slate-800">Módulos</h2></div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Apariencia</span>
+              {[
+                { id: 'teal', color: 'bg-[#1B4D5D]' }, { id: 'gold', color: 'bg-[#C5A059]' },
+                { id: 'indigo', color: 'bg-indigo-500' }, { id: 'rose', color: 'bg-rose-500' },
+              ].map((theme) => <button key={theme.id} type="button" onClick={() => changeTheme(theme.id)} aria-label={`Tema ${theme.id}`} aria-pressed={theme.id === (user?.theme || 'teal')} className={cn('h-5 w-5 rounded-full border border-white shadow-sm ring-offset-2', theme.color, theme.id === (user?.theme || 'teal') && 'ring-2 ring-slate-300')} />)}
             </div>
-            <button 
-              onClick={logout}
-              className="flex items-center gap-2 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer active:scale-95"
-              title="Cerrar Sesión"
-              id="header-logout-btn"
-            >
-              <LogOut size={13} /> Salir
-            </button>
           </div>
-        </header>
-        <div className="flex-1 overflow-auto p-8 flex flex-col gap-6 relative">
-          {!user?.emailVerified && !loading && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between mb-2">
-              <div className="text-sm text-amber-800 font-medium">Verifica tu correo para asegurar tu cuenta.</div>
-              <button 
-                onClick={() => auth.currentUser && sendEmailVerification(auth.currentUser)}
-                className="text-xs px-3 py-1.5 bg-amber-600 text-white rounded-lg font-bold"
-              >
-                Reenviar
-              </button>
-            </div>
-          )}
-          <Outlet />
-          <ChatWidget />
+          <nav aria-label="Navegación de módulos" className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {currentLinks.map((item) => {
+              const active = isActive(item.to);
+              return <Link key={item.to} to={item.to} aria-current={active ? 'page' : undefined} className={cn('group flex min-h-[5.5rem] min-w-0 items-start gap-3 rounded-xl border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary', active ? 'border-primary/40 bg-primary/[0.06] shadow-sm' : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-white')}>
+                <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', active ? 'bg-primary text-white' : 'bg-white text-slate-500 shadow-sm')}><item.icon size={19} /></span>
+                <span className="min-w-0 flex-1"><span className={cn('block truncate text-sm font-bold', active ? 'text-primary' : 'text-slate-800')}>{item.label}</span><span className="mt-1 block text-xs leading-4 text-slate-500">{item.detail}</span></span>
+              </Link>;
+            })}
+          </nav>
+        </section>}
 
-          {/* Real-time Toast Notification */}
-          {toast && (
-            <div className="fixed top-6 right-6 z-[100] animate-in slide-in-from-right-10 fade-in cursor-pointer" onClick={() => setToast(null)}>
-              <div className="bg-white border-l-4 border-primary rounded-xl shadow-2xl p-4 flex items-start gap-4 ring-1 ring-slate-200 min-w-[300px] max-w-sm">
-                <div className="bg-primary/10 p-2 rounded-lg text-primary shrink-0">
-                  <BellRing size={20} />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-sm font-bold text-slate-800 mb-0.5">{toast.title}</h4>
-                  <p className="text-[12px] text-slate-500 line-clamp-2">{toast.message}</p>
-                </div>
-                <button className="text-slate-300 hover:text-slate-500 transition-colors">
-                  <X size={14} />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
+        {!user?.emailVerified && !loading && <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="text-sm font-medium text-amber-800">Verifica tu correo para asegurar tu cuenta.</div><button onClick={() => auth.currentUser && sendEmailVerification(auth.currentUser)} className="min-h-10 self-start rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700 sm:self-auto">Reenviar</button></div>}
+
+        <main className="min-w-0 w-full flex-1"><Outlet /></main>
+
+        {toast && <div role="status" className="fixed right-3 top-20 z-[100] w-[calc(100vw-1.5rem)] max-w-sm cursor-pointer sm:right-6" onClick={() => setToast(null)}><div className="flex items-start gap-3 rounded-xl border-l-4 border-primary bg-white p-4 shadow-2xl ring-1 ring-slate-200"><div className="shrink-0 rounded-lg bg-primary/10 p-2 text-primary"><BellRing size={20} /></div><div className="min-w-0 flex-1"><h4 className="mb-0.5 text-sm font-bold text-slate-800">{toast.title}</h4><p className="line-clamp-2 text-xs text-slate-500">{toast.message}</p></div><button type="button" aria-label="Descartar notificación" className="shrink-0 text-slate-400 hover:text-slate-600" onClick={(event) => { event.stopPropagation(); setToast(null); }}><X size={14} /></button></div></div>}
+      </div>
     </div>
   );
 }

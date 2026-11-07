@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
-import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search } from 'lucide-react';
+import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, Menu, X } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
 import { AdminBooksView } from './AdminBooksView';
@@ -16,6 +16,7 @@ export function AdminMonitor() {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [profile, setProfile] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -50,7 +51,7 @@ export function AdminMonitor() {
     { id: 'ai_coaches', label: 'Herramientas IA para coaches', icon: <Sparkles size={18}/>, category: 'Academia y certificados', perm: 'system' },
     { id: 'transactions', label: 'Pagos y transacciones', icon: <CreditCard size={18}/>, category: 'Finanzas', perm: 'billing' },
     { id: 'settlement', label: 'Liquidaciones de coaches', icon: <PieChartIcon size={18}/>, category: 'Finanzas', perm: 'billing' },
-    { id: 'promotions', label: 'Promociones y descuentos', icon: <Star size={18}/>, category: 'Marketing y ventas', perm: 'billing' },
+    { id: 'promotions', label: 'Promociones y descuentos', icon: <Star size={18}/>, category: 'Finanzas', perm: 'billing' },
   ];
 
   const filteredNav = navItems.filter(item => {
@@ -68,7 +69,7 @@ export function AdminMonitor() {
     'Marketing y ventas': true
   });
 
-  const categories = Array.from(new Set(filteredNav.map(n => n.category)));
+  const categories = ['Inicio y métricas', 'Personas y acceso', 'Academia y certificados', 'Finanzas'].filter(cat => filteredNav.some(n => n.category === cat));
 
   const toggleCategory = (cat: string) => {
     setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
@@ -94,7 +95,7 @@ export function AdminMonitor() {
         </div>
 
 
-        <div className="flex flex-col gap-2 max-h-[70vh] overflow-y-auto pr-1">
+        <div className="flex flex-col gap-2 max-h-[55vh] overflow-y-auto overscroll-contain pr-1 lg:max-h-[calc(100vh-16rem)]">
           {categories.map(cat => (
             <div key={cat} className="flex flex-col mb-1">
               <button 
@@ -113,7 +114,7 @@ export function AdminMonitor() {
                     key={item.id}
                     active={activeTab === item.id} 
                     disabled={!canOpen(item)}
-                    onClick={() => canOpen(item) && setActiveTab(item.id as AdminTab)} 
+                    onClick={() => { if (canOpen(item)) { setActiveTab(item.id as AdminTab); setMobileNavOpen(false); } }} 
                     icon={item.icon} 
                     label={item.label} 
                   />
