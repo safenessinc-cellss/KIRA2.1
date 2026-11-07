@@ -81,7 +81,7 @@ let firebasePublicKeys: Record<string, string> = {};
 let firebaseKeysExpiresAt = 0;
 
 async function verifyFirebaseIdToken(token: string): Promise<VerifiedFirebaseUser | null> {
-  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "kira2-a6a20";
   if (!projectId || !token) return null;
   try {
     const parts = token.split(".");
