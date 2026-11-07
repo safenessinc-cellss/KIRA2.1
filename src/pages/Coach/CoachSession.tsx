@@ -41,8 +41,6 @@ export function CoachSession() {
   const [sentiment, setSentiment] = useState<'positive' | 'neutral' | 'negative'>('neutral');
   
   // Refs
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const speechRecognitionRef = useRef<any>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -52,7 +50,6 @@ export function CoachSession() {
   
   // Estado del micrófono
   const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
-  const [isMuted, setIsMuted] = useState(false);
   
   // Estado de la sesión
   const [sessionTitle, setSessionTitle] = useState('');
@@ -74,7 +71,11 @@ export function CoachSession() {
   useEffect(() => {
     if (isRecording && !isPaused) {
       timerRef.current = setInterval(() => {
-        setSessionDuration(prev => prev + 1);
+        setSessionDuration(prev => {
+          const next = prev + 1;
+          sessionDurationRef.current = next;
+          return next;
+        });
       }, 1000);
     } else {
       if (timerRef.current) {
@@ -133,7 +134,8 @@ export function CoachSession() {
           }
         }
         if (finalSegments.length) {
-          setTranscript(previous => [...previous, ...finalSegments]);
+          transcriptRef.current = [...transcriptRef.current, ...finalSegments];
+          setTranscript(transcriptRef.current);
         }
         setCurrentTranscript(interim.trim());
       };
@@ -184,26 +186,21 @@ export function CoachSession() {
       setSessionId(docRef.id);
       sessionIdRef.current = docRef.id;
       
-      // Iniciar grabación
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-      
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-      
-      mediaRecorder.onstop = () => {
-        // Procesar audio al detener
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        handleSessionComplete(audioBlob);
-      };
-      
-      mediaRecorder.start(1000);
+      // Reset session-local state before enabling browser speech recognition.
+      setSessionDuration(0);
+      sessionDurationRef.current = 0;
+      setTranscript([]);
+      transcriptRef.current = [];
+      setCurrentTranscript('');
+      setManualNotes('');
+      manualNotesRef.current = '';
+      setAnalysis('');
+      setKeyTopics([]);
+      setSentiment('neutral');
+      setAnalysisError('');
+      setTranscriptionError('');
       setIsRecording(true);
+      setIsPaused(false);
       setIsSessionStarted(true);
       startSpeechRecognition();
       toastSuccess('Sesión iniciada. ¡Habla con claridad!');
@@ -214,38 +211,42 @@ export function CoachSession() {
   };
 
   const pauseSession = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      if (isPaused) {
-        mediaRecorderRef.current.resume();
-        setIsPaused(false);
-        startSpeechRecognition();
-        toastSuccess('Sesión reanudada');
-      } else {
-        mediaRecorderRef.current.pause();
-        speechRecognitionRef.current?.stop();
-        setIsPaused(true);
-        toastSuccess('Sesión pausada');
-      }
-    }
-  };
-
-  const stopSession = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      speechRecognitionRef.current?.stop();
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      setIsRecording(false);
+    if (!isRecording) return;
+    if (isPaused) {
       setIsPaused(false);
-      
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-      
-      toastSuccess('Sesión finalizada. Analizando con IA...');
+      startSpeechRecognition();
+      toastSuccess('Sesión reanudada');
+    } else {
+      speechRecognitionRef.current?.stop();
+      setIsPaused(true);
+      toastSuccess('Sesión pausada');
     }
   };
 
-  const handleSessionComplete = async (_audioBlob: Blob) => {
+  const stopSession = async () => {
+    if (!isRecording) return;
+    const recognition = speechRecognitionRef.current;
+    if (recognition) {
+      await new Promise<void>(resolve => {
+        const previousOnEnd = recognition.onend;
+        recognition.onend = (event: any) => {
+          previousOnEnd?.(event);
+          resolve();
+        };
+        try { recognition.stop(); } catch { resolve(); }
+      });
+    }
+    setIsRecording(false);
+    setIsPaused(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    toastSuccess('Sesión finalizada. Preparando el análisis de la transcripción.');
+    await handleSessionComplete();
+  };
+
+  const handleSessionComplete = async () => {
     setIsAnalyzing(true);
     setAnalysisError('');
     const savedTranscript = [...transcriptRef.current];
@@ -347,7 +348,7 @@ ${transcriptText}`;
       toastError('No se pudo completar el análisis con IA.');
     } finally {
       setIsAnalyzing(false);
-      audioChunksRef.current = [];
+
     }
   };
 
@@ -454,7 +455,7 @@ ${transcriptText}`;
                 )} />
                 <div>
                   <span className="font-bold text-slate-900">
-                    {isRecording && !isPaused ? 'Grabando...' : 
+                    {isRecording && !isPaused ? 'Transcribiendo...' : 
                      isPaused ? 'Pausado' : 'Sesión finalizada'}
                   </span>
                   <p className="text-xs text-slate-500">{sessionTitle}</p>
@@ -545,7 +546,7 @@ ${transcriptText}`;
               placeholder="Añade acuerdos, observaciones o puntos que la transcripción automática no haya captado."
               className="w-full resize-y rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none focus:ring-2 focus:ring-teal-500/20"
             />
-            <p className="mt-2 text-xs text-slate-500">El audio se procesa localmente en esta sesión y no se guarda. Se guardan la transcripción y el análisis textual.</p>
+            <p className="mt-2 text-xs text-slate-500">El navegador realiza la transcripción automática; KIRA no almacena la grabación original. Se guardan la transcripción y el análisis textual.</p>
           </div>
 
           {analysisError && <div role="alert" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{analysisError}</div>}
