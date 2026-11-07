@@ -1188,68 +1188,9 @@ function AutomationEngineView() {
     }
   };
 
-  const triggerSimulation = async (rule: any) => {
-    // Simulated engine run
-    try {
-      const q = query(collection(db, 'users'), where('role', '==', 'alumno'));
-      const snap = await getDocs(q);
-      let count = 0;
-
-      for (const d of snap.docs) {
-        const userData = d.data();
-        // Evaluate condition
-        let shouldTrigger = false;
-        if (rule.condition === 'inactivity') {
-          const lastAt = userData.lastActivityAt?.toDate?.() || new Date(0);
-          const diffDays = Math.floor((new Date().getTime() - lastAt.getTime()) / (1000 * 3600 * 24));
-          if (diffDays >= rule.thresholdDays) shouldTrigger = true;
-        } else if (rule.condition === 'email_verification_pending') {
-          if (!userData.isEmailVerified) {
-             const createdDate = userData.createdAt?.toDate?.() || new Date();
-             const diffDays = Math.floor((new Date().getTime() - createdDate.getTime()) / (1000 * 3600 * 24));
-             if (diffDays >= rule.thresholdDays) shouldTrigger = true;
-          }
-        } else if (rule.condition === 'post_enrollment') {
-           // Simplified check against created date if they are students
-           const createdDate = userData.createdAt?.toDate?.() || new Date();
-           const diffDays = Math.floor((new Date().getTime() - createdDate.getTime()) / (1000 * 3600 * 24));
-           if (diffDays >= rule.thresholdDays) shouldTrigger = true;
-        }
-
-        if (shouldTrigger) {
-          // Trigger action
-          await addDoc(collection(db, 'notifications'), {
-            userId: d.id,
-            title: rule.condition === 'email_verification_pending' ? 'Verifica tu cuenta' : '¡Te extrañamos!',
-            message: rule.messageTemplate || 'Por favor, completa tu perfil para continuar disfrutando de Kira.',
-            type: 'system',
-            read: false,
-            createdAt: new Date()
-          });
-
-          // LOG CAMPAIGN
-          await addDoc(collection(db, 'campaign_logs'), {
-            ruleId: rule.id,
-            userId: d.id,
-            actionType: rule.actionType,
-            status: 'sent',
-            createdAt: new Date()
-          });
-
-          count++;
-        }
-      }
-      
-      // Update rule stats
-      await updateDoc(doc(db, 'automations', rule.id), {
-        processedCount: (rule.processedCount || 0) + count,
-        lastRunAt: new Date()
-      });
-
-      alert(`Automatización ejecutada: ${count} alumnos procesados.`);
-    } catch (e) {
-      console.error(e);
-    }
+  // No se ejecutan automatizaciones desde el cliente: falta scheduler/backend seguro.
+  const triggerSimulation = async (_rule: any) => {
+    console.warn('Automations are not executed: backend scheduler is not implemented.');
   };
 
   return (
@@ -1319,7 +1260,7 @@ function AutomationEngineView() {
                   onClick={() => triggerSimulation(rule)}
                   className="flex-1 py-2 bg-slate-50 text-slate-600 rounded-xl text-[11px] font-bold hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
                >
-                 <Zap size={12} className="text-amber-500" /> Probar Ahora
+                 <Zap size={12} /> Ejecución backend pendiente
                </button>
                <div className="px-3 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-[10px] font-bold flex flex-col justify-center items-center min-w-[60px]">
                   <span>{rule.processedCount || 0}</span>
