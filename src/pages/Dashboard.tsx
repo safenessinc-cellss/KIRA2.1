@@ -203,7 +203,7 @@ export function Dashboard() {
         const booksQ = query(collection(db, 'books'), where('status', '==', 'published'));
         const booksSnap = await getDocs(booksQ);
         const fbBooks = booksSnap.docs.map(d => ({id: d.id, ...d.data()}));
-        const merged = [...DEFAULT_BOOKS];
+        const merged: any[] = [];
         fbBooks.forEach((fbB: any) => {
           if (!merged.some(m => m.id === fbB.id)) {
             merged.push(fbB);
