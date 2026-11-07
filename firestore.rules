@@ -135,7 +135,14 @@ service cloud.firestore {
              (!('updatedAt' in data) || data.updatedAt is timestamp) &&
              (!('manualActiveStudents' in data) || data.manualActiveStudents is number) &&
              (!('manualAvgProgress' in data) || data.manualAvgProgress is number) &&
-             (!('manualRecentSessions' in data) || data.manualRecentSessions is number) &&\n             (!('approved' in data) || data.approved is bool) &&\n             (!('approvedAt' in data) || data.approvedAt is timestamp) &&\n             (!('approvedBy' in data) || data.approvedBy is string) &&\n             (!('reviewedAt' in data) || data.reviewedAt is timestamp) &&\n             (!('reviewedBy' in data) || data.reviewedBy is string) &&\n             (!('organizationId' in data) || data.organizationId is string) &&\n             (!('assignedCoachId' in data) || data.assignedCoachId is string);
+             (!('manualRecentSessions' in data) || data.manualRecentSessions is number) &&
+             (!('approved' in data) || data.approved is bool) &&
+             (!('approvedAt' in data) || data.approvedAt is timestamp) &&
+             (!('approvedBy' in data) || data.approvedBy is string) &&
+             (!('reviewedAt' in data) || data.reviewedAt is timestamp) &&
+             (!('reviewedBy' in data) || data.reviewedBy is string) &&
+             (!('organizationId' in data) || data.organizationId is string) &&
+             (!('assignedCoachId' in data) || data.assignedCoachId is string);
     }
 
     function isValidMessage() {
@@ -199,7 +206,9 @@ service cloud.firestore {
              data.rating is number && data.rating >= 1 && data.rating <= 5 &&
              data.status in ['published', 'hidden'] &&
              data.createdAt is timestamp &&
-             (!('comment' in data) || (data.comment is string && data.comment.size() <= 2000)) &&\n             (!('moderatedBy' in data) || data.moderatedBy is string) &&\n             (!('moderatedAt' in data) || data.moderatedAt is timestamp);
+             (!('comment' in data) || (data.comment is string && data.comment.size() <= 2000)) &&
+             (!('moderatedBy' in data) || data.moderatedBy is string) &&
+             (!('moderatedAt' in data) || data.moderatedAt is timestamp);
     }
 
     function isValidTransaction() {
@@ -437,7 +446,8 @@ service cloud.firestore {
       allow create, update: if isAuthenticated() && (isAdmin() || profileId == request.auth.uid);
       allow delete: if isAdmin() || profileId == request.auth.uid;
     }
-\n    match /urgent_escalations/{id} {
+
+    match /urgent_escalations/{id} {
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow read, update, delete: if isAdmin();
     }
