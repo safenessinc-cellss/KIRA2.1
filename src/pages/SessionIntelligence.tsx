@@ -411,7 +411,7 @@ export default function SessionIntelligence() {
         "roleplay_scenarios": ["string"],
         "personal_mantra": "string",
         "focus_heatmap": { "pasado_problemas": number, "presente": number, "futuro_soluciones": number },
-        "metrics": { "confidence": number, "clarity": number, "energy": number },
+        "metrics": { "confidence": number|null, "clarity": number|null, "energy": number|null },
         "sugerencia_proxima_sesion": "string"
       }`;
 
@@ -604,7 +604,7 @@ export default function SessionIntelligence() {
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Claridad ({manualClarity || "No evaluada"})</label>
                       <input 
                         type="range" 
-                        min="1" 
+                        min="0" 
                         max="10" 
                         value={manualClarity} 
                         onChange={e => setManualClarity(Number(e.target.value))} 
@@ -615,7 +615,7 @@ export default function SessionIntelligence() {
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Energía ({manualEnergy || "No evaluada"})</label>
                       <input 
                         type="range" 
-                        min="1" 
+                        min="0" 
                         max="10" 
                         value={manualEnergy} 
                         onChange={e => setManualEnergy(Number(e.target.value))} 
