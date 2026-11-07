@@ -228,7 +228,9 @@ app.post("/api/create-checkout-session", async (req, res) => {
       const price = Number(product.price);
       if (!Number.isFinite(price) || price < 0) return res.status(400).json({ error: "Invalid server-side price" });
       const currency = String(product.currency || "usd").toLowerCase();
-      if (!/^[a-z]{3}$/.test(currency)) return res.status(400).json({ error: "Invalid product currency" });
+      // This checkout path currently supports only two-decimal currencies.
+      if (!["usd", "brl", "eur", "gbp"].includes(currency)) return res.status(400).json({ error: "Unsupported product currency" });
+      if (Math.abs(price * 100 - Math.round(price * 100)) > 0.000001) return res.status(400).json({ error: "Product price must have at most two decimal places" });
       if (cartCurrency && cartCurrency !== currency) return res.status(400).json({ error: "All cart items must use the same currency." });
       cartCurrency = currency;
 
@@ -244,7 +246,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
         const orderRef = firestore.collection("orders").doc(freeOrderId);
         const existing = await tx.get(orderRef);
         if (existing.exists) return;
-        tx.set(orderRef, { userId: decoded.uid, items: validated, amount: 0, currency: "USD", status: "free", paymentStatus: "free", createdAt: FieldValue.serverTimestamp() });
+        tx.set(orderRef, { userId: decoded.uid, items: validated, amount: 0, currency: (cartCurrency || "usd").toUpperCase(), status: "free", paymentStatus: "free", createdAt: FieldValue.serverTimestamp() });
         for (const item of validated) {
           if (item.itemType === "course") tx.set(firestore.collection("enrollments").doc(decoded.uid + "_" + item.id), { userId: decoded.uid, courseId: item.id, progress: 0, status: "active", paymentStatus: "free", orderId: freeOrderId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
           else tx.set(firestore.collection("purchases").doc(decoded.uid + "_" + item.id), { userId: decoded.uid, itemId: item.id, itemType: "book", status: "free", paymentStatus: "free", orderId: freeOrderId, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
