@@ -3,14 +3,14 @@ import { jsPDF } from 'jspdf';
 import { useAuth } from '../hooks/useAuth';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, Menu, X } from 'lucide-react';
+import { Users, Building2, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, Menu, X } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
 import { AdminBooksView } from './AdminBooksView';
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates';
+type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates' | 'companies';
 
 export function AdminMonitor() {
   const { user } = useAuth();
@@ -45,6 +45,7 @@ export function AdminMonitor() {
     { id: 'students', label: 'Gestión de alumnos', icon: <Users size={18}/>, category: 'Personas y acceso', perm: 'users' },
     { id: 'coaches', label: 'Gestión de coaches', icon: <UserCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
     { id: 'security', label: 'Roles y seguridad', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', superOnly: true },
+    { id: 'companies', label: 'Empresas y licencias B2B', icon: <Building2 size={18}/>, category: 'Personas y acceso', superOnly: true },
     { id: 'campaign_history', label: 'Auditoría y logs', icon: <ShieldAlert size={18}/>, category: 'Personas y acceso', perm: 'system' },
     { id: 'content', label: 'Cursos y contenidos', icon: <ShoppingBag size={18}/>, category: 'Academia y certificados', perm: 'billing' },
     { id: 'books', label: 'Biblioteca y ebooks', icon: <BookOpen size={18}/>, category: 'Academia y certificados', perm: 'users' },
@@ -132,6 +133,7 @@ export function AdminMonitor() {
         {activeTab === 'analytics' && hasPerm(navItems.find(i=>i.id==='analytics')) && <BIView />}
 
         {activeTab === 'security' && isSuperAdmin && <SecurityView />}
+        {activeTab === 'companies' && isSuperAdmin && <CompanyManagementView />}
         {activeTab === 'campaign_history' && hasPerm(navItems.find(i=>i.id==='campaign_history')) && <CampaignHistoryView />}
         {activeTab === 'ai_coaches' && hasPerm(navItems.find(i=>i.id==='ai_coaches')) && <AICoachesView />}
 
@@ -4641,3 +4643,128 @@ function CertificateRequestsAdminView() {
 // Compatibilidad con rutas anteriores
 export function AdminCoaches() { return <AdminMonitor />; }
 export function AdminReviews() { return <AdminMonitor />; }
+
+
+
+function CompanyManagementView() {
+  const { user } = useAuth();
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [companyName, setCompanyName] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
+  const [employeeEmail, setEmployeeEmail] = useState("");
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [feedbackError, setFeedbackError] = useState(false);
+
+  useEffect(() => onSnapshot(collection(db, "companies"), snapshot => {
+    const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    setCompanies(rows);
+    if (!selectedCompanyId && rows.length) setSelectedCompanyId(rows[0].id);
+  }, error => {
+    console.error("Company list failed:", error);
+    setFeedback("No se pudieron cargar las empresas.");
+    setFeedbackError(true);
+  }), [selectedCompanyId]);
+
+  const findUserByEmail = async (email: string) => {
+    const normalized = email.trim().toLowerCase();
+    const result = await getDocs(query(collection(db, "users"), where("email", "==", normalized), limit(2)));
+    return result.docs[0] || null;
+  };
+
+  const createCompany = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user || !companyName.trim() || !adminEmail.trim()) return;
+    setBusy(true); setFeedback(""); setFeedbackError(false);
+    try {
+      const adminDoc = await findUserByEmail(adminEmail);
+      if (!adminDoc) throw new Error("El administrador debe registrarse primero en KIRA con Google.");
+      const companyId = "co_" + crypto.randomUUID().replace(/-/g, "").slice(0, 20);
+      const companyData = { name: companyName.trim(), companyId, status: "active", licenseLimit: 0, createdAt: new Date(), createdBy: user.uid };
+      const batch = writeBatch(db);
+      batch.set(doc(db, "companies", companyId), companyData);
+      batch.set(doc(db, "b2b", companyId), { companyId, name: companyName.trim(), licensesTotal: 0, licensesUsed: 1, status: "active", createdAt: new Date() });
+      batch.update(doc(db, "users", adminDoc.id), { companyId, companyName: companyName.trim(), role: "company_admin", updatedAt: new Date() });
+      batch.set(doc(db, "companies", companyId, "members", adminDoc.id), {
+        uid: adminDoc.id, email: adminDoc.data().email, displayName: adminDoc.data().displayName || adminDoc.data().name || "",
+        role: "company_admin", status: "active", createdAt: new Date()
+      });
+      await batch.commit();
+      setCompanyName(""); setAdminEmail(""); setSelectedCompanyId(companyId);
+      setFeedback("Empresa creada y administrador vinculado correctamente.");
+    } catch (error: any) {
+      console.error("Company creation failed:", error);
+      setFeedback(error.message || "No fue posible crear la empresa.");
+      setFeedbackError(true);
+    } finally { setBusy(false); }
+  };
+
+  const addEmployee = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user || !selectedCompanyId || !employeeEmail.trim()) return;
+    setBusy(true); setFeedback(""); setFeedbackError(false);
+    try {
+      const employeeDoc = await findUserByEmail(employeeEmail);
+      if (!employeeDoc) throw new Error("El colaborador debe registrarse primero en KIRA con Google.");
+      const company = companies.find(item => item.id === selectedCompanyId);
+      const employee = employeeDoc.data();
+      const batch = writeBatch(db);
+      batch.update(doc(db, "users", employeeDoc.id), {
+        companyId: selectedCompanyId, companyName: company?.name || "", updatedAt: new Date()
+      });
+      batch.set(doc(db, "companies", selectedCompanyId, "members", employeeDoc.id), {
+        uid: employeeDoc.id, email: employee.email || employeeEmail.trim().toLowerCase(),
+        displayName: employee.displayName || employee.name || "", department: employee.department || "",
+        jobTitle: employee.jobTitle || "", role: employee.role || "alumno", status: "active", createdAt: new Date()
+      });
+      const currentMembers = await getDocs(collection(db, "companies", selectedCompanyId, "members"));
+      batch.update(doc(db, "b2b", selectedCompanyId), { licensesUsed: currentMembers.size + (currentMembers.docs.some(d => d.id === employeeDoc.id) ? 0 : 1) });
+      await batch.commit();
+      setEmployeeEmail("");
+      setFeedback("Colaborador vinculado a la organización. Su rol individual de KIRA se conserva.");
+    } catch (error: any) {
+      console.error("Company member assignment failed:", error);
+      setFeedback(error.message || "No fue posible vincular al colaborador.");
+      setFeedbackError(true);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+      <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <p className="text-xs font-bold uppercase tracking-widest text-teal-700">Administración B2B</p>
+        <h2 className="mt-2 text-2xl font-black text-slate-900">Empresas y licencias</h2>
+        <p className="mt-2 text-sm text-slate-500">Crea organizaciones, asigna un administrador empresarial y vincula colaboradores sin exponer sus diarios personales.</p>
+      </header>
+      {feedback && <div role="status" className={cn("rounded-xl border p-4 text-sm", feedbackError ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-800")}>{feedback}</div>}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="font-bold text-slate-900">Crear organización</h3>
+        <form onSubmit={createCompany} className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <input required value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Nombre de la empresa" className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-teal-500" />
+          <input required type="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} placeholder="Email del administrador" className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-teal-500" />
+          <button disabled={busy} className="min-h-11 rounded-xl bg-teal-700 px-4 text-sm font-bold text-white disabled:opacity-50">{busy ? "Guardando…" : "Crear empresa + admin"}</button>
+        </form>
+        <p className="mt-2 text-xs text-slate-400">El administrador debe tener una cuenta KIRA registrada previamente. El alta queda limitada al superadministrador.</p>
+      </section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="font-bold text-slate-900">Vincular colaboradores</h3>
+        <form onSubmit={addEmployee} className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <select required value={selectedCompanyId} onChange={e => setSelectedCompanyId(e.target.value)} className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm">
+            <option value="">Seleccionar empresa</option>
+            {companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}
+          </select>
+          <input required type="email" value={employeeEmail} onChange={e => setEmployeeEmail(e.target.value)} placeholder="Email del colaborador" className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-teal-500" />
+          <button disabled={busy || !selectedCompanyId} className="min-h-11 rounded-xl border border-teal-700 px-4 text-sm font-bold text-teal-800 disabled:opacity-50">{busy ? "Guardando…" : "Vincular colaborador"}</button>
+        </form>
+      </section>
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {companies.map(company => <article key={company.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="font-bold text-slate-900">{company.name}</div>
+          <div className="mt-1 break-all font-mono text-[11px] text-slate-400">{company.id}</div>
+          <div className="mt-3 flex justify-between text-xs text-slate-500"><span>Licencias utilizadas</span><strong className="text-slate-800">{company.licensesUsed ?? 0} / {company.licensesTotal ?? 0}</strong></div>
+        </article>)}
+      </section>
+    </div>
+  );
+}
