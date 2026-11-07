@@ -2399,28 +2399,11 @@ function CoachProfileSettings({ profile }: any) {
       }
     }
 
-    // Detect if storage is empty, mock, or custom placeholder to simulate download immediately
+    // Never pretend a file was uploaded. Missing Storage configuration is an explicit error.
     const storageBucket = storage.app.options.storageBucket || '';
-    const isMock = !storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value';
-
-    if (isMock) {
-      setTimeout(() => {
-        let mockUrl = '';
-        if (file.type.startsWith('image/')) {
-          mockUrl = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=600';
-        } else if (file.type.startsWith('video/')) {
-          mockUrl = 'https://www.w3schools.com/html/mov_bbb.mp4';
-        } else {
-          mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-        }
-
-        if (type === 'photo') setFormData(prev => ({ ...prev, photoURL: mockUrl }));
-        else if (type === 'welcome') setFormData(prev => ({ ...prev, welcomeVideoUrl: mockUrl }));
-        else if (type === 'resource') setNewMedia(prev => ({ ...prev, url: mockUrl, type: file.type.includes('pdf') ? 'pdf' : file.type.includes('video') ? 'video' : 'imagen' }));
-
-        setUploading(null);
-        alert(`[Simulador] Archivo "${file.name}" cargado con éxito en modo de desarrollo.`);
-      }, 1000);
+    if (!storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value') {
+      setUploading(null);
+      toastError("Firebase Storage no está configurado. El archivo no se ha cargado.");
       return;
     }
 
