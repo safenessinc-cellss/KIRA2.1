@@ -3945,7 +3945,7 @@ function StatCard({ title, value, subtitle, icon, color = 'teal' }: any) {
         <div className="p-2.5 rounded-xl bg-slate-50 group-hover:bg-slate-100 transition-colors">
           {icon}
         </div>
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${badgeClasses}`}>Hoy</span>
+
       </div>
       <div className="text-3xl font-bold text-slate-900 mb-1">{value}</div>
       <div className="text-slate-500 text-[13px] font-medium">{title}</div>
