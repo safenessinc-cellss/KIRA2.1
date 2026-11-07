@@ -120,7 +120,7 @@ export function CoachCourses() {
     }
   };
 
-  const isApproved = true;
+  const isApproved = profile?.approvalStatus === 'approved' || profile?.role === 'admin';
 
   const handleCancel = () => {
     setIsCreating(false);
