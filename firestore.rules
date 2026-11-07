@@ -308,8 +308,7 @@ service cloud.firestore {
 
     match /transactions/{id} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow create, update, delete: if false; // Financial records are written only by trusted server code (Admin SDK). 
-      allow update, delete: if isAdmin();
+      allow create, update, delete: if false; // Financial records are written only by trusted server code (Admin SDK).
     }
 
     match /coupons/{id} {
