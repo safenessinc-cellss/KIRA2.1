@@ -355,6 +355,32 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Orders and entitlements are created only by trusted payment fulfillment.
+    match /orders/{orderId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /memberships/{membershipId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /purchases/{purchaseId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /paymentEvents/{eventId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     match /coupons/{id} {
       allow read: if isAuthenticated();
       allow create, update, delete: if isAdmin();
