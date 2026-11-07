@@ -61,7 +61,8 @@ service cloud.firestore {
     // ===============================================================
     
     function isAuthenticated() {
-      return request.auth != null;
+      return request.auth != null &&
+             request.auth.token.firebase.sign_in_provider == 'google.com';
     }
 
     function isSuperAdmin() {
