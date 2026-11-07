@@ -755,9 +755,9 @@ export function Dashboard() {
                       <div className="mt-auto pt-2">
                         {(() => {
                           const bookPurchase = purchases.find(p => p.itemId === book.id);
-                          const isOwned = Number(book.price) === 0 || bookPurchase;
+                          const isOwned = Number(book.price) === 0 || (bookPurchase && ['paid','completed'].includes(String(bookPurchase.status || bookPurchase.paymentStatus || '').toLowerCase()));
                           if (isOwned) {
-                            if (bookPurchase && bookPurchase.status === 'pending_release') {
+                            if (bookPurchase && !['paid','completed'].includes(String(bookPurchase.status || bookPurchase.paymentStatus || '').toLowerCase())) {
                               return (
                                 <button 
                                   disabled
@@ -769,12 +769,15 @@ export function Dashboard() {
                             } else {
                               return (
                                 <div className="flex flex-col gap-2 w-full">
-                                  <button 
-                                    onClick={() => alert(`Lectura del Ebook: "${book.title}". ¡Excelente decisión! Hemos habilitado el material interactivo y PDF en tu correo corporativo o personal.`)}
-                                    className="w-full text-[10px] py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-violet-900/20 active:scale-[0.98]"
-                                  >
-                                    <BookOpen size={12} /> {book.id === 'cio-robert-teran' ? 'Leer Enlace' : 'Leer PDF'}
-                                  </button>
+                                  {(book.fileUrl || book.downloadUrl || book.pdfUrl || book.resourceUrl) ? (
+                                    <a href={book.fileUrl || book.downloadUrl || book.pdfUrl || book.resourceUrl} target="_blank" rel="noreferrer" className="w-full text-[10px] py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider">
+                                      <BookOpen size={12} /> Abrir recurso
+                                    </a>
+                                  ) : (
+                                    <button disabled title="El archivo del libro no está cargado en la ficha del recurso." className="w-full text-[10px] py-2.5 bg-slate-100 text-slate-400 rounded-xl font-black flex items-center justify-center gap-2 uppercase tracking-wider cursor-not-allowed">
+                                      <BookOpen size={12} /> Archivo no disponible
+                                    </button>
+                                  )}
                                   <button 
                                     onClick={() => setReviewingItem({ id: book.id, type: 'book', title: book.title })}
                                     className="w-full text-[10px] py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider active:scale-[0.98]"
