@@ -1,5 +1,6 @@
 // src/firebase.ts
 import { initializeApp } from 'firebase/app';
+import firebaseAppletConfig from '../firebase-applet-config.json';
 import { 
   getAuth, 
   signInWithPopup, 
@@ -13,7 +14,6 @@ import {
   UserCredential
 } from 'firebase/auth';
 import { 
-  getFirestore, 
   initializeFirestore,
   persistentLocalCache, 
   persistentMultipleTabManager,
@@ -37,21 +37,21 @@ import {
   QueryDocumentSnapshot
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getMessaging } from 'firebase/messaging';
+import { getMessaging, isSupported, type Messaging } from 'firebase/messaging';
 
 // 🔥 CONFIGURACIÓN DE FIREBASE
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'kira2-a6a20.firebaseapp.com',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'kira2-a6a20',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'kira2-a6a20.firebasestorage.app',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseAppletConfig.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseAppletConfig.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseAppletConfig.storageBucket,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseAppletConfig.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseAppletConfig.appId,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || firebaseAppletConfig.measurementId,
 };
 
 // Inicializar Firebase
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
 // 🔥 AUTH - Exportar TODAS las funciones necesarias
 export const auth = getAuth(app);
@@ -66,8 +66,17 @@ export const db = initializeFirestore(app, {
 // 🔥 STORAGE
 export const storage = getStorage(app);
 
-// 🔥 MESSAGING (solo en cliente)
-export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
+// Inicializar Messaging bajo demanda; Safari y otros navegadores sin Push API siguen usando la app.
+export async function getBrowserMessaging(): Promise<Messaging | null> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return null;
+  try {
+    if (!(await isSupported())) return null;
+    return getMessaging(app);
+  } catch (error) {
+    if (import.meta.env.DEV) console.warn('[FCM] Messaging no está disponible en este navegador.', error);
+    return null;
+  }
+}
 
 // 🔥 EXPORTAR TODAS LAS FUNCIONES DE AUTH
 export {

@@ -1,3 +1,4 @@
+import { SafeImage } from '../components/SafeImage';
 import React, { useState, useEffect } from 'react';
 import { db, storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -86,27 +87,18 @@ export function AdminBooksView() {
     setUploadingFile(true);
     try {
       const storageBucket = storage.app.options.storageBucket || '';
-      const isMock = !storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value';
-
-      if (isMock) {
-        // Wait 1.2 seconds for simulation
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        const mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-        setUrl(mockUrl);
-        toastSuccess("Archivo cargado en modo simulación administrativa.");
-      } else {
-        const storageRef = ref(storage, `books/admin/${Date.now()}_${file.name}`);
-        const uploadResult = await uploadBytes(storageRef, file);
-        const downloadUrl = await getDownloadURL(uploadResult.ref);
-        
-        setUrl(downloadUrl);
-        toastSuccess("Libro administrativo cargado con éxito.");
+      if (!storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value') {
+        throw new Error('Firebase Storage no está configurado. El archivo no se ha cargado.');
       }
+
+      const storageRef = ref(storage, `books/admin/${Date.now()}_${file.name}`);
+      const uploadResult = await uploadBytes(storageRef, file);
+      const downloadUrl = await getDownloadURL(uploadResult.ref);
+      setUrl(downloadUrl);
+      toastSuccess("Libro administrativo cargado con éxito.");
     } catch (err: any) {
-      console.warn("Storage upload failed, using simulation mode fallback:", err);
-      const mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-      setUrl(mockUrl);
-      toastSuccess("Libro cargado en modo de respaldo (simulado).");
+      console.error("Admin book upload failed:", err);
+      toastError(err?.message || "No se pudo cargar el archivo. No se ha guardado ningún archivo.");
     } finally {
       setUploadingFile(false);
       e.target.value = '';
@@ -496,7 +488,7 @@ export function AdminBooksView() {
               {filteredBooks.map((book) => (
                 <div key={book.id} className="group bg-white rounded-2xl border border-slate-200 overflow-hidden flex flex-col h-full hover:shadow-lg transition-all duration-300">
                   <div className="relative h-44 bg-slate-50 overflow-hidden shrink-0">
-                    <img 
+                    <SafeImage 
                       src={book.coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400'} 
                       alt={book.title} 
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 

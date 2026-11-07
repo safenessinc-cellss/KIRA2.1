@@ -28,11 +28,6 @@ export function PerformanceMonitor() {
         loadTime: Math.round(timing.loadEventEnd - timing.startTime),
       }));
 
-      console.log('[Perf Monitor] Core Metrics Captured:', {
-        TTFB: `${Math.round(timing.responseStart - timing.requestStart)}ms`,
-        DOMReady: `${Math.round(timing.domContentLoadedEventEnd - timing.responseStart)}ms`,
-        FullyLoaded: `${Math.round(timing.loadEventEnd - timing.startTime)}ms`,
-      });
     };
 
     if (document.readyState === 'complete') {
@@ -67,7 +62,6 @@ export function PerformanceMonitor() {
       const lcpObserver = new PerformanceObserver((entryList) => {
         const entries = entryList.getEntries();
         const lastEntry = entries[entries.length - 1];
-        console.log(`[Perf Monitor] Largest Contentful Paint (LCP): ${Math.round(lastEntry.startTime)}ms`);
       });
       lcpObserver.observe({ type: 'largest-contentful-paint', buffered: true });
 
@@ -78,11 +72,9 @@ export function PerformanceMonitor() {
             clsValue += entry.value;
           }
         }
-        console.log(`[Perf Monitor] Cumulative Layout Shift (CLS): ${clsValue.toFixed(4)}`);
       });
       clsObserver.observe({ type: 'layout-shift', buffered: true });
     } catch (e) {
-      console.warn('[Perf Monitor] Web Vitals Observers not supported in this browser.', e);
     }
 
     return () => {

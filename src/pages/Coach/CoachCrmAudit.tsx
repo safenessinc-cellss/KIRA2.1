@@ -1,13 +1,13 @@
 // src/pages/coach/CoachCrmAudit.tsx
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/src/hooks/useAuth';
-import { db } from '@/src/firebase';
+import { auth, db } from '@/src/firebase';
 import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { 
   Loader2, TrendingUp, TrendingDown, AlertCircle, Zap, Mail, 
   ChevronRight, BarChart3, Sparkles, Users, DollarSign, 
   Eye, ShoppingCart, CheckCircle2, Target, Rocket, Brain,
-  FileText, Send, Clock, ArrowRight
+  Send, Clock, ArrowRight
 } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
 import { useToast } from '@/src/hooks/useToast';
@@ -22,18 +22,27 @@ interface FunnelData {
 export function CoachCrmAudit() {
   const { user } = useAuth();
   const { success: toastSuccess, error: toastError } = useToast();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [auditResult, setAuditResult] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<{
+    prospects: number;
+    studioViews: number;
+    checkouts: number | null;
+    enrollments: number;
+    revenue: number | null;
+    financialAvailable: boolean;
+  }>({
     prospects: 0,
     studioViews: 0,
-    checkouts: 0,
+    checkouts: null,
     enrollments: 0,
-    revenue: 0
+    revenue: null,
+    financialAvailable: false,
   });
   const [funnelData, setFunnelData] = useState<FunnelData[]>([]);
   const [revenueHistory, setRevenueHistory] = useState<any[]>([]);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [isSendingRecovery, setIsSendingRecovery] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'audit' | 'recovery'>('overview');
@@ -41,103 +50,61 @@ export function CoachCrmAudit() {
   useEffect(() => {
     if (!user) return;
     fetchPipelineStats();
-    fetchRevenueHistory();
-  }, [user]);
+  }, [user?.uid]);
+
+
 
   const fetchPipelineStats = async () => {
+    setLoading(true);
+    setMetricsError(null);
     try {
-      // 1. Prospectos - Usuarios que han visto el perfil del coach
-      const usersQuery = query(collection(db, 'users'));
-      const usersSnap = await getDocs(usersQuery);
-      let prospectCount = 0;
-      usersSnap.docs.forEach(d => {
-        const data = d.data();
-        if (data.favorites && data.favorites.includes(user?.uid)) {
-          prospectCount++;
-        }
-      });
-
-      // 2. Visitas al Studio - Vistas de cursos del coach
-      const coursesQuery = query(collection(db, 'courses'), where('coachId', '==', user?.uid));
-      const coursesSnap = await getDocs(coursesQuery);
-      let totalViews = 0;
-      coursesSnap.docs.forEach(d => {
-        totalViews += d.data().viewCount || 0;
-      });
-
-      // 3. Checkouts - Transacciones pendientes
-      const transactionsQuery = query(
-        collection(db, 'transactions'),
-        where('coachId', '==', user?.uid),
-        where('status', '==', 'pending')
-      );
-      const transactionsSnap = await getDocs(transactionsQuery);
-      const checkouts = transactionsSnap.size;
-
-      // 4. Matrículas - Alumnos inscritos
-      const enrollQuery = query(collection(db, 'enrollments'), where('coachId', '==', user?.uid));
-      const enrollSnap = await getDocs(enrollQuery);
-      const enrollments = enrollSnap.size;
-
-      // 5. Ingresos totales
-      const revenueQuery = query(
-        collection(db, 'transactions'),
-        where('coachId', '==', user?.uid),
-        where('status', '==', 'completed')
-      );
-      const revenueSnap = await getDocs(revenueQuery);
-      let totalRevenue = 0;
-      revenueSnap.docs.forEach(d => {
-        totalRevenue += d.data().amount || 0;
-      });
-
-      setStats({
-        prospects: prospectCount || Math.floor(Math.random() * 50) + 10,
-        studioViews: totalViews || Math.floor(Math.random() * 200) + 50,
-        checkouts: checkouts || Math.floor(Math.random() * 30) + 5,
-        enrollments: enrollments || Math.floor(Math.random() * 20) + 3,
-        revenue: totalRevenue || Math.floor(Math.random() * 5000) + 500
-      });
-
-      // Construir datos del embudo
-      const p = prospectCount || Math.floor(Math.random() * 50) + 10;
-      const v = totalViews || Math.floor(Math.random() * 200) + 50;
-      const c = checkouts || Math.floor(Math.random() * 30) + 5;
-      const e = enrollments || Math.floor(Math.random() * 20) + 3;
-
-      setFunnelData([
-        { stage: 'Prospectos', count: p, conversion: 100 },
-        { stage: 'Visitas', count: v, conversion: Math.round((v / p) * 100) },
-        { stage: 'Checkouts', count: c, conversion: Math.round((c / v) * 100) },
-        { stage: 'Matrículas', count: e, conversion: Math.round((e / c) * 100) }
-      ]);
-
-    } catch (error) {
-      console.error("Error fetching pipeline stats:", error);
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión ha expirado. Vuelve a iniciar sesión.');
+      const response = await fetch('/api/coach/crm-metrics', { headers: { Authorization: 'Bearer ' + idToken } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'No se pudieron cargar las métricas del CRM.');
+      const financialAvailable = data.financialAvailable === true;
+      const prospects = Number(data.prospects) || 0;
+      const studioViews = Number(data.studioViews) || 0;
+      const enrollments = Number(data.enrollments) || 0;
+      const checkouts = financialAvailable ? (Number(data.checkouts) || 0) : null;
+      const revenue = financialAvailable ? (Number(data.revenue) || 0) : null;
+      setStats({ prospects, studioViews, checkouts, enrollments, revenue, financialAvailable });
+      setRevenueHistory(Array.isArray(data.revenueHistory) ? data.revenueHistory : []);
+      const funnel: Array<{ stage: string; count: number; conversion: number }> = [
+        { stage: 'Prospectos', count: prospects, conversion: prospects > 0 ? 100 : 0 },
+        { stage: 'Visitas', count: studioViews, conversion: prospects > 0 ? Math.round((studioViews / prospects) * 100) : 0 },
+      ];
+      if (financialAvailable && checkouts !== null) {
+        funnel.push({ stage: 'Checkouts', count: checkouts, conversion: studioViews > 0 ? Math.round((checkouts / studioViews) * 100) : 0 });
+      }
+      funnel.push({ stage: 'Matrículas', count: enrollments, conversion: studioViews > 0 ? Math.round((enrollments / studioViews) * 100) : 0 });
+      setFunnelData(funnel);
+    } catch (error: any) {
+      console.error('Error fetching coach CRM metrics:', error);
+      setMetricsError(error?.message || 'No se pudieron cargar métricas reales.');
+      setStats({ prospects: 0, studioViews: 0, checkouts: null, enrollments: 0, revenue: null, financialAvailable: false });
+      setFunnelData([]);
+      setRevenueHistory([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const fetchRevenueHistory = async () => {
-    // Datos simulados para el gráfico
-    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    const data = months.slice(0, 6).map((month, i) => ({
-      month,
-      ingresos: Math.floor(Math.random() * 2000) + 500 + (i * 200),
-      alumnos: Math.floor(Math.random() * 10) + 2 + (i * 1.5)
-    }));
-    setRevenueHistory(data);
-  };
+
 
   const runAudit = async () => {
     if (!user) return;
+    if (metricsError) { toastError('No hay datos CRM disponibles para analizar.'); return; }
+    if (stats.prospects === 0 && stats.studioViews === 0 && stats.enrollments === 0 && !stats.financialAvailable) { setAuditResult('No hay datos CRM reales suficientes para generar un análisis. Registra actividad y vuelve a intentarlo.'); return; }
     setIsGenerating(true);
     setAuditResult(null);
 
     try {
       const { prospects, studioViews, checkouts, enrollments } = stats;
       
-      const visitToCheckout = prospects > 0 ? ((checkouts / prospects) * 100).toFixed(1) : '0';
-      const checkoutToEnroll = checkouts > 0 ? ((enrollments / checkouts) * 100).toFixed(1) : '0';
+      const visitToCheckout = checkouts !== null && prospects > 0 ? ((checkouts / prospects) * 100).toFixed(1) : 'No disponible';
+      const checkoutToEnroll = checkouts !== null && checkouts > 0 ? ((enrollments / checkouts) * 100).toFixed(1) : 'No disponible';
       const overallConversion = prospects > 0 ? ((enrollments / prospects) * 100).toFixed(1) : '0';
 
       const prompt = `
@@ -146,7 +113,7 @@ export function CoachCrmAudit() {
         Datos del embudo de conversión:
         - Prospectos (vistas de perfil): ${prospects}
         - Visitas al Studio de Cursos: ${studioViews}
-        - Checkouts Iniciados: ${checkouts}
+        - Checkouts Iniciados: ${checkouts === null ? 'No disponible' : checkouts}
         - Matrículas Completadas: ${enrollments}
         
         Tasas de conversión:
@@ -168,15 +135,17 @@ export function CoachCrmAudit() {
         3. PLAN DE ACCIÓN DE 7 DÍAS:
            - Lista de tareas concretas y calendarizadas
         
-        4. PROYECCIÓN DE INGRESOS:
-           - Si se implementan las soluciones, estima el incremento esperado
+        4. ESCENARIO HIPOTÉTICO:
+           - No inventes cifras ni presentes estimaciones como resultados reales. Si faltan datos, indica que no puede calcularse una proyección.
         
         Formato: Markdown en español, con títulos claros y viñetas.
       `;
 
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión ha expirado. Vuelve a iniciar sesión.');
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -207,30 +176,20 @@ export function CoachCrmAudit() {
   };
 
   const sendRecoveryCampaign = async () => {
-    if (!recoveryEmail.trim()) {
-      toastError('Por favor, escribe un mensaje de recuperación');
-      return;
-    }
-
+    if (!recoveryEmail.trim()) return;
+    if (!user?.uid) { toastError('Inicia sesión para guardar el borrador.'); return; }
     setIsSendingRecovery(true);
     try {
       await addDoc(collection(db, 'recovery_campaigns'), {
-        coachId: user?.uid,
-        message: recoveryEmail,
-        target: 'abandoned_checkouts',
-        status: 'sent',
-        sentAt: new Date(),
-        recipients: stats.checkouts
+        coachId: user.uid, message: recoveryEmail, target: 'abandoned_checkouts',
+        status: 'draft', recipients: 0, createdAt: new Date(), deliveryConfigured: false,
       });
-      
-      toastSuccess(`📧 Campaña enviada a ${stats.checkouts} prospectos`);
+      toastSuccess('Borrador guardado. No se envió ningún correo.');
       setRecoveryEmail('');
     } catch (error) {
-      console.error("Error sending recovery campaign:", error);
-      toastError('Error al enviar la campaña');
-    } finally {
-      setIsSendingRecovery(false);
-    }
+      console.error('Error saving recovery campaign draft:', error);
+      toastError('No se pudo guardar el borrador.');
+    } finally { setIsSendingRecovery(false); }
   };
 
   const getConversionColor = (rate: number) => {
@@ -265,6 +224,8 @@ export function CoachCrmAudit() {
           </button>
         </div>
       </div>
+
+      {metricsError && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{metricsError} <button onClick={fetchPipelineStats} className="ml-2 underline font-semibold">Reintentar</button></div>}
 
       {/* Tabs */}
       <div className="flex gap-2 p-1 bg-slate-100 rounded-xl w-fit">
@@ -309,7 +270,7 @@ export function CoachCrmAudit() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Prospectos</p>
-                  <p className="text-3xl font-black text-slate-900 mt-1">{stats.prospects}</p>
+                  <p className="text-3xl font-black text-slate-900 mt-1">{loading ? '...' : metricsError ? '—' : stats.prospects}</p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
                   <Users size={20} />
@@ -321,7 +282,7 @@ export function CoachCrmAudit() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Visitas al Studio</p>
-                  <p className="text-3xl font-black text-slate-900 mt-1">{stats.studioViews}</p>
+                  <p className="text-3xl font-black text-slate-900 mt-1">{loading ? '...' : metricsError ? '—' : stats.studioViews}</p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
                   <Eye size={20} />
@@ -333,7 +294,7 @@ export function CoachCrmAudit() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Checkouts</p>
-                  <p className="text-3xl font-black text-slate-900 mt-1">{stats.checkouts}</p>
+                  <p className="text-3xl font-black text-slate-900 mt-1">{loading ? '...' : metricsError ? '—' : stats.checkouts === null ? 'No disponible' : stats.checkouts}</p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
                   <ShoppingCart size={20} />
@@ -345,7 +306,7 @@ export function CoachCrmAudit() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Matrículas</p>
-                  <p className="text-3xl font-black text-slate-900 mt-1">{stats.enrollments}</p>
+                  <p className="text-3xl font-black text-slate-900 mt-1">{loading ? '...' : metricsError ? '—' : stats.enrollments}</p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
                   <CheckCircle2 size={20} />
@@ -358,59 +319,68 @@ export function CoachCrmAudit() {
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-slate-900">Histórico de Ingresos (6 meses)</h3>
-              <span className="text-sm font-bold text-kirateal">${stats.revenue.toLocaleString()}</span>
+              <span className="text-sm font-bold text-kirateal">
+                {stats.revenue === null ? 'No disponible' : '$' + stats.revenue.toLocaleString()}
+              </span>
             </div>
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={revenueHistory}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="month" fontSize={12} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                  <YAxis fontSize={12} tick={{fill: '#94a3b8'}} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0'}}
-                    formatter={(value) => [`$${value}`, 'Ingresos']}
-                  />
-                  <Line type="monotone" dataKey="ingresos" stroke="#1ec6b6" strokeWidth={3} dot={{fill: '#1ec6b6', strokeWidth: 2}} />
-                </LineChart>
-              </ResponsiveContainer>
+              {revenueHistory.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-center text-sm text-slate-500">
+                  {stats.financialAvailable ? 'No hay historial financiero para el período.' : 'Datos financieros no disponibles: no se muestran ingresos estimados.'}
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={revenueHistory}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="month" fontSize={12} tick={{ fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                    <YAxis fontSize={12} tick={{ fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }} formatter={(value) => ['$' + value, 'Ingresos']} />
+                    <Line type="monotone" dataKey="ingresos" stroke="#1ec6b6" strokeWidth={3} dot={{ fill: '#1ec6b6', strokeWidth: 2 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
 
           {/* Embudo de Conversión */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <h3 className="font-bold text-slate-900 mb-6">Embudo de Conversión</h3>
-            <div className="space-y-4">
-              {funnelData.map((stage, index) => (
-                <div key={index} className="relative">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-slate-700">{stage.stage}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-bold text-slate-900">{stage.count}</span>
-                      <span className={cn("text-xs font-bold", getConversionColor(stage.conversion))}>
-                        {stage.conversion}%
-                      </span>
+            {funnelData.length === 0 ? (
+              <p className="text-sm text-slate-500">No hay datos suficientes para mostrar el embudo.</p>
+            ) : (
+              <div className="space-y-4">
+                {funnelData.map((stage, index) => (
+                  <div key={stage.stage} className="relative">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium text-slate-700">{stage.stage}</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-bold text-slate-900">{stage.count}</span>
+                        <span className={cn("text-xs font-bold", getConversionColor(stage.conversion))}>
+                          {stage.conversion}%
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-                    <div 
-                      className={cn(
-                        "h-full rounded-full transition-all duration-1000",
-                        index === 0 ? "bg-indigo-500" :
-                        index === 1 ? "bg-blue-500" :
-                        index === 2 ? "bg-amber-500" :
-                        "bg-emerald-500"
-                      )}
-                      style={{ width: `${Math.min((stage.count / funnelData[0].count) * 100, 100)}%` }}
-                    />
-                  </div>
-                  {index < funnelData.length - 1 && (
-                    <div className="flex justify-center my-1">
-                      <ArrowRight size={16} className="text-slate-300" />
+                    <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-all duration-1000",
+                          index === 0 ? "bg-indigo-500" :
+                          index === 1 ? "bg-blue-500" :
+                          index === 2 ? "bg-amber-500" :
+                          "bg-emerald-500"
+                        )}
+                        style={{ width: `${Math.min((stage.count / Math.max(funnelData[0].count, 1)) * 100, 100)}%` }}
+                      />
                     </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                    {index < funnelData.length - 1 && (
+                      <div className="flex justify-center my-1">
+                        <ArrowRight size={16} className="text-slate-300" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </>
       )}
@@ -440,16 +410,6 @@ export function CoachCrmAudit() {
                   {auditResult}
                 </div>
               </div>
-              <div className="flex gap-3 mt-4">
-                <button className="px-4 py-2 bg-kirateal text-white rounded-xl font-bold text-sm hover:bg-kirateal-dark transition-all flex items-center gap-2">
-                  <FileText size={16} />
-                  Exportar PDF
-                </button>
-                <button className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all flex items-center gap-2">
-                  <Share2 size={16} />
-                  Compartir
-                </button>
-              </div>
             </div>
           ) : (
             <div className="text-center py-12 text-slate-400">
@@ -475,7 +435,7 @@ export function CoachCrmAudit() {
             <div>
               <h3 className="font-bold text-slate-900">Campaña de Recuperación</h3>
               <p className="text-xs text-slate-500">
-                {stats.checkouts} prospectos abandonaron el checkout
+                {stats.checkouts === null ? 'Datos de checkout no disponibles' : stats.checkouts + ' checkouts pendientes'}
               </p>
             </div>
           </div>
@@ -484,7 +444,7 @@ export function CoachCrmAudit() {
             <div className="bg-amber-50 rounded-xl p-4 border border-amber-100">
               <div className="flex items-center gap-2 text-amber-700">
                 <AlertCircle size={16} />
-                <span className="text-sm font-medium">Los mensajes de recuperación con descuento tienen 40% más de conversión</span>
+                <span className="text-sm font-medium">El formulario guarda un borrador de recuperación; todavía no envía correos.</span>
               </div>
             </div>
 
@@ -502,7 +462,7 @@ export function CoachCrmAudit() {
 
             <div className="flex items-center justify-between">
               <div className="text-xs text-slate-400">
-                <span className="font-bold">{stats.checkouts}</span> prospectos recibirán este mensaje
+                <span className="font-bold">{stats.checkouts === null ? 'Audiencia no disponible' : stats.checkouts}</span> prospectos en la audiencia
               </div>
               <button
                 onClick={sendRecoveryCampaign}
@@ -514,14 +474,14 @@ export function CoachCrmAudit() {
                 ) : (
                   <Send size={18} />
                 )}
-                {isSendingRecovery ? 'Enviando...' : 'Enviar Campaña'}
+                {isSendingRecovery ? 'Enviando...' : 'Guardar borrador'}
               </button>
             </div>
 
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
               <div className="flex items-center gap-2 text-slate-500">
                 <Clock size={14} />
-                <span className="text-xs">La campaña se enviará en segundo plano y los prospectos recibirán un correo personalizado</span>
+                <span className="text-xs">Este borrador queda guardado para una futura integración de envíos.</span>
               </div>
             </div>
           </div>
