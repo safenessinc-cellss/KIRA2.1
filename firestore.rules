@@ -277,11 +277,15 @@ service cloud.firestore {
                       (!('approved' in request.resource.data) || request.resource.data.approved == false) &&
                       !request.resource.data.keys().hasAny(['approvedAt', 'approvedBy', 'reviewedAt', 'reviewedBy'])));
       allow create: if isAdmin() && isValidUser() &&
-                    request.resource.data.role in ['admin', 'hr_admin', 'coach', 'alumno'];
+                    (isSuperAdmin() || request.resource.data.role in ['coach', 'alumno']);
 
       // Owners may edit profile content, not role, approval, staff permissions, membership or organization assignments.
       allow update: if isAuthenticated() && isValidUser() &&
-                    (isAdmin() ||
+                    ((isAdmin() && (isSuperAdmin() || areImmutableFieldsUnchanged([
+                       'role', 'approvalStatus', 'staffPermissions', 'approved', 'approvedAt',
+                       'approvedBy', 'reviewedAt', 'reviewedBy', 'status', 'membershipStatus',
+                       'membershipPaidAt', 'organizationId', 'assignedCoachId'
+                     ]))) ||
                      (isCurrentUser(userId) && areImmutableFieldsUnchanged([
                        'uid', 'email', 'role', 'approvalStatus', 'createdAt', 'staffPermissions',
                        'approved', 'approvedAt', 'approvedBy', 'reviewedAt', 'reviewedBy',
