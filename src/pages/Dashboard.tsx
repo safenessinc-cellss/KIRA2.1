@@ -352,7 +352,7 @@ export function Dashboard() {
   };
   
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 space-y-10 animate-in fade-in duration-700">
+    <div className="mx-auto w-full min-w-0 max-w-7xl space-y-6 px-3 py-4 sm:space-y-8 sm:px-4 sm:py-6 lg:space-y-10 lg:py-8 animate-in fade-in duration-700">
       {checkoutNotice && <div role="status" className="rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">{checkoutNotice}</div>}
       {/* Header Ejecutivo para Alumno */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-100 pb-10">
@@ -365,13 +365,13 @@ export function Dashboard() {
             <span className="text-slate-300">/</span>
             <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Workspace Personal</span>
           </div>
-          <h1 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-none">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 tracking-tighter leading-tight">
             Hola, <span className="text-transparent bg-clip-text bg-gradient-to-r from-kirateal to-violet-600">{(user?.displayName || user?.name || user?.email || 'Alumno').split(' ')[0]}</span>
           </h1>
-          <p className="text-slate-500 mt-4 font-medium text-lg max-w-xl">Tu centro de comando para el alto rendimiento y la expansión de consciencia.</p>
+          <p className="text-slate-500 mt-3 sm:mt-4 font-medium text-sm sm:text-base lg:text-lg max-w-xl">Tu centro de comando para el alto rendimiento y la expansión de consciencia.</p>
         </div>
-               <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-[24px] border border-slate-100 shadow-inner">
-          <div className="px-6 py-3 bg-white rounded-2xl shadow-sm border border-slate-200/60">
+               <div className="flex w-full md:w-auto min-w-0 flex-wrap items-center gap-2 sm:gap-3 bg-slate-50 p-2 rounded-2xl sm:rounded-[24px] border border-slate-100 shadow-inner">
+          <div className="px-3 sm:px-5 py-3 bg-white rounded-xl sm:rounded-2xl shadow-sm border border-slate-200/60">
             <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">Energy Pts</p>
             <div className="flex items-center gap-2">
               <Zap size={16} className="text-kiragold fill-kiragold" />
@@ -439,7 +439,7 @@ export function Dashboard() {
             <div className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-teal-400 tracking-widest bg-teal-500/15 px-2.5 py-0.5 rounded-full border border-teal-500/20">
               <Sparkles size={10} className="fill-current" /> Especial de Aniversario
             </div>
-            <h3 className="text-xl font-black">Nuevo Ebook de Coaching Ontológico & Arteterapia</h3>
+            <h3 className="text-lg sm:text-xl font-black">Nuevo Ebook de Coaching Ontológico & Arteterapia</h3>
             <p className="text-xs text-slate-300 max-w-xl text-left">
               ¡Disfruta del microaprendizaje interactivo! Convierte la lectura en acción con preguntas de reflexión de Kira Moreno, mándalas virtuales y gana +50 Zaps por capítulo.
             </p>
