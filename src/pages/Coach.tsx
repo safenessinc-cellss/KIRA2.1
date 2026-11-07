@@ -8,7 +8,7 @@ import { MediaUpload } from '../components/MediaUpload';
 import { CoachAnalytics } from '../components/CoachAnalytics';
 import { useToast } from '../hooks/useToast';
 
-export type UserRole = 'admin' | 'coach' | 'alumno' | null;
+export type UserRole = 'admin' | 'coach' | 'alumno' | 'hr_admin' | 'company_admin' | 'company_member' | null;
 
 export function useAuth() {
   const [user, setUser] = useState<any>(null);
