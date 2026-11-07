@@ -1253,6 +1253,7 @@ export function Journal() {
   const [sentiment, setSentiment] = useState<'positive' | 'neutral' | 'negative'>('positive');
   const [aiPrompt, setAiPrompt] = useState<string>('');
   const [loadingPrompt, setLoadingPrompt] = useState(false);
+  const [promptError, setPromptError] = useState('');
   
   useEffect(() => {
     if (user) {
@@ -1282,10 +1283,13 @@ export function Journal() {
         Si no hay entradas previas, dale una bienvenida inspiradora.
       `;
 
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Debes iniciar sesión para usar KIRA AI.');
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + token
         },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
@@ -1296,9 +1300,11 @@ export function Journal() {
       if (data.error) throw new Error(data.error);
       const text = data.text || '';
       setAiPrompt(text.trim());
+      setPromptError('');
     } catch (e) {
-      console.error('Error generating predictive prompt:', e);
-      setAiPrompt('¿Qué intención quieres sembrar en tu corazón hoy?');
+      console.error('Error generating journal reflection:', e);
+      setAiPrompt('');
+      setPromptError('La reflexión de KIRA AI no está disponible ahora. No se generó una respuesta de reemplazo.');
     } finally {
       setLoadingPrompt(false);
     }
@@ -1347,6 +1353,7 @@ export function Journal() {
            </div>
         </div>
 
+        {promptError && <p role="alert" className="mb-4 text-sm text-amber-700">{promptError}</p>}
         {aiPrompt && (
           <div className="mb-10 p-8 bg-slate-50 border border-slate-150 rounded-[32px] flex items-start gap-5 relative overflow-hidden group">
              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-100/50 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
@@ -1354,9 +1361,9 @@ export function Journal() {
                 <Sparkles size={20} />
              </div>
              <div className="relative z-10 flex-1">
-                <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Kira Predictive Insight</p>
+                <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">Reflexión de KIRA AI</p>
                 <p className="text-lg text-slate-700 italic font-medium leading-relaxed italic">
-                  {loadingPrompt ? "Decodificando patrones energéticos..." : `"${aiPrompt}"`}
+                  {loadingPrompt ? "Generando reflexión…" : `"${aiPrompt}"`}
                 </p>
              </div>
           </div>
