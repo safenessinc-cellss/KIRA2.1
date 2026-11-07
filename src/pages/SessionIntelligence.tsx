@@ -44,9 +44,9 @@ interface LongitudinalAnalysis {
   };
   sugerencia_proxima_sesion: string;
   metrics?: {
-    confidence: number;
-    clarity: number;
-    energy: number;
+    confidence: number | null;
+    clarity: number | null;
+    energy: number | null;
   };
 }
 
@@ -68,7 +68,7 @@ const sanitizeAnalysis = (analysis: any): LongitudinalAnalysis | null => {
     roleplay_scenarios: sanitizeArray(analysis.roleplay_scenarios),
     nuevos_compromisos: Array.isArray(analysis.nuevos_compromisos) ? analysis.nuevos_compromisos : [],
     focus_heatmap: analysis.focus_heatmap || { pasado_problemas: 0, presente: 0, futuro_soluciones: 0 },
-    metrics: analysis.metrics || { confidence: null, clarity: null, energy: null }
+    metrics: { confidence: analysis.metrics?.confidence ?? null, clarity: analysis.metrics?.clarity ?? null, energy: analysis.metrics?.energy ?? null }
   };
 };
 
@@ -238,6 +238,7 @@ export default function SessionIntelligence() {
       recognition.onend = () => {
         setIsRecording(false);
         setInterimTranscript('');
+        setStatus(current => current === 'running' ? 'idle' : current);
       };
 
       recognition.onresult = (event: any) => {
@@ -592,7 +593,7 @@ export default function SessionIntelligence() {
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Confianza ({manualConfidence || "No evaluada"})</label>
                       <input 
                         type="range" 
-                        min="1" 
+                        min="0" 
                         max="10" 
                         value={manualConfidence} 
                         onChange={e => setManualConfidence(Number(e.target.value))} 
