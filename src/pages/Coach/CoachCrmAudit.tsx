@@ -22,7 +22,7 @@ interface FunnelData {
 export function CoachCrmAudit() {
   const { user } = useAuth();
   const { success: toastSuccess, error: toastError } = useToast();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [auditResult, setAuditResult] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [stats, setStats] = useState({
@@ -217,6 +217,8 @@ export function CoachCrmAudit() {
         </div>
       </div>
 
+      {metricsError && <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{metricsError} <button onClick={fetchPipelineStats} className="ml-2 underline font-semibold">Reintentar</button></div>}
+
       {/* Tabs */}
       <div className="flex gap-2 p-1 bg-slate-100 rounded-xl w-fit">
         <button
@@ -260,7 +262,7 @@ export function CoachCrmAudit() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Prospectos</p>
-                  <p className="text-3xl font-black text-slate-900 mt-1">{stats.prospects}</p>
+                  <p className="text-3xl font-black text-slate-900 mt-1">{loading ? '...' : metricsError ? '—' : stats.prospects}</p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
                   <Users size={20} />
@@ -272,7 +274,7 @@ export function CoachCrmAudit() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Visitas al Studio</p>
-                  <p className="text-3xl font-black text-slate-900 mt-1">{stats.studioViews}</p>
+                  <p className="text-3xl font-black text-slate-900 mt-1">{loading ? '...' : metricsError ? '—' : stats.studioViews}</p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
                   <Eye size={20} />
@@ -284,7 +286,7 @@ export function CoachCrmAudit() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Checkouts</p>
-                  <p className="text-3xl font-black text-slate-900 mt-1">{stats.checkouts === null ? 'No disponible' : stats.checkouts}</p>
+                  <p className="text-3xl font-black text-slate-900 mt-1">{loading ? '...' : metricsError ? '—' : stats.checkouts === null ? 'No disponible' : stats.checkouts}</p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
                   <ShoppingCart size={20} />
@@ -296,7 +298,7 @@ export function CoachCrmAudit() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Matrículas</p>
-                  <p className="text-3xl font-black text-slate-900 mt-1">{stats.enrollments}</p>
+                  <p className="text-3xl font-black text-slate-900 mt-1">{loading ? '...' : metricsError ? '—' : stats.enrollments}</p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
                   <CheckCircle2 size={20} />
