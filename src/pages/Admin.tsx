@@ -3935,10 +3935,6 @@ function AICoachesView() {
 
 // --- HELPERS INTERNOS ---
 function StatCard({ title, value, subtitle, icon, color = 'teal' }: any) {
-  const badgeClasses = color === 'rose' 
-    ? 'bg-rose-50 text-rose-600' 
-    : 'bg-teal-50 text-teal-600';
-
   return (
     <div className="bg-white rounded-2xl p-6 border border-slate-200 transition-all hover:shadow-lg hover:shadow-slate-100 group">
       <div className="flex justify-between items-start mb-4">
