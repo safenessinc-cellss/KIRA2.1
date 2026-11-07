@@ -4685,7 +4685,7 @@ function CompanyManagementView() {
       const batch = writeBatch(db);
       batch.set(doc(db, "companies", companyId), companyData);
       batch.set(doc(db, "b2b", companyId), { companyId, name: companyName.trim(), licensesTotal: 0, licensesUsed: 1, status: "active", createdAt: new Date() });
-      batch.update(doc(db, "users", adminDoc.id), { companyId, companyName: companyName.trim(), role: "company_admin", updatedAt: new Date() });
+      batch.update(doc(db, "users", adminDoc.id), { companyId, companyName: companyName.trim(), role: "company_admin", approvalStatus: "approved", updatedAt: new Date() });
       batch.set(doc(db, "companies", companyId, "members", adminDoc.id), {
         uid: adminDoc.id, email: adminDoc.data().email, displayName: adminDoc.data().displayName || adminDoc.data().name || "",
         role: "company_admin", status: "active", createdAt: new Date()
