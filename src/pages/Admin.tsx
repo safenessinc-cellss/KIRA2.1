@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { jsPDF } from 'jspdf';
 import { useAuth } from '../hooks/useAuth';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, Menu, X } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
@@ -1548,10 +1549,13 @@ function CoachCuratorView() {
 
 function MarketplaceEditorView() {
   const [items, setItems] = useState<any[]>([]);
+  const [availableCoaches, setAvailableCoaches] = useState<any[]>([]);
+  const [createCoachId, setCreateCoachId] = useState('');
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editPrice, setEditPrice] = useState('');
+  const [editHours, setEditHours] = useState('10');
   const [editImageUrl, setEditImageUrl] = useState('');
   const [editAuthor, setEditAuthor] = useState('');
 
@@ -1559,6 +1563,7 @@ function MarketplaceEditorView() {
   const [createType, setCreateType] = useState<'curso' | 'libro' | null>(null);
   const [createTitle, setCreateTitle] = useState('');
   const [createPrice, setCreatePrice] = useState('99');
+  const [createHours, setCreateHours] = useState('10');
   const [createImageUrl, setCreateImageUrl] = useState('');
   const [createAuthor, setCreateAuthor] = useState('Kira Coach');
   const [createStatus, setCreateStatus] = useState<'published' | 'draft'>('draft');
@@ -1570,6 +1575,12 @@ function MarketplaceEditorView() {
     });
     return () => unsub();
   }, []);
+  useEffect(() => {
+    const unsub = onSnapshot(query(collection(db, 'users'), where('role', '==', 'coach')), snap => {
+      setAvailableCoaches(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsub();
+  }, []);
 
   const handleCreateItem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1577,19 +1588,26 @@ function MarketplaceEditorView() {
       alert('Por favor introduce un título para el catálogo.');
       return;
     }
+    if (createType === 'curso' && !createCoachId) {
+      alert('Selecciona el coach responsable del curso.');
+      return;
+    }
     try {
       const defaultImg = createType === 'curso' 
         ? 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500'
         : 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=500';
 
+      const selectedCoach = availableCoaches.find(coach => coach.id === createCoachId);
+      const courseCoachName = selectedCoach?.displayName || selectedCoach?.name || createAuthor || 'Kira Coach';
       const dRef = await addDoc(collection(db, 'marketplace'), {
          title: createTitle,
          price: parseFloat(createPrice) || 0,
          type: createType,
          status: createStatus,
          createdAt: new Date(),
-         author: createAuthor || 'Kira Coach',
-         imageUrl: createImageUrl || defaultImg
+         author: createType === 'curso' ? courseCoachName : (createAuthor || 'Kira Coach'),
+         imageUrl: createImageUrl || defaultImg,
+         ...(createType === 'curso' ? { hours: Number(createHours) } : {})
       });
 
       // Transactional sync to primary collections for dynamic cross-app rendering
@@ -1601,8 +1619,9 @@ function MarketplaceEditorView() {
           status: createStatus,
           description: 'Un curso integrador enfocado en expandir tu bienestar mental, emocional y espiritual a través de dinámicas en vivo.',
           studentsCount: 0,
-          coachId: 'coach_kira',
-          coachName: createAuthor || 'Kira Coach',
+          coachId: createCoachId,
+          coachName: courseCoachName,
+          hours: Number(createHours),
           createdAt: new Date()
         });
       } else if (createType === 'libro') {
@@ -1620,6 +1639,7 @@ function MarketplaceEditorView() {
       // Reset
       setCreateTitle('');
       setCreatePrice('99');
+      setCreateHours('10');
       setCreateImageUrl('');
       setCreateAuthor('Kira Coach');
       setCreateStatus('draft');
@@ -1655,8 +1675,9 @@ function MarketplaceEditorView() {
           status: 'draft',
           description: 'Un curso integrador enfocado en expandir tu bienestar mental, emocional y espiritual.',
           studentsCount: 0,
-          coachId: 'coach_kira',
-          coachName: 'Admin',
+          coachId: availableCoaches[0]?.id || 'coach_kira',
+          coachName: availableCoaches[0]?.displayName || 'Admin',
+          hours: 10,
           createdAt: new Date()
         });
       } else {
@@ -1686,6 +1707,7 @@ function MarketplaceEditorView() {
     setEditingId(item.id);
     setEditTitle(item.title || '');
     setEditPrice(item.price ? String(item.price) : '0');
+    setEditHours(String(item.hours || 10));
     setEditImageUrl(item.imageUrl || '');
     setEditAuthor(item.author || '');
   };
@@ -1696,7 +1718,8 @@ function MarketplaceEditorView() {
         title: editTitle,
         price: parseFloat(editPrice) || 0,
         imageUrl: editImageUrl,
-        author: editAuthor
+        author: editAuthor,
+        ...(items.find(item => item.id === id)?.type === 'curso' ? { hours: Number(editHours) } : {})
       });
 
       // Synchronize update down to courses
@@ -1708,7 +1731,8 @@ function MarketplaceEditorView() {
             title: editTitle,
             price: parseFloat(editPrice) || 0,
             bannerUrl: editImageUrl,
-            coachName: editAuthor
+            coachName: editAuthor,
+            hours: Number(editHours)
           });
         }
       } catch (ce) {}
@@ -1838,6 +1862,17 @@ function MarketplaceEditorView() {
                  </div>
                </div>
 
+               {createType === 'curso' && <div>
+                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Coach responsable</label>
+                 <select value={createCoachId} onChange={e => { const coach = availableCoaches.find(item => item.id === e.target.value); setCreateCoachId(e.target.value); setCreateAuthor(coach?.displayName || coach?.name || ''); }} className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5" required>
+                   <option value="">Selecciona un coach</option>
+                   {availableCoaches.map(coach => <option key={coach.id} value={coach.id}>{coach.displayName || coach.name || coach.email}</option>)}
+                 </select>
+               </div>}
+               {createType === 'curso' && <div>
+                 <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Carga horaria del curso</label>
+                 <input type="number" min="1" value={createHours} onChange={e => setCreateHours(e.target.value)} className="w-full text-xs border border-slate-200 rounded-xl px-3 py-2.5" required />
+               </div>}
                <div>
                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">URL de la Imagen (Portada)</label>
                  <input 
@@ -1903,6 +1938,9 @@ function MarketplaceEditorView() {
               setCreateType('curso');
               setCreateTitle('');
               setCreatePrice('199');
+              setCreateHours('10');
+              setCreateCoachId(availableCoaches[0]?.id || '');
+              setCreateAuthor(availableCoaches[0]?.displayName || 'Kira Coach');
               setCreateImageUrl('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500');
               setCreateAuthor('Kira Coach');
               setCreateStatus('draft');
@@ -1976,6 +2014,10 @@ function MarketplaceEditorView() {
                                <span className="block text-xs text-slate-500 py-1.5 capitalize font-semibold">{item.type}</span>
                             </div>
                          </div>
+                         {item.type === 'curso' && <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Horas del curso</label>
+                            <input type="number" min="1" value={editHours} onChange={e => setEditHours(e.target.value)} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5" />
+                         </div>}
                          <div>
                             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">URL de la Imagen</label>
                             <input 
@@ -4535,70 +4577,61 @@ function CertificateRequestsAdminView() {
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [issuing, setIssuing] = useState<string | null>(null);
   const isSuperAdmin = user?.email === 'safeness.c.a@gmail.com';
-
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'certificateRequests'), snap => {
-      setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
-      setError('');
-    }, err => {
-      console.error('certificateRequests subscription failed', err);
-      setError('No se pudieron cargar solicitudes. Revisa las reglas de Firestore y la colección certificateRequests.');
-      setLoading(false);
-    });
-    return () => unsub();
+    return onSnapshot(collection(db, 'certificateRequests'), snap => { setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); }, err => { console.error(err); setError('No se pudieron cargar las solicitudes. Verifica las reglas de Firestore.'); setLoading(false); });
   }, []);
-
-  const decide = async (request: any, status: 'approved' | 'rejected') => {
-    if (!isSuperAdmin) { setError('Solo el superadministrador puede tomar esta decisión.'); return; }
-    if (status === 'approved') {
-      const paid = request.paymentStatus === 'paid' || request.paid === true;
-      const completed = request.courseCompleted === true || Number(request.progress) >= 100;
-      if (!paid || !completed) {
-        setError('No se aprueba: la solicitud no contiene evidencia de pago confirmado y curso completado. La validación autoritativa debe ejecutarse en backend.');
-        return;
-      }
-    }
+  const decide = async (r: any, status: 'approved' | 'rejected') => {
+    if (!isSuperAdmin || !user) return setError('Solo el superadministrador puede revisar solicitudes.');
+    if (status === 'approved' && (!(r.paymentStatus === 'paid' || r.paid === true) || !(r.courseCompleted === true || r.completed === true || Number(r.progress) >= 100))) return setError('Falta confirmar el pago o la finalización del curso.');
+    try { await updateDoc(doc(db, 'certificateRequests', r.id), { status, reviewedBy: user.uid, reviewedByName: user.displayName || user.email, reviewedAt: new Date() }); setError(''); } catch (e) { console.error(e); setError('No se pudo actualizar la solicitud.'); }
+  };
+  const confirmPayment = async (r: any) => {
+    if (!isSuperAdmin || !user) return setError('Solo el superadministrador puede confirmar pagos.');
     try {
-      await updateDoc(doc(db, 'certificateRequests', request.id), {
-        status, reviewedBy: user?.uid, reviewedAt: new Date()
+      await updateDoc(doc(db, 'certificateRequests', r.id), {
+        paid: true, paymentStatus: 'paid', paymentVerifiedBy: user.uid,
+        paymentVerifiedByName: user.displayName || user.email, paymentVerifiedAt: new Date()
       });
       setError('');
-    } catch (err) {
-      console.error(err);
-      setError('No se pudo actualizar la solicitud. Verifica permisos de Firestore.');
-    }
+    } catch (error) { console.error(error); setError('No se pudo registrar la verificación del pago.'); }
   };
-
+  const issue = async (r: any) => {
+    if (!isSuperAdmin || !user || r.status !== 'approved') return;
+    const hours = Number(r.hours || r.courseHours || r.durationHours || 0);
+    if (!(r.paymentStatus === 'paid' || r.paid === true) || !(r.courseCompleted === true || r.completed === true || Number(r.progress) >= 100) || !r.studentName || !r.courseTitle || !r.coachName || hours <= 0) return setError('No se emite: verifica pago, curso concluido, alumno, coach y horas.');
+    setIssuing(r.id);
+    try {
+      const token = crypto.randomUUID().replace(/-/g, '').toUpperCase();
+      const number = 'KIRA-' + new Date().getFullYear() + '-' + token.slice(0, 10);
+      const issuedAt = new Date(); const issuerName = user.displayName || user.email || 'KIRA COACH';
+      const safe = { certificateNumber: number, studentName: r.studentName, courseTitle: r.courseTitle, coachName: r.coachName, hours, issuedAt, issuerName, status: 'issued', validationToken: token };
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'certificates', token), { ...safe, requestId: r.id, studentId: r.userId || r.studentId || '', issuedBy: user.uid, signatureType: 'KIRA electronic issuance record' });
+      batch.set(doc(db, 'certificatePublic', token), safe);
+      batch.update(doc(db, 'certificateRequests', r.id), { status: 'issued', certificateNumber: number, certificateId: token, issuedBy: user.uid, issuedByName: issuerName, issuedAt });
+      await batch.commit();
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      pdf.setFillColor(250,252,253); pdf.rect(0,0,297,210,'F'); pdf.setDrawColor(25,166,160); pdf.setLineWidth(1.5); pdf.roundedRect(9,9,279,192,4,4,'S');
+      pdf.setTextColor(229,237,238); pdf.setFont('helvetica','bold'); pdf.setFontSize(58); pdf.text('KIRA',148.5,112,{align:'center'});
+      try { const settingsSnap = await getDoc(doc(db, 'settings', 'website')); const configuredLogo = settingsSnap.exists() ? settingsSnap.data().logoImage : ''; const logoUrl = configuredLogo || '/assets/kira-logo.png'; const logoResponse = await fetch(logoUrl.startsWith('http') || logoUrl.startsWith('data:') ? logoUrl : window.location.origin + (logoUrl.startsWith('/') ? logoUrl : '/' + logoUrl)); if (logoResponse.ok) { const logoBlob = await logoResponse.blob(); const logoData = await new Promise<string>((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(logoBlob); }); pdf.addImage(logoData,'PNG',136,12,25,15); } } catch (logoError) { console.warn('Logo KIRA no disponible para el PDF.', logoError); }
+      pdf.setTextColor(20,75,82); pdf.setFontSize(22); pdf.text('KIRA COACH',148.5,32,{align:'center'}); pdf.setFont('helvetica','normal'); pdf.setFontSize(10); pdf.text('CERTIFICADO DE CONCLUSIÓN',148.5,42,{align:'center'});
+      pdf.setTextColor(50,60,68); pdf.setFontSize(13); pdf.text('Se certifica que',148.5,65,{align:'center'}); pdf.setTextColor(20,100,102); pdf.setFont('helvetica','bold'); pdf.setFontSize(26); pdf.text(r.studentName,148.5,82,{align:'center',maxWidth:240});
+      pdf.setTextColor(50,60,68); pdf.setFont('helvetica','normal'); pdf.setFontSize(12); pdf.text('ha concluido satisfactoriamente el curso',148.5,96,{align:'center'}); pdf.setFont('helvetica','bold'); pdf.setFontSize(19); pdf.text(r.courseTitle,148.5,109,{align:'center',maxWidth:240});
+      pdf.setFont('helvetica','normal'); pdf.setFontSize(11); pdf.text(hours + ' horas académicas · Coach: ' + r.coachName,148.5,123,{align:'center',maxWidth:240});
+      pdf.setDrawColor(25,166,160); pdf.line(28,151,104,151); pdf.line(193,151,269,151); pdf.setTextColor(55,65,75); pdf.setFontSize(9); pdf.setFont('times','italic'); pdf.setFontSize(17); pdf.text(issuerName,66,151,{align:'center',maxWidth:72}); pdf.setFont('helvetica','normal'); pdf.setFontSize(9); pdf.text(issuerName,66,158,{align:'center',maxWidth:72}); pdf.text('Registro de emisor autenticado por KIRA',66,164,{align:'center'}); pdf.text('KIRA COACH · SAFENESS.INC',231,157,{align:'center'});
+      pdf.setTextColor(20,75,82); pdf.setFont('helvetica','bold'); pdf.text(number,148.5,179,{align:'center'});
+      const url = window.location.origin + '/validar-certificado/' + token; pdf.setFont('helvetica','normal'); pdf.setFontSize(8); pdf.text('Validación QR: ' + url,148.5,187,{align:'center',maxWidth:250});
+      try { const response = await fetch('https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url)); if (response.ok) { const blob = await response.blob(); const data = await new Promise<string>((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(blob); }); pdf.addImage(data,'PNG',263,15,20,20); } } catch (e) { console.warn('QR no incrustado; la URL queda impresa.',e); }
+      pdf.save(number + '.pdf'); setError('');
+    } catch (e) { console.error(e); setError('No se pudo emitir el certificado. Revisa permisos y conexión.'); } finally { setIssuing(null); }
+  };
   const pending = requests.filter(r => !['approved','rejected','issued'].includes(String(r.status || 'pending')));
-  return <div className="space-y-5">
-    <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-      <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2"><FileText className="text-kirateal"/> Certificados y credenciales</h2>
-      <p className="text-sm text-slate-500 mt-2">Revisión de solicitudes de alumnos. La aprobación administrativa no equivale a emitir, firmar o publicar un certificado.</p>
-      <div className="flex gap-2 flex-wrap mt-4 text-xs">
-        <span className="rounded-full bg-amber-50 text-amber-700 px-3 py-1">Pendientes: {pending.length}</span>
-        <span className="rounded-full bg-emerald-50 text-emerald-700 px-3 py-1">Aprobadas: {requests.filter(r=>r.status==='approved').length}</span>
-        <span className="rounded-full bg-slate-100 text-slate-600 px-3 py-1">Emitidas: {requests.filter(r=>r.status==='issued').length}</span>
-        <span className="rounded-full bg-rose-50 text-rose-700 px-3 py-1">Rechazadas: {requests.filter(r=>r.status==='rejected').length}</span>
-      </div>
-    </section>
-    {error && <div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 p-3 text-sm">{error}</div>}
-    {loading ? <div className="p-8 text-center text-slate-500">Cargando solicitudes reales…</div> :
-      requests.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500">Todavía no hay solicitudes en certificateRequests.</div> :
-      <div className="space-y-3">{requests.map(req => <article key={req.id} className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col md:flex-row md:items-center gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-slate-900">{req.courseTitle || req.courseName || req.title || 'Curso no identificado'}</div>
-          <div className="text-sm text-slate-500 mt-1">Alumno: {req.studentName || req.userName || req.userEmail || req.userId || 'Sin identificar'}</div>
-          <div className="text-xs text-slate-400 mt-1">Coach: {req.coachName || req.coachId || 'No especificado'} · Estado: {req.status || 'pending'}</div>
-          <div className="text-xs text-slate-400 mt-1">ID: {req.id}</div>
-        </div>
-        {req.status !== 'issued' && <div className="flex gap-2">
-          {req.status !== 'approved' && <button onClick={()=>decide(req,'approved')} className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold">Aprobar solicitud</button>}
-          {req.status !== 'rejected' && <button onClick={()=>decide(req,'rejected')} className="px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold">Rechazar</button>}
-        </div>}
-      </article>)}</div>}
-  </div>;
+  return <div className='space-y-5'><section className='bg-white border border-slate-200 rounded-2xl p-6 shadow-sm'><h2 className='text-xl font-bold text-slate-900 flex items-center gap-2'><FileText className='text-kirateal'/> Certificados verificables KIRA</h2><p className='text-sm text-slate-500 mt-2'>Aprobación, emisión con registro de emisor y validación pública por QR.</p><div className='flex gap-2 flex-wrap mt-4 text-xs'><span className='rounded-full bg-amber-50 text-amber-700 px-3 py-1'>Pendientes: {pending.length}</span><span className='rounded-full bg-emerald-50 text-emerald-700 px-3 py-1'>Aprobadas: {requests.filter(r=>r.status==='approved').length}</span><span className='rounded-full bg-slate-100 text-slate-600 px-3 py-1'>Emitidas: {requests.filter(r=>r.status==='issued').length}</span><span className='rounded-full bg-rose-50 text-rose-700 px-3 py-1'>Rechazadas: {requests.filter(r=>r.status==='rejected').length}</span></div></section>
+  {error && <div className='rounded-xl bg-rose-50 border border-rose-200 text-rose-700 p-3 text-sm'>{error}</div>}
+  {loading ? <div className='p-8 text-center text-slate-500'>Cargando solicitudes…</div> : requests.length === 0 ? <div className='rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500'>Todavía no hay solicitudes.</div> : <div className='space-y-3'>{requests.map(r => <article key={r.id} className='bg-white border border-slate-200 rounded-2xl p-5 flex flex-col md:flex-row md:items-center gap-4'><div className='flex-1 min-w-0'><div className='font-semibold text-slate-900'>{r.courseTitle || r.courseName || r.title || 'Curso no identificado'}</div><div className='text-sm text-slate-500 mt-1'>Alumno: {r.studentName || r.userName || r.userEmail || r.userId || 'Sin identificar'}</div><div className='text-xs text-slate-400 mt-1'>Coach: {r.coachName || r.coachId || 'No especificado'} · {r.hours || r.courseHours || r.durationHours || 0} horas · Estado: {r.status || 'pending'}</div><div className='text-xs text-slate-400 mt-1'>Pago: {r.paymentRequired === false ? 'No requiere pago' : r.paymentStatus === 'paid' ? 'Confirmado por administración' : 'Pendiente de verificación'}</div><div className='text-xs text-slate-400 mt-1'>Solicitud: {r.id} {r.certificateNumber ? '· Certificado: ' + r.certificateNumber : ''}</div>{r.issuedByName && <div className='text-xs text-emerald-700 mt-1'>Emitido por: {r.issuedByName}</div>}</div>
+  {r.status !== 'issued' && <div className='flex gap-2 flex-wrap'>{r.paymentRequired !== false && !r.paid && <button disabled={!isSuperAdmin} onClick={()=>confirmPayment(r)} className='px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-bold disabled:opacity-40'>Confirmar pago</button>}{r.status !== 'approved' && <button disabled={!isSuperAdmin} onClick={()=>decide(r,'approved')} className='px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold disabled:opacity-40'>Aprobar</button>}{r.status !== 'rejected' && <button disabled={!isSuperAdmin} onClick={()=>decide(r,'rejected')} className='px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold disabled:opacity-40'>Rechazar</button>}{r.status === 'approved' && <button disabled={!isSuperAdmin || issuing===r.id} onClick={()=>issue(r)} className='px-3 py-2 rounded-lg bg-kirateal text-white text-xs font-bold disabled:opacity-50'>{issuing===r.id ? 'Emitiendo…' : 'Emitir certificado + PDF'}</button>}</div>}</article>)}</div>}</div>;
 }
 
 // Compatibilidad con rutas anteriores

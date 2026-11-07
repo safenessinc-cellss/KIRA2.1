@@ -27,6 +27,7 @@ const SessionIntelligence = React.lazy(() => import('./pages/SessionIntelligence
 const HRDashboard = React.lazy(() => import('./pages/HRDashboard').then(m => ({ default: m.HRDashboard })));
 const UserProfile = React.lazy(() => import('./pages/UserProfile').then(m => ({ default: m.UserProfile })));
 const Microlearning = React.lazy(() => import('./pages/Microlearning').then(m => ({ default: m.Microlearning })));
+const CertificateValidation = React.lazy(() => import('./pages/CertificateValidation'));
 
 // Elegant fallback loading spinner matching KIRA's style guidelines
 function PageLoader() {
@@ -85,6 +86,7 @@ export default function App() {
                     <Route path="/" element={<Landing />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/microlearning" element={<Microlearning />} />
+                    <Route path="/validar-certificado/:code" element={<CertificateValidation />} />
                     
                     {/* Alumnos */}
                     <Route element={<ProtectedRoute allowedRoles={['alumno']} />}>

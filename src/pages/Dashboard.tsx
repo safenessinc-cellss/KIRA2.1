@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, getDocs, addDoc, onSnapshot, doc, updateDoc, setDoc, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, addDoc, onSnapshot, doc, updateDoc, setDoc, orderBy, limit } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
 import { MentorWidget } from '../components/MentorWidget';
@@ -53,6 +53,9 @@ export function Dashboard() {
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
   const [availableBooks, setAvailableBooks] = useState<any[]>(DEFAULT_BOOKS);
   const [myEnrollments, setMyEnrollments] = useState<any[]>([]);
+  const [myEnrollmentRecords, setMyEnrollmentRecords] = useState<any[]>([]);
+  const [myCertificateRequests, setMyCertificateRequests] = useState<any[]>([]);
+  const [certificateRequestBusy, setCertificateRequestBusy] = useState<string | null>(null);
   const [favoriteCoaches, setFavoriteCoaches] = useState<any[]>([]);
   const [unlockedHistory, setUnlockedHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -219,6 +222,44 @@ export function Dashboard() {
     }
   };
 
+  const requestCourseCertificate = async (enrollment: any) => {
+    if (!user || certificateRequestBusy) return;
+    const course = availableCourses.find(c => c.id === enrollment.courseId);
+    if (!course) return alert('No se encontró la información del curso.');
+    const completed = enrollment.completed === true || enrollment.courseCompleted === true || Number(enrollment.progress) >= 100;
+    if (!completed) return alert('El certificado estará disponible cuando el curso figure como concluido.');
+    const alreadyRequested = myCertificateRequests.some(r => r.courseId === enrollment.courseId && ['pending','approved','issued'].includes(r.status || 'pending'));
+    if (alreadyRequested) return alert('Ya existe una solicitud o certificado para este curso.');
+    setCertificateRequestBusy(enrollment.id);
+    try {
+      const coachSnap = course.coachId ? await getDoc(doc(db, 'users', course.coachId)) : null;
+      const coach = coachSnap?.exists() ? coachSnap.data() : {};
+      const coachName = course.coachName || coach?.displayName || coach?.name || '';
+      const hours = Number(course.hours || course.courseHours || course.durationHours || course.totalHours || 0);
+      const txSnap = await getDocs(query(collection(db, 'transactions'), where('userId', '==', user.uid), where('courseId', '==', enrollment.courseId)));
+      const paymentRequired = Number(course.price || 0) > 0;
+      if (paymentRequired && !txSnap.size && enrollment.paid !== true && enrollment.paymentStatus !== 'paid') {
+        alert('No encontramos un pago confirmado para este curso. Contacta con soporte si ya pagaste.');
+        return;
+      }
+      if (!coachName || hours <= 0) {
+        alert('El curso todavía necesita que el coach responsable y la carga horaria estén configurados.');
+        return;
+      }
+      const studentName = user.displayName || user.name || user.email || 'Alumno KIRA';
+      const created = await addDoc(collection(db, 'certificateRequests'), {
+        userId: user.uid, enrollmentId: enrollment.id, studentName, courseId: enrollment.courseId, courseTitle: course.title,
+        coachId: course.coachId || '', coachName, hours, paymentRequired, paid: !paymentRequired, paymentStatus: paymentRequired ? 'pending_verification' : 'not_required', courseCompleted: true,
+        progress: Number(enrollment.progress || 100), status: 'pending', requestedAt: new Date()
+      });
+      setMyCertificateRequests(prev => [...prev, { id: created.id, courseId: enrollment.courseId, status: 'pending', courseTitle: course.title }]);
+      alert('Solicitud guardada. El equipo KIRA revisará los datos antes de emitir el certificado.');
+    } catch (error) {
+      console.error('Certificate request failed', error);
+      alert('No se pudo guardar la solicitud. Inténtalo de nuevo.');
+    } finally { setCertificateRequestBusy(null); }
+  };
+
   const fetchData = async () => {
     if (!user) return;
     try {
@@ -245,6 +286,12 @@ export function Dashboard() {
       const enrollQ = query(collection(db, 'enrollments'), where('userId', '==', user.uid));
       const enrollSnap = await getDocs(enrollQ);
       setMyEnrollments(enrollSnap.docs.map(d => d.data().courseId));
+      setMyEnrollmentRecords(enrollSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      try {
+        const certQ = query(collection(db, 'certificateRequests'), where('userId', '==', user.uid));
+        const certSnap = await getDocs(certQ);
+        setMyCertificateRequests(certSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (certError) { console.warn('Certificate requests could not be loaded', certError); }
 
       // Fetch favorites
       if (user.favorites && user.favorites.length > 0) {
@@ -601,6 +648,27 @@ export function Dashboard() {
           {/* Mentor AI Widget */}
           <section className="bg-slate-50 rounded-[40px] p-1 border border-slate-100 shadow-inner">
             <MentorWidget />
+          </section>
+
+          {/* Certificados del alumno */}
+          <section className="bg-white rounded-[32px] border border-slate-200 p-6 sm:p-8 shadow-sm">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-11 h-11 rounded-2xl bg-teal-50 text-teal-700 flex items-center justify-center"><Award size={22}/></div>
+              <div><h3 className="text-lg font-black text-slate-900">Mis certificados</h3><p className="text-xs text-slate-500">Solicita tu certificado cuando el curso figure como concluido.</p></div>
+            </div>
+            {myEnrollmentRecords.length === 0 ? <p className="text-sm text-slate-500">Aún no tienes cursos inscritos.</p> : <div className="space-y-3">
+              {myEnrollmentRecords.map(enrollment => {
+                const course = availableCourses.find(c => c.id === enrollment.courseId);
+                const request = myCertificateRequests.find(r => r.courseId === enrollment.courseId && ['pending','approved','issued'].includes(r.status || 'pending'));
+                const completed = enrollment.completed === true || enrollment.courseCompleted === true || Number(enrollment.progress) >= 100;
+                return <div key={enrollment.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-slate-100 p-4">
+                  <div className="min-w-0"><div className="font-bold text-slate-800">{course?.title || enrollment.courseTitle || 'Curso inscrito'}</div><div className="text-xs text-slate-500 mt-1">Progreso: {Math.round(Number(enrollment.progress || 0))}% · {completed ? 'Concluido' : 'En curso'}</div>
+                    {request && <div className="text-xs text-teal-700 mt-1">Solicitud: {request.status === 'issued' ? 'Certificado emitido' : request.status === 'approved' ? 'Aprobada · pendiente de emisión' : 'En revisión'}</div>}
+                  </div>
+                  {request?.status === 'issued' && request.certificateId ? <a href={'/validar-certificado/' + request.certificateId} className="text-xs font-bold text-teal-700 underline">Validar certificado</a> : <button disabled={!completed || !!request || certificateRequestBusy === enrollment.id} onClick={() => requestCourseCertificate(enrollment)} className="px-4 py-2 rounded-xl bg-teal-700 text-white text-xs font-bold disabled:bg-slate-200 disabled:text-slate-400">{certificateRequestBusy === enrollment.id ? 'Enviando…' : request ? 'Solicitud registrada' : completed ? 'Solicitar certificado' : 'Completar curso primero'}</button>}
+                </div>;
+              })}
+            </div>}
           </section>
 
           {/* Marketplace de Cursos Recomendados */}
