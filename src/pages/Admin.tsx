@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../hooks/useAuth';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, Menu, X } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
@@ -4556,17 +4556,20 @@ function CertificateRequestsAdminView() {
       const number = 'KIRA-' + new Date().getFullYear() + '-' + token.slice(0, 10);
       const issuedAt = new Date(); const issuerName = user.displayName || user.email || 'KIRA COACH';
       const safe = { certificateNumber: number, studentName: r.studentName, courseTitle: r.courseTitle, coachName: r.coachName, hours, issuedAt, issuerName, status: 'issued', validationToken: token };
-      await setDoc(doc(db, 'certificates', token), { ...safe, requestId: r.id, studentId: r.userId || r.studentId || '', issuedBy: user.uid, signatureType: 'KIRA electronic issuance record' });
-      await setDoc(doc(db, 'certificatePublic', token), safe);
-      await updateDoc(doc(db, 'certificateRequests', r.id), { status: 'issued', certificateNumber: number, certificateId: token, issuedBy: user.uid, issuedByName: issuerName, issuedAt });
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'certificates', token), { ...safe, requestId: r.id, studentId: r.userId || r.studentId || '', issuedBy: user.uid, signatureType: 'KIRA electronic issuance record' });
+      batch.set(doc(db, 'certificatePublic', token), safe);
+      batch.update(doc(db, 'certificateRequests', r.id), { status: 'issued', certificateNumber: number, certificateId: token, issuedBy: user.uid, issuedByName: issuerName, issuedAt });
+      await batch.commit();
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
       pdf.setFillColor(250,252,253); pdf.rect(0,0,297,210,'F'); pdf.setDrawColor(25,166,160); pdf.setLineWidth(1.5); pdf.roundedRect(9,9,279,192,4,4,'S');
       pdf.setTextColor(229,237,238); pdf.setFont('helvetica','bold'); pdf.setFontSize(58); pdf.text('KIRA',148.5,112,{align:'center'});
-      pdf.setTextColor(20,75,82); pdf.setFontSize(22); pdf.text('KIRA COACH',148.5,30,{align:'center'}); pdf.setFont('helvetica','normal'); pdf.setFontSize(10); pdf.text('CERTIFICADO DE CONCLUSIÓN',148.5,42,{align:'center'});
+      try { const logoResponse = await fetch(window.location.origin + '/assets/kira-logo.png'); if (logoResponse.ok) { const logoBlob = await logoResponse.blob(); const logoData = await new Promise<string>((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(logoBlob); }); pdf.addImage(logoData,'PNG',136,12,25,15); } } catch (logoError) { console.warn('Logo KIRA no disponible en la ruta esperada.', logoError); }
+      pdf.setTextColor(20,75,82); pdf.setFontSize(22); pdf.text('KIRA COACH',148.5,32,{align:'center'}); pdf.setFont('helvetica','normal'); pdf.setFontSize(10); pdf.text('CERTIFICADO DE CONCLUSIÓN',148.5,42,{align:'center'});
       pdf.setTextColor(50,60,68); pdf.setFontSize(13); pdf.text('Se certifica que',148.5,65,{align:'center'}); pdf.setTextColor(20,100,102); pdf.setFont('helvetica','bold'); pdf.setFontSize(26); pdf.text(r.studentName,148.5,82,{align:'center',maxWidth:240});
       pdf.setTextColor(50,60,68); pdf.setFont('helvetica','normal'); pdf.setFontSize(12); pdf.text('ha concluido satisfactoriamente el curso',148.5,96,{align:'center'}); pdf.setFont('helvetica','bold'); pdf.setFontSize(19); pdf.text(r.courseTitle,148.5,109,{align:'center',maxWidth:240});
       pdf.setFont('helvetica','normal'); pdf.setFontSize(11); pdf.text(hours + ' horas académicas · Coach: ' + r.coachName,148.5,123,{align:'center',maxWidth:240});
-      pdf.setDrawColor(25,166,160); pdf.line(28,151,104,151); pdf.line(193,151,269,151); pdf.setTextColor(55,65,75); pdf.setFontSize(9); pdf.text(issuerName,66,157,{align:'center',maxWidth:72}); pdf.text('Emisor autorizado · Registro electrónico KIRA',66,164,{align:'center'}); pdf.text('KIRA COACH · SAFENESS.INC',231,157,{align:'center'});
+      pdf.setDrawColor(25,166,160); pdf.line(28,151,104,151); pdf.line(193,151,269,151); pdf.setTextColor(55,65,75); pdf.setFontSize(9); pdf.setFont('times','italic'); pdf.setFontSize(17); pdf.text(issuerName,66,151,{align:'center',maxWidth:72}); pdf.setFont('helvetica','normal'); pdf.setFontSize(9); pdf.text(issuerName,66,158,{align:'center',maxWidth:72}); pdf.text('Firma electrónica institucional registrada',66,164,{align:'center'}); pdf.text('KIRA COACH · SAFENESS.INC',231,157,{align:'center'});
       pdf.setTextColor(20,75,82); pdf.setFont('helvetica','bold'); pdf.text(number,148.5,179,{align:'center'});
       const url = window.location.origin + '/validar-certificado/' + token; pdf.setFont('helvetica','normal'); pdf.setFontSize(8); pdf.text('Validación QR: ' + url,148.5,187,{align:'center',maxWidth:250});
       try { const response = await fetch('https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url)); if (response.ok) { const blob = await response.blob(); const data = await new Promise<string>((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(blob); }); pdf.addImage(data,'PNG',263,15,20,20); } } catch (e) { console.warn('QR no incrustado; la URL queda impresa.',e); }
