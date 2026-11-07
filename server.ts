@@ -266,6 +266,13 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
         userId: order.userId, courseId: item.id, progress: 0, completed: false, courseCompleted: false,
         paymentOrderId: orderId, paymentStatus: "paid", createdAt: now
       }));
+      const courseRecord = await fsGet("courses", String(item.id));
+      if (courseRecord?.coachId) writes.push(fsCreate("coachLedger", idSafe(provider + "_" + paymentId + "_" + item.id), {
+        coachId: courseRecord.coachId, userId: order.userId, courseId: item.id,
+        itemId: item.id, itemType: "course", itemTitle: item.title,
+        amount: Number(item.unitPrice) * Number(item.quantity || 1), itemPrice: Number(item.unitPrice) * Number(item.quantity || 1),
+        currency: order.currency, orderId, provider, status: "pending_release", createdAt: now
+      }));
     } else if (item.collectionName === "books" || item.type === "book") {
       const purchaseId = idSafe(order.userId + "_" + orderId + "_" + item.id);
       writes.push(fsCreate("purchases", purchaseId, { userId: order.userId, productId: item.id, productType: "book", orderId, paymentStatus: "paid", createdAt: now }));
