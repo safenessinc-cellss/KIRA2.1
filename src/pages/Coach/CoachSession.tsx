@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/src/hooks/useAuth';
 import { db } from '@/src/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { 
   Mic, MicOff, Loader2, Brain, FileText, Clock, Users, 
   ArrowLeft, Download, Share2, Sparkles, AlertCircle,
@@ -206,46 +206,43 @@ export function CoachSession() {
     }
   };
 
-  const handleSessionComplete = async (audioBlob: Blob) => {
+  const handleSessionComplete = async (_audioBlob: Blob) => {
     setIsAnalyzing(true);
-    
     try {
-      // Simular análisis de IA
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      const analysisResult = {
-        summary: 'Sesión enfocada en gestión del tiempo y productividad personal. El alumno muestra conciencia sobre sus distracciones y está abierto a implementar nuevas estrategias.',
-        keyTopics: ['Gestión del tiempo', 'Productividad', 'Técnica Pomodoro', 'Distracciones', 'Estructura diaria'],
-        sentiment: 'positive' as const,
-        recommendations: [
-          'Implementar la técnica Pomodoro (25 min de trabajo, 5 de descanso)',
-          'Crear un sistema de recompensas por objetivos cumplidos',
-          'Establecer metas diarias específicas y medibles',
-          'Realizar una auditoría de distracciones digitales'
-        ],
-        nextSteps: 'Agendar sesión de seguimiento en 5 días para evaluar avances y ajustar estrategias.'
-      };
-      
-      setAnalysis(analysisResult.summary);
-      setKeyTopics(analysisResult.keyTopics);
-      setSentiment(analysisResult.sentiment);
-      
-      // Guardar en Firestore
-      if (sessionId) {
-        await updateDoc(doc(db, 'sessions', sessionId), {
-          status: 'completed',
+      if (transcript.length === 0) {
+        toastError('No hay transcripción de voz real. No se generará un análisis inventado.');
+        if (sessionId) await updateDoc(doc(db, 'sessions', sessionId), {
+          status: 'completed_without_transcript',
           completedAt: new Date(),
           duration: sessionDuration,
-          transcript: transcript,
-          analysis: analysisResult,
-          audioUrl: null // En producción, subir a Storage
+          transcript: [],
+          analysis: null,
+          audioUrl: null
         });
+        return;
       }
-      
-      toastSuccess('¡Análisis completado! Revisa los insights generados.');
+      const { generateGemini } = await import('@/src/lib/gemini');
+      const prompt = `Analiza únicamente esta transcripción real de coaching. No inventes citas, emociones ni hechos; no hagas diagnósticos clínicos. Identifica temas, un resumen, recomendaciones generales y siguientes pasos. Si no hay evidencia para una conclusión, dilo. Devuelve JSON: {"summary":"...","keyTopics":["..."],"sentiment":"positive|neutral|negative","recommendations":["..."],"nextSteps":"..."}\n\nTranscripción:\n${transcript.map(t => `${t.speaker}: ${t.text}`).join('\n')}`;
+      const raw = await generateGemini({ model: 'gemini-3.1-flash', contents: prompt, config: { responseMimeType: 'application/json' } });
+      let analysisResult: any;
+      try { analysisResult = JSON.parse(raw); } catch { throw new Error('KIRA AI devolvió un formato no válido.'); }
+      if (!analysisResult || typeof analysisResult.summary !== 'string') throw new Error('El análisis no contiene un resumen válido.');
+      setAnalysis(analysisResult.summary);
+      setKeyTopics(Array.isArray(analysisResult.keyTopics) ? analysisResult.keyTopics : []);
+      setSentiment(['positive', 'neutral', 'negative'].includes(analysisResult.sentiment) ? analysisResult.sentiment : 'neutral');
+      if (sessionId) await updateDoc(doc(db, 'sessions', sessionId), {
+        status: 'completed',
+        completedAt: new Date(),
+        duration: sessionDuration,
+        transcript,
+        analysis: analysisResult,
+        audioUrl: null
+      });
+      toastSuccess('Análisis real de KIRA AI completado.');
     } catch (error) {
-      console.error("Error analyzing session:", error);
-      toastError('Error al analizar la sesión');
+      console.error('KIRA AI session analysis error:', error);
+      toastError(error instanceof Error ? error.message : 'Error al analizar la sesión');
+      if (sessionId) await updateDoc(doc(db, 'sessions', sessionId), { status: 'analysis_failed', completedAt: new Date(), duration: sessionDuration, transcript, analysis: null, audioUrl: null });
     } finally {
       setIsAnalyzing(false);
     }
