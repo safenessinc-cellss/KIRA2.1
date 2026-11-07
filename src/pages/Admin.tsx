@@ -9,7 +9,7 @@ import { AdminBooksView } from './AdminBooksView';
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books';
+type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates';
 
 export function AdminMonitor() {
   const { user } = useAuth();
@@ -37,22 +37,20 @@ export function AdminMonitor() {
   };
 
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard Ejecutivo', icon: <LayoutDashboard size={18}/>, category: 'Centro de Mando' },
-    { id: 'analytics', label: 'Business Intelligence', icon: <TrendingUp size={18}/>, category: 'Centro de Mando', perm: 'system' },
-
-    { id: 'security', label: 'Control de Identidad', icon: <ShieldCheck size={18}/>, category: 'Gobernanza y Acceso', superOnly: true },
-    { id: 'campaign_history', label: 'Ciberseguridad y Logs', icon: <ShieldAlert size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
-    { id: 'ai_coaches', label: 'IA para Coaches', icon: <Sparkles size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
-
-    { id: 'approvals', label: 'Aprobaciones de Usuarios', icon: <ShieldCheck size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
-    { id: 'coaches', label: 'Estrategia de Coaches', icon: <UserCheck size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
-    { id: 'students', label: 'Directorio 360 de Alumnos', icon: <Users size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
-    { id: 'books', label: 'Biblioteca de Libros', icon: <BookOpen size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
-    { id: 'content', label: 'CMS Académico', icon: <ShoppingBag size={18}/>, category: 'Operaciones Académicas', perm: 'billing' },
-
-    { id: 'promotions', label: 'Gestión de Promociones', icon: <Star size={18}/>, category: 'Crecimiento y Marketing', perm: 'billing' },
-    { id: 'settlement', label: 'Centro de Liquidación', icon: <PieChartIcon size={18}/>, category: 'Motor Financiero', perm: 'billing' },
-    { id: 'transactions', label: 'Finanzas Globales', icon: <CreditCard size={18}/>, category: 'Motor Financiero', perm: 'billing' },
+    { id: 'dashboard', label: 'Resumen ejecutivo', icon: <LayoutDashboard size={18}/>, category: 'Inicio y métricas' },
+    { id: 'analytics', label: 'Analítica e indicadores', icon: <TrendingUp size={18}/>, category: 'Inicio y métricas', perm: 'system' },
+    { id: 'approvals', label: 'Aprobaciones y onboarding', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
+    { id: 'students', label: 'Gestión de alumnos', icon: <Users size={18}/>, category: 'Personas y acceso', perm: 'users' },
+    { id: 'coaches', label: 'Gestión de coaches', icon: <UserCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
+    { id: 'security', label: 'Roles y seguridad', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', superOnly: true },
+    { id: 'campaign_history', label: 'Auditoría y logs', icon: <ShieldAlert size={18}/>, category: 'Personas y acceso', perm: 'system' },
+    { id: 'content', label: 'Cursos y contenidos', icon: <ShoppingBag size={18}/>, category: 'Academia y certificados', perm: 'billing' },
+    { id: 'books', label: 'Biblioteca y ebooks', icon: <BookOpen size={18}/>, category: 'Academia y certificados', perm: 'users' },
+    { id: 'certificates', label: 'Solicitudes de certificados', icon: <FileText size={18}/>, category: 'Academia y certificados', perm: 'users' },
+    { id: 'ai_coaches', label: 'Herramientas IA para coaches', icon: <Sparkles size={18}/>, category: 'Academia y certificados', perm: 'system' },
+    { id: 'transactions', label: 'Pagos y transacciones', icon: <CreditCard size={18}/>, category: 'Finanzas', perm: 'billing' },
+    { id: 'settlement', label: 'Liquidaciones de coaches', icon: <PieChartIcon size={18}/>, category: 'Finanzas', perm: 'billing' },
+    { id: 'promotions', label: 'Promociones y descuentos', icon: <Star size={18}/>, category: 'Marketing y ventas', perm: 'billing' },
   ];
 
   const filteredNav = navItems.filter(item => {
@@ -63,11 +61,11 @@ export function AdminMonitor() {
   });
 
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-    'Centro de Mando': true,
-    'Gobernanza y Acceso': true,
-    'Operaciones Académicas': true,
-    'Crecimiento y Marketing': true,
-    'Motor Financiero': true
+    'Inicio y métricas': true,
+    'Personas y acceso': true,
+    'Academia y certificados': true,
+    'Finanzas': true,
+    'Marketing y ventas': true
   });
 
   const categories = Array.from(new Set(filteredNav.map(n => n.category)));
@@ -80,12 +78,12 @@ export function AdminMonitor() {
     <div className="flex flex-col md:flex-row gap-8">
       {/* Sidebar Refinada */}
       <div className="w-full md:w-72 flex flex-col gap-4">
-        {/* Command Center Omnibar */}
+        {/* Búsqueda rápida de módulos */}
         <div className="relative group mb-2">
            <Zap className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={16} />
            <input 
              type="text" 
-             placeholder="Omnibar: Búsqueda y acciones..." 
+             placeholder="Buscar módulo..." 
              value={searchQuery}
              onChange={e => setSearchQuery(e.target.value)}
              className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-12 py-3 text-[13px] outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm transition-all"
@@ -94,39 +92,7 @@ export function AdminMonitor() {
              ⌘K
            </div>
         </div>
-        {isSuperAdmin && (
-           <button 
-             onClick={async () => {
-               const confirmSeed = window.confirm("¿Generar datos de prueba en la base de datos vacía? Esto simulará promociones, transacciones y alumnos.");
-               if (!confirmSeed) return;
-               try {
-                  await addDoc(collection(db, 'promotions'), {
-                     title: 'Beca KIRA 2026',
-                     description: 'Descuento especial por registro.',
-                     code: 'Beca2026',
-                     type: 'Descuento',
-                     status: 'active',
-                     priority: 1,
-                     createdAt: new Date().toISOString()
-                  });
-                  await addDoc(collection(db, 'transactions'), {
-                     amount: 149.00,
-                     type: 'payment',
-                     status: 'completed',
-                     description: 'Plan Premium',
-                     userEmail: 'demo@user.com',
-                     createdAt: new Date().toISOString()
-                  });
-                  alert('Datos semilla generados con éxito.');
-               } catch(e) {
-                  console.error(e);
-               }
-             }}
-             className="w-full justify-center flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition shadow-md"
-           >
-             <Zap size={14} className="text-amber-400" /> Cargar Demo Data Inicial
-           </button>
-        )}
+
 
         <div className="flex flex-col gap-2">
           {categories.map(cat => (
