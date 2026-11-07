@@ -1,4 +1,4 @@
-import { SafeImage } from '../components/SafeImage';
+import { SafeImage } from '../../components/SafeImage';
 import React, { useState, useEffect } from 'react';
 import { db, storage } from '@/src/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
