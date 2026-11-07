@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, getDocs, limit, orderBy, doc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { Sparkles, GraduationCap, Loader2, ThumbsUp, ThumbsDown, MessageSquare, CheckCircle2 } from 'lucide-react';
@@ -111,7 +111,7 @@ export function MentorWidget() {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: "gemini-3.5-flash",
           contents: prompt,
