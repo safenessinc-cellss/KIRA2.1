@@ -271,6 +271,82 @@ app.get("/api/stripe/session-status", async (req, res) => {
 
 
 // API Routes
+app.get("/api/b2b/analytics", async (req, res) => {
+  let decoded: any;
+  try { decoded = await verifyFirebaseUser(req); }
+  catch { return res.status(401).json({ error: "Authentication required." }); }
+
+  try {
+    const firestore = getAdminDb();
+    const profileSnap = await firestore.collection("users").doc(decoded.uid).get();
+    const profile = profileSnap.data() || {};
+    const role = String(profile.role || "");
+    const isSuperAdmin = String(decoded.email || "").toLowerCase() === "safeness.c.a@gmail.com";
+    if (!isSuperAdmin && role !== "hr_admin" && role !== "admin") {
+      return res.status(403).json({ error: "Corporate analytics access denied." });
+    }
+
+    const requestedOrgId = isSuperAdmin && typeof req.query.organizationId === "string"
+      ? req.query.organizationId.trim()
+      : "";
+    const organizationId = requestedOrgId || String(profile.organizationId || "").trim();
+    if (!organizationId) {
+      return res.status(200).json({ available: false, reason: "organization_not_assigned", minimumGroupSize: 5 });
+    }
+
+    const organizationUsersSnap = await firestore.collection("users")
+      .where("organizationId", "==", organizationId).get();
+    const employeeDocs = organizationUsersSnap.docs.filter(doc => doc.data().role === "alumno");
+    const minimumGroupSize = 5;
+    if (employeeDocs.length < minimumGroupSize) {
+      return res.status(200).json({ available: false, reason: "minimum_group_size", minimumGroupSize });
+    }
+
+    const employeeIds = employeeDocs.map(doc => doc.id);
+    const enrollmentDocs: any[] = [];
+    const sessionDocs: any[] = [];
+    for (let index = 0; index < employeeIds.length; index += 30) {
+      const batchIds = employeeIds.slice(index, index + 30);
+      const [enrollments, sessions] = await Promise.all([
+        firestore.collection("enrollments").where("userId", "in", batchIds).get(),
+        firestore.collection("sessions").where("userId", "in", batchIds).get()
+      ]);
+      enrollmentDocs.push(...enrollments.docs);
+      sessionDocs.push(...sessions.docs);
+    }
+
+    const learnerIds = new Set<string>();
+    let progressSum = 0;
+    let completedEnrollments = 0;
+    for (const enrollment of enrollmentDocs) {
+      const data = enrollment.data();
+      const userId = typeof data.userId === "string" ? data.userId : "";
+      if (userId) learnerIds.add(userId);
+      const progress = Number(data.progress);
+      const safeProgress = Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : 0;
+      progressSum += safeProgress;
+      if (safeProgress >= 100 || data.status === "completed") completedEnrollments += 1;
+    }
+
+    return res.status(200).json({
+      available: true,
+      organizationId,
+      employeeCount: employeeDocs.length,
+      activeLearners: learnerIds.size,
+      enrollmentCount: enrollmentDocs.length,
+      completedEnrollments,
+      averageProgress: enrollmentDocs.length ? Math.round(progressSum / enrollmentDocs.length) : 0,
+      participationRate: employeeDocs.length ? Math.round((learnerIds.size / employeeDocs.length) * 100) : 0,
+      sessionsCount: sessionDocs.length,
+      minimumGroupSize,
+      lastUpdated: new Date().toISOString()
+    });
+  } catch (err: any) {
+    console.error("B2B aggregate analytics failed", err);
+    return res.status(500).json({ error: "Corporate analytics are temporarily unavailable." });
+  }
+});
+
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
