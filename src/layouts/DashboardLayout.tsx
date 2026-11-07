@@ -162,7 +162,7 @@ export function DashboardLayout({ title }: { title: string }) {
 
   return (
     <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden bg-slate-50">
-      {mobileNavOpen && (
+      {mobileNavOpen && role !== 'admin' && (
         <button
           type="button"
           aria-label="Cerrar menú"
@@ -171,7 +171,7 @@ export function DashboardLayout({ title }: { title: string }) {
         />
       )}
 
-      <aside
+      {role !== 'admin' && <aside
         id="kira-primary-navigation"
         className={cn(
           'fixed inset-y-0 left-0 z-50 flex w-[min(19rem,86vw)] flex-col border-r border-slate-200 bg-white py-4 shadow-2xl transition-transform duration-200 md:relative md:z-auto md:w-64 md:shrink-0 md:translate-x-0 md:shadow-none',
@@ -185,7 +185,7 @@ export function DashboardLayout({ title }: { title: string }) {
           </button>
         </div>
         {navigation}
-      </aside>
+      </aside>}
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {(user?.approvalStatus === 'suspended' || user?.approvalStatus === 'pending') && role !== 'admin' && (
@@ -215,7 +215,7 @@ export function DashboardLayout({ title }: { title: string }) {
               aria-label="Abrir menú de navegación"
               aria-expanded={mobileNavOpen}
               aria-controls="kira-primary-navigation"
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 md:hidden"
+              className={cn("h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 md:hidden", role === 'admin' ? 'hidden' : 'inline-flex')}
             >
               <Menu size={20} />
             </button>
