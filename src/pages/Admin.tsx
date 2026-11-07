@@ -54,11 +54,11 @@ export function AdminMonitor() {
   ];
 
   const filteredNav = navItems.filter(item => {
-    if (item.superOnly && !isSuperAdmin) return false;
-    if (!item.superOnly && !hasPerm(item)) return false;
     if (searchQuery && !item.label.toLowerCase().includes(searchQuery.toLowerCase()) && !item.category.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
+
+  const canOpen = (item: any) => item.superOnly ? isSuperAdmin : hasPerm(item);
 
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
     'Inicio y métricas': true,
@@ -75,9 +75,9 @@ export function AdminMonitor() {
   };
 
   return (
-    <div className="flex flex-col md:flex-row gap-8">
+    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
       {/* Sidebar Refinada */}
-      <div className="w-full md:w-72 flex flex-col gap-4">
+      <aside className="w-full lg:w-72 lg:shrink-0 lg:sticky lg:top-4 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
         {/* Búsqueda rápida de módulos */}
         <div className="relative group mb-2">
            <Zap className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={16} />
@@ -94,7 +94,7 @@ export function AdminMonitor() {
         </div>
 
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 max-h-[70vh] overflow-y-auto pr-1">
           {categories.map(cat => (
             <div key={cat} className="flex flex-col mb-1">
               <button 
@@ -112,7 +112,8 @@ export function AdminMonitor() {
                   <NavButton 
                     key={item.id}
                     active={activeTab === item.id} 
-                    onClick={() => setActiveTab(item.id as AdminTab)} 
+                    disabled={!canOpen(item)}
+                    onClick={() => canOpen(item) && setActiveTab(item.id as AdminTab)} 
                     icon={item.icon} 
                     label={item.label} 
                   />
@@ -121,9 +122,9 @@ export function AdminMonitor() {
             </div>
           ))}
         </div>
-      </div>
+      </aside>
 
-      {/* Area de Contenido del Módulo */}
+      {/* Área principal: dashboard inicial y contenido del módulo seleccionado */}
       <div className="flex-1 min-w-0">
         {activeTab === 'dashboard' && hasPerm(navItems.find(i=>i.id==='dashboard')) && <GlobalDashboardView />}
         {activeTab === 'analytics' && hasPerm(navItems.find(i=>i.id==='analytics')) && <BIView />}
@@ -147,18 +148,23 @@ export function AdminMonitor() {
   );
 }
 
-function NavButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
+function NavButton({ active, onClick, icon, label, disabled = false }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, disabled?: boolean }) {
   return (
     <button 
       onClick={onClick}
-      className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[13px] font-medium transition-all ${
+      disabled={disabled}
+      title={disabled ? 'Tu rol no tiene permiso para abrir este módulo' : label}
+      className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left text-[13px] font-medium transition-all ${
         active 
           ? 'bg-kirateal text-white shadow-md shadow-kirateal/10' 
-          : 'text-slate-600 hover:bg-white hover:text-kirateal'
+          : disabled
+            ? 'text-slate-400 opacity-70 cursor-not-allowed'
+            : 'text-slate-600 hover:bg-slate-50 hover:text-kirateal'
       }`}
     >
       {icon}
-      {label}
+      <span className="flex-1">{label}</span>
+      {disabled && <ShieldAlert size={13} aria-label="Sin permisos" />}
     </button>
   );
 }
