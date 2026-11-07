@@ -16,6 +16,13 @@ import {
 } from 'firebase/firestore';
 
 const projectId = 'demo-kira-rules';
+
+function googleContext(uid, claims = {}) {
+  return testEnv.authenticatedContext(uid, {
+    ...claims,
+    firebase: { sign_in_provider: 'google.com' },
+  });
+}
 const emulator = (process.env.FIRESTORE_EMULATOR_HOST || '127.0.0.1:8080').split(':');
 let testEnv;
 
@@ -90,9 +97,9 @@ beforeEach(async () => {
 });
 
 test('private user profiles are visible only to owner, admin and assigned coach', async () => {
-  const student = testEnv.authenticatedContext('studentA').firestore();
-  const assignedCoach = testEnv.authenticatedContext('coachA').firestore();
-  const otherCoach = testEnv.authenticatedContext('coachB').firestore();
+  const student = googleContext('studentA').firestore();
+  const assignedCoach = googleContext('coachA').firestore();
+  const otherCoach = googleContext('coachB').firestore();
 
   await assertSucceeds(getDoc(doc(student, 'users/studentA')));
   await assertFails(getDoc(doc(student, 'users/studentB')));
@@ -101,9 +108,9 @@ test('private user profiles are visible only to owner, admin and assigned coach'
 });
 
 test('journals remain private even from assigned coaches and admins', async () => {
-  const owner = testEnv.authenticatedContext('studentA').firestore();
-  const coach = testEnv.authenticatedContext('coachA').firestore();
-  const admin = testEnv.authenticatedContext('adminA').firestore();
+  const owner = googleContext('studentA').firestore();
+  const coach = googleContext('coachA').firestore();
+  const admin = googleContext('adminA').firestore();
 
   await assertSucceeds(getDoc(doc(owner, 'journals/journalA')));
   await assertFails(getDoc(doc(coach, 'journals/journalA')));
@@ -111,7 +118,7 @@ test('journals remain private even from assigned coaches and admins', async () =
 });
 
 test('clients cannot create paid enrollment grants or ledger transactions', async () => {
-  const student = testEnv.authenticatedContext('studentA').firestore();
+  const student = googleContext('studentA').firestore();
 
   await assertFails(setDoc(doc(student, 'enrollments/studentA_courseB'), {
     userId: 'studentA', courseId: 'courseB', status: 'active',
@@ -123,15 +130,15 @@ test('clients cannot create paid enrollment grants or ledger transactions', asyn
 });
 
 test('coach automations are scoped to their owner', async () => {
-  const owner = testEnv.authenticatedContext('coachA').firestore();
-  const otherCoach = testEnv.authenticatedContext('coachB').firestore();
+  const owner = googleContext('coachA').firestore();
+  const otherCoach = googleContext('coachB').firestore();
 
   await assertSucceeds(getDoc(doc(owner, 'automations/automationA')));
   await assertFails(getDoc(doc(otherCoach, 'automations/automationA')));
 });
 
 test('coach can update own session but cannot transfer ownership', async () => {
-  const coach = testEnv.authenticatedContext('coachA').firestore();
+  const coach = googleContext('coachA').firestore();
 
   await assertSucceeds(updateDoc(doc(coach, 'sessions/sessionA'), {
     status: 'reviewed',
@@ -142,19 +149,19 @@ test('coach can update own session but cannot transfer ownership', async () => {
 });
 
 test('global stats are restricted to administrators', async () => {
-  const student = testEnv.authenticatedContext('studentA').firestore();
-  const admin = testEnv.authenticatedContext('adminA').firestore();
+  const student = googleContext('studentA').firestore();
+  const admin = googleContext('adminA').firestore();
 
   await assertFails(getDoc(doc(student, 'stats/global')));
   await assertSucceeds(getDoc(doc(admin, 'stats/global')));
 });
 
 test('superadmin email alone is insufficient without verified email claim', async () => {
-  const unverified = testEnv.authenticatedContext('super', {
+  const unverified = googleContext('super', {
     email: 'safeness.c.a@gmail.com',
     email_verified: false,
   }).firestore();
-  const verified = testEnv.authenticatedContext('super', {
+  const verified = googleContext('super', {
     email: 'safeness.c.a@gmail.com',
     email_verified: true,
   }).firestore();
@@ -164,7 +171,7 @@ test('superadmin email alone is insufficient without verified email claim', asyn
 });
 
 test('learners may edit profile content but cannot self-promote or grant staff permissions', async () => {
-  const student = testEnv.authenticatedContext('studentA').firestore();
+  const student = googleContext('studentA').firestore();
   const profile = doc(student, 'users/studentA');
 
   await assertSucceeds(updateDoc(profile, { displayName: 'Learner A' }));
@@ -174,7 +181,7 @@ test('learners may edit profile content but cannot self-promote or grant staff p
 });
 
 test('notification creation is restricted to the authenticated recipient', async () => {
-  const student = testEnv.authenticatedContext('studentA').firestore();
+  const student = googleContext('studentA').firestore();
   const ownNotification = {
     userId: 'studentA', title: 'Welcome', message: 'Welcome to KIRA',
     type: 'system', read: false, createdAt: Timestamp.now(),
@@ -184,4 +191,12 @@ test('notification creation is restricted to the authenticated recipient', async
   await assertFails(setDoc(doc(student, 'notifications/other'), {
     ...ownNotification, userId: 'studentB',
   }));
+});
+
+
+test('Firestore rejects sessions authenticated with email and password', async () => {
+  const legacyPasswordSession = testEnv.authenticatedContext('legacy-user', {
+    firebase: { sign_in_provider: 'password' },
+  }).firestore();
+  await assertFails(getDoc(doc(legacyPasswordSession, 'users/legacy-user')));
 });
