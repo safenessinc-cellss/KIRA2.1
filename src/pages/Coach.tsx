@@ -8,7 +8,7 @@ import { MediaUpload } from '../components/MediaUpload';
 import { CoachAnalytics } from '../components/CoachAnalytics';
 import { useToast } from '../hooks/useToast';
 
-export type UserRole = 'admin' | 'coach' | 'alumno' | null;
+export type UserRole = 'admin' | 'coach' | 'alumno' | 'hr_admin' | 'company_admin' | 'company_member' | null;
 
 export function useAuth() {
   const [user, setUser] = useState<any>(null);
@@ -309,37 +309,16 @@ export function CoachDashboard() {
     }
   }, [user]);
 
-  const handlePaymentSuccess = async () => {
-    const success = searchParams.get('success');
-    const type = searchParams.get('type');
-    const amount = searchParams.get('amount');
-
-    if (success === 'true' && type === 'coach_membership' && user) {
-      try {
-        console.log("[Membresía] Registrando pago de membresía en paralelo...");
-        await Promise.all([
-          updateDoc(doc(db, 'users', user.uid), {
-            membershipStatus: 'active',
-            membershipPaidAt: new Date(),
-            role: 'coach'
-          }),
-          addDoc(collection(db, 'transactions'), {
-            userId: user.uid,
-            amount: Number(amount),
-            type: 'coach_membership',
-            createdAt: new Date()
-          })
-        ]);
-        console.log("[Membresía] Actualización de membresía y transacción registradas exitosamente.");
-        setSearchParams({});
-      } catch (e) {
-        console.error('Error recording membership success:', e);
-      }
+  const handlePaymentSuccess = () => {
+    // Never activate a membership from URL parameters; only a verified backend webhook may.
+    if (searchParams.get('success') === 'true') {
+      console.warn('[Payments] Membership checkout returned; awaiting verified server confirmation.');
+      setSearchParams({});
     }
   };
   
-  const isApproved = true;
-  const hasMembership = true;
+  const isApproved = user?.approvalStatus === 'approved';
+  const hasMembership = user?.membershipStatus === 'active';
 
   const handleMembershipCheckout = async () => {
     if(!user) return;
@@ -753,46 +732,9 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
     }
   };
 
-  const handleReleasePurchase = async (purchase: any) => {
-    try {
-      await updateDoc(doc(db, 'purchases', purchase.id), {
-        status: 'released',
-        releasedAt: new Date()
-      });
-
-      if (purchase.itemType === 'course') {
-        const enrollQ = query(
-          collection(db, 'enrollments'),
-          where('userId', '==', purchase.userId),
-          where('courseId', '==', purchase.itemId)
-        );
-        const enrollSnap = await getDocs(enrollQ);
-        if (enrollSnap.empty) {
-          await addDoc(collection(db, 'enrollments'), {
-            userId: purchase.userId,
-            courseId: purchase.itemId,
-            progress: 0,
-            createdAt: new Date()
-          });
-        }
-      }
-
-      await addDoc(collection(db, 'transactions'), {
-        userId: purchase.userId,
-        amount: Number(purchase.itemPrice),
-        type: purchase.itemType === 'course' ? 'course_release' : 'book_release',
-        itemId: purchase.itemId,
-        itemTitle: purchase.itemTitle,
-        status: 'released',
-        createdAt: new Date()
-      });
-
-      alert(`¡Acceso liberado con éxito para ${purchase.userName}!`);
-      window.location.reload();
-    } catch (e: any) {
-      console.error("Error releasing purchase:", e);
-      alert("Error al liberar la compra: " + (e.message || String(e)));
-    }
+  const handleReleasePurchase = async (_purchase: any) => {
+    // Coaches cannot convert an unverified manual purchase into access or a financial transaction.
+    alert('La liberación manual está deshabilitada. El acceso se activará únicamente después de la confirmación del pago por el servidor.');
   };
 
   useEffect(() => {
@@ -904,9 +846,6 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
           sesiones: sessionCountsByDate[date]
         }));
         
-        if (sData.every(d => d.sesiones === 0)) {
-          sData.forEach(d => d.sesiones = Math.floor(Math.random() * 4));
-        }
         setSessionsData(sData);
 
         const sortedTopics = Array.from(topicsMap.entries())
@@ -914,11 +853,6 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
           .slice(0, 5)
           .map(([topic, count]) => ({ topic, count }));
           
-        if (sortedTopics.length === 0) {
-          sortedTopics.push({ topic: 'Manejo de ansiedad', count: 8 });
-          sortedTopics.push({ topic: 'Liderazgo de equipo', count: 5 });
-          sortedTopics.push({ topic: 'Gestión del tiempo', count: 4 });
-        }
         setTopTopics(sortedTopics);
 
         // Fetch Journals to mock team energy heatmap

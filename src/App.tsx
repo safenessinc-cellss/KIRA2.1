@@ -20,9 +20,9 @@ const Community = React.lazy(() => import('./pages/Community').then(m => ({ defa
 const AdminMonitor = React.lazy(() => import('./pages/Admin').then(m => ({ default: m.AdminMonitor })));
 const CoachDashboard = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachDashboard })));
 const CoachCourses = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachCourses })));
-const CoachHomeworkReview = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachHomeworkReview })));
-const CoachCrmAudit = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachCrmAudit })));
-const CoachCloudSupport = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachCloudSupport })));
+const CoachHomeworkReview = React.lazy(() => import('./pages/Coach/CoachHomeworkReview').then(m => ({ default: m.CoachHomeworkReview })));
+const CoachCrmAudit = React.lazy(() => import('./pages/Coach/CoachCrmAudit').then(m => ({ default: m.CoachCrmAudit })));
+
 const SessionIntelligence = React.lazy(() => import('./pages/SessionIntelligence'));
 const HRDashboard = React.lazy(() => import('./pages/HRDashboard').then(m => ({ default: m.HRDashboard })));
 const UserProfile = React.lazy(() => import('./pages/UserProfile').then(m => ({ default: m.UserProfile })));
@@ -107,7 +107,7 @@ export default function App() {
                         <Route path="/coach/session" element={<SessionIntelligence />} />
                         <Route path="/coach/homework" element={<CoachHomeworkReview />} />
                         <Route path="/coach/crm-audit" element={<CoachCrmAudit />} />
-                        <Route path="/coach/support" element={<CoachCloudSupport />} />
+                        <Route path="/coach/support" element={<Navigate to="/coach?tab=support" replace />} />
                         <Route path="/coach/profile" element={<UserProfile />} />
                       </Route>
                     </Route>
@@ -120,7 +120,7 @@ export default function App() {
                     </Route>
       
                     {/* HR B2B */}
-                    <Route element={<ProtectedRoute allowedRoles={['hr_admin']} />}>
+                    <Route element={<ProtectedRoute allowedRoles={['hr_admin', 'company_admin']} />}>
                       <Route element={<DashboardLayout title="Portal Empresa" />}>
                         <Route path="/hr" element={<HRDashboard />} />
                       </Route>

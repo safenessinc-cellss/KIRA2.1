@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../hooks/useAuth';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, updateDoc, doc, where, orderBy, limit, addDoc, onSnapshot, getDocs, setDoc, getDoc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { Users, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, Menu, X } from 'lucide-react';
+import { Users, Building2, LayoutDashboard, UserCheck, BookOpen, BarChart3, ShieldAlert, ShoppingBag, CreditCard, Star, Clock, AlertCircle, Ban, CheckCircle2, ShieldCheck, AlertTriangle, XCircle, Zap, FileText, Settings, HeartPulse, Loader2, Layout, Sliders, PlayCircle, UploadCloud, Send, Sparkles, TrendingUp, Activity, ChevronDown, ChevronRight, Eye, Trash2, PieChart as PieChartIcon, Search, Menu, X } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
 import { AdminBooksView } from './AdminBooksView';
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates';
+type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates' | 'companies';
 
 export function AdminMonitor() {
   const { user } = useAuth();
@@ -45,6 +45,7 @@ export function AdminMonitor() {
     { id: 'students', label: 'Gestión de alumnos', icon: <Users size={18}/>, category: 'Personas y acceso', perm: 'users' },
     { id: 'coaches', label: 'Gestión de coaches', icon: <UserCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
     { id: 'security', label: 'Roles y seguridad', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', superOnly: true },
+    { id: 'companies', label: 'Empresas y licencias B2B', icon: <Building2 size={18}/>, category: 'Personas y acceso', superOnly: true },
     { id: 'campaign_history', label: 'Auditoría y logs', icon: <ShieldAlert size={18}/>, category: 'Personas y acceso', perm: 'system' },
     { id: 'content', label: 'Cursos y contenidos', icon: <ShoppingBag size={18}/>, category: 'Academia y certificados', perm: 'billing' },
     { id: 'books', label: 'Biblioteca y ebooks', icon: <BookOpen size={18}/>, category: 'Academia y certificados', perm: 'users' },
@@ -132,6 +133,7 @@ export function AdminMonitor() {
         {activeTab === 'analytics' && hasPerm(navItems.find(i=>i.id==='analytics')) && <BIView />}
 
         {activeTab === 'security' && isSuperAdmin && <SecurityView />}
+        {activeTab === 'companies' && isSuperAdmin && <CompanyManagementView />}
         {activeTab === 'campaign_history' && hasPerm(navItems.find(i=>i.id==='campaign_history')) && <CampaignHistoryView />}
         {activeTab === 'ai_coaches' && hasPerm(navItems.find(i=>i.id==='ai_coaches')) && <AICoachesView />}
 
@@ -495,8 +497,8 @@ function GlobalDashboardView() {
 
       data.push({
         name: d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
-        adopcionDiario: Math.min(100, (uniqueOnDay / effectiveUsers) * 100 + (Math.random() * 5)),
-        completionRate: Math.min(100, avgComp - (i * 0.2) + (Math.random() * 3))
+        adopcionDiario: effectiveUsers > 0 ? Math.min(100, (uniqueOnDay / effectiveUsers) * 100) : 0,
+        completionRate: Math.min(100, Math.max(0, avgComp))
       });
     }
     return data;
@@ -3727,171 +3729,75 @@ function SettlementCenterView() {
 
 // --- MODULO: HISTORIAL DE CAMPAÑAS ---
 function CampaignHistoryView() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [campaignLogs, setCampaignLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [rules, setRules] = useState<Record<string, string>>({});
-  const [selectedLog, setSelectedLog] = useState<any>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const qLogs = query(collection(db, 'campaign_logs'), orderBy('createdAt', 'desc'), limit(50));
-    const unsubLogs = onSnapshot(qLogs, (snap) => {
-      setLogs(snap.docs.map(d => ({id: d.id, ...d.data()})));
+    const auditQuery = query(collection(db, "auditLogs"), orderBy("createdAt", "desc"), limit(100));
+    const campaignQuery = query(collection(db, "campaign_logs"), orderBy("createdAt", "desc"), limit(50));
+    const stopAudit = onSnapshot(auditQuery, snapshot => {
+      setAuditLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    }, err => {
+      console.error("Audit log read failed:", err);
+      setError("No se pudieron cargar los registros de auditoría.");
       setLoading(false);
     });
-
-    const unsubRules = onSnapshot(collection(db, 'automations'), (snap) => {
-      const rMap: Record<string, string> = {};
-      snap.forEach(d => { rMap[d.id] = d.data().name; });
-      setRules(rMap);
+    const stopCampaigns = onSnapshot(campaignQuery, snapshot => setCampaignLogs(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))), err => {
+      console.warn("Campaign log read failed:", err);
     });
-
-    return () => { unsubLogs(); unsubRules(); };
+    return () => { stopAudit(); stopCampaigns(); };
   }, []);
 
+  const formatDate = (value: any) => {
+    const date = value?.toDate ? value.toDate() : value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : "Fecha no disponible";
+  };
+
   return (
-    <div className="flex flex-col gap-6 animate-in fade-in">
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <h3 className="font-bold text-slate-900 tracking-tight">Historial de Campañas Directas y Upselling Automático</h3>
-        <p className="text-[12px] text-slate-500 mt-1">Traza de ejecuciones del motor de automatización por usuario. Monitorea conversiones de recomendaciones cruzadas.</p>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
-          <h3 className="font-bold text-slate-800 text-[11px] uppercase tracking-widest text-slate-400">Registros de Actividad Recientes</h3>
-          <span className="text-[10px] text-indigo-500 font-black uppercase">Live Updates</span>
+    <div className="flex flex-col gap-6">
+      <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="text-xl font-bold text-slate-900">Auditoría de operaciones KIRA</h3>
+        <p className="mt-1 text-sm text-slate-500">Eventos de pago, emisión de certificados y acciones del sistema registrados por servicios autorizados.</p>
+        <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
+          <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">Eventos críticos: {auditLogs.length}</span>
+          <span className="rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-700">Campañas: {campaignLogs.length}</span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-tighter">
-                <th className="px-6 py-3">Fecha y Hora</th>
-                <th className="px-6 py-3">Regla / Campaña</th>
-                <th className="px-6 py-3 font-mono">ID Usuario</th>
-                <th className="px-6 py-3 text-center">Canal</th>
-                <th className="px-6 py-3 text-right">Estado </th>
-              </tr>
-            </thead>
+      </header>
+      {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-5 py-4"><h4 className="font-bold text-slate-900">Registro financiero y de certificados</h4></div>
+        {loading ? <div className="p-8 text-center text-sm text-slate-500">Cargando auditoría…</div> :
+          auditLogs.length === 0 ? <div className="p-8 text-center text-sm text-slate-500">Todavía no hay eventos críticos registrados.</div> :
+          <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-xs">
+            <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-3">Fecha</th><th className="px-5 py-3">Acción</th><th className="px-5 py-3">Actor</th><th className="px-5 py-3">Destino</th><th className="px-5 py-3">Proveedor</th></tr></thead>
             <tbody className="divide-y divide-slate-100">
-              <tr className="hover:bg-slate-50 transition-colors cursor-pointer bg-emerald-50/30">
-                <td className="px-6 py-4 text-slate-500 font-mono italic">Hace 5 mins</td>
-                <td className="px-6 py-4">
-                  <span className="font-bold text-slate-700">Upselling Automático</span>
-                  <span className="block text-[9px] text-slate-400 mt-0.5">TRIGGER: Terminó Libro "Básico"</span>
-                </td>
-                <td className="px-6 py-4 text-slate-400 font-mono text-[10px]">alumno.test</td>
-                <td className="px-6 py-4 text-center">
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase transition-colors">
-                    Recomendación Cross-sell
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right flex flex-col items-end gap-1 top-2 relative">
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-50 text-emerald-600">
-                    Convertido
-                  </span>
-                  <span className="text-[10px] text-emerald-600 font-bold">+ Venta Curso</span>
-                </td>
-              </tr>
-              {logs.map(log => (
-                <tr 
-                  key={log.id} 
-                  className="hover:bg-slate-50 transition-colors cursor-pointer"
-                  onClick={() => setSelectedLog(log)}
-                >
-                  <td className="px-6 py-4 text-slate-500 font-mono italic">
-                    {log.createdAt?.toDate?.().toLocaleString() || 'Processando...'}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="font-bold text-slate-700">{rules[log.ruleId] || 'Regla Desconocida'}</span>
-                    <span className="block text-[9px] text-slate-400 mt-0.5">ID: {log.ruleId ? log.ruleId.substring(0,8) + '...' : 'N/A'}</span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-400 font-mono text-[10px]">{log.userId}</td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[10px] font-bold uppercase">
-                      {log.actionType}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <span className={cn(
-                      "px-2.5 py-1 rounded-full text-[10px] font-black uppercase",
-                      log.status === 'sent' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
-                    )}>
-                      {log.status === 'sent' ? 'Ejecutado' : 'Fallido'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {logs.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">Esperando ejecuciones del motor...</td>
-                </tr>
-              )}
+              {auditLogs.map(log => <tr key={log.id}>
+                <td className="whitespace-nowrap px-5 py-3 text-slate-500">{formatDate(log.createdAt)}</td>
+                <td className="px-5 py-3 font-semibold text-slate-800">{log.action || "Evento"}</td>
+                <td className="px-5 py-3 font-mono text-slate-500">{log.actorId || "system"}</td>
+                <td className="px-5 py-3 font-mono text-slate-500">{log.targetId || "—"}</td>
+                <td className="px-5 py-3 text-slate-500">{log.provider || "KIRA"}</td>
+              </tr>)}
             </tbody>
-          </table>
-        </div>
-      </div>
-
-      {selectedLog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <FileText size={16} className="text-indigo-500" /> Detalles de Ejecución
-              </h3>
-              <button 
-                onClick={() => setSelectedLog(null)} 
-                className="text-slate-400 hover:text-slate-600 p-1 bg-white rounded-full border border-slate-200 shadow-sm transition-all hover:bg-slate-50 hover:scale-105 active:scale-95"
-              >
-                 <XCircle size={18} />
-              </button>
-            </div>
-            <div className="p-6 space-y-4 text-sm">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Regla Disparada</span>
-                  <div className="font-medium text-slate-800">{rules[selectedLog.ruleId] || selectedLog.ruleId}</div>
-                </div>
-                <div>
-                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Estado</span>
-                  <div className={cn("font-bold text-xs uppercase tracking-wider", selectedLog.status === 'sent' ? 'text-emerald-600' : 'text-rose-600')}>
-                    {selectedLog.status === 'sent' ? 'Enviado Correctamente' : 'Fallo en Envío'}
-                  </div>
-                </div>
-              </div>
-              <div>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">ID Destinatario</span>
-                <div className="font-mono text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-md border border-slate-200 shadow-inner">{selectedLog.userId}</div>
-              </div>
-              <div>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Mensaje Generado</span>
-                <div className="bg-slate-100/50 p-4 rounded-xl border border-slate-200 text-slate-700 italic text-[13px] leading-relaxed break-words shadow-inner">
-                  "{selectedLog.messageBody || 'Contenido del mensaje original no disponible. Revisa la plantilla en la configuración de la automatización.'}"
-                </div>
-              </div>
-              {selectedLog.errorDetails && (
-                <div>
-                  <span className="block text-[10px] font-bold text-rose-400 uppercase tracking-widest mb-1">Detalles del Error Técnico</span>
-                  <div className="bg-rose-50 p-3 rounded-lg border border-rose-100 text-rose-700 font-mono text-[11px] overflow-x-auto shadow-inner">
-                    {selectedLog.errorDetails}
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-              <button 
-                onClick={() => setSelectedLog(null)}
-                className="px-6 py-2.5 bg-slate-900 justify-center flex text-white text-[11px] font-bold rounded-xl shadow-lg shadow-slate-900/20 hover:shadow-xl hover:bg-slate-800 transition uppercase tracking-wider active:scale-95"
-              >
-                Cerrar Panel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </table></div>
+        }
+      </section>
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-100 px-5 py-4"><h4 className="font-bold text-slate-900">Automatizaciones y campañas</h4></div>
+        {campaignLogs.length === 0 ? <div className="p-6 text-sm text-slate-500">Sin ejecuciones de campañas registradas.</div> :
+          <div className="divide-y divide-slate-100">{campaignLogs.map(log => <div key={log.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+            <div><p className="text-sm font-semibold text-slate-800">{log.action || log.ruleName || log.ruleId || "Campaña"}</p><p className="mt-1 text-xs text-slate-400">Usuario: {log.userId || "No especificado"}</p></div>
+            <div className="text-right text-xs text-slate-500">{formatDate(log.createdAt)}</div>
+          </div>)}</div>
+        }
+      </section>
     </div>
   );
 }
 
-// --- MODULO 7: MOTOR DE AUTOMATIZACIÓN ---
 function AutomationEngineView() {
   const { user } = useAuth();
   const [rules, setRules] = useState<any[]>([]);
@@ -4603,15 +4509,19 @@ function CertificateRequestsAdminView() {
     if (!(r.paymentStatus === 'paid' || r.paid === true) || !(r.courseCompleted === true || r.completed === true || Number(r.progress) >= 100) || !r.studentName || !r.courseTitle || !r.coachName || hours <= 0) return setError('No se emite: verifica pago, curso concluido, alumno, coach y horas.');
     setIssuing(r.id);
     try {
-      const token = crypto.randomUUID().replace(/-/g, '').toUpperCase();
-      const number = 'KIRA-' + new Date().getFullYear() + '-' + token.slice(0, 10);
-      const issuedAt = new Date(); const issuerName = user.displayName || user.email || 'KIRA COACH';
-      const safe = { certificateNumber: number, studentName: r.studentName, courseTitle: r.courseTitle, coachName: r.coachName, hours, issuedAt, issuerName, status: 'issued', validationToken: token };
-      const batch = writeBatch(db);
-      batch.set(doc(db, 'certificates', token), { ...safe, requestId: r.id, studentId: r.userId || r.studentId || '', issuedBy: user.uid, signatureType: 'KIRA electronic issuance record' });
-      batch.set(doc(db, 'certificatePublic', token), safe);
-      batch.update(doc(db, 'certificateRequests', r.id), { status: 'issued', certificateNumber: number, certificateId: token, issuedBy: user.uid, issuedByName: issuerName, issuedAt });
-      await batch.commit();
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+      const issueResponse = await fetch('/api/certificates/issue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
+        body: JSON.stringify({ requestId: r.id, enrollmentId: r.enrollmentId })
+      });
+      const issueData = await issueResponse.json();
+      if (!issueResponse.ok || !issueData.certificateNumber || !issueData.validationUrl) throw new Error(issueData.error || 'No se pudo emitir el certificado firmado.');
+      const number = issueData.certificateNumber;
+      const token = issueData.validationUrl.split('/').pop() || '';
+      const issuedAt = new Date();
+      const issuerName = user.displayName || user.email || 'KIRA COACH';
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
       pdf.setFillColor(250,252,253); pdf.rect(0,0,297,210,'F'); pdf.setDrawColor(25,166,160); pdf.setLineWidth(1.5); pdf.roundedRect(9,9,279,192,4,4,'S');
       pdf.setTextColor(229,237,238); pdf.setFont('helvetica','bold'); pdf.setFontSize(58); pdf.text('KIRA',148.5,112,{align:'center'});
@@ -4622,7 +4532,7 @@ function CertificateRequestsAdminView() {
       pdf.setFont('helvetica','normal'); pdf.setFontSize(11); pdf.text(hours + ' horas académicas · Coach: ' + r.coachName,148.5,123,{align:'center',maxWidth:240});
       pdf.setDrawColor(25,166,160); pdf.line(28,151,104,151); pdf.line(193,151,269,151); pdf.setTextColor(55,65,75); pdf.setFontSize(9); pdf.setFont('times','italic'); pdf.setFontSize(17); pdf.text(issuerName,66,151,{align:'center',maxWidth:72}); pdf.setFont('helvetica','normal'); pdf.setFontSize(9); pdf.text(issuerName,66,158,{align:'center',maxWidth:72}); pdf.text('Registro de emisor autenticado por KIRA',66,164,{align:'center'}); pdf.text('KIRA COACH · SAFENESS.INC',231,157,{align:'center'});
       pdf.setTextColor(20,75,82); pdf.setFont('helvetica','bold'); pdf.text(number,148.5,179,{align:'center'});
-      const url = window.location.origin + '/validar-certificado/' + token; pdf.setFont('helvetica','normal'); pdf.setFontSize(8); pdf.text('Validación QR: ' + url,148.5,187,{align:'center',maxWidth:250});
+      const url = issueData.validationUrl; pdf.setFont('helvetica','normal'); pdf.setFontSize(8); pdf.text('Validación QR: ' + url,148.5,187,{align:'center',maxWidth:250});
       try { const response = await fetch('https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url)); if (response.ok) { const blob = await response.blob(); const data = await new Promise<string>((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(blob); }); pdf.addImage(data,'PNG',263,15,20,20); } } catch (e) { console.warn('QR no incrustado; la URL queda impresa.',e); }
       pdf.save(number + '.pdf'); setError('');
     } catch (e) { console.error(e); setError('No se pudo emitir el certificado. Revisa permisos y conexión.'); } finally { setIssuing(null); }
@@ -4637,3 +4547,128 @@ function CertificateRequestsAdminView() {
 // Compatibilidad con rutas anteriores
 export function AdminCoaches() { return <AdminMonitor />; }
 export function AdminReviews() { return <AdminMonitor />; }
+
+
+
+function CompanyManagementView() {
+  const { user } = useAuth();
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [companyName, setCompanyName] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
+  const [employeeEmail, setEmployeeEmail] = useState("");
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [feedbackError, setFeedbackError] = useState(false);
+
+  useEffect(() => onSnapshot(collection(db, "companies"), snapshot => {
+    const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    setCompanies(rows);
+    if (!selectedCompanyId && rows.length) setSelectedCompanyId(rows[0].id);
+  }, error => {
+    console.error("Company list failed:", error);
+    setFeedback("No se pudieron cargar las empresas.");
+    setFeedbackError(true);
+  }), [selectedCompanyId]);
+
+  const findUserByEmail = async (email: string) => {
+    const normalized = email.trim().toLowerCase();
+    const result = await getDocs(query(collection(db, "users"), where("email", "==", normalized), limit(2)));
+    return result.docs[0] || null;
+  };
+
+  const createCompany = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user || !companyName.trim() || !adminEmail.trim()) return;
+    setBusy(true); setFeedback(""); setFeedbackError(false);
+    try {
+      const adminDoc = await findUserByEmail(adminEmail);
+      if (!adminDoc) throw new Error("El administrador debe registrarse primero en KIRA con Google.");
+      const companyId = "co_" + crypto.randomUUID().replace(/-/g, "").slice(0, 20);
+      const companyData = { name: companyName.trim(), companyId, status: "active", licenseLimit: 0, createdAt: new Date(), createdBy: user.uid };
+      const batch = writeBatch(db);
+      batch.set(doc(db, "companies", companyId), companyData);
+      batch.set(doc(db, "b2b", companyId), { companyId, name: companyName.trim(), licensesTotal: 0, licensesUsed: 1, status: "active", createdAt: new Date() });
+      batch.update(doc(db, "users", adminDoc.id), { companyId, companyName: companyName.trim(), role: "company_admin", approvalStatus: "approved", updatedAt: new Date() });
+      batch.set(doc(db, "companies", companyId, "members", adminDoc.id), {
+        uid: adminDoc.id, email: adminDoc.data().email, displayName: adminDoc.data().displayName || adminDoc.data().name || "",
+        role: "company_admin", status: "active", createdAt: new Date()
+      });
+      await batch.commit();
+      setCompanyName(""); setAdminEmail(""); setSelectedCompanyId(companyId);
+      setFeedback("Empresa creada y administrador vinculado correctamente.");
+    } catch (error: any) {
+      console.error("Company creation failed:", error);
+      setFeedback(error.message || "No fue posible crear la empresa.");
+      setFeedbackError(true);
+    } finally { setBusy(false); }
+  };
+
+  const addEmployee = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user || !selectedCompanyId || !employeeEmail.trim()) return;
+    setBusy(true); setFeedback(""); setFeedbackError(false);
+    try {
+      const employeeDoc = await findUserByEmail(employeeEmail);
+      if (!employeeDoc) throw new Error("El colaborador debe registrarse primero en KIRA con Google.");
+      const company = companies.find(item => item.id === selectedCompanyId);
+      const employee = employeeDoc.data();
+      const batch = writeBatch(db);
+      batch.update(doc(db, "users", employeeDoc.id), {
+        companyId: selectedCompanyId, companyName: company?.name || "", updatedAt: new Date()
+      });
+      batch.set(doc(db, "companies", selectedCompanyId, "members", employeeDoc.id), {
+        uid: employeeDoc.id, email: employee.email || employeeEmail.trim().toLowerCase(),
+        displayName: employee.displayName || employee.name || "", department: employee.department || "",
+        jobTitle: employee.jobTitle || "", role: employee.role || "alumno", status: "active", createdAt: new Date()
+      });
+      const currentMembers = await getDocs(collection(db, "companies", selectedCompanyId, "members"));
+      batch.update(doc(db, "b2b", selectedCompanyId), { licensesUsed: currentMembers.size + (currentMembers.docs.some(d => d.id === employeeDoc.id) ? 0 : 1) });
+      await batch.commit();
+      setEmployeeEmail("");
+      setFeedback("Colaborador vinculado a la organización. Su rol individual de KIRA se conserva.");
+    } catch (error: any) {
+      console.error("Company member assignment failed:", error);
+      setFeedback(error.message || "No fue posible vincular al colaborador.");
+      setFeedbackError(true);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+      <header className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <p className="text-xs font-bold uppercase tracking-widest text-teal-700">Administración B2B</p>
+        <h2 className="mt-2 text-2xl font-black text-slate-900">Empresas y licencias</h2>
+        <p className="mt-2 text-sm text-slate-500">Crea organizaciones, asigna un administrador empresarial y vincula colaboradores sin exponer sus diarios personales.</p>
+      </header>
+      {feedback && <div role="status" className={cn("rounded-xl border p-4 text-sm", feedbackError ? "border-rose-200 bg-rose-50 text-rose-700" : "border-emerald-200 bg-emerald-50 text-emerald-800")}>{feedback}</div>}
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="font-bold text-slate-900">Crear organización</h3>
+        <form onSubmit={createCompany} className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <input required value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="Nombre de la empresa" className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-teal-500" />
+          <input required type="email" value={adminEmail} onChange={e => setAdminEmail(e.target.value)} placeholder="Email del administrador" className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-teal-500" />
+          <button disabled={busy} className="min-h-11 rounded-xl bg-teal-700 px-4 text-sm font-bold text-white disabled:opacity-50">{busy ? "Guardando…" : "Crear empresa + admin"}</button>
+        </form>
+        <p className="mt-2 text-xs text-slate-400">El administrador debe tener una cuenta KIRA registrada previamente. El alta queda limitada al superadministrador.</p>
+      </section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 className="font-bold text-slate-900">Vincular colaboradores</h3>
+        <form onSubmit={addEmployee} className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <select required value={selectedCompanyId} onChange={e => setSelectedCompanyId(e.target.value)} className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm">
+            <option value="">Seleccionar empresa</option>
+            {companies.map(company => <option key={company.id} value={company.id}>{company.name}</option>)}
+          </select>
+          <input required type="email" value={employeeEmail} onChange={e => setEmployeeEmail(e.target.value)} placeholder="Email del colaborador" className="min-h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-teal-500" />
+          <button disabled={busy || !selectedCompanyId} className="min-h-11 rounded-xl border border-teal-700 px-4 text-sm font-bold text-teal-800 disabled:opacity-50">{busy ? "Guardando…" : "Vincular colaborador"}</button>
+        </form>
+      </section>
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {companies.map(company => <article key={company.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="font-bold text-slate-900">{company.name}</div>
+          <div className="mt-1 break-all font-mono text-[11px] text-slate-400">{company.id}</div>
+          <div className="mt-3 flex justify-between text-xs text-slate-500"><span>Licencias utilizadas</span><strong className="text-slate-800">{company.licensesUsed ?? 0} / {company.licensesTotal ?? 0}</strong></div>
+        </article>)}
+      </section>
+    </div>
+  );
+}

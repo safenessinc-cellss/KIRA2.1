@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, getDocs, getDoc, addDoc, onSnapshot, doc, updateDoc, setDoc, orderBy, limit } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
@@ -10,39 +10,6 @@ import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, Shiel
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
 
-const DEFAULT_BOOKS = [
-  {
-    id: 'cio-robert-teran',
-    title: 'Cio',
-    author: 'Robert Teran',
-    price: 0,
-    imageUrl: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=400',
-    description: 'Soy un hombre que llegó al mundo sin saber quién era y que aprendió a nombrarse en el silencio. Estas páginas son mi despedida de quien fui y mi bienvenida a quien aún no sé que soy. Aquí encontrarás preguntas que tal vez también te has hecho: ¿Quién soy? ¿De dónde vengo? ¿Hacia dónde voy? ¿Por qué las cosas terribles se aprenden rápido y las hermosas nos cuestan la vida? No esperes respuestas. Espera caminos. "Caminante, no hay camino, el camino se hace al andar."',
-    status: 'published',
-    authorType: 'coach'
-  },
-  {
-    id: 'diario-diosa-kira',
-    title: 'Diario de una Diosa',
-    author: 'Kira Zurita',
-    price: 0,
-    imageUrl: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=400',
-    description: 'Un libro canalizado y estructurado con herramientas de arteterapia, respiración consciente y introspección guiada.',
-    status: 'published',
-    authorType: 'admin'
-  },
-  {
-    id: 'habitos-atomicos-ideas',
-    title: 'Las diez ideas clave de Hábitos Atómicos',
-    author: 'Kira Coach',
-    price: 5,
-    imageUrl: 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?auto=format&fit=crop&q=80&w=400',
-    description: 'Un libro canalizado y estructurado con herramientas de arteterapia, respiración consciente e introspección inspirada en el best-seller de James Clear.',
-    status: 'published',
-    authorType: 'coach'
-  }
-];
-
 export function Dashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -51,7 +18,7 @@ export function Dashboard() {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
-  const [availableBooks, setAvailableBooks] = useState<any[]>(DEFAULT_BOOKS);
+  const [availableBooks, setAvailableBooks] = useState<any[]>([]);
   const [myEnrollments, setMyEnrollments] = useState<any[]>([]);
   const [myEnrollmentRecords, setMyEnrollmentRecords] = useState<any[]>([]);
   const [myCertificateRequests, setMyCertificateRequests] = useState<any[]>([]);
@@ -62,6 +29,7 @@ export function Dashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
+  const [checkoutProvider, setCheckoutProvider] = useState<'stripe' | 'mercadopago'>('stripe');
 
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [showCart, setShowCart] = useState(false);
@@ -69,7 +37,6 @@ export function Dashboard() {
   const [purchases, setPurchases] = useState<any[]>([]);
   const [paymentForm, setPaymentForm] = useState({ cardName: '', cardNumber: '', expiry: '', cvv: '' });
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [paymentSuccessData, setPaymentSuccessData] = useState<any | null>(null);
 
   const [showCommunityModal, setShowCommunityModal] = useState(false);
   const [whatsappUrl, setWhatsappUrl] = useState('');
@@ -192,33 +159,19 @@ export function Dashboard() {
     handlePaymentSuccess();
   }, [user]);
 
-  const handlePaymentSuccess = async () => {
-    const success = searchParams.get('success');
-    const courseId = searchParams.get('courseId');
-    const amount = searchParams.get('amount');
-
-    if (success === 'true' && courseId && user) {
-      try {
-        await addDoc(collection(db, 'enrollments'), {
-          userId: user.uid,
-          courseId,
-          progress: 0,
-          createdAt: new Date()
-        });
-
-        await addDoc(collection(db, 'transactions'), {
-          userId: user.uid,
-          amount: Number(amount),
-          type: 'course_purchase',
-          courseId,
-          createdAt: new Date()
-        });
-
-        setSearchParams({});
-        fetchData();
-      } catch (e) {
-        console.error('Error recording payment success:', e);
-      }
+  const handlePaymentSuccess = () => {
+    // The return URL is not proof of payment. The signed provider webhook is authoritative.
+    const paymentState = searchParams.get('payment');
+    if (paymentState === 'processing' || paymentState === 'pending') {
+      alert('Estamos verificando el pago con el proveedor. El acceso se habilitará automáticamente cuando KIRA reciba la confirmación segura.');
+      setSearchParams({});
+      fetchData();
+    } else if (paymentState === 'cancelled') {
+      alert('El proceso de pago fue cancelado. No se concedió acceso ni se registró un cobro confirmado.');
+      setSearchParams({});
+    } else if (searchParams.get('success') === 'true') {
+      setSearchParams({});
+      fetchData();
     }
   };
 
@@ -271,16 +224,10 @@ export function Dashboard() {
         const booksQ = query(collection(db, 'books'), where('status', '==', 'published'));
         const booksSnap = await getDocs(booksQ);
         const fbBooks = booksSnap.docs.map(d => ({id: d.id, ...d.data()}));
-        const merged = [...DEFAULT_BOOKS];
-        fbBooks.forEach((fbB: any) => {
-          if (!merged.some(m => m.id === fbB.id)) {
-            merged.push(fbB);
-          }
-        });
-        setAvailableBooks(merged);
+        setAvailableBooks(fbBooks);
       } catch (booksErr) {
         console.warn("Dynamic books fetch failed:", booksErr);
-        setAvailableBooks(DEFAULT_BOOKS);
+        setAvailableBooks([]);
       }
 
       const enrollQ = query(collection(db, 'enrollments'), where('userId', '==', user.uid));
@@ -330,29 +277,10 @@ export function Dashboard() {
   };
 
   const handleStripeCheckout = async (course: any) => {
-    if(!user) return;
-    setCheckingOutId(course.id);
-    try {
-      const resp = await fetch('/api/create-checkout-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          courseId: course.id,
-          userId: user.uid,
-          amount: course.price,
-          title: course.title
-        })
-      });
-      const data = await resp.json();
-      if (data.error) {
-        throw new Error(data.error);
-      }
-      window.location.href = data.url;
-    } catch(e: any) {
-      console.error('Stripe Redirect Error:', e);
-      alert('Error al iniciar la inscripción: ' + (e.message || String(e)));
-      setCheckingOutId(null);
-    }
+    if (!user) return;
+    setCheckoutProvider('stripe');
+    setCartItems([{ ...course, itemType: 'course' }]);
+    setShowPaymentModal(true);
   };
 
   const addToCart = (item: any, type: 'course' | 'book') => {
@@ -370,48 +298,23 @@ export function Dashboard() {
 
   const handleProcessPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || cartItems.length === 0) return;
     setIsProcessingPayment(true);
-    
     try {
-      for (const item of cartItems) {
-        await addDoc(collection(db, 'purchases'), {
-          userId: user.uid,
-          userEmail: user.email || '',
-          userName: user.displayName || user.name || 'Alumno',
-          itemId: item.id,
-          itemType: item.itemType || (item.bannerUrl ? 'course' : 'book'),
-          itemTitle: item.title,
-          itemPrice: Number(item.price),
-          imageUrl: item.imageUrl || item.bannerUrl || '',
-          status: 'pending_release',
-          createdAt: new Date()
-        });
-
-        await addDoc(collection(db, 'transactions'), {
-          userId: user.uid,
-          amount: Number(item.price),
-          type: item.itemType === 'course' ? 'course_purchase' : 'book_purchase',
-          itemId: item.id,
-          itemTitle: item.title,
-          status: 'pending_release',
-          createdAt: new Date()
-        });
-      }
-
-      setPaymentSuccessData({
-        items: [...cartItems],
-        total: cartItems.reduce((acc, it) => acc + Number(it.price), 0)
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
+        body: JSON.stringify({ items: cartItems.map(item => ({ id: item.id, quantity: 1 })), provider: checkoutProvider })
       });
-      
-      setCartItems([]);
-      setPaymentForm({ cardName: '', cardNumber: '', expiry: '', cvv: '' });
+      const data = await response.json();
+      if (!response.ok || data.error || !data.url) throw new Error(data.error || 'No se pudo iniciar el pago.');
       setShowPaymentModal(false);
-      
-      fetchData();
-    } catch (err: any) {
-      console.error("Error creating purchases:", err);
-      alert("Ocurrió un error al registrar el pago: " + (err.message || String(err)));
+      window.location.href = data.url;
+    } catch (error: any) {
+      console.error('Checkout failed:', error);
+      alert(error.message || 'No fue posible iniciar el pago.');
     } finally {
       setIsProcessingPayment(false);
     }
@@ -1327,7 +1230,7 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* SIMULATED PAYMENT MODAL */}
+      {/* Secure provider checkout modal */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowPaymentModal(false)} />
@@ -1337,7 +1240,7 @@ export function Dashboard() {
                 <h3 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
                   <CreditCard size={24} className="text-kirateal" /> Checkout de Compra
                 </h3>
-                <p className="text-xs text-slate-500 mt-1">Simulador de pasarela de pago segura de Kira Coach</p>
+                <p className="text-xs text-slate-500 mt-1">Selecciona Stripe o Mercado Pago para completar el pago fuera de KIRA.</p>
               </div>
               <button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-slate-600 font-bold p-2">✕</button>
             </div>
@@ -1365,97 +1268,14 @@ export function Dashboard() {
                 </div>
               </div>
 
-              {/* Card form */}
               <form onSubmit={handleProcessPayment} className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Nombre en la Tarjeta</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Robert Harrison"
-                    value={paymentForm.cardName}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, cardName: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-                  />
+                <p className="text-sm text-slate-600">El pago se procesa en la plataforma oficial del proveedor. KIRA no solicita ni almacena los datos de tu tarjeta.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button type="button" onClick={() => setCheckoutProvider('stripe')} aria-pressed={checkoutProvider === 'stripe'} className={`rounded-xl border px-3 py-3 text-sm font-bold ${checkoutProvider === 'stripe' ? 'border-kirateal bg-kirateal/10 text-kirateal' : 'border-slate-200 text-slate-500'}`}>Stripe</button>
+                  <button type="button" onClick={() => setCheckoutProvider('mercadopago')} aria-pressed={checkoutProvider === 'mercadopago'} className={`rounded-xl border px-3 py-3 text-sm font-bold ${checkoutProvider === 'mercadopago' ? 'border-kirateal bg-kirateal/10 text-kirateal' : 'border-slate-200 text-slate-500'}`}>Mercado Pago</button>
                 </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Número de Tarjeta</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      placeholder="4000 1234 5678 9010"
-                      maxLength={19}
-                      value={paymentForm.cardNumber}
-                      onChange={(e) => {
-                        let val = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-                        let matches = val.match(/\d{4,16}/g);
-                        let match = matches && matches[0] || '';
-                        let parts = [];
-                        for (let i = 0, len = match.length; i < len; i += 4) {
-                          parts.push(match.substring(i, i + 4));
-                        }
-                        if (parts.length > 0) {
-                          setPaymentForm({ ...paymentForm, cardNumber: parts.join(' ') });
-                        } else {
-                          setPaymentForm({ ...paymentForm, cardNumber: val });
-                        }
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none pl-11"
-                    />
-                    <CreditCard className="absolute left-4 top-3.5 text-slate-400" size={18} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Vencimiento</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="MM/AA"
-                      maxLength={5}
-                      value={paymentForm.expiry}
-                      onChange={(e) => {
-                        let val = e.target.value.replace(/[^0-9]/g, '');
-                        if (val.length >= 2) {
-                          setPaymentForm({ ...paymentForm, expiry: val.substring(0, 2) + '/' + val.substring(2, 4) });
-                        } else {
-                          setPaymentForm({ ...paymentForm, expiry: val });
-                        }
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">CVC / CVV</label>
-                    <input
-                      type="password"
-                      required
-                      placeholder="123"
-                      maxLength={4}
-                      value={paymentForm.cvv}
-                      onChange={(e) => setPaymentForm({ ...paymentForm, cvv: e.target.value.replace(/[^0-9]/g, '') })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isProcessingPayment}
-                  className="w-full mt-6 py-4 bg-kirateal text-white hover:bg-kirateal-dark rounded-2xl font-black uppercase text-xs tracking-wider transition-all duration-300 hover:shadow-xl hover:shadow-teal-100 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-teal-50"
-                >
-                  {isProcessingPayment ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" /> Procesando Transacción...
-                    </>
-                  ) : (
-                    <>
-                      Pagar ${cartItems.reduce((acc, item) => acc + Number(item.price), 0).toFixed(2)} USD
-                    </>
-                  )}
+                <button type="submit" disabled={isProcessingPayment} className="w-full mt-4 py-4 bg-kirateal text-white rounded-2xl font-black uppercase text-xs tracking-wider disabled:opacity-50">
+                  {isProcessingPayment ? 'Conectando con el proveedor…' : 'Continuar al pago seguro'}
                 </button>
               </form>
             </div>
@@ -1463,47 +1283,7 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* PAYMENT SUCCESS MODAL */}
-      {paymentSuccessData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setPaymentSuccessData(null)} />
-          <div className="bg-white rounded-[40px] w-full max-w-md p-8 relative z-10 shadow-2xl text-center flex flex-col items-center animate-in zoom-in-95 duration-500">
-            <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-6">
-              <CheckCircle2 size={40} className="stroke-[2.5]" />
-            </div>
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight mb-2">¡Pago Realizado con Éxito!</h3>
-            <p className="text-slate-500 text-sm leading-relaxed mb-6">
-              Hemos registrado el pago de tu orden de forma segura en Firestore.
-            </p>
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-left w-full mb-6 space-y-2">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Detalle de la Transacción</p>
-              {paymentSuccessData.items.map((it: any, i: number) => (
-                <div key={i} className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-700">{it.title}</span>
-                  <span className="font-black text-slate-900">${it.price} USD</span>
-                </div>
-              ))}
-              <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-xs font-black text-slate-900">
-                <span>Total pagado</span>
-                <span>${paymentSuccessData.total.toFixed(2)} USD</span>
-              </div>
-            </div>
-            <div className="bg-amber-50 border border-amber-200/50 rounded-2xl p-4 text-amber-800 text-xs text-left leading-relaxed mb-8 flex gap-3 items-start">
-              <span className="text-lg">⏳</span>
-              <div>
-                <strong className="font-bold block mb-0.5">Pendiente de liberación por el Coach:</strong>
-                Según las políticas de Kira Coach, tu material/acceso será liberado y habilitado manualmente por tu Coach o Administrador desde su Panel de Control. ¡Te avisaremos por correo!
-              </div>
-            </div>
-            <button 
-              onClick={() => setPaymentSuccessData(null)}
-              className="w-full py-4 bg-slate-900 hover:bg-black text-white rounded-2xl font-black text-xs uppercase tracking-wider transition-all duration-300"
-            >
-              Cerrar y Ver Mis Compras
-            </button>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { ShoppingCart, X, Plus, Minus, Trash2, Loader2, Sparkles, CreditCard } f
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { Product, CartItem } from '../types';
+import { auth } from '../firebase';
 
 interface CartContextType {
   cartItems: CartItem[];
@@ -52,6 +53,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { user } = useAuth();
   const { success: toastSuccess, error: toastError } = useToast();
   const [checkingOut, setCheckingOut] = useState(false);
+  const [paymentProvider, setPaymentProvider] = useState<'stripe' | 'mercadopago'>('stripe');
 
   useEffect(() => {
     const savedCart = localStorage.getItem('kira_cart');
@@ -123,18 +125,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setCheckingOut(true);
     try {
-      const ids = cartItems.map(item => item.product.id).join(',');
-      const titles = cartItems.map(item => `${item.product.title} (x${item.quantity})`).join(', ');
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
       
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({
-          courseId: ids,
-          userId: user.uid,
-          amount: cartTotal,
-          title: titles.length > 80 ? `${cartItems.length} Productos de Kira` : titles,
-          type: 'cart_purchase'
+          items: cartItems.map(item => ({ id: item.product.id, quantity: item.quantity })),
+          provider: paymentProvider
         })
       });
 
@@ -297,6 +296,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setPaymentProvider('stripe')} aria-pressed={paymentProvider === 'stripe'} className={`rounded-xl border px-3 py-2.5 text-xs font-bold transition-colors ${paymentProvider === 'stripe' ? 'border-kirateal bg-kirateal/10 text-kirateal' : 'border-slate-200 bg-white text-slate-500'}`}>Stripe · Tarjeta</button>
+                    <button type="button" onClick={() => setPaymentProvider('mercadopago')} aria-pressed={paymentProvider === 'mercadopago'} className={`rounded-xl border px-3 py-2.5 text-xs font-bold transition-colors ${paymentProvider === 'mercadopago' ? 'border-kirateal bg-kirateal/10 text-kirateal' : 'border-slate-200 bg-white text-slate-500'}`}>Mercado Pago</button>
+                  </div>
                   <button
                     onClick={handleCheckout}
                     disabled={checkingOut}
@@ -308,12 +311,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                       </>
                     ) : (
                       <>
-                        <CreditCard size={14} /> Pagar ahora con Stripe
+                        <CreditCard size={14} /> Pagar ahora con {paymentProvider === 'stripe' ? 'Stripe' : 'Mercado Pago'}
                       </>
                     )}
                   </button>
                   <p className="text-[9px] text-center text-slate-400 font-bold uppercase tracking-wider">
-                    Transacción segura garantizada por Stripe
+                    Pago protegido por {paymentProvider === 'stripe' ? 'Stripe' : 'Mercado Pago'} · Confirmación automática
                   </p>
                 </div>
               )}

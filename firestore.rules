@@ -86,6 +86,19 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved';
     }
     
+    function isCompanyAdmin(companyId) {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == companyId
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['hr_admin', 'company_admin'];
+    }
+
+    function isCompanyMember(companyId) {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId == companyId
+        && exists(/databases/$(database)/documents/companies/$(companyId)/members/$(request.auth.uid));
+    }
+
     function hasOnlyAllowedFields(allowedFields) {
       return request.resource.data.keys().hasOnly(allowedFields);
     }
@@ -100,10 +113,10 @@ service cloud.firestore {
     
     function isValidUser() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'name', 'photoURL', 'photoUrl', 'role', 'approvalStatus', 'points', 'theme', 'isEmailVerified', 'staffPermissions', 'lastLoginAt', 'lastActivityAt', 'createdAt', 'specialty', 'bio', 'aiFeedback', 'registeredByCoach', 'status', 'membershipStatus', 'membershipPaidAt', 'socialLinks', 'specialties', 'calendlyUrl', 'experienceLevel', 'languages', 'welcomeVideoUrl', 'rating', 'studentCount', 'mediaItems', 'updatedAt', 'manualActiveStudents', 'manualAvgProgress', 'manualRecentSessions']) &&
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'name', 'photoURL', 'photoUrl', 'role', 'approvalStatus', 'points', 'theme', 'isEmailVerified', 'staffPermissions', 'lastLoginAt', 'lastActivityAt', 'createdAt', 'specialty', 'bio', 'aiFeedback', 'registeredByCoach', 'status', 'membershipStatus', 'membershipPaidAt', 'socialLinks', 'specialties', 'calendlyUrl', 'experienceLevel', 'languages', 'welcomeVideoUrl', 'rating', 'studentCount', 'mediaItems', 'updatedAt', 'manualActiveStudents', 'manualAvgProgress', 'manualRecentSessions', 'companyId', 'companyName', 'department', 'jobTitle', 'employeeCode', 'organizationId', 'tenantId']) &&
              data.uid is string &&
              data.email is string &&
-             data.role in ['admin', 'coach', 'alumno'] &&
+             data.role in ['admin', 'coach', 'alumno', 'hr_admin', 'company_admin', 'company_member'] &&
              (!('createdAt' in data) || data.createdAt is timestamp) &&
              (!('approvalStatus' in data) || data.approvalStatus in ['pending', 'approved', 'rejected']) &&
              (!('points' in data) || data.points is number) &&
@@ -170,7 +183,7 @@ service cloud.firestore {
     
     function isValidEnrollment() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['userId', 'courseId', 'progress', 'createdAt', 'completed', 'courseCompleted', 'completedAt']) &&
+      return hasOnlyAllowedFields(['userId', 'courseId', 'progress', 'createdAt', 'completed', 'courseCompleted', 'completedAt', 'paymentOrderId', 'paymentStatus']) &&
              data.userId is string &&
              data.courseId is string &&
              data.progress is number && data.progress >= 0 && data.progress <= 100 &&
@@ -269,7 +282,7 @@ service cloud.firestore {
       // Update: Users can update their profile but NOT their role or approvalStatus. Admins can update anything.
       allow update: if isAuthenticated() && isValidUser() &&
                     ((isAdmin()) || 
-                     (isCurrentUser(userId) && areImmutableFieldsUnchanged(['uid', 'email', 'role', 'approvalStatus', 'createdAt'])));
+                     (isCurrentUser(userId) && areImmutableFieldsUnchanged(['uid', 'email', 'role', 'approvalStatus', 'createdAt', 'staffPermissions', 'companyId', 'organizationId', 'tenantId', 'membershipStatus', 'membershipPaidAt'])));
                      
       allow delete: if isAdmin();
     }
@@ -284,18 +297,41 @@ service cloud.firestore {
     
     match /enrollments/{enrollmentId} {
       allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid)));
-      allow create: if isAuthenticated() && isValidEnrollment() && request.resource.data.progress == 0 && (!('completed' in request.resource.data) || request.resource.data.completed == false) && (!('courseCompleted' in request.resource.data) || request.resource.data.courseCompleted == false) && (request.resource.data.userId == request.auth.uid || (isApprovedCoach() && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.coachId == request.auth.uid));
-      allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt']) && 
+      // Enrollment is a business entitlement, not a client-side payment flag.
+      // Students may self-enroll only in published free courses. Paid enrollments
+      // must be created by a trusted backend after a verified payment webhook.
+      // Coaches may enroll students only in their own courses; admins may support operations.
+      allow create: if isAuthenticated()
+        && isValidEnrollment()
+        && request.resource.data.progress == 0
+        && (!('completed' in request.resource.data) || request.resource.data.completed == false)
+        && (!('courseCompleted' in request.resource.data) || request.resource.data.courseCompleted == false)
+        && exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId))
+        && (
+          isAdmin()
+          || (
+            isApprovedCoach()
+            && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.coachId == request.auth.uid
+          )
+          || (
+            request.resource.data.userId == request.auth.uid
+            && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.status == 'published'
+            && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.price <= 0
+          )
+        );
+      allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt', 'paymentOrderId', 'paymentStatus']) && 
                     (isAdmin() || (isApprovedCoach() && exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid));
       allow delete: if isAdmin();
     }
     
+    // Journals are strictly private to their owner, including from coaches and administrators.
     match /journals/{journalId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid) || isApprovedCoach();
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && isValidJournal() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() && isValidJournal() && areImmutableFieldsUnchanged(['userId', 'createdAt']) && 
-                    (isAdmin() || isCurrentUser(resource.data.userId));
-      allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow update: if isAuthenticated() && isValidJournal()
+                    && isCurrentUser(resource.data.userId)
+                    && areImmutableFieldsUnchanged(['userId', 'createdAt']);
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
     
     match /sessions/{sessionId} {
@@ -313,10 +349,37 @@ service cloud.firestore {
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
 
+    // Financial ledger entries must be written by a trusted server/webhook (Admin SDK).
+    // Client-side writes are disabled until the verified Stripe ledger endpoint is active.
     match /transactions/{id} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow create: if isAuthenticated() && isValidTransaction(); 
-      allow update, delete: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Orders and entitlements are created only by trusted payment fulfillment.
+    match /orders/{orderId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /memberships/{membershipId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /purchases/{purchaseId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /paymentEvents/{eventId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
     }
 
     match /coupons/{id} {
@@ -334,7 +397,30 @@ service cloud.firestore {
     }
 
     match /b2b/{id} {
-      allow read, create, update, delete: if isAdmin();
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.companyId != null && isCompanyMember(resource.data.companyId));
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Tenant boundary: company admins can manage their own roster, while
+    // employee wellbeing is exposed only through server-generated aggregates.
+    match /companies/{companyId} {
+      allow read: if isAdmin() || isCompanyMember(companyId);
+      allow create, update, delete: if isAdmin();
+
+      match /members/{memberId} {
+        allow read: if isAdmin() || isCompanyAdmin(companyId);
+        allow create, update, delete: if isAdmin();
+      }
+
+      match /wellbeingAggregates/{aggregateId} {
+        allow read: if isAdmin() || isCompanyMember(companyId);
+        allow create, update, delete: if false;
+      }
+
+      match /reports/{reportId} {
+        allow read: if isAdmin() || isCompanyAdmin(companyId);
+        allow create, update, delete: if false;
+      }
     }
 
     match /logs/{id} {
@@ -379,8 +465,14 @@ service cloud.firestore {
     }
 
     match /course_activity/{id} {
-      allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || isApprovedCoach()));
-      allow create: if isAuthenticated(); // Allow tracking
+      allow read: if isAdmin()
+        || (isAuthenticated() && resource.data.userId == request.auth.uid)
+        || (isApprovedCoach()
+          && resource.data.courseId is string
+          && exists(/databases/$(database)/documents/courses/$(resource.data.courseId))
+          && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid);
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 

@@ -92,7 +92,7 @@ export function PerformanceMonitor() {
   }, []);
 
   // Show a tiny performance tag in the bottom-left corner during development / testing
-  if (process.env.NODE_ENV === 'production' && !window.location.search.includes('perf')) {
+  if (import.meta.env.PROD && !window.location.search.includes('perf')) {
     return null; // Don't show by default in production unless ?perf query is present
   }
 

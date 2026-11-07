@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase';
 import { Award, CheckCircle2, ShieldCheck, XCircle } from 'lucide-react';
 
 export default function CertificateValidation() {
@@ -10,9 +8,11 @@ export default function CertificateValidation() {
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     let active = true;
-    getDoc(doc(db, 'certificatePublic', code)).then(snap => {
-      if (active) setCertificate(snap.exists() && snap.data().status === 'issued' ? snap.data() : null);
-    }).catch(error => console.error('Certificate validation error', error)).finally(() => { if (active) setLoading(false); });
+    fetch('/api/certificates/validate/' + encodeURIComponent(code))
+      .then(response => response.json())
+      .then(result => { if (active) setCertificate(result.valid ? result.certificate : null); })
+      .catch(error => console.error('Certificate validation error', error))
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [code]);
   const date = certificate?.issuedAt?.toDate ? certificate.issuedAt.toDate() : certificate?.issuedAt ? new Date(certificate.issuedAt) : null;
