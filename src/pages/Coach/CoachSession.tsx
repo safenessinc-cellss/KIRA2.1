@@ -250,6 +250,10 @@ export function CoachSession() {
     setIsAnalyzing(true);
     setAnalysisError('');
     const savedTranscript = [...transcriptRef.current];
+    const interimText = currentTranscript.trim();
+    if (interimText) {
+      savedTranscript.push({ speaker: 'unknown', text: 'Transcripción parcial: ' + interimText, timestamp: sessionDurationRef.current });
+    }
     const notes = manualNotesRef.current.trim();
     if (notes) {
       savedTranscript.push({
@@ -258,6 +262,9 @@ export function CoachSession() {
         timestamp: sessionDurationRef.current,
       });
     }
+    transcriptRef.current = savedTranscript;
+    setTranscript(savedTranscript);
+    setCurrentTranscript('');
     const transcriptText = savedTranscript.map(segment => segment.text).join('\n');
 
     try {
