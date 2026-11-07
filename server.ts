@@ -675,9 +675,7 @@ async function startLocalServer() {
       const profileSnap = await getAdminDb().collection("users").doc(decoded.uid).get();
       const profile = profileSnap.data() || {};
       const authorizedCoach = profile.role === "coach" && profile.approvalStatus === "approved";
-      const authorizedAdmin = profile.role === "admin" && (
-        decoded.email_verified === true || String(decoded.email || "").toLowerCase() !== "safeness.c.a@gmail.com"
-      );
+      const authorizedAdmin = profile.role === "admin" && decoded.email_verified === true;
       if (!authorizedCoach && !authorizedAdmin) throw new Error("Live access denied");
       wss.handleUpgrade(request, socket, head, (ws: any) => {
         ws.firebaseUser = decoded;
