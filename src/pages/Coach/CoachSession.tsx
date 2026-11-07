@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/src/hooks/useAuth';
 import { db } from '@/src/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { 
   Mic, MicOff, Loader2, Brain, FileText, Clock, Users, 
   ArrowLeft, Download, Share2, Sparkles, AlertCircle,
