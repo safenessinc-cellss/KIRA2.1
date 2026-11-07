@@ -271,7 +271,11 @@ service cloud.firestore {
 
       // A user may self-register only as a learner or coach. Administrative/HR roles are assigned by admin.
       allow create: if isAuthenticated() && isCurrentUser(userId) && isValidUser() &&
-                    request.resource.data.role in ['coach', 'alumno'];
+                    (request.resource.data.role == 'alumno' ||
+                     (request.resource.data.role == 'coach' &&
+                      (!('approvalStatus' in request.resource.data) || request.resource.data.approvalStatus == 'pending') &&
+                      (!('approved' in request.resource.data) || request.resource.data.approved == false) &&
+                      !request.resource.data.keys().hasAny(['approvedAt', 'approvedBy', 'reviewedAt', 'reviewedBy'])));
       allow create: if isAdmin() && isValidUser() &&
                     request.resource.data.role in ['admin', 'hr_admin', 'coach', 'alumno'];
 
@@ -281,7 +285,7 @@ service cloud.firestore {
                      (isCurrentUser(userId) && areImmutableFieldsUnchanged([
                        'uid', 'email', 'role', 'approvalStatus', 'createdAt', 'staffPermissions',
                        'approved', 'approvedAt', 'approvedBy', 'reviewedAt', 'reviewedBy',
-                       'status', 'membershipStatus', 'membershipPaidAt', 'organizationId'
+                       'status', 'membershipStatus', 'membershipPaidAt', 'organizationId', 'assignedCoachId'
                      ])));
       allow delete: if isAdmin();
     }
