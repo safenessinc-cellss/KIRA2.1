@@ -12,6 +12,7 @@ try {
     await setDoc(doc(db, "users", "student-a"), { uid: "student-a", email: "a@example.test", role: "alumno", approvalStatus: "approved", companyId: "company-a" });
     await setDoc(doc(db, "users", "student-b"), { uid: "student-b", email: "b@example.test", role: "alumno", approvalStatus: "approved" });
     await setDoc(doc(db, "users", "company-admin"), { uid: "company-admin", email: "hr@example.test", role: "company_admin", approvalStatus: "approved", companyId: "company-a" });
+    await setDoc(doc(db, "users", "suspended-admin"), { uid: "suspended-admin", email: "suspended@example.test", role: "company_admin", approvalStatus: "suspended", companyId: "company-a" });
     await setDoc(doc(db, "users", "coach-a"), { uid: "coach-a", email: "coach-a@example.test", role: "coach", approvalStatus: "approved" });
     await setDoc(doc(db, "users", "coach-b"), { uid: "coach-b", email: "coach-b@example.test", role: "coach", approvalStatus: "approved" });
     await setDoc(doc(db, "courses", "paid-course"), { title: "Paid", status: "published", price: 100, coachId: "coach-a", createdAt: new Date() });
@@ -20,6 +21,7 @@ try {
     await setDoc(doc(db, "companies", "company-a"), { name: "Company A" });
     await setDoc(doc(db, "companies", "company-b"), { name: "Company B" });
     await setDoc(doc(db, "companies", "company-a", "members", "company-admin"), { uid: "company-admin", role: "company_admin" });
+    await setDoc(doc(db, "companies", "company-a", "members", "suspended-admin"), { uid: "suspended-admin", role: "company_admin" });
     await setDoc(doc(db, "companies", "company-a", "wellbeingAggregates", "2026-11"), { period: "2026-11", highRiskCount: 2 });
     await setDoc(doc(db, "coachLedger", "coach-a-course-a"), { coachId: "coach-a", courseId: "course-a", amount: 100, status: "pending_release" });
     await setDoc(doc(db, "companies", "company-b", "members", "other-admin"), { uid: "other-admin", role: "company_admin" });
@@ -46,6 +48,8 @@ try {
   await assertSucceeds(getDoc(doc(companyDb, "companies", "company-a", "members", "company-admin")));
   await assertFails(getDoc(doc(companyDb, "companies", "company-b", "members", "other-admin")));
   await assertFails(getDoc(doc(companyDb, "journals", "journal-b")));
+  const suspendedCompanyDb = env.authenticatedContext("suspended-admin", { email: "suspended@example.test" }).firestore();
+  await assertFails(getDoc(doc(suspendedCompanyDb, "companies", "company-a", "wellbeingAggregates", "2026-11")));
 
   console.log("Firestore rules smoke tests passed.");
 } finally {
