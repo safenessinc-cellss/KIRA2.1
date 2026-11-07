@@ -351,7 +351,89 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+app.get("/api/coach/crm-metrics", async (req, res) => {
+  let decoded: any;
+  try { decoded = await verifyFirebaseUser(req); }
+  catch { return res.status(401).json({ error: "Authentication required." }); }
+
+  try {
+    const firestore = getAdminDb();
+    const coachSnap = await firestore.collection("users").doc(decoded.uid).get();
+    const coach = coachSnap.data() || {};
+    if (coach.role !== "coach" || coach.approvalStatus !== "approved") {
+      return res.status(403).json({ error: "Coach approval is required for CRM analytics." });
+    }
+
+    const [favoritesSnap, coursesSnap] = await Promise.all([
+      firestore.collection("users").where("favorites", "array-contains", decoded.uid).get(),
+      firestore.collection("courses").where("coachId", "==", decoded.uid).get()
+    ]);
+    const courses = coursesSnap.docs.map(course => course.data());
+    const courseIds = coursesSnap.docs.map(course => course.id);
+    const studioViews = courses.reduce((sum, course) => {
+      const views = Number(course.viewCount);
+      return sum + (Number.isFinite(views) && views > 0 ? views : 0);
+    }, 0);
+
+    const enrollments: any[] = [];
+    for (const courseId of courseIds) {
+      const snap = await firestore.collection("enrollments").where("courseId", "==", courseId).get();
+      enrollments.push(...snap.docs.map(doc => doc.data()));
+    }
+    const activeLearners = new Set(enrollments.map(enrollment => enrollment.userId).filter(Boolean)).size;
+
+    const transactionSnap = await firestore.collection("transactions").where("coachId", "==", decoded.uid).get();
+    const transactions = transactionSnap.docs.map(doc => doc.data());
+    const financialAvailable = transactions.length > 0;
+    const checkouts = financialAvailable
+      ? transactions.filter(transaction => ["pending", "checkout_pending"].includes(String(transaction.status || "").toLowerCase())).length
+      : null;
+    const revenue = financialAvailable
+      ? transactions.filter(transaction => ["paid", "completed", "released"].includes(String(transaction.status || "").toLowerCase()))
+          .reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0)
+      : null;
+
+    const monthMap = new Map<string, { month: string; ingresos: number; alumnos: number }>();
+    const months = Array.from({ length: 6 }, (_, index) => {
+      const date = new Date();
+      date.setDate(1);
+      date.setMonth(date.getMonth() - (5 - index));
+      const key = date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
+      return { key, month: date.toLocaleDateString("es-ES", { month: "short" }), ingresos: 0, alumnos: 0 };
+    });
+    months.forEach(month => monthMap.set(month.key, month));
+    for (const transaction of transactions) {
+      const createdAt = transaction.paidAt?.toDate ? transaction.paidAt.toDate()
+        : transaction.createdAt?.toDate ? transaction.createdAt.toDate()
+        : transaction.createdAt instanceof Date ? transaction.createdAt : null;
+      if (!createdAt) continue;
+      const key = createdAt.getFullYear() + "-" + String(createdAt.getMonth() + 1).padStart(2, "0");
+      const month = monthMap.get(key);
+      if (month && ["paid", "completed", "released"].includes(String(transaction.status || "").toLowerCase())) {
+        month.ingresos += Number(transaction.amount) || 0;
+        month.alumnos += 1;
+      }
+    }
+
+    return res.status(200).json({
+      prospects: favoritesSnap.size,
+      studioViews,
+      enrollments: enrollments.length,
+      activeLearners,
+      checkouts,
+      revenue,
+      financialAvailable,
+      revenueHistory: financialAvailable ? months.map(({ month, ingresos, alumnos }) => ({ month, ingresos, alumnos })) : [],
+      lastUpdated: new Date().toISOString()
+    });
+  } catch (err: any) {
+    console.error("Coach CRM metrics failed", err);
+    return res.status(500).json({ error: "Coach CRM metrics are temporarily unavailable." });
+  }
+});
+
 // Report configuration truthfully; never claim the AI is ready when no key is configured.
+app.get("/api/gemini/config", (req, res) => {// Report configuration truthfully; never claim the AI is ready when no key is configured.
 app.get("/api/gemini/config", (req, res) => {
   const configured = isValidGeminiKey(process.env.GEMINI_API_KEY);
   res.status(configured ? 200 : 503).json({ configured, isRealKey: configured });
