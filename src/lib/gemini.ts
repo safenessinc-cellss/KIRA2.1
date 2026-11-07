@@ -35,7 +35,7 @@ export async function generateGemini(payload: GeminiPayload): Promise<string> {
   // 1. Pre-call validation
   const isConfigured = await checkGeminiConfig();
   if (!isConfigured) {
-    const errorMsg = 'Configuración faltante: La Clave de API de Gemini (GEMINI_API_KEY) no está configurada en la plataforma. Por favor, añádela en Settings > Secrets para activar las funciones de IA.';
+    const errorMsg = 'Configuración faltante: La Clave de API de Gemini (GEMINI_API_KEY) no está configurada en la plataforma. Por favor, añádela en variables de entorno del servidor para activar las funciones de IA.';
     console.error('[Gemini Central] Validation failed:', errorMsg);
     throw new Error(errorMsg);
   }
@@ -73,12 +73,12 @@ export async function generateGemini(payload: GeminiPayload): Promise<string> {
     try {
       data = JSON.parse(text);
     } catch (e) {
-      throw new Error("La respuesta del servidor no es un JSON válido. Por favor, asegúrate de que tu clave de API de Gemini (GEMINI_API_KEY) esté bien configurada en el panel de 'Settings > Secrets' (en la esquina superior derecha de AI Studio).");
+      throw new Error("La respuesta del servidor no es un JSON válido. Por favor, asegúrate de que tu clave de API de Gemini (GEMINI_API_KEY) esté bien configurada en el panel de 'Settings > Secrets' en la configuración segura del servidor.");
     }
 
     if (data.error) {
       if (data.error === 'GEMINI_API_KEY_MISSING') {
-        throw new Error('Configuración faltante: La Clave de API de Gemini no está disponible. Agrégala en Settings > Secrets.');
+        throw new Error('Configuración faltante: La Clave de API de Gemini no está disponible. Configúrala en las variables de entorno del servidor.');
       }
       throw new Error(data.error);
     }
