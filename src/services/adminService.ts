@@ -246,8 +246,8 @@ export const getCoachStudents = async (coachId: string): Promise<StudentEnrollme
     
     const students: StudentEnrollment[] = [];
     
-    for (const doc of enrollmentsSnapshot.docs) {
-      const data = doc.data();
+    for (const enrollmentDoc of enrollmentsSnapshot.docs) {
+      const data = enrollmentDoc.data();
       
       // 3. Obtener datos del estudiante
       const userRef = doc(db, 'users', data.studentId);
@@ -260,7 +260,7 @@ export const getCoachStudents = async (coachId: string): Promise<StudentEnrollme
       const courseData = courseSnap.exists() ? courseSnap.data() : {};
       
       students.push({
-        id: doc.id,
+        id: enrollmentDoc.id,
         studentId: data.studentId,
         studentName: userData.displayName || 'Sin nombre',
         studentEmail: userData.email || '',
