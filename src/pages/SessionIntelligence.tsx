@@ -116,25 +116,24 @@ export default function SessionIntelligence() {
   const fetchLastSession = async () => {
     if (!user) return;
     try {
-      const q = query(
-        collection(db, 'sessions'),
-        where('userId', '==', user.uid)
-      );
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const sorted: any[] = snap.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })).sort((a: any, b: any) => {
-          const timeA = a.createdAt?.seconds || 0;
-          const timeB = b.createdAt?.seconds || 0;
-          return timeB - timeA;
-        });
-        const rawAnalysis = sorted[0].analysis;
-        setLastSession(sanitizeAnalysis(rawAnalysis));
-      }
-    } catch (e) {
-      console.error("Error fetching last session:", e);
+      const [byUser, byCoach] = await Promise.all([
+        getDocs(query(collection(db, 'sessions'), where('userId', '==', user.uid))),
+        getDocs(query(collection(db, 'sessions'), where('coachId', '==', user.uid))),
+      ]);
+      const uniqueDocs = Array.from(new Map(
+        [...byUser.docs, ...byCoach.docs].map(sessionDoc => [sessionDoc.id, sessionDoc])
+      ).values());
+      const sorted = uniqueDocs.map(sessionDoc => ({
+        id: sessionDoc.id,
+        ...sessionDoc.data(),
+      })).sort((left: any, right: any) => {
+        const timeLeft = left.createdAt?.seconds || 0;
+        const timeRight = right.createdAt?.seconds || 0;
+        return timeRight - timeLeft;
+      });
+      setLastSession(sorted.length ? sanitizeAnalysis(sorted[0].analysis) : null);
+    } catch (error) {
+      console.error('Error fetching session history:', error);
     }
   };
 
