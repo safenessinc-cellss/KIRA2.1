@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from '../components/Brand';
-import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart } from 'lucide-react';
+import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart, ShieldCheck } from 'lucide-react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { ChatWidget } from '../components/Chat';
@@ -70,7 +70,7 @@ export function DashboardLayout({ title }: { title: string }) {
 
   const links = {
     admin: [
-      { to: "/admin", icon: LayoutDashboard, label: "Command Center" },
+      { to: "/admin", icon: ShieldCheck, label: "Administración KIRA" },
     ],
     hr_admin: [
       { to: "/hr", icon: Users, label: "Culture & Health" },
@@ -180,13 +180,7 @@ export function DashboardLayout({ title }: { title: string }) {
               )}
             </div>
           </div>
-          <button 
-            onClick={logout}
-            className="flex items-center gap-3 py-3 text-sm font-medium text-red-500 hover:text-red-600 transition"
-          >
-            <LogOut size={16} />
-            Cerrar Sesión
-          </button>
+          
         </div>
       </aside>
 
@@ -236,11 +230,6 @@ export function DashboardLayout({ title }: { title: string }) {
               )}
             </button>
 
-            {role === 'coach' && (
-              <span className="text-xs px-2 py-1 bg-emerald-50 text-emerald-600 rounded-full font-semibold">
-                Membresía Activa
-              </span>
-            )}
             <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
                <Palette size={16} />
             </div>

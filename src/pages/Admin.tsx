@@ -37,21 +37,21 @@ export function AdminMonitor() {
   };
 
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard Ejecutivo', icon: <LayoutDashboard size={18}/>, category: 'Centro de Mando' },
-    { id: 'analytics', label: 'Business Intelligence', icon: <TrendingUp size={18}/>, category: 'Centro de Mando', perm: 'system' },
+    { id: 'dashboard', label: 'Resumen Ejecutivo', icon: <LayoutDashboard size={18}/>, category: 'Visión y Analítica' },
+    { id: 'analytics', label: 'Business Intelligence', icon: <TrendingUp size={18}/>, category: 'Visión y Analítica', perm: 'system' },
 
-    { id: 'security', label: 'Control de Identidad', icon: <ShieldCheck size={18}/>, category: 'Gobernanza y Acceso', superOnly: true },
+    { id: 'security', label: 'Control de Identidad', icon: <ShieldCheck size={18}/>, category: 'Seguridad y Gobernanza', superOnly: true },
     { id: 'campaign_history', label: 'Ciberseguridad y Logs', icon: <ShieldAlert size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
     { id: 'ai_coaches', label: 'IA para Coaches', icon: <Sparkles size={18}/>, category: 'Gobernanza y Acceso', perm: 'system' },
 
-    { id: 'approvals', label: 'Aprobaciones de Usuarios', icon: <ShieldCheck size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
+    { id: 'approvals', label: 'Aprobaciones de Usuarios', icon: <ShieldCheck size={18}/>, category: 'Personas y Academia', perm: 'users' },
     { id: 'coaches', label: 'Estrategia de Coaches', icon: <UserCheck size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
     { id: 'students', label: 'Directorio 360 de Alumnos', icon: <Users size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
     { id: 'books', label: 'Biblioteca de Libros', icon: <BookOpen size={18}/>, category: 'Operaciones Académicas', perm: 'users' },
     { id: 'content', label: 'CMS Académico', icon: <ShoppingBag size={18}/>, category: 'Operaciones Académicas', perm: 'billing' },
 
-    { id: 'promotions', label: 'Gestión de Promociones', icon: <Star size={18}/>, category: 'Crecimiento y Marketing', perm: 'billing' },
-    { id: 'settlement', label: 'Centro de Liquidación', icon: <PieChartIcon size={18}/>, category: 'Motor Financiero', perm: 'billing' },
+    { id: 'promotions', label: 'Gestión de Promociones', icon: <Star size={18}/>, category: 'Catálogo y Marketing', perm: 'billing' },
+    { id: 'settlement', label: 'Centro de Liquidación', icon: <PieChartIcon size={18}/>, category: 'Finanzas y Liquidaciones', perm: 'billing' },
     { id: 'transactions', label: 'Finanzas Globales', icon: <CreditCard size={18}/>, category: 'Motor Financiero', perm: 'billing' },
   ];
 
@@ -63,11 +63,11 @@ export function AdminMonitor() {
   });
 
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-    'Centro de Mando': true,
-    'Gobernanza y Acceso': true,
-    'Operaciones Académicas': true,
-    'Crecimiento y Marketing': true,
-    'Motor Financiero': true
+    'Visión y Analítica': true,
+    'Seguridad y Gobernanza': true,
+    'Personas y Academia': true,
+    'Catálogo y Marketing': true,
+    'Finanzas y Liquidaciones': true
   });
 
   const categories = Array.from(new Set(filteredNav.map(n => n.category)));
@@ -85,7 +85,7 @@ export function AdminMonitor() {
            <Zap className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={16} />
            <input 
              type="text" 
-             placeholder="Omnibar: Búsqueda y acciones..." 
+             placeholder="Buscar módulos y secciones..." 
              value={searchQuery}
              onChange={e => setSearchQuery(e.target.value)}
              className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-12 py-3 text-[13px] outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm transition-all"
@@ -94,39 +94,6 @@ export function AdminMonitor() {
              ⌘K
            </div>
         </div>
-        {isSuperAdmin && (
-           <button 
-             onClick={async () => {
-               const confirmSeed = window.confirm("¿Generar datos de prueba en la base de datos vacía? Esto simulará promociones, transacciones y alumnos.");
-               if (!confirmSeed) return;
-               try {
-                  await addDoc(collection(db, 'promotions'), {
-                     title: 'Beca KIRA 2026',
-                     description: 'Descuento especial por registro.',
-                     code: 'Beca2026',
-                     type: 'Descuento',
-                     status: 'active',
-                     priority: 1,
-                     createdAt: new Date().toISOString()
-                  });
-                  await addDoc(collection(db, 'transactions'), {
-                     amount: 149.00,
-                     type: 'payment',
-                     status: 'completed',
-                     description: 'Plan Premium',
-                     userEmail: 'demo@user.com',
-                     createdAt: new Date().toISOString()
-                  });
-                  alert('Datos semilla generados con éxito.');
-               } catch(e) {
-                  console.error(e);
-               }
-             }}
-             className="w-full justify-center flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition shadow-md"
-           >
-             <Zap size={14} className="text-amber-400" /> Cargar Demo Data Inicial
-           </button>
-        )}
 
         <div className="flex flex-col gap-2">
           {categories.map(cat => (
@@ -368,7 +335,6 @@ function GlobalDashboardView() {
   const [stats, setStats] = useState({ 
     users: 0, 
     sales: 0, 
-    activeIA: 0, 
     sentiment: { positive: 0, neutral: 0, negative: 0 },
     engagement: { dailyActive: 0, weeklyActive: 0 },
     courses: [] as any[],
@@ -401,8 +367,8 @@ function GlobalDashboardView() {
     const unsubTransactions = onSnapshot(collection(db, 'transactions'), 
       (snap) => {
         let totalSales = 0;
-        snap.forEach(d => totalSales += (d.data().amount || 0));
-        setStats(prev => ({ ...prev, sales: totalSales, activeIA: 12 }));
+        snap.forEach(d => { const tx = d.data(); if (['completed', 'paid', 'succeeded'].includes(String(tx.status || tx.paymentStatus || '').toLowerCase())) totalSales += Number(tx.amount || tx.total || 0); });
+        setStats(prev => ({ ...prev, sales: totalSales }));
       },
       (err) => handleFirestoreError(err, OperationType.LIST, 'transactions')
     );
@@ -422,7 +388,7 @@ function GlobalDashboardView() {
       const journalsRef = collection(db, 'journals');
       getDocs(journalsRef).then(jSnap => {
         const journals = jSnap.docs.map(d => d.data());
-        const processedTrends = generateTrendData(journals, enrolls, stats.users || 100, daysRange);
+        const processedTrends = generateTrendData(journals, enrolls, stats.users, daysRange);
         setTrends(processedTrends);
       });
     });
@@ -500,8 +466,7 @@ function GlobalDashboardView() {
   const generateTrendData = (journals: any[], enrolls: any[], usersCount: number, days: number) => {
     const data = [];
     const now = new Date();
-    // Use a small fixed number for demo purposes if usersCount is 0
-    const effectiveUsers = usersCount || 10;
+    const effectiveUsers = usersCount;
     
     for (let i = days; i >= 0; i--) {
       const d = new Date(now);
@@ -520,8 +485,8 @@ function GlobalDashboardView() {
 
       data.push({
         name: d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
-        adopcionDiario: Math.min(100, (uniqueOnDay / effectiveUsers) * 100 + (Math.random() * 5)),
-        completionRate: Math.min(100, avgComp - (i * 0.2) + (Math.random() * 3))
+        adopcionDiario: effectiveUsers > 0 ? Math.min(100, (uniqueOnDay / effectiveUsers) * 100) : 0,
+        completionRate: Math.max(0, Math.min(100, avgComp))
       });
     }
     return data;
@@ -538,7 +503,7 @@ function GlobalDashboardView() {
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2">
       <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200">
         <h2 className="font-black text-slate-800 tracking-tight flex items-center gap-2">
-          <Activity size={20} className="text-kirateal" /> Command Center Executive
+          <Activity size={20} className="text-kirateal" /> Resumen Ejecutivo
         </h2>
         <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
           {[7, 30, 90].map(d => (
@@ -570,9 +535,9 @@ function GlobalDashboardView() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
-        <StatCard title="Ventas del Día" value={`$${(stats.sales * 0.15).toLocaleString()}`} subtitle="Ultimas 24hs" icon={<BarChart3 className="text-kirateal" />} />
-        <StatCard title="Kira Net Revenue" value={`$${(stats.sales * 0.7).toLocaleString()}`} subtitle="Comisión (70%)" icon={<BarChart3 className="text-emerald-500" />} />
-        <StatCard title="Coach Payouts" value={`$${(stats.sales * 0.3).toLocaleString()}`} subtitle="Liquidación (30%)" icon={<CreditCard className="text-purple-500" />} />
+        <StatCard title="Ingresos confirmados" value={`${stats.sales.toLocaleString()}`} subtitle="Solo pagos completados" icon={<CreditCard className="text-kirateal" />} />
+        <StatCard title="Usuarios registrados" value={`${stats.users}`} subtitle="Cuenta total real" icon={<Users className="text-emerald-500" />} />
+        <StatCard title="Cursos publicados" value={`${stats.courses.filter((c:any) => c.status === "published" || c.isPublished === true).length}`} subtitle="Según estado del catálogo" icon={<BookOpen className="text-purple-500" />} />
         <StatCard 
           title="Product DAU" 
           value={`${stats.engagement.dailyActive}`} 
@@ -661,49 +626,18 @@ function GlobalDashboardView() {
         </div>
       </div>
 
-      {/* NUEVA SECCIÓN: INSIGHTS SUGERIDOS POR IA */}
-      <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 text-white shadow-lg overflow-hidden relative group">
-        <div className="absolute -right-8 -top-8 opacity-10 group-hover:scale-110 transition-transform duration-700">
-           <Zap size={180} />
+      {/* Insights are intentionally not fabricated when the AI service has no verified result. */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex items-center gap-2 text-slate-700 font-semibold">
+          <Sparkles size={18} className="text-kirateal" />
+          Insights de KIRA
         </div>
-        <div className="flex items-center gap-3 mb-6 relative z-10">
-           <Sparkles className="text-amber-300 animate-pulse" size={24} />
-           <h3 className="font-bold text-lg tracking-tight">Kira Intelligence: AI-Suggested Insights</h3>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
-           <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 hover:bg-white/20 transition-colors">
-              <div className="flex items-center gap-2 mb-2">
-                 <ShieldAlert size={16} className="text-rose-300" />
-                 <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-100">Detección de Fugas</span>
-              </div>
-              <p className="text-sm font-medium leading-relaxed">
-                 Bajada del 15% en retención detectada en "Curso Nivel 2". Causa probable: Inactividad del Coach en chats grupales (últ. 4 días).
-              </p>
-           </div>
-           
-           <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 hover:bg-white/20 transition-colors">
-              <div className="flex items-center gap-2 mb-2">
-                 <TrendingUp size={16} className="text-amber-300" />
-                 <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-100">Oportunidad de Tracción</span>
-              </div>
-              <p className="text-sm font-medium leading-relaxed">
-                 Tendencia 'Burnout Laboral' creció +34%. Sugerencia: Notificación Push con descuento [BURN20] vinculando a mentoría asíncrona.
-              </p>
-           </div>
-
-           <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 hover:bg-white/20 transition-colors">
-              <div className="flex items-center gap-2 mb-2">
-                 <Zap size={16} className="text-emerald-300" />
-                 <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-100">Optimización B2B</span>
-              </div>
-              <p className="text-sm font-medium leading-relaxed">
-                 Corporación [TechX] muestra incremento en Sentiment negativo. El Algoritmo de Horizonte sugiere revisión de KPIs trimestrales.
-              </p>
-           </div>
-        </div>
+        <p className="mt-2 text-sm text-slate-500">
+          Los insights automáticos aparecerán únicamente cuando exista un análisis real generado por el servicio de IA.
+          No se muestran recomendaciones simuladas ni datos inventados.
+        </p>
       </div>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
           <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
@@ -791,10 +725,6 @@ function StudentManagementView() {
     return { color: 'bg-rose-500', text: 'Crítico', icon: <XCircle size={12} className="text-rose-500" />, isRisk: false };
   };
 
-  const handleNotifyCoach = (studentName: string) => {
-     alert(`Notificación enviada al Coach asignado sobre ${studentName}. Pipeline de Retención Activado.`);
-  };
-
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden animate-in fade-in">
       <div className="px-6 py-5 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50/50 gap-4">
@@ -867,11 +797,6 @@ function StudentManagementView() {
                     <div className={cn("w-3 h-3 rounded-full shadow-sm ring-4 ring-offset-2", status.color.replace('bg-', 'ring-').replace('500', '100'), status.color)} />
                     
                     <div className="ml-4 border-l border-slate-200 pl-4 flex flex-col gap-2 items-end">
-                      {status.isRisk && (
-                        <button onClick={(e) => { e.stopPropagation(); handleNotifyCoach(s.displayName); }} className="px-2 py-1 bg-purple-50 text-purple-600 rounded text-[10px] font-bold hover:bg-purple-100 transition-colors uppercase flex items-center gap-1">
-                          <Send size={10} /> Intervenir
-                        </button>
-                      )}
                       {s.approvalStatus === 'suspended' ? (
                         <button 
                           onClick={async (e) => { e.stopPropagation(); await updateDoc(doc(db, 'users', s.id), { approvalStatus: 'approved' }); }}
@@ -1427,54 +1352,6 @@ function CoachCuratorView() {
     suspended: 'bg-red-100 text-red-700'
   };
 
-  const seedDemoCoaches = async () => {
-    const demos = [
-      {
-        uid: 'demo_coach_1',
-        displayName: 'Ana María Silva',
-        email: 'ana@demo.com',
-        role: 'coach',
-        specialty: 'Arte Terapia y Sanación',
-        bio: 'Sanadora emocional certificada internacionalmente en Arte Terapia integrativa.',
-        photoURL: 'https://picsum.photos/seed/coach_ana/800/1000',
-        approvalStatus: 'approved',
-        createdAt: new Date()
-      },
-      {
-        uid: 'demo_coach_2',
-        displayName: 'Carlos Méndez',
-        email: 'carlos@demo.com',
-        role: 'coach',
-        specialty: 'Liderazgo John Maxwell',
-        bio: 'Mentor certificado de la John Maxwell Team para ejecutivos.',
-        photoURL: 'https://picsum.photos/seed/coach_carlos/800/1000',
-        approvalStatus: 'approved',
-        createdAt: new Date()
-      },
-      {
-        uid: 'demo_coach_3',
-        displayName: 'Elena Ferrán',
-        email: 'elena@demo.com',
-        role: 'coach',
-        specialty: 'Mindfulness para Mujeres',
-        bio: 'Experta en mindfulness enfocada al bienestar de la mujer moderna.',
-        photoURL: 'https://picsum.photos/seed/coach_elena/800/1000',
-        approvalStatus: 'approved',
-        createdAt: new Date()
-      }
-    ];
-
-    try {
-      for (const demo of demos) {
-        await setDoc(doc(db, 'users', demo.uid), demo);
-      }
-      alert('Nuevos Coaches de demostración cargados exitosamente. Visita la página de inicio.');
-    } catch (e) {
-      console.error(e);
-      alert('Error al cargar demos.');
-    }
-  };
-
   return (
     <div className="flex flex-col gap-6 animate-in fade-in">
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
@@ -1483,17 +1360,7 @@ function CoachCuratorView() {
             <h3 className="font-bold text-slate-800 text-sm">Panel de Control de Coaches</h3>
             <p className="text-[11px] text-slate-500 mt-0.5">Gestión de identidad, aprobación y catálogo.</p>
           </div>
-          <div className="flex gap-2">
-             <button 
-               onClick={seedDemoCoaches}
-               className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold hover:bg-slate-200 transition-colors"
-             >
-                Cargar Demos
-             </button>
-             <div className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-[10px] font-bold">
-                Coaches: {coaches.length}
-             </div>
-          </div>
+          <div className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-[10px] font-bold">Coaches: {coaches.length}</div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
