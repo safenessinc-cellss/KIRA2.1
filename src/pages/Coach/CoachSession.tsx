@@ -146,11 +146,10 @@ export function CoachSession() {
         createdAt: new Date()
       };
       
+      // Iniciar captura primero; no crear un registro persistente si falla el micrófono.
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const docRef = await addDoc(collection(db, 'sessions'), sessionData);
       setSessionId(docRef.id);
-      
-      // Iniciar grabación
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -165,6 +164,7 @@ export function CoachSession() {
         // Procesar audio al detener
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         handleSessionComplete(audioBlob);
+        stream.getTracks().forEach(track => track.stop());
       };
       
       mediaRecorder.start(1000);
