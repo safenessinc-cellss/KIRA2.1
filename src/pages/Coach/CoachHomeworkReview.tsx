@@ -1,7 +1,7 @@
 // src/pages/coach/CoachHomeworkReview.tsx
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/src/hooks/useAuth';
-import { db } from '@/src/firebase';
+import { db, auth } from '@/src/firebase';
 import { collection, query, where, getDocs, getDoc, updateDoc, doc, onSnapshot, addDoc } from 'firebase/firestore';
 import { Loader2, CheckCircle2, Clock, AlertCircle, Sparkles, ChevronRight, BookOpen, Users, FileText, Send, Star } from 'lucide-react';
 import { cn } from '@/src/lib/utils';
@@ -176,9 +176,11 @@ export function CoachHomeworkReview() {
         Responde en formato JSON: {"score": number, "feedback": string}
       `;
 
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt,
@@ -202,47 +204,6 @@ export function CoachHomeworkReview() {
     }
   };
 
-  // Generar datos de demostración
-  const generateDemoSubmissions = async () => {
-    if (!user) return;
-    
-    const demos = [
-      {
-        studentName: 'Ana Martínez',
-        studentEmail: 'ana@ejemplo.com',
-        studentId: 'demo1',
-        courseTitle: 'Maestría en Liderazgo',
-        assignmentTitle: 'Análisis de Caso: Liderazgo Transformacional',
-        assignmentDescription: 'Analiza un caso de liderazgo transformacional en tu industria y propón un plan de acción de 3 pasos.',
-        submissionText: 'El liderazgo transformacional se basa en la inspiración y el carisma. En mi industria, el caso de Satya Nadella en Microsoft es un ejemplo claro. Propongo: 1) Fomentar la comunicación abierta, 2) Empoderar equipos autónomos, 3) Celebrar los fracasos como aprendizaje.',
-        coachId: user.uid,
-        status: 'pending',
-        submittedAt: new Date()
-      },
-      {
-        studentName: 'Carlos Gómez',
-        studentEmail: 'carlos@ejemplo.com',
-        studentId: 'demo2',
-        courseTitle: 'Inteligencia Emocional Avanzada',
-        assignmentTitle: 'Diario de Autoconocimiento',
-        assignmentDescription: 'Escribe un diario reflexivo de 3 días sobre tus patrones emocionales en situaciones de estrés.',
-        submissionText: 'Día 1: Noté que cuando me siento presionado, mi primera reacción es la frustración. Día 2: Practiqué la respiración consciente y logré reducir mi ansiedad. Día 3: Descubrí que el diálogo interno negativo es mi principal desencadenante.',
-        coachId: user.uid,
-        status: 'pending',
-        submittedAt: new Date()
-      }
-    ];
-
-    try {
-      for (const demo of demos) {
-        await addDoc(collection(db, 'homework_submissions'), demo);
-      }
-      toastSuccess('📚 Datos de demostración creados');
-    } catch (error) {
-      console.error("Error creating demo data:", error);
-      toastError('Error al crear datos de demostración');
-    }
-  };
 
   const filteredSubmissions = submissions.filter(s => {
     const matchesFilter = filter === 'all' || s.status === filter;
@@ -278,15 +239,7 @@ export function CoachHomeworkReview() {
           </h1>
           <p className="text-slate-500 text-sm mt-1">Gestiona y califica las entregas prácticas de tus alumnos</p>
         </div>
-        {submissions.length === 0 && (
-          <button
-            onClick={generateDemoSubmissions}
-            className="px-4 py-2 bg-kirateal text-white rounded-xl text-sm font-bold hover:bg-kirateal-dark transition-all flex items-center gap-2"
-          >
-            <Sparkles size={16} />
-            Generar Datos de Prueba
-          </button>
-        )}
+
       </div>
 
       {/* Filtros y búsqueda */}
