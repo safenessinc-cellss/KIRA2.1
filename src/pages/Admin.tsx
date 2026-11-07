@@ -73,7 +73,7 @@ export function AdminMonitor() {
     { id: 'landing_pages', label: 'Landing pages', icon: <Layout size={18}/>, category: 'Marketing y ventas', perm: 'system', planned: true },
     { id: 'conversion', label: 'Conversión', icon: <TrendingUp size={18}/>, category: 'Marketing y ventas', perm: 'system', planned: true },
     { id: 'sales_tracking', label: 'Seguimiento comercial', icon: <Activity size={18}/>, category: 'Marketing y ventas', perm: 'billing', planned: true },
-    { id: 'contracts', label: 'Contratos corporativos', icon: <FileText size={18}/>, category: 'Empresas y bienestar B2B', perm: 'system', planned: true },
+    { id: 'contracts', label: 'Contratos corporativos', icon: <FileText size={18}/>, category: 'Empresas y bienestar B2B', perm: 'system' },
     { id: 'corporate_plans', label: 'Planes corporativos', icon: <Settings size={18}/>, category: 'Empresas y bienestar B2B', perm: 'system', planned: true },
     { id: 'licenses', label: 'Licencias', icon: <CheckCircle2 size={18}/>, category: 'Empresas y bienestar B2B', perm: 'system', planned: true },
     { id: 'employees', label: 'Empleados', icon: <Users size={18}/>, category: 'Empresas y bienestar B2B', perm: 'system', planned: true },
@@ -83,11 +83,12 @@ export function AdminMonitor() {
     { id: 'ai_usage', label: 'Uso y consumo IA', icon: <Activity size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
     { id: 'ai_providers', label: 'Modelos y proveedores', icon: <Settings size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
     { id: 'ai_quotas', label: 'Límites y cuotas', icon: <Sliders size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
-    { id: 'website', label: 'Branding y marca', icon: <Layout size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
+    { id: 'website', label: 'Branding y marca', icon: <Layout size={18}/>, category: 'KIRA AI y configuración', perm: 'system' },
     { id: 'settings', label: 'Configuración general', icon: <Settings size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
     { id: 'integrations', label: 'Integraciones', icon: <Zap size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
     { id: 'notifications', label: 'Notificaciones', icon: <AlertCircle size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
     { id: 'platform', label: 'Parámetros de plataforma', icon: <Sliders size={18}/>, category: 'KIRA AI y configuración', perm: 'system', planned: true },
+    { id: 'automation', label: 'Automatizaciones', icon: <Zap size={18}/>, category: 'KIRA AI y configuración', perm: 'system' },
   ];
   const filteredNav = navItems.filter(item => {
     if (searchQuery && !item.label.toLowerCase().includes(searchQuery.toLowerCase()) && !item.category.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -179,6 +180,9 @@ export function AdminMonitor() {
 
         {activeTab === 'settlement' && hasPerm(navItems.find(i=>i.id==='settlement')) && <SettlementCenterView />}
         {activeTab === 'transactions' && hasPerm(navItems.find(i=>i.id==='transactions')) && <TransactionsMonitorView />}
+        {activeTab === 'contracts' && hasPerm(navItems.find(i=>i.id==='contracts')) && <ContractManagerView />}
+        {activeTab === 'website' && hasPerm(navItems.find(i=>i.id==='website')) && <WebsiteConfigView />}
+        {activeTab === 'automation' && hasPerm(navItems.find(i=>i.id==='automation')) && <AutomationEngineView />}
         {navItems.some(item => item.id === activeTab && (item as any).planned) && <AdminPlannedModuleView item={navItems.find(item => item.id === activeTab)!} />}
       </div>
     </div>
