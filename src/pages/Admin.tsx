@@ -388,141 +388,51 @@ function WebsiteConfigView() {
 function GlobalDashboardView({ onNavigate }: { onNavigate?: (tab: string) => void }) { return <AdminExecutiveDashboard onNavigate={onNavigate} />; }
 
 function BIView() {
-  const [stats, setStats] = useState({ sentiment: { positive: 0, neutral: 0, negative: 0 }, courseDist: [] as any[] });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [users, setUsers] = useState<any[]>([]);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
+  const [courses, setCourses] = useState<any[]>([]);
+  const [range, setRange] = useState<30 | 90>(30);
 
   useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const journalsSnap = await getDocs(collection(db, 'journals'));
-        const counts = { positive: 0, neutral: 0, negative: 0 };
-        journalsSnap.forEach(d => {
-          const s = d.data().sentiment;
-          if (s === 'positive') counts.positive++;
-          else if (s === 'neutral') counts.neutral++;
-          else if (s === 'negative') counts.negative++;
-        });
-
-        const enrollSnap = await getDocs(collection(db, 'enrollments'));
-        const courseMap: Record<string, number> = {};
-        enrollSnap.forEach(d => {
-          const cid = d.data().courseId;
-          courseMap[cid] = (courseMap[cid] || 0) + 1;
-        });
-
-        const courseSnap = await getDocs(collection(db, 'courses'));
-        const dist = courseSnap.docs.map(d => ({
-          name: (d.data().title || 'Curso Sin Nombre').substring(0, 15) + '...',
-          value: courseMap[d.id] || 0
-        })).filter(d => d.value > 0);
-
-        setStats({ sentiment: counts, courseDist: dist });
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+    let alive = true;
+    Promise.all([getDocs(collection(db, 'users')), getDocs(collection(db, 'enrollments')), getDocs(collection(db, 'courses'))])
+      .then(([userSnap, enrollSnap, courseSnap]) => {
+        if (!alive) return;
+        setUsers(userSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setEnrollments(enrollSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setCourses(courseSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setError('');
+      })
+      .catch(err => { console.error('Admin analytics source failed', err); if (alive) setError('No se pudieron cargar los datos analíticos. Comprueba permisos de Firestore.'); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
   }, []);
 
-  const pieData = [
-    { name: 'Motivado', value: stats.sentiment.positive, color: '#14b8a6' },
-    { name: 'Calmo', value: stats.sentiment.neutral, color: '#6366f1' },
-    { name: 'Estresado', value: stats.sentiment.negative, color: '#f43f5e' }
-  ].filter(d => d.value > 0);
+  const asDate = (value: any) => { try { const date = value?.toDate ? value.toDate() : new Date(value); return Number.isNaN(date.getTime()) ? null : date; } catch { return null; } };
+  const trend = Array.from({ length: range === 30 ? 30 : 12 }, (_, index) => {
+    const d = new Date(); d.setDate(d.getDate() - (range === 30 ? (29-index) : (11-index)*7));
+    const key = d.toISOString().slice(0, range === 30 ? 10 : 7);
+    const label = range === 30 ? d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }) : d.toLocaleDateString('es-ES', { month: 'short', day: '2-digit' });
+    const usersCount = users.filter(row => { const date = asDate(row.createdAt ?? row.registeredAt); return date && date.toISOString().slice(0, range === 30 ? 10 : 7) === key; }).length;
+    const enrollCount = enrollments.filter(row => { const date = asDate(row.createdAt ?? row.enrolledAt); return date && date.toISOString().slice(0, range === 30 ? 10 : 7) === key; }).length;
+    return { label, users: usersCount, enrollments: enrollCount };
+  });
+  const coursesDemand = courses.map(course => ({ name: String(course.title || 'Curso').slice(0, 24), enrolled: enrollments.filter(row => row.courseId === course.id).length })).filter(row => row.enrolled > 0).sort((a,b)=>b.enrolled-a.enrolled).slice(0,8);
+  const activeEnrollments = enrollments.filter(row => !['cancelled','canceled','refunded'].includes(String(row.status || '').toLowerCase())).length;
 
-  return (
-    <div className="flex flex-col gap-8 animate-in fade-in">
-       <div className="bg-white rounded-3xl border border-slate-200 p-8 shadow-sm">
-          <div className="flex items-center gap-3 mb-8">
-             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl"><Sliders size={20}/></div>
-             <div>
-                <h3 className="font-bold text-slate-900 text-lg">Inteligencia de Negocio</h3>
-                <p className="text-sm text-slate-500">Métricas avanzadas y comportamiento de comunidad.</p>
-             </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {/* Balance Emocional */}
-            <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-100 flex flex-col items-center">
-              <h4 className="w-full text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Balance Emocional Global</h4>
-              <div className="h-56 w-full">
-                {pieData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={pieData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={55}
-                        outerRadius={75}
-                        paddingAngle={8}
-                        dataKey="value"
-                        animationBegin={0}
-                        animationDuration={1500}
-                      >
-                        {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
-                        itemStyle={{fontSize: '11px', fontWeight: 'bold'}}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-slate-400 text-xs italic">Aún no hay datos de bienestar.</div>
-                )}
-              </div>
-              <div className="flex gap-4 mt-2">
-                 {pieData.map(d => (
-                   <div key={d.name} className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full" style={{backgroundColor: d.color}} />
-                      <span className="text-[10px] font-bold text-slate-500">{d.name}</span>
-                   </div>
-                 ))}
-              </div>
-            </div>
-
-            {/* Distribución de Cursos */}
-            <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-100 flex flex-col">
-              <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Demanda por Programa</h4>
-              <div className="h-56 w-full">
-                 {stats.courseDist.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                       <BarChart data={stats.courseDist} layout="vertical">
-                          <XAxis type="number" hide />
-                          <YAxis dataKey="name" type="category" fontSize={10} width={80} tick={{fill: '#94a3b8'}} />
-                          <Tooltip 
-                            cursor={{fill: 'transparent'}}
-                            contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}}
-                          />
-                          <Bar dataKey="value" fill="#6366f1" radius={[0, 4, 4, 0]} barSize={20} />
-                       </BarChart>
-                    </ResponsiveContainer>
-                 ) : (
-                    <div className="h-full flex items-center justify-center text-slate-400 text-xs italic">Sin inscripciones aún.</div>
-                 )}
-              </div>
-            </div>
-
-            {/* Retention */}
-            <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-100 flex flex-col">
-              <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-2">Retention Flow (%)</h4>
-              <div className="flex-1 flex flex-col justify-center gap-6">
-                  <RetentionBar label="Intro" percent={98} />
-                  <RetentionBar label="Sesión 1" percent={85} />
-                  <RetentionBar label="Sesión 3" percent={62} />
-                  <RetentionBar label="Cert." percent={45} color="rose" />
-              </div>
-            </div>
-          </div>
-       </div>
-    </div>
-  );
+  return <div className="space-y-5">
+    <header className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-xl font-bold text-slate-900">Analítica e indicadores</h2><p className="mt-1 text-sm text-slate-500">Tendencias calculadas a partir de usuarios, cursos e inscripciones reales.</p></div><div className="flex rounded-xl bg-slate-100 p-1">{([30,90] as const).map(days=><button key={days} onClick={()=>setRange(days)} className={cn("rounded-lg px-3 py-2 text-xs font-bold",range===days?"bg-white text-slate-900 shadow-sm":"text-slate-500")}>{days===30?'30 días':'12 semanas'}</button>)}</div></header>
+    {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
+    {loading ? <div className="rounded-xl bg-white p-6 text-sm text-slate-500">Cargando datos reales…</div> : <>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><StatCard title="Usuarios registrados" value={users.length.toLocaleString('es-ES')} subtitle="Registros en users" icon={<Users className="text-blue-500"/>}/><StatCard title="Inscripciones activas" value={activeEnrollments.toLocaleString('es-ES')} subtitle="Sin cancelación/refund" icon={<BookOpen className="text-teal-500"/>}/><StatCard title="Cursos disponibles" value={courses.length.toLocaleString('es-ES')} subtitle="Registros en courses" icon={<BookOpen className="text-violet-500"/>}/></div>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><h3 className="font-bold text-slate-900">Nuevos usuarios e inscripciones</h3><p className="mt-1 text-xs text-slate-500">Período {range===30?'diario':'semanal'} · no se extrapolan datos faltantes.</p>{trend.some(row=>row.users||row.enrollments)?<div className="mt-4 h-72"><ResponsiveContainer width="100%" height="100%"><LineChart data={trend}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="label" fontSize={10}/><YAxis allowDecimals={false}/><Tooltip/><Legend/><Line dataKey="users" name="Usuarios" stroke="#0d9488" strokeWidth={2} dot={false}/><Line dataKey="enrollments" name="Inscripciones" stroke="#6366f1" strokeWidth={2} dot={false}/></LineChart></ResponsiveContainer></div>:<div className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">No hay fechas válidas en las fuentes para graficar el período.</div>}</div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><h3 className="font-bold text-slate-900">Demanda por curso</h3><p className="mt-1 text-xs text-slate-500">Conteo de inscripciones agrupadas por courseId.</p>{coursesDemand.length?<div className="mt-4 h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={coursesDemand} layout="vertical"><CartesianGrid strokeDasharray="3 3" horizontal={false}/><XAxis type="number" allowDecimals={false}/><YAxis type="category" dataKey="name" width={110} fontSize={10}/><Tooltip/><Bar dataKey="enrolled" name="Inscripciones" fill="#0d9488" radius={[0,5,5,0]}/></BarChart></ResponsiveContainer></div>:<div className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-500">Todavía no hay inscripciones vinculadas a cursos.</div>}</div>
+      </div>
+    </>}
+  </div>;
 }
 
 function RetentionBar({ label, percent, color = 'teal' }: any) {
