@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { db } from '../firebase';
+import { generateGemini } from '../lib/gemini';
 import { useAuth } from '../hooks/useAuth';
 import { 
   Mic, MicOff, Brain, Sparkles, AlertCircle, FileText, 
@@ -95,15 +96,18 @@ export default function SessionIntelligence() {
   const [showHistory, setShowHistory] = useState(false);
   
   const [sessionMode, setSessionMode] = useState<'live' | 'form'>('form');
-  const [clientName, setClientName] = useState('Sofía Ramírez');
-  const [sessionTopic, setSessionTopic] = useState('Gestión de Estrés Laboral');
+  const [clientName, setClientName] = useState('');
+  const [sessionTopic, setSessionTopic] = useState('');
   const [manualTranscript, setManualTranscript] = useState('');
-  const [selectedSentiment, setSelectedSentiment] = useState<'positivo' | 'neutral' | 'estrés' | 'motivación' | 'duda'>('estrés');
+  const [selectedSentiment, setSelectedSentiment] = useState<'positivo' | 'neutral' | 'estrés' | 'motivación' | 'duda'>('neutral');
   const [manualConfidence, setManualConfidence] = useState(7);
   const [manualClarity, setManualClarity] = useState(6);
   const [manualEnergy, setManualEnergy] = useState(5);
   
   const recognitionRef = useRef<any>(null);
+  const messagesRef = useRef<Message[]>([]);
+  const insightCounterRef = useRef(0);
+  messagesRef.current = messages;
 
   useEffect(() => {
     fetchLastSession();
@@ -150,18 +154,8 @@ export default function SessionIntelligence() {
         "sentiment": "estrés" | "positivo" | "neutral" | "motivación" | "duda"
       }`;
 
-      const response = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
-        body: JSON.stringify({
-          model: "gemini-2.0-flash-exp",
-          contents: prompt,
-          config: { responseMimeType: "application/json" }
-        })
-      });
-      const dataJson = await response.json();
-      if (dataJson.error) return;
-      const data = JSON.parse(dataJson.text);
+      const raw = await generateGemini({ model: "gemini-3.5-flash", contents: prompt, config: { responseMimeType: "application/json", maxOutputTokens: 256 } });
+      const data = JSON.parse(raw);
       if (data.content) {
         const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         addInsight({
@@ -193,18 +187,7 @@ export default function SessionIntelligence() {
 
       Kira Coach:`;
 
-      const response = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
-        body: JSON.stringify({
-          model: "gemini-2.0-flash-exp",
-          contents: prompt
-        })
-      });
-      const dataJson = await response.json();
-      if (dataJson.error) throw new Error(dataJson.error);
-
-      const aiText = dataJson.text?.trim() || "";
+      const aiText = (await generateGemini({ model: "gemini-3.5-flash", contents: prompt, config: { maxOutputTokens: 512 } })).trim();
       if (aiText) {
         const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         setMessages(prev => [
@@ -235,6 +218,11 @@ export default function SessionIntelligence() {
         return;
       }
 
+      messagesRef.current = [];
+      setMessages([]);
+      setInsights([]);
+      setAnalysis(null);
+      insightCounterRef.current = 0;
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
       recognition.interimResults = true;
@@ -269,17 +257,11 @@ export default function SessionIntelligence() {
             const cleanText = transcriptSegment.trim();
             if (cleanText) {
               const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-              setMessages(prev => [
-                ...prev,
-                {
-                  id: Math.random().toString(36).substring(2, 9),
-                  speaker: activeSpeaker,
-                  text: cleanText,
-                  timestamp: now,
-                  sentiment: 'neutral'
-                } as any
-              ]);
-              triggerRealtimeInsight(cleanText);
+              const message = { id: crypto.randomUUID(), speaker: activeSpeaker, text: cleanText, timestamp: now };
+              messagesRef.current = [...messagesRef.current, message];
+              setMessages(messagesRef.current);
+              insightCounterRef.current += 1;
+              if (insightCounterRef.current % 4 === 0) triggerRealtimeInsight(cleanText);
             }
           } else {
             interim += transcriptSegment;
@@ -297,21 +279,25 @@ export default function SessionIntelligence() {
     }
   };
 
-  const stopSession = () => {
-    setIsRecording(false);
+  const stopSession = async () => {
     setStatus('summarizing');
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (err) {
-        console.error("Error stopping recognition:", err);
-      }
+    const recognition = recognitionRef.current;
+    if (recognition) {
+      await new Promise<void>(resolve => {
+        const previousOnEnd = recognition.onend;
+        recognition.onend = (event: any) => {
+          previousOnEnd?.(event);
+          resolve();
+        };
+        try { recognition.stop(); } catch { resolve(); }
+      });
     }
-    generateSummary(messages);
+    setIsRecording(false);
+    await generateSummary(messagesRef.current);
   };
 
   const generateSummary = async (customMessages?: Message[]) => {
-    const listToUse = customMessages || messages;
+    const listToUse = customMessages || messagesRef.current;
     if (!user) return;
     if (listToUse.length === 0) {
       alert("No se ha registrado ninguna transcripción para analizar.");
@@ -339,7 +325,7 @@ export default function SessionIntelligence() {
     TAREA ANALÍTICA INTEGRAL:
     1. TRAYECTORIA EMOCIONAL: Analiza cómo cambió el sentimiento del cliente.
     2. IDENTIFICACIÓN DE INCONGRUENCIAS: Compara objetivos con quejas recurrentes.
-    3. ANÁLISIS PROSÓDICO SIMULADO: Infiere niveles de duda/seguridad.
+    3. PROSODIA: No evaluable; solo hay texto, no audio. No infieras tono ni estados clínicos.
     4. ESCENARIOS DE ROLEPLAY: Propón un escenario de simulación.
     5. MANTRA PERSONALIZADO: Genera una frase de poder única.
     6. MAPA DE CALOR DE ENFOQUE: Calcula el % de la conversación.
@@ -351,7 +337,7 @@ export default function SessionIntelligence() {
       "nuevos_compromisos": [{"tarea": "string", "deadline": "string", "priority": "alta|media|baja"}],
       "patrones_detectados": ["string"],
       "inconsistencias_detectadas": ["string"],
-      "prosodic_inference": "string",
+      "prosodic_inference": "No evaluable a partir de texto",
       "roleplay_scenarios": ["string"],
       "personal_mantra": "string",
       "focus_heatmap": { "pasado_problemas": number, "presente": number, "futuro_soluciones": number },
@@ -360,19 +346,8 @@ export default function SessionIntelligence() {
     }`;
 
     try {
-      const response = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
-        body: JSON.stringify({
-          model: "gemini-2.0-flash-exp",
-          contents: prompt,
-          config: { responseMimeType: "application/json" }
-        })
-      });
-      const dataJson = await response.json();
-      if (dataJson.error) throw new Error(dataJson.error);
-
-      const data = JSON.parse(dataJson.text) as LongitudinalAnalysis;
+      const raw = await generateGemini({ model: "gemini-3.5-flash", contents: prompt, config: { responseMimeType: "application/json", maxOutputTokens: 1800 } });
+      const data = JSON.parse(raw) as LongitudinalAnalysis;
       const sanitizedData = sanitizeAnalysis(data);
       setAnalysis(sanitizedData);
       
@@ -384,6 +359,7 @@ export default function SessionIntelligence() {
         createdAt: serverTimestamp()
       });
 
+      await fetchLastSession();
       setStatus('idle');
     } catch (e) {
       console.error("Error parsing analysis:", e);
@@ -395,7 +371,7 @@ export default function SessionIntelligence() {
     e.preventDefault();
     if (!user) return;
     if (!manualTranscript.trim()) {
-      alert("Por favor escribe o genera un diálogo de ejemplo.");
+      alert("Por favor introduce la transcripción real de la sesión.");
       return;
     }
     setIsAnalyzing(true);
@@ -426,7 +402,7 @@ export default function SessionIntelligence() {
       TAREA ANALÍTICA INTEGRAL:
       1. TRAYECTORIA EMOCIONAL: Analiza cómo cambió el sentimiento del cliente.
       2. IDENTIFICACIÓN DE INCONGRUENCIAS: Compara objetivos con quejas recurrentes.
-      3. ANÁLISIS PROSÓDICO SIMULADO: Infiere niveles de duda/seguridad.
+      3. PROSODIA: No evaluable a partir de texto; no inventes tono ni estados clínicos.
       4. ESCENARIOS DE ROLEPLAY: Propón un escenario de simulación.
       5. MANTRA PERSONALIZADO: Genera una frase de poder única.
       6. MAPA DE CALOR DE ENFOQUE: Calcula el % de la conversación.
@@ -446,19 +422,8 @@ export default function SessionIntelligence() {
         "sugerencia_proxima_sesion": "string"
       }`;
 
-      const response = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
-        body: JSON.stringify({
-          model: "gemini-2.0-flash-exp",
-          contents: prompt,
-          config: { responseMimeType: "application/json" }
-        })
-      });
-      const dataJson = await response.json();
-      if (dataJson.error) throw new Error(dataJson.error);
-
-      const data = JSON.parse(dataJson.text) as LongitudinalAnalysis;
+      const raw = await generateGemini({ model: "gemini-3.5-flash", contents: prompt, config: { responseMimeType: "application/json", maxOutputTokens: 1800 } });
+      const data = JSON.parse(raw) as LongitudinalAnalysis;
       const sanitizedData = sanitizeAnalysis(data);
       setAnalysis(sanitizedData);
       
@@ -467,7 +432,13 @@ export default function SessionIntelligence() {
         clientName,
         sessionTopic,
         coachId: user.uid,
-        transcript: manualTranscript,
+        sessionMode: 'manual',
+        transcript: manualTranscript.split('\n').map((line, index) => {
+          const value = line.trim();
+          const match = value.match(/^(Coach|Cliente|Alumno):\s*(.*)$/i);
+          if (!value) return null;
+          return { id: 'manual-' + index, speaker: match && match[1].toLowerCase() === 'coach' ? 'Coach' : 'Cliente', text: match ? match[2] : value, timestamp: '' };
+        }).filter(Boolean),
         analysis: sanitizedData,
         createdAt: serverTimestamp()
       });
@@ -597,18 +568,7 @@ export default function SessionIntelligence() {
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
                         Transcripción de la Sesión
                       </label>
-                      <button 
-                        type="button" 
-                        onClick={() => setManualTranscript(`Coach: Hola ${clientName}, ¿cómo te sientes hoy?
-Cliente: Hola Coach, la verdad es que me siento abrumada. En el trabajo todo el mundo me pide cosas y no sé cómo decir que no.
-Coach: Entiendo. ¿Qué temores surgen cuando piensas en decir "no"?
-Cliente: Siento que si digo que no, van a pensar que no soy capaz o que no estoy comprometida.
-Coach: ¿Y qué límites consideras que podrías empezar a poner esta semana?
-Cliente: Podría empezar por silenciar Slack a las 7 PM y no responder correos hasta el día siguiente.`)}
-                        className="text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all"
-                      >
-                        <Sparkles size={12} /> Cargar Ejemplo
-                      </button>
+
                     </div>
                     <textarea 
                       required 
