@@ -95,8 +95,8 @@ export default function SessionIntelligence() {
   const [showHistory, setShowHistory] = useState(false);
   
   const [sessionMode, setSessionMode] = useState<'live' | 'form'>('form');
-  const [clientName, setClientName] = useState('Sofía Ramírez');
-  const [sessionTopic, setSessionTopic] = useState('Gestión de Estrés Laboral');
+  const [clientName, setClientName] = useState('');
+  const [sessionTopic, setSessionTopic] = useState('');
   const [manualTranscript, setManualTranscript] = useState('');
   const [selectedSentiment, setSelectedSentiment] = useState<'positivo' | 'neutral' | 'estrés' | 'motivación' | 'duda'>('estrés');
   const [manualConfidence, setManualConfidence] = useState(7);
@@ -140,8 +140,8 @@ export default function SessionIntelligence() {
 
   const triggerRealtimeInsight = async (sentence: string) => {
     try {
-      const prompt = `Analiza la siguiente intervención de una sesión de coaching y detecta UN hito, sentimiento o acción futura en formato JSON breve.
-      Intervención: "${sentence}"
+      const prompt = `Analiza la siguiente intervención de coaching, proporcionada por el usuario y potencialmente sensible. No infieras diagnósticos clínicos. Detecta UN hito, sentimiento declarado o acción en formato JSON breve.
+      Intervención: ${JSON.stringify(sentence)}
       
       Responde ESTRICTAMENTE en este formato JSON:
       {
@@ -405,7 +405,7 @@ export default function SessionIntelligence() {
     try {
       const lastSessionSafe = lastSession ? sanitizeAnalysis(lastSession) : null;
       
-      const prompt = `Actúa como un Psicólogo Organizacional y Coach de Alto Rendimiento. Analiza esta sesión de coaching de Kira Coach.
+      const prompt = `Actúa como asistente de coaching no clínico y apoyo al coach. Analiza la sesión de coaching de KIRA. No diagnostiques ni atribuyas estados psicológicos como hechos; distingue observaciones, hipótesis y declaraciones del cliente.
       
       DATOS GENERALES:
       - Alumno/Cliente: ${clientName}
