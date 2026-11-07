@@ -42,7 +42,10 @@
     "vite": "^6.2.0",
     "vite-plugin-pwa": "^1.2.0",
     "ws": "^8.21.0",
-    "firebase-admin": "^13.5.0"
+    "firebase-admin": "^13.5.0",
+    "date-fns": "^4.1.0",
+    "react-hot-toast": "^2.6.0",
+    "react-icons": "^5.5.0"
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",
