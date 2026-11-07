@@ -19,10 +19,10 @@ const EliteLibrary = React.lazy(() => import('./pages/EliteLibrary').then(m => (
 const Community = React.lazy(() => import('./pages/Community').then(m => ({ default: m.Community })));
 const AdminMonitor = React.lazy(() => import('./pages/Admin').then(m => ({ default: m.AdminMonitor })));
 const CoachDashboard = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachDashboard })));
-const CoachCourses = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachCourses })));
-const CoachHomeworkReview = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachHomeworkReview })));
-const CoachCrmAudit = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachCrmAudit })));
-const CoachCloudSupport = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachCloudSupport })));
+const CoachCourses = React.lazy(() => import('./pages/CoachCourses').then(m => ({ default: m.CoachCourses })));
+const CoachHomeworkReview = React.lazy(() => import('./pages/Coach/CoachHomeworkReview').then(m => ({ default: m.CoachHomeworkReview })));
+const CoachCrmAudit = React.lazy(() => import('./pages/Coach/CoachCrmAudit').then(m => ({ default: m.CoachCrmAudit })));
+const CoachCloudSupport = React.lazy(() => import('./pages/Coach/CoachCloudSupport').then(m => ({ default: m.CoachCloudSupport })));
 const SessionIntelligence = React.lazy(() => import('./pages/SessionIntelligence'));
 const HRDashboard = React.lazy(() => import('./pages/HRDashboard').then(m => ({ default: m.HRDashboard })));
 const UserProfile = React.lazy(() => import('./pages/UserProfile').then(m => ({ default: m.UserProfile })));
@@ -101,7 +101,7 @@ export default function App() {
                     <Route element={<ProtectedRoute allowedRoles={['coach', 'admin']} />}>
                       <Route element={<DashboardLayout title="Panel de Coach" />}>
                         <Route path="/coach" element={<CoachDashboard />} />
-                        <Route path="/coach/courses" element={<CoachDashboard />} />
+                        <Route path="/coach/courses" element={<CoachCourses />} />
                         <Route path="/coach/session" element={<SessionIntelligence />} />
                         <Route path="/coach/homework" element={<CoachHomeworkReview />} />
                         <Route path="/coach/crm-audit" element={<CoachCrmAudit />} />
