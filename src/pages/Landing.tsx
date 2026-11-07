@@ -1,3 +1,4 @@
+import { SafeImage } from '../components/SafeImage';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Navigate } from 'react-router-dom';
@@ -602,7 +603,7 @@ export function Landing() {
                             {prom.type}
                          </div>
                          {prom.imageUrl ? (
-                           <img src={prom.imageUrl} alt={prom.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                           <SafeImage src={prom.imageUrl} alt={prom.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                          ) : (
                            <div className="w-full h-full flex justify-center items-center text-slate-300 bg-slate-100"><Ticket size={48} className="opacity-50" /></div>
                          )}
@@ -666,7 +667,7 @@ export function Landing() {
                       className="bg-slate-950/60 border border-slate-800 rounded-[2.5rem] overflow-hidden hover:border-teal-500/30 shadow-xl transition-all duration-300 flex flex-col h-[420px] group"
                     >
                       <div className="h-52 bg-slate-900 relative overflow-hidden shrink-0">
-                        <img 
+                        <SafeImage 
                           src={cover} 
                           alt={book.title} 
                           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
@@ -690,7 +691,7 @@ export function Landing() {
                       <div className="p-6 flex flex-col flex-1">
                         <div className="flex items-center gap-2 mb-3">
                           <div className="w-5 h-5 rounded-full bg-slate-800 overflow-hidden shrink-0 border border-slate-700">
-                            <img 
+                            <SafeImage 
                               src={`https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=random`} 
                               alt={author} 
                               className="w-full h-full object-cover" 
@@ -766,7 +767,7 @@ export function Landing() {
                     >
                       {/* Banner del Curso */}
                       <div className="h-48 bg-slate-100 relative overflow-hidden shrink-0">
-                        <img 
+                        <SafeImage 
                           src={banner} 
                           alt={course.title} 
                           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
@@ -915,7 +916,7 @@ export function Landing() {
                 className="group relative aspect-[3/4] md:aspect-[4/5] rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl hover:scale-[1.02] transition-all duration-500 cursor-pointer border border-slate-100"
               >
                 {/* Imagen Principal */}
-                <img 
+                <SafeImage 
                   src={coach.photoURL || `https://picsum.photos/seed/${coach.id}/800/1000`} 
                   alt={coach.displayName} 
                   className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
@@ -1218,7 +1219,7 @@ export function Landing() {
               
               {selectedPromotion.imageUrl ? (
                  <div className="w-full h-64 shrink-0 relative">
-                    <img src={selectedPromotion.imageUrl} alt={selectedPromotion.title} className="w-full h-full object-cover" />
+                    <SafeImage src={selectedPromotion.imageUrl} alt={selectedPromotion.title} className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-900/50 to-transparent" />
                  </div>
               ) : (
@@ -1287,7 +1288,7 @@ export function Landing() {
               </button>
               
               <div className="w-full md:w-2/5 md:max-w-sm shrink-0 bg-slate-950 relative min-h-[300px]">
-                 <img 
+                 <SafeImage 
                     src={selectedCoach.photoURL || `https://picsum.photos/seed/${selectedCoach.id}/800/1000`} 
                     alt={selectedCoach.displayName} 
                     className="absolute inset-0 w-full h-full object-cover"
@@ -1467,7 +1468,7 @@ export function Landing() {
 
                                    return (
                                      <div key={idx} className="relative aspect-square bg-slate-800 overflow-hidden group cursor-pointer">
-                                       <img src={media.url} className={cn("object-cover w-full h-full transition-transform duration-500 group-hover:scale-105", !isUnlocked && "blur-[2px]")} alt={media.title} />
+                                       <SafeImage src={media.url} className={cn("object-cover w-full h-full transition-transform duration-500 group-hover:scale-105", !isUnlocked && "blur-[2px]")} alt={media.title} />
                                        
                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors duration-300 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 p-2 text-center">
                                          {!isUnlocked ? (
@@ -1721,7 +1722,7 @@ Implementa las siguientes capas de lógica:
           <div className="flex items-center gap-3">
              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center p-0.5">
                <div className="w-full h-full bg-white rounded-full overflow-hidden">
-                 <img src={secondaryImage || "https://api.dicebear.com/7.x/notionists/svg?seed=Kira&backgroundColor=f8fafc"} alt="Avatar" className="w-full h-full object-cover" />
+                 <SafeImage src={secondaryImage || "https://api.dicebear.com/7.x/notionists/svg?seed=Kira&backgroundColor=f8fafc"} alt="Avatar" className="w-full h-full object-cover" />
                </div>
              </div>
              <div>

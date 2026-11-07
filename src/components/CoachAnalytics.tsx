@@ -168,8 +168,8 @@ export function CoachAnalytics({ coachId }: { coachId?: string }) {
         {chartData.length === 0 ? (
           <p className="text-sm text-slate-500 text-center py-12">Todavía no hay inscripciones registradas para mostrar.</p>
         ) : (
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-72 min-h-72 w-full min-w-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} dy={10} />

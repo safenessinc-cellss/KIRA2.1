@@ -1,3 +1,4 @@
+import { SafeImage } from '../components/SafeImage';
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
@@ -409,7 +410,7 @@ export function Dashboard() {
             title="Mi Perfil"
           >
             {(user?.photoURL || user?.photoUrl) ? (
-              <img src={user.photoURL || user.photoUrl} alt="Profile" className="w-full h-full object-cover" />
+              <SafeImage src={user.photoURL || user.photoUrl} alt="Profile" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center font-black text-slate-400 text-2xl">
                 {(user?.displayName || user?.name || '?')[0].toUpperCase()}
@@ -604,7 +605,7 @@ export function Dashboard() {
                     <div key={course.id} className="w-full flex-shrink-0 px-1">
                       <div className="border border-slate-100 rounded-[32px] overflow-hidden bg-slate-50/40 hover:border-kirateal transition-all duration-500 flex flex-col md:flex-row h-72">
                         <div className="md:w-5/12 bg-slate-200 relative shrink-0">
-                          {course.bannerUrl && <img src={course.bannerUrl} alt={course.title} className="w-full h-full object-cover" />}
+                          {course.bannerUrl && <SafeImage src={course.bannerUrl} alt={course.title} className="w-full h-full object-cover" />}
                           <div className="absolute top-5 left-5 bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-2xl text-[13px] font-black shadow-lg text-slate-900 border border-white/20">
                             ${course.price}
                           </div>
@@ -719,7 +720,7 @@ export function Dashboard() {
                       )}
                       
                       {book.imageUrl ? (
-                        <img 
+                        <SafeImage 
                           src={book.imageUrl} 
                           alt={book.title} 
                           className="h-28 max-w-[85px] object-contain transition-transform duration-500 hover:scale-105 drop-shadow-2xl z-10 rounded-lg shadow-lg border border-white/10" 
@@ -825,7 +826,7 @@ export function Dashboard() {
                     <div className="flex gap-4 items-start">
                       <div className="w-16 h-16 rounded-2xl bg-slate-100 overflow-hidden shrink-0 border border-slate-150">
                         {purchase.imageUrl ? (
-                          <img src={purchase.imageUrl} alt={purchase.itemTitle} className="w-full h-full object-cover" />
+                          <SafeImage src={purchase.imageUrl} alt={purchase.itemTitle} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full bg-slate-200 flex items-center justify-center font-black text-slate-400 uppercase text-xs">
                             {purchase.itemType === 'course' ? 'C' : 'B'}
@@ -910,7 +911,7 @@ export function Dashboard() {
                   {favoriteCoaches.map(coach => (
                     <div key={coach.id} className="p-6 rounded-3xl border border-slate-100 bg-slate-50/40 hover:bg-white hover:shadow-2xl hover:border-kirateal/20 transition-all duration-300 group flex flex-col items-center text-center">
                        <div className="w-24 h-24 rounded-full overflow-hidden mb-5 border-4 border-white shadow-lg ring-4 ring-slate-100 group-hover:scale-110 transition-transform duration-500">
-                          <img src={coach.photoURL} alt={coach.displayName} className="w-full h-full object-cover" />
+                          <SafeImage src={coach.photoURL} alt={coach.displayName} className="w-full h-full object-cover" />
                        </div>
                        <h4 className="text-base font-black text-slate-900 mb-1">{coach.displayName}</h4>
                        <p className="text-[11px] text-slate-400 mb-6 line-clamp-1 w-full font-bold uppercase tracking-tight">{coach.specialty}</p>
@@ -976,7 +977,7 @@ export function Dashboard() {
                    className="flex items-center gap-4 p-4 rounded-3xl border border-slate-50 bg-slate-50/50 hover:bg-white hover:border-kiragold/30 hover:shadow-2xl transition-all duration-300 group"
                  >
                     <div className="w-14 h-14 rounded-2xl bg-white shadow-sm overflow-hidden shrink-0 relative p-1 border border-slate-100">
-                       <img src={item.type === 'imagen' ? item.url : `https://picsum.photos/seed/${item.title}/100/100`} alt={item.title} className="w-full h-full object-cover rounded-xl" />
+                       <SafeImage src={item.type === 'imagen' ? item.url : `https://picsum.photos/seed/${item.title}/100/100`} alt={item.title} className="w-full h-full object-cover rounded-xl" />
                     </div>
                     <div className="flex-1 min-w-0">
                        <h4 className="text-[14px] font-black text-slate-800 truncate group-hover:text-kirateal transition-colors leading-tight mb-1">{item.title}</h4>
@@ -1165,7 +1166,7 @@ export function Dashboard() {
                           {cartItems.map((item) => (
                             <li key={item.id} className="py-6 flex gap-4">
                               <div className="flex-shrink-0 w-24 h-16 rounded-xl bg-slate-100 overflow-hidden border border-slate-200">
-                                <img src={item.imageUrl || item.bannerUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=150'} alt={item.title} className="w-full h-full object-cover" />
+                                <SafeImage src={item.imageUrl || item.bannerUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=150'} alt={item.title} className="w-full h-full object-cover" />
                               </div>
                               <div className="flex-1 flex flex-col">
                                 <div>

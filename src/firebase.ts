@@ -38,7 +38,7 @@ import {
   QueryDocumentSnapshot
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getMessaging } from 'firebase/messaging';
+import { getMessaging, isSupported, type Messaging } from 'firebase/messaging';
 
 // 🔥 CONFIGURACIÓN DE FIREBASE
 const firebaseConfig = {
@@ -52,7 +52,7 @@ const firebaseConfig = {
 };
 
 // Inicializar Firebase
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
 // 🔥 AUTH - Exportar TODAS las funciones necesarias
 export const auth = getAuth(app);
@@ -67,8 +67,19 @@ export const db = initializeFirestore(app, {
 // 🔥 STORAGE
 export const storage = getStorage(app);
 
-// 🔥 MESSAGING (solo en cliente)
-export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
+// FCM is initialized lazily so browsers without Push API support never fail app startup.
+export async function getBrowserMessaging(): Promise<Messaging | null> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return null;
+  try {
+    if (!(await isSupported())) return null;
+    return getMessaging(app);
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('[FCM] Messaging no está disponible en este navegador.', error);
+    }
+    return null;
+  }
+}
 
 // 🔥 EXPORTAR TODAS LAS FUNCIONES DE AUTH
 export {
