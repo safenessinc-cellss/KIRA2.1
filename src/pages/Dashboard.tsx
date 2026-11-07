@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, getDocs, getDoc, addDoc, onSnapshot, doc, updateDoc, setDoc, orderBy, limit } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
@@ -29,6 +29,7 @@ export function Dashboard() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
+  const [checkoutProvider, setCheckoutProvider] = useState<'stripe' | 'mercadopago'>('stripe');
 
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [showCart, setShowCart] = useState(false);
@@ -271,27 +272,22 @@ export function Dashboard() {
   };
 
   const handleStripeCheckout = async (course: any) => {
-    if(!user) return;
+    if (!user) return;
     setCheckingOutId(course.id);
     try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
       const resp = await fetch('/api/create-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          courseId: course.id,
-          userId: user.uid,
-          amount: course.price,
-          title: course.title
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
+        body: JSON.stringify({ items: [{ id: course.id, quantity: 1 }], provider: checkoutProvider })
       });
       const data = await resp.json();
-      if (data.error) {
-        throw new Error(data.error);
-      }
+      if (!resp.ok || data.error || !data.url) throw new Error(data.error || 'No se pudo iniciar el pago.');
       window.location.href = data.url;
-    } catch(e: any) {
-      console.error('Stripe Redirect Error:', e);
-      alert('Error al iniciar la inscripción: ' + (e.message || String(e)));
+    } catch (e: any) {
+      console.error('Checkout redirect error:', e);
+      alert('Error al iniciar el pago: ' + (e.message || String(e)));
       setCheckingOutId(null);
     }
   };
@@ -311,10 +307,26 @@ export function Dashboard() {
 
   const handleProcessPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Do not collect or persist card data and do not create fake purchases.
-    // The secure Stripe Checkout + signed webhook flow must be deployed before payments resume.
-    alert('Los pagos están temporalmente deshabilitados. No introduzcas datos de tarjeta; KIRA habilitará la compra cuando Stripe y su webhook estén verificados.');
-    setShowPaymentModal(false);
+    if (!user || cartItems.length === 0) return;
+    setIsProcessingPayment(true);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
+        body: JSON.stringify({ items: cartItems.map(item => ({ id: item.id, quantity: 1 })), provider: checkoutProvider })
+      });
+      const data = await response.json();
+      if (!response.ok || data.error || !data.url) throw new Error(data.error || 'No se pudo iniciar el pago.');
+      setShowPaymentModal(false);
+      window.location.href = data.url;
+    } catch (error: any) {
+      console.error('Checkout failed:', error);
+      alert(error.message || 'No fue posible iniciar el pago.');
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
   const submitReview = async () => {
@@ -1227,7 +1239,7 @@ export function Dashboard() {
         </div>
       )}
 
-      {/* SIMULATED PAYMENT MODAL */}
+      {/* Secure provider checkout modal */}
       {showPaymentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowPaymentModal(false)} />
@@ -1237,7 +1249,7 @@ export function Dashboard() {
                 <h3 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
                   <CreditCard size={24} className="text-kirateal" /> Checkout de Compra
                 </h3>
-                <p className="text-xs text-slate-500 mt-1">Simulador de pasarela de pago segura de Kira Coach</p>
+                <p className="text-xs text-slate-500 mt-1">Selecciona Stripe o Mercado Pago para completar el pago fuera de KIRA.</p>
               </div>
               <button onClick={() => setShowPaymentModal(false)} className="text-slate-400 hover:text-slate-600 font-bold p-2">✕</button>
             </div>
@@ -1265,97 +1277,14 @@ export function Dashboard() {
                 </div>
               </div>
 
-              {/* Card form */}
               <form onSubmit={handleProcessPayment} className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Nombre en la Tarjeta</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Robert Harrison"
-                    value={paymentForm.cardName}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, cardName: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-                  />
+                <p className="text-sm text-slate-600">El pago se procesa en la plataforma oficial del proveedor. KIRA no solicita ni almacena los datos de tu tarjeta.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button type="button" onClick={() => setCheckoutProvider('stripe')} aria-pressed={checkoutProvider === 'stripe'} className={`rounded-xl border px-3 py-3 text-sm font-bold ${checkoutProvider === 'stripe' ? 'border-kirateal bg-kirateal/10 text-kirateal' : 'border-slate-200 text-slate-500'}`}>Stripe</button>
+                  <button type="button" onClick={() => setCheckoutProvider('mercadopago')} aria-pressed={checkoutProvider === 'mercadopago'} className={`rounded-xl border px-3 py-3 text-sm font-bold ${checkoutProvider === 'mercadopago' ? 'border-kirateal bg-kirateal/10 text-kirateal' : 'border-slate-200 text-slate-500'}`}>Mercado Pago</button>
                 </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Número de Tarjeta</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      placeholder="4000 1234 5678 9010"
-                      maxLength={19}
-                      value={paymentForm.cardNumber}
-                      onChange={(e) => {
-                        let val = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-                        let matches = val.match(/\d{4,16}/g);
-                        let match = matches && matches[0] || '';
-                        let parts = [];
-                        for (let i = 0, len = match.length; i < len; i += 4) {
-                          parts.push(match.substring(i, i + 4));
-                        }
-                        if (parts.length > 0) {
-                          setPaymentForm({ ...paymentForm, cardNumber: parts.join(' ') });
-                        } else {
-                          setPaymentForm({ ...paymentForm, cardNumber: val });
-                        }
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none pl-11"
-                    />
-                    <CreditCard className="absolute left-4 top-3.5 text-slate-400" size={18} />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Vencimiento</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="MM/AA"
-                      maxLength={5}
-                      value={paymentForm.expiry}
-                      onChange={(e) => {
-                        let val = e.target.value.replace(/[^0-9]/g, '');
-                        if (val.length >= 2) {
-                          setPaymentForm({ ...paymentForm, expiry: val.substring(0, 2) + '/' + val.substring(2, 4) });
-                        } else {
-                          setPaymentForm({ ...paymentForm, expiry: val });
-                        }
-                      }}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">CVC / CVV</label>
-                    <input
-                      type="password"
-                      required
-                      placeholder="123"
-                      maxLength={4}
-                      value={paymentForm.cvv}
-                      onChange={(e) => setPaymentForm({ ...paymentForm, cvv: e.target.value.replace(/[^0-9]/g, '') })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isProcessingPayment}
-                  className="w-full mt-6 py-4 bg-kirateal text-white hover:bg-kirateal-dark rounded-2xl font-black uppercase text-xs tracking-wider transition-all duration-300 hover:shadow-xl hover:shadow-teal-100 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-teal-50"
-                >
-                  {isProcessingPayment ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" /> Procesando Transacción...
-                    </>
-                  ) : (
-                    <>
-                      Pagar ${cartItems.reduce((acc, item) => acc + Number(item.price), 0).toFixed(2)} USD
-                    </>
-                  )}
+                <button type="submit" disabled={isProcessingPayment} className="w-full mt-4 py-4 bg-kirateal text-white rounded-2xl font-black uppercase text-xs tracking-wider disabled:opacity-50">
+                  {isProcessingPayment ? 'Conectando con el proveedor…' : 'Continuar al pago seguro'}
                 </button>
               </form>
             </div>
