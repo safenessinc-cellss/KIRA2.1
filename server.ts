@@ -511,6 +511,32 @@ app.post("/api/webhooks/mercadopago", async (req: any, res) => {
   }
 });
 
+app.post("/api/finance/coach-payouts/release", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res);
+    if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    if (!profile || !isKiraAdmin(user, profile)) return res.status(403).json({ error: "Solo administración autorizada puede registrar liquidaciones." });
+    const entryIds = Array.isArray(req.body?.entryIds) ? [...new Set(req.body.entryIds.filter((id: any) => typeof id === "string"))] : [];
+    const payoutReference = String(req.body?.payoutReference || "").trim();
+    if (!entryIds.length || entryIds.length > 50 || payoutReference.length < 4 || payoutReference.length > 120) return res.status(400).json({ error: "Selecciona hasta 50 liquidaciones e indica una referencia bancaria o del proveedor válida." });
+    const entries = await Promise.all(entryIds.map((id: string) => fsGet("coachLedger", id)));
+    if (entries.some(entry => !entry || entry.status !== "pending_release")) return res.status(409).json({ error: "Una o más partidas ya fueron liquidadas o no existen." });
+    const now = new Date().toISOString();
+    const writes = entryIds.map((id: string, index: number) => fsUpdate("coachLedger", id, {
+      ...entries[index], status: "released", payoutReference, releasedAt: now, releasedBy: user.uid
+    }));
+    writes.push(fsCreate("auditLogs", idSafe("coach_payout_" + randomBytes(12).toString("hex")), {
+      actorId: user.uid, action: "coach.payout.recorded", targetId: entryIds.join(","), payoutReference, count: entryIds.length, createdAt: now
+    }));
+    await fsCommit(writes);
+    return res.json({ released: entryIds.length, payoutReference, note: "Se registró la liquidación externa; este endpoint no transfiere fondos." });
+  } catch (error: any) {
+    console.error("[Finance] Coach payout record failed:", error);
+    return res.status(500).json({ error: error.message || "No fue posible registrar la liquidación." });
+  }
+});
+
 app.post("/api/certificates/issue", async (req, res) => {
   try {
     const user = await verifiedUser(req, res);
