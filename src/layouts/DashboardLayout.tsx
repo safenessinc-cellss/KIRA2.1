@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from '../components/Brand';
-import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart } from 'lucide-react';
+import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart, ShieldCheck } from 'lucide-react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { ChatWidget } from '../components/Chat';
@@ -70,7 +70,7 @@ export function DashboardLayout({ title }: { title: string }) {
 
   const links = {
     admin: [
-      { to: "/admin", icon: LayoutDashboard, label: "Command Center" },
+      { to: "/admin", icon: ShieldCheck, label: "Administración KIRA" },
     ],
     hr_admin: [
       { to: "/hr", icon: Users, label: "Culture & Health" },
