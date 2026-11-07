@@ -606,7 +606,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -676,7 +676,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -727,7 +727,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -1769,7 +1769,7 @@ function CoachStudentsActivity() {
               
               const res = await fetch('/api/gemini/generate', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
                 body: JSON.stringify({
                   model: 'gemini-3.5-flash',
                   contents: prompt,
@@ -2970,7 +2970,7 @@ function CoachProfileSettings({ profile }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
         body: JSON.stringify({
           model: "gemini-3.5-flash",
           contents: prompt,
