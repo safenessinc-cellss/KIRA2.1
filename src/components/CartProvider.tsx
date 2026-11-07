@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ShoppingCart, X, Plus, Minus, Trash2, Loader2, Sparkles, CreditCard } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { auth } from '../firebase';
 import { useToast } from '../hooks/useToast';
 import { Product, CartItem } from '../types';
 
@@ -130,7 +131,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         return { id: product.id, itemType: product.type };
       });
-      const idToken = await user.getIdToken();
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Inicia sesión nuevamente.');
 
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
