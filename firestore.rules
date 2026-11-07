@@ -281,7 +281,7 @@ service cloud.firestore {
     
     match /enrollments/{enrollmentId} {
       allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid)));
-      allow create: if isAuthenticated() && isValidEnrollment() && (request.resource.data.userId == request.auth.uid || isApprovedCoach());
+      allow create: if isAuthenticated() && isValidEnrollment() && request.resource.data.progress == 0 && (!('completed' in request.resource.data) || request.resource.data.completed == false) && (!('courseCompleted' in request.resource.data) || request.resource.data.courseCompleted == false) && (request.resource.data.userId == request.auth.uid || (isApprovedCoach() && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.coachId == request.auth.uid));
       allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt']) && 
                     (isAdmin() || (isApprovedCoach() && exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid));
       allow delete: if isAdmin();
@@ -408,7 +408,14 @@ service cloud.firestore {
         && request.resource.data.status == 'pending'
         && request.resource.data.courseCompleted == true
         && request.resource.data.progress >= 100
-        && request.resource.data.paid == true;
+        && request.resource.data.paid == false
+        && request.resource.data.paymentStatus == 'pending_verification'
+        && request.resource.data.enrollmentId is string
+        && exists(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId))
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.userId == request.auth.uid
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.courseId == request.resource.data.courseId
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.progress >= 100
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.courseCompleted == true;
       allow update, delete: if isKiraOwner();
     }
 
