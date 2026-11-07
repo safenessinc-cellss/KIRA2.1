@@ -368,8 +368,8 @@ function GlobalDashboardView() {
     const unsubTransactions = onSnapshot(collection(db, 'transactions'), 
       (snap) => {
         let totalSales = 0;
-        snap.forEach(d => totalSales += (d.data().amount || 0));
-        setStats(prev => ({ ...prev, sales: totalSales, activeIA: 12 }));
+        snap.forEach(d => { const tx = d.data(); if (['completed', 'paid', 'succeeded'].includes(String(tx.status || tx.paymentStatus || '').toLowerCase())) totalSales += Number(tx.amount || tx.total || 0); });
+        setStats(prev => ({ ...prev, sales: totalSales }));
       },
       (err) => handleFirestoreError(err, OperationType.LIST, 'transactions')
     );
@@ -389,7 +389,7 @@ function GlobalDashboardView() {
       const journalsRef = collection(db, 'journals');
       getDocs(journalsRef).then(jSnap => {
         const journals = jSnap.docs.map(d => d.data());
-        const processedTrends = generateTrendData(journals, enrolls, stats.users || 100, daysRange);
+        const processedTrends = generateTrendData(journals, enrolls, stats.users, daysRange);
         setTrends(processedTrends);
       });
     });
@@ -467,8 +467,7 @@ function GlobalDashboardView() {
   const generateTrendData = (journals: any[], enrolls: any[], usersCount: number, days: number) => {
     const data = [];
     const now = new Date();
-    // Use a small fixed number for demo purposes if usersCount is 0
-    const effectiveUsers = usersCount || 10;
+    const effectiveUsers = usersCount;
     
     for (let i = days; i >= 0; i--) {
       const d = new Date(now);
@@ -487,8 +486,8 @@ function GlobalDashboardView() {
 
       data.push({
         name: d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
-        adopcionDiario: Math.min(100, (uniqueOnDay / effectiveUsers) * 100 + (Math.random() * 5)),
-        completionRate: Math.min(100, avgComp - (i * 0.2) + (Math.random() * 3))
+        adopcionDiario: effectiveUsers > 0 ? Math.min(100, (uniqueOnDay / effectiveUsers) * 100) : 0,
+        completionRate: Math.max(0, Math.min(100, avgComp))
       });
     }
     return data;
@@ -537,9 +536,9 @@ function GlobalDashboardView() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
-        <StatCard title="Ventas del Día" value={`$${(stats.sales * 0.15).toLocaleString()}`} subtitle="Ultimas 24hs" icon={<BarChart3 className="text-kirateal" />} />
-        <StatCard title="Kira Net Revenue" value={`$${(stats.sales * 0.7).toLocaleString()}`} subtitle="Comisión (70%)" icon={<BarChart3 className="text-emerald-500" />} />
-        <StatCard title="Coach Payouts" value={`$${(stats.sales * 0.3).toLocaleString()}`} subtitle="Liquidación (30%)" icon={<CreditCard className="text-purple-500" />} />
+        <StatCard title="Ingresos confirmados" value={`${stats.sales.toLocaleString()}`} subtitle="Solo pagos completados" icon={<CreditCard className="text-kirateal" />} />
+        <StatCard title="Usuarios registrados" value={`${stats.users}`} subtitle="Cuenta total real" icon={<Users className="text-emerald-500" />} />
+        <StatCard title="Cursos publicados" value={`${stats.courses.filter((c:any) => c.status === "published" || c.isPublished === true).length}`} subtitle="Según estado del catálogo" icon={<BookOpen className="text-purple-500" />} />
         <StatCard 
           title="Product DAU" 
           value={`${stats.engagement.dailyActive}`} 
@@ -758,10 +757,6 @@ function StudentManagementView() {
     return { color: 'bg-rose-500', text: 'Crítico', icon: <XCircle size={12} className="text-rose-500" />, isRisk: false };
   };
 
-  const handleNotifyCoach = (studentName: string) => {
-     alert(`Notificación enviada al Coach asignado sobre ${studentName}. Pipeline de Retención Activado.`);
-  };
-
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden animate-in fade-in">
       <div className="px-6 py-5 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50/50 gap-4">
@@ -834,11 +829,6 @@ function StudentManagementView() {
                     <div className={cn("w-3 h-3 rounded-full shadow-sm ring-4 ring-offset-2", status.color.replace('bg-', 'ring-').replace('500', '100'), status.color)} />
                     
                     <div className="ml-4 border-l border-slate-200 pl-4 flex flex-col gap-2 items-end">
-                      {status.isRisk && (
-                        <button onClick={(e) => { e.stopPropagation(); handleNotifyCoach(s.displayName); }} className="px-2 py-1 bg-purple-50 text-purple-600 rounded text-[10px] font-bold hover:bg-purple-100 transition-colors uppercase flex items-center gap-1">
-                          <Send size={10} /> Intervenir
-                        </button>
-                      )}
                       {s.approvalStatus === 'suspended' ? (
                         <button 
                           onClick={async (e) => { e.stopPropagation(); await updateDoc(doc(db, 'users', s.id), { approvalStatus: 'approved' }); }}
