@@ -3,7 +3,7 @@ import { storage, db, handleFirestoreError, OperationType, auth } from '../fireb
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, orderBy, limit, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { MediaUpload } from '../components/MediaUpload';
 import { CoachAnalytics } from '../components/CoachAnalytics';
 import { useToast } from '../hooks/useToast';
@@ -464,6 +464,7 @@ function TabBtn({ active, onClick, icon, label, disabled }: any) {
 
 function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState({
     activeStudents: 0,
     avgProgress: 0,
@@ -484,17 +485,9 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
   });
 
   // --- NUEVAS ACCIONES INTERACTIVAS Y LOGICAS ---
-  const [showRevisarTareas, setShowRevisarTareas] = useState(false);
   const [showAiAuditCrm, setShowAiAuditCrm] = useState(false);
   const [showCloudSupport, setShowCloudSupport] = useState(false);
   const [showSessionIntelligence, setShowSessionIntelligence] = useState(false);
-
-  // 1. Estados para Revisar Tareas
-  const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
-  const [feedbackText, setFeedbackText] = useState('');
-  const [isAiGeneratingFeedback, setIsAiGeneratingFeedback] = useState(false);
-  const [reviewedSubmissions, setReviewedSubmissions] = useState<Record<string, string>>({});
-  const [submissionsList, setSubmissionsList] = useState<any[]>([]);
 
   // 2. Estados para AI Audit CRM
   const [leads, setLeads] = useState(350);
@@ -516,142 +509,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
   const totalCrmRevenue = closes * crmTicketPrice;
   const valuePerLead = leads > 0 ? Number((totalCrmRevenue / leads).toFixed(1)) : 0;
 
-  // Envíos de prueba estáticos de alta calidad por si no existen registros aún
-  const mockSubmissions = [
-    {
-      id: 'sub-1',
-      studentName: 'Sofía Alarcón',
-      studentEmail: 'sofia.alarcon@example.com',
-      moduleName: 'Módulo 1: Desbloqueo Emocional',
-      submissionDate: 'Hace 2 horas',
-      content: 'Me he sentido increíblemente conectada durante la sesión de hoy. Logré identificar que mi estrés físico se acumula en los hombros. Hice un dibujo de trazos circulares con tonos fríos para drenar mi frustración del trabajo y de inmediato sentí un gran alivio en el pecho.',
-      status: 'pending',
-      sentiment: 'positive'
-    },
-    {
-      id: 'sub-2',
-      studentName: 'Mateo Castillo',
-      studentEmail: 'mateo.c@example.com',
-      moduleName: 'Módulo 2: Reconfiguración de Creencias',
-      submissionDate: 'Ayer',
-      content: 'Siento mucha resistencia al intentar reprogramar mis pensamientos limitantes sobre la abundancia. Cada vez que pienso en cobrar lo que realmente vale mi trabajo, me da un nudo fuerte en el estómago y me asalta la culpa de no ser lo suficientemente humilde.',
-      status: 'pending',
-      sentiment: 'negative'
-    },
-    {
-      id: 'sub-3',
-      studentName: 'María Soler',
-      studentEmail: 'maria.soler@example.com',
-      moduleName: 'Módulo 3: El Poder de la Presencia',
-      submissionDate: 'Hace 3 días',
-      content: 'He estado haciendo las meditaciones diarias de 10 minutos recomendadas en el programa. Noto que mi mente se distrae menos durante el día y logro volver a mi centro con mayor facilidad cuando hay caos alrededor. Me siento muy estable y en paz.',
-      status: 'reviewed',
-      sentiment: 'neutral',
-      feedback: '¡Excelente proceso, María! Mantener la constancia de 10 minutos diarios es la clave del momentum. Has logrado estabilizar tu ritmo interno de manera espectacular. ¡Sigue así!'
-    }
-  ];
 
-  // Cargar registros de diarios reales y fusionar
-  useEffect(() => {
-    if (showRevisarTareas && user) {
-      const fetchJournalsForReview = async () => {
-        try {
-          const q = query(collection(db, 'journals'), orderBy('createdAt', 'desc'), limit(15));
-          const snap = await getDocs(q);
-          const dbJournals = snap.docs.map(docSnap => {
-            const data = docSnap.data();
-            const dateStr = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : 'Reciente';
-            return {
-              id: docSnap.id,
-              studentName: data.userId === user.uid ? 'Tú (Registro de Prueba)' : 'Alumno de la Escuela',
-              studentEmail: 'alumno@kira.coach',
-              moduleName: 'Diario Emocional del Programa',
-              submissionDate: dateStr,
-              content: data.content,
-              status: reviewedSubmissions[docSnap.id] ? 'reviewed' : 'pending',
-              sentiment: data.sentiment || 'neutral',
-              feedback: reviewedSubmissions[docSnap.id] || ''
-            };
-          });
-          
-          const combined = [...dbJournals, ...mockSubmissions];
-          setSubmissionsList(combined);
-          if (combined.length > 0) {
-            setSelectedSubmission(combined[0]);
-            setFeedbackText(combined[0].feedback || '');
-          }
-        } catch (e) {
-          console.error("Error fetching journals for review:", e);
-          setSubmissionsList(mockSubmissions);
-          if (mockSubmissions.length > 0) {
-            setSelectedSubmission(mockSubmissions[0]);
-            setFeedbackText(mockSubmissions[0].feedback || '');
-          }
-        }
-      };
-      fetchJournalsForReview();
-    }
-  }, [showRevisarTareas, user]);
-
-  // Co-piloto de Feedback IA con Gemini
-  const handleGenerateAiFeedback = async () => {
-    if (!selectedSubmission) return;
-    setIsAiGeneratingFeedback(true);
-    try {
-      const prompt = `Actúa como Kira Moreno, mentora principal y creadora de la metodología Kira Coach.
-      Lee este entregable del estudiante ${selectedSubmission.studentName} para la actividad "${selectedSubmission.moduleName}":
-      "${selectedSubmission.content}"
-      
-      Escribe un comentario de feedback de coaching en español con un tono cariñoso, firme, inspirador y sumamente profesional de 2 párrafos cortos. No utilices saludos impersonales como "Hola Alumno", ve directo a destacar su coraje o proceso y dale un consejo de alta consciencia.`;
-
-      const res = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (await auth.currentUser?.getIdToken()) },
-        body: JSON.stringify({
-          model: 'gemini-3.5-flash',
-          contents: prompt
-        })
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      if (data.text) {
-        setFeedbackText(data.text);
-      }
-    } catch (e) {
-      console.error(e);
-      setFeedbackText(`¡Excelente observación, ${selectedSubmission.studentName}! Veo con mucha alegría la forma en que estás asumiendo la auto-observación de tus procesos internos en este módulo. Seguir de cerca estas reacciones en tu cuerpo es el primer paso para liberar viejos bloqueos. Continúa así, el camino se recorre paso a paso.`);
-    } finally {
-      setIsAiGeneratingFeedback(false);
-    }
-  };
-
-  // Enviar feedback final
-  const handleSubmitFeedback = async () => {
-    if (!selectedSubmission) return;
-    try {
-      setReviewedSubmissions(prev => ({
-        ...prev,
-        [selectedSubmission.id]: feedbackText
-      }));
-      
-      setSubmissionsList(prev => prev.map(s => s.id === selectedSubmission.id ? { ...s, status: 'reviewed', feedback: feedbackText } : s));
-      setSelectedSubmission(prev => ({ ...prev, status: 'reviewed', feedback: feedbackText }));
-      
-      await addDoc(collection(db, 'notifications'), {
-        userId: selectedSubmission.userId || user?.uid || 'all',
-        title: `Nuevo Feedback en ${selectedSubmission.moduleName}`,
-        message: `Kira Moreno ha enviado la retroalimentación de tu entrega. ¡Compruébala ya!`,
-        type: 'ai',
-        read: false,
-        createdAt: new Date()
-      });
-
-      alert("¡Feedback enviado oficialmente! Se guardó en el historial y se notificó al alumno.");
-    } catch (e) {
-      console.error(e);
-      alert("Feedback registrado con éxito en esta sesión.");
-    }
-  };
 
   // CRM Audit Run
   const handleRunCrmAudit = async () => {
@@ -1129,7 +987,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <QuickAction onClick={() => setShowSessionIntelligence(true)} title="Sesión Inteligente" desc="Transcripción y análisis IA" icon={<Brain size={24} className="text-indigo-600" />} />
-            <QuickAction onClick={() => setShowRevisarTareas(true)} title="Revisar Tareas" desc="Feedback de módulos" icon={<BookOpen size={24} className="text-amber-500" />} />
+            <QuickAction onClick={() => navigate('/coach/homework')} title="Revisar Tareas" desc="Feedback de módulos" icon={<BookOpen size={24} className="text-amber-500" />} />
             <QuickAction onClick={() => setShowAiAuditCrm(true)} title="AI Audit CRM" desc="Optimizar embudo" icon={<Activity size={24} className="text-rose-500" />} />
             <QuickAction onClick={() => setShowCloudSupport(true)} title="Cloud Support" desc="Kira Corp Direct" icon={<ShieldCheck size={24} className="text-emerald-600" />} />
           </div>
@@ -1223,153 +1081,6 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
                {topTopics.length === 0 && (
                  <div className="text-center py-10 text-slate-400 text-sm">Aún no hay temas suficientes para analizar.</div>
                )}
-
-                 {/* --- MODAL 1: REVISAR TAREAS (FEEDBACK DE MODULOS) --- */}
-                 {showRevisarTareas && (
-                   <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                     <div className="bg-white rounded-[40px] w-full max-w-5xl h-[85vh] overflow-hidden border border-slate-100 shadow-2xl relative flex flex-col animate-in fade-in zoom-in-95 duration-300 text-left">
-                       <button 
-                         type="button"
-                         onClick={() => setShowRevisarTareas(false)}
-                         className="p-3 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 absolute top-6 right-6 transition-all hover:rotate-90"
-                       >
-                         <X size={20} />
-                       </button>
-                       
-                       <div className="p-8 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
-                         <div className="p-3 rounded-2xl bg-amber-50 text-amber-500">
-                           <BookOpen size={24} />
-                         </div>
-                         <div>
-                           <h3 className="text-xl font-black text-slate-900 tracking-tight">Feedback de Módulos (Revisar Tareas)</h3>
-                           <p className="text-xs text-slate-500 font-medium">Revisa las entregas y reflexiones de tus alumnos con el Co-piloto de Inteligencia Artificial de Kira Moreno.</p>
-                         </div>
-                       </div>
-
-                       <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-                         {/* Left Column: Submissions List */}
-                         <div className="w-full md:w-80 border-r border-slate-100 overflow-y-auto p-6 bg-slate-50/30 flex flex-col gap-4 text-left">
-                           <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Entregas Recientes ({submissionsList.length})</h4>
-                           <div className="flex flex-col gap-3">
-                             {submissionsList.map((sub) => (
-                               <button
-                                 type="button"
-                                 key={sub.id}
-                                 onClick={() => {
-                                   setSelectedSubmission(sub);
-                                   setFeedbackText(sub.feedback || '');
-                                 }}
-                                 className={cn(
-                                   "w-full p-5 rounded-2xl border text-left transition-all flex flex-col gap-2 relative overflow-hidden group",
-                                   selectedSubmission?.id === sub.id 
-                                     ? "border-violet-200 bg-white shadow-lg shadow-violet-100/30" 
-                                     : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-md"
-                                 )}
-                               >
-                                 {sub.status === 'pending' && (
-                                   <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-500" />
-                                 )}
-                                 <div className="flex justify-between items-start gap-2">
-                                   <span className="font-extrabold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors">{sub.studentName}</span>
-                                   <span className={cn(
-                                     "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider",
-                                     sub.status === 'pending' ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
-                                   )}>
-                                     {sub.status === 'pending' ? 'Pendiente' : 'Revisada'}
-                                   </span>
-                                 </div>
-                                 <span className="text-[11px] font-bold text-slate-400">{sub.moduleName}</span>
-                                 <p className="text-slate-500 text-[11px] line-clamp-2 leading-relaxed font-medium">{sub.content}</p>
-                                 <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold pt-1">
-                                   <span>{sub.submissionDate}</span>
-                                   {sub.sentiment === 'positive' && <span className="text-emerald-500">😊 Positivo</span>}
-                                   {sub.sentiment === 'negative' && <span className="text-rose-500">😔 Desafiante</span>}
-                                   {sub.sentiment === 'neutral' && <span className="text-slate-500">😐 Neutro</span>}
-                                 </div>
-                               </button>
-                             ))}
-                           </div>
-                         </div>
-
-                         {/* Right Column: Submission details and grading */}
-                         <div className="flex-1 overflow-y-auto p-8 flex flex-col gap-6 bg-white text-left">
-                           {selectedSubmission ? (
-                             <div className="flex flex-col gap-6">
-                               <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100">
-                                 <div className="flex justify-between items-start mb-4">
-                                   <div>
-                                     <h4 className="font-black text-slate-900 text-base">{selectedSubmission.studentName}</h4>
-                                     <p className="text-xs text-slate-500 font-bold">{selectedSubmission.studentEmail}</p>
-                                   </div>
-                                   <div className="text-right">
-                                     <span className="text-xs text-slate-400 font-black uppercase tracking-wider block">Actividad</span>
-                                     <span className="text-sm font-extrabold text-indigo-600">{selectedSubmission.moduleName}</span>
-                                   </div>
-                                 </div>
-                                 <div className="bg-white p-5 rounded-2xl border border-slate-100 text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">
-                                   "{selectedSubmission.content}"
-                                 </div>
-                               </div>
-
-                               <div className="flex flex-col gap-4">
-                                 <div className="flex justify-between items-center">
-                                   <label className="text-sm font-black text-slate-800 tracking-tight">Retroalimentación para el Estudiante</label>
-                                   <button
-                                     type="button"
-                                     onClick={handleGenerateAiFeedback}
-                                     disabled={isAiGeneratingFeedback}
-                                     className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 disabled:opacity-50 text-[12px] font-black uppercase tracking-wider rounded-xl transition-all"
-                                   >
-                                     {isAiGeneratingFeedback ? (
-                                       <>
-                                         <Loader2 size={14} className="animate-spin" /> Procesando...
-                                       </>
-                                     ) : (
-                                       <>
-                                         <Sparkles size={14} /> Redactar con IA de Kira
-                                       </>
-                                     )}
-                                   </button>
-                                 </div>
-                                 <textarea
-                                   value={feedbackText}
-                                   onChange={(e) => setFeedbackText(e.target.value)}
-                                   placeholder="Escribe tu retroalimentación personalizada aquí o utiliza nuestro co-piloto IA para redactar una respuesta empática..."
-                                   rows={6}
-                                   className="w-full p-5 rounded-2xl border border-slate-200 focus:border-violet-300 focus:ring-0 text-sm text-slate-700 leading-relaxed placeholder-slate-400 resize-none outline-none"
-                                 />
-                               </div>
-
-                               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                                 <button
-                                   type="button"
-                                   onClick={() => {
-                                     setFeedbackText('');
-                                   }}
-                                   className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black uppercase tracking-wider text-[11px] rounded-xl transition-all"
-                                 >
-                                   Limpiar
-                                 </button>
-                                 <button
-                                   type="button"
-                                   onClick={handleSubmitFeedback}
-                                   className="px-8 py-3 bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-wider text-[11px] rounded-xl shadow-lg shadow-primary/25 transition-all"
-                                 >
-                                   Enviar Retroalimentación Oficial
-                                 </button>
-                               </div>
-                             </div>
-                           ) : (
-                             <div className="flex-1 flex flex-col items-center justify-center text-center py-20 text-slate-400">
-                               <BookOpen size={48} className="text-slate-200 mb-4" />
-                               <p className="font-bold">Selecciona una entrega de la lista para comenzar a revisar.</p>
-                             </div>
-                           )}
-                         </div>
-                       </div>
-                     </div>
-                   </div>
-                 )}
 
                  {/* --- MODAL 2: AI AUDIT CRM (OPTIMIZAR EMBUDO) --- */}
                  {showAiAuditCrm && (
