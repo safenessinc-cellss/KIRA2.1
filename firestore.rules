@@ -85,6 +85,13 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach' &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved';
     }
+
+    function hasActiveCoachMembership() {
+      let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isApprovedCoach()
+        && profile.membershipStatus == 'active'
+        && (!('membershipExpiresAt' in profile) || profile.membershipExpiresAt > request.time);
+    }
     
     function isCompanyAdmin(companyId) {
       return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -338,9 +345,9 @@ service cloud.firestore {
 
     match /courses/{courseId} {
       allow read: if isAuthenticated() && (isAdmin() || resource.data.status == 'published' || (isAuthenticated() && resource.data.coachId == request.auth.uid));
-      allow create: if isValidCourse() && (isAdmin() || (isApprovedCoach() && request.resource.data.coachId == request.auth.uid && request.resource.data.status in ['draft', 'pending']));
+      allow create: if isValidCourse() && (isAdmin() || (hasActiveCoachMembership() && request.resource.data.coachId == request.auth.uid && request.resource.data.status in ['draft', 'pending']));
       allow update: if isAuthenticated() && isValidCourse() && areImmutableFieldsUnchanged(['coachId', 'createdAt']) && 
-                    (isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid && request.resource.data.status == resource.data.status));
+                    (isAdmin() || (hasActiveCoachMembership() && resource.data.coachId == request.auth.uid && request.resource.data.status == resource.data.status));
       allow delete: if isAdmin();
     }
     
@@ -385,8 +392,8 @@ service cloud.firestore {
     
     match /sessions/{sessionId} {
       allow read: if isAdmin() || (isAuthenticated() && (resource.data.coachId == request.auth.uid || resource.data.userId == request.auth.uid));
-      allow create: if isAuthenticated() && (isAdmin() || (isApprovedCoach() && request.resource.data.coachId == request.auth.uid));
-      allow update: if isAuthenticated() && (isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid && areImmutableFieldsUnchanged(['coachId', 'userId', 'createdAt'])));
+      allow create: if isAuthenticated() && (isAdmin() || (hasActiveCoachMembership() && request.resource.data.coachId == request.auth.uid));
+      allow update: if isAuthenticated() && (isAdmin() || (hasActiveCoachMembership() && resource.data.coachId == request.auth.uid && areImmutableFieldsUnchanged(['coachId', 'userId', 'createdAt'])));
       allow delete: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
     }
     
@@ -485,8 +492,8 @@ service cloud.firestore {
 
     match /contracts/{contractId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
-      allow create: if isAdmin() || isApprovedCoach();
-      allow update: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+      allow create: if isAdmin() || hasActiveCoachMembership();
+      allow update: if isAdmin() || (hasActiveCoachMembership() && resource.data.coachId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
@@ -499,18 +506,19 @@ service cloud.firestore {
 
     match /automations/{id} {
       allow read: if isAdmin() || isApprovedCoach();
-      allow create, update, delete: if isAdmin() || isApprovedCoach();
+      allow create, update, delete: if isAdmin() || hasActiveCoachMembership();
     }
 
     match /campaign_logs/{id} {
-      allow read, create: if isAdmin() || isApprovedCoach();
+      allow read: if isAdmin() || isApprovedCoach();
+      allow create: if isAdmin() || hasActiveCoachMembership();
       allow update, delete: if false;
     }
 
     match /contract_templates/{id} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
-      allow create: if isApprovedCoach() && request.resource.data.coachId == request.auth.uid;
-      allow update, delete: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+      allow create: if hasActiveCoachMembership() && request.resource.data.coachId == request.auth.uid;
+      allow update, delete: if isAdmin() || (hasActiveCoachMembership() && resource.data.coachId == request.auth.uid);
     }
 
     match /course_activity/{id} {
