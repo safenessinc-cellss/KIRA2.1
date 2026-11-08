@@ -256,7 +256,7 @@ export function ChatWidget() {
         senderId: user.uid,
         senderName: user.displayName,
         content,
-        participants: [user.uid, selectedContact.uid],
+        participants: [user.uid, selectedContact.uid].sort(),
         createdAt: new Date()
       });
     } catch (err) {
