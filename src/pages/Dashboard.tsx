@@ -301,6 +301,35 @@ export function Dashboard() {
     setCartItems(cartItems.filter(it => it.id !== id));
   };
 
+  const handleOpenBook = async (book: any) => {
+    const popup = window.open('about:blank', '_blank');
+    if (!popup) { alert('Permite las ventanas emergentes para abrir el libro.'); return; }
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+      const response = await fetch('/api/books/' + encodeURIComponent(book.id) + '/download', {
+        headers: { Authorization: 'Bearer ' + idToken }
+      });
+      const contentType = response.headers.get('content-type') || '';
+      if (!response.ok) {
+        const data = contentType.includes('application/json') ? await response.json() : null;
+        throw new Error(data?.error || 'No se pudo verificar tu acceso al libro.');
+      }
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
+        if (!data.url) throw new Error('El enlace del libro no está disponible.');
+        popup.location.href = data.url;
+      } else {
+        const blobUrl = URL.createObjectURL(await response.blob());
+        popup.location.href = blobUrl;
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+      }
+    } catch (error: any) {
+      popup.close();
+      alert(error?.message || 'No se pudo abrir el libro.');
+    }
+  };
+
   const handleProcessPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || cartItems.length === 0) return;
@@ -748,52 +777,23 @@ export function Dashboard() {
                       <div className="mt-auto pt-2">
                         {(() => {
                           const bookPurchase = purchases.find(p => p.productId === book.id && p.paymentStatus === 'paid');
-                          const bookFileUrl = book.fileUrl || book.pdfUrl || book.downloadUrl || book.contentUrl || book.url;
-                          const isOwned = (Number(book.price) === 0 && !!bookFileUrl) || !!bookPurchase;
+                          const isOwned = Number(book.price || 0) === 0 || !!bookPurchase;
                           if (isOwned) {
-                            if (bookPurchase && bookPurchase.status === 'pending_release') {
-                              return (
-                                <button 
-                                  disabled
-                                  className="w-full text-[10px] py-2.5 bg-slate-800 text-slate-500 rounded-xl font-black flex items-center justify-center gap-2 uppercase tracking-wider cursor-not-allowed border border-slate-700"
-                                >
-                                  ⏳ Pendiente de liberación
+                            return (
+                              <div className="flex flex-col gap-2 w-full">
+                                <button onClick={() => handleOpenBook(book)} className="w-full text-[10px] py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-violet-900/20">
+                                  <BookOpen size={12} /> Abrir libro
                                 </button>
-                              );
-                            } else {
-                              return (
-                                <div className="flex flex-col gap-2 w-full">
-                                  {(book.fileUrl || book.pdfUrl || book.downloadUrl || book.contentUrl) ? (
-                                    <a
-                                      href={bookFileUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="w-full text-center text-[10px] py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-violet-900/20"
-                                    >
-                                      <BookOpen size={12} /> Abrir libro
-                                    </a>
-                                  ) : (
-                                    <button disabled className="w-full text-[10px] py-2.5 bg-slate-800 text-slate-500 rounded-xl font-black border border-slate-700 cursor-not-allowed">
-                                      Archivo no disponible
-                                    </button>
-                                  )}
-                                  <button 
-                                    onClick={() => setReviewingItem({ id: book.id, type: 'book', title: book.title })}
-                                    className="w-full text-[10px] py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider active:scale-[0.98]"
-                                  >
-                                    <Star size={12} className="text-kiragold" /> Calificar Libro
-                                  </button>
-                                </div>
-                              );
-                            }
+                                <button onClick={() => setReviewingItem({ id: book.id, type: 'book', title: book.title })} className="w-full text-[10px] py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider active:scale-[0.98]">
+                                  <Star size={12} className="text-kiragold" /> Calificar Libro
+                                </button>
+                              </div>
+                            );
                           }
                           const isInCart = cartItems.some(item => item.id === book.id);
                           return (
-                            <button 
-                              onClick={() => addToCart(book, 'book')}
-                              className="w-full text-[10px] py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-emerald-500/10 active:scale-[0.98]"
-                            >
-                              <ShoppingCart size={12} /> {isInCart ? 'En Carrito' : 'Adquirir Libro'}
+                            <button onClick={() => addToCart(book, 'book')} className="w-full text-[10px] py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-emerald-500/10 active:scale-[0.98]">
+                              <ShoppingCart size={12} /> {isInCart ? 'En Carrito' : 'Comprar libro'}
                             </button>
                           );
                         })()}
