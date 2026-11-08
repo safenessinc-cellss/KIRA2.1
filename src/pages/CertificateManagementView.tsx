@@ -12,6 +12,7 @@ export function CertificateManagementView() {
   const [coaches, setCoaches] = useState<Row[]>([]);
   const [enrollments, setEnrollments] = useState<Row[]>([]);
   const [certificates, setCertificates] = useState<Row[]>([]);
+  const [requests, setRequests] = useState<Row[]>([]);
   const [branding, setBranding] = useState<any>({});
   const [previewAssets, setPreviewAssets] = useState<any>(null);
   const [studentId, setStudentId] = useState('');
@@ -48,6 +49,15 @@ export function CertificateManagementView() {
   useEffect(() => onSnapshot(collection(db,'certificates'), snap => {
     setCertificates(snap.docs.map(d => ({ id:d.id, ...d.data() } as Row)).sort((a,b) => String(b.issueDate || '').localeCompare(String(a.issueDate || ''))));
   }, e => setError(e?.message || 'No se pudo cargar el registro de certificados.')), []);
+  useEffect(() => onSnapshot(collection(db,'certificateRequests'), snap => {
+    setRequests(snap.docs.map(d => ({id:d.id,...d.data()} as Row)).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))));
+  }, e => setError(e?.message || 'No se pudieron cargar las solicitudes.')), []);
+  const selectRequest = (request:Row) => {
+    setStudentId(String(request.userId||''));
+    setCourseId(String(request.courseId||''));
+    setEnrollmentId(String(request.enrollmentId||''));
+    setMessage('Solicitud '+request.id+' seleccionada. Revisa los datos y emite cuando los activos estén configurados.');
+  };
   const selectedEnrollment = useMemo(() => enrollments.find(e => e.id === enrollmentId), [enrollments,enrollmentId]);
   const eligibleEnrollments = useMemo(() => enrollments.filter(e => e.userId === studentId && e.courseId === courseId && (e.courseCompleted === true || e.completed === true || Number(e.progress) >= 100)), [enrollments,studentId,courseId]);
   useEffect(() => {
@@ -130,6 +140,10 @@ export function CertificateManagementView() {
         <label className="rounded-xl border border-dashed border-slate-300 p-3 text-sm"><span className="block font-semibold">Firma del coach seleccionado</span><span className="text-xs text-slate-500">{branding.coachSignaturePaths?.[coachId] ? 'Configurada' : 'Requerida'}</span><input className="mt-2 block w-full text-xs" type="file" accept="image/png" disabled={!isSuperAdmin || !coachId || !!uploading} onChange={e=>uploadAsset('coach',e.target.files?.[0])}/></label>
       </div>
       {uploading && <p className="mt-2 text-xs text-teal-700">Guardando {uploading}…</p>}
+    </section>
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h3 className="mb-3 font-bold text-slate-900">Solicitudes de certificados</h3>
+      {requests.length===0 ? <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">Todavía no hay solicitudes.</p> : <div className="space-y-2">{requests.map(r=><button key={r.id} type="button" onClick={()=>selectRequest(r)} className="flex w-full flex-col gap-1 rounded-xl border border-slate-200 p-3 text-left transition hover:border-teal-500 hover:bg-teal-50/40 sm:flex-row sm:items-center sm:justify-between"><span><strong className="block text-sm text-slate-800">{r.courseTitle||r.courseName||r.courseId}</strong><span className="text-xs text-slate-500">Alumno: {r.studentName||r.userName||r.userId} · {r.hours||r.courseHours||'horas por validar'}</span></span><span className="text-xs font-semibold text-teal-700">{r.status||'pending'} · Cargar en formulario</span></button>)}</div>}
     </section>
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <h3 className="mb-3 font-bold text-slate-900">Vista previa A4 horizontal · 297 × 210 mm</h3>
