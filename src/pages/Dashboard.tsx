@@ -499,27 +499,10 @@ export function Dashboard() {
       )}      
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className={cn("p-6 rounded-3xl border shadow-sm flex flex-col justify-between transition-all hover:shadow-md h-44", currentTier.bg, currentTier.border)}>
-          <div className="flex justify-between items-center mb-1">
-             <div className="flex items-center gap-2">
-                <span className={cn("p-2 rounded-xl bg-white/60", currentTier.color)}>{currentTier.icon}</span>
-                <h3 className={cn("text-[10px] font-black uppercase tracking-widest", currentTier.color)}>Tier {currentTier.name}</h3>
-             </div>
-             <span className="text-[10px] font-bold opacity-50 uppercase tracking-tighter">Kira League™</span>
-          </div>
-          <div>
-            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-1 italic">Personal Growth</p>
-            <div className="flex items-baseline gap-2">
-               <p className="text-4xl font-black text-slate-900 tracking-tighter">{userDocPoints.toLocaleString()}</p>
-               <span className="text-[11px] font-bold text-slate-500 uppercase">Energy Pts</span>
-            </div>
-          </div>
-          <div className="mt-4">
-             <div className="w-full h-1.5 bg-slate-200/50 rounded-full overflow-hidden">
-                <div className={cn("h-full transition-all duration-1000", currentTier.color.split(' ')[0].replace('text', 'bg'))} style={{ width: `${progressToNext}%` }} />
-             </div>
-             <p className="text-[9px] text-slate-400 mt-2 font-bold uppercase tracking-tight">Puntos registrados en tu perfil</p>
-          </div>
+        <div className="bg-teal-50 p-6 rounded-3xl border border-teal-100 shadow-sm flex flex-col justify-center h-44">
+          <div className="text-[10px] font-black uppercase tracking-widest text-teal-800 mb-3">Aprendizaje validado</div>
+          <p className="text-4xl font-black text-slate-900">{myEnrollments.filter((enrollment:any) => enrollment.completed === true || enrollment.courseCompleted === true || Number(enrollment.progress) >= 100).length}</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">Cursos completados en tu matrícula</p>
         </div>
 
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-center h-44 hover:border-kirateal/30 transition-colors">
