@@ -72,6 +72,14 @@ try {
   await assertSucceeds(setDoc(doc(ownerDb, "books", "owner-book"), { title: "Official book", status: "published", price: 5, currency: "USD" }));
   await assertSucceeds(getDoc(doc(ownerDb, "bookAssets", "paid-book")));
 
+  // Gateway credentials, payment configuration and financial ledgers are server-only,
+  // including for the owner browser session; the Express API is the sole access path.
+  for (const collectionName of ["paymentSettings","paymentGateways","paymentPlans","paymentCoupons","paymentAudit","config_audit"]) {
+    await assertFails(getDoc(doc(ownerDb, collectionName, "global")));
+    await assertFails(setDoc(doc(ownerDb, collectionName, "browser-write"), { enabled: true, apiKeyEncrypted: "must-not-be-client-written" }));
+    await assertFails(getDoc(doc(studentDb, collectionName, "global")));
+  }
+
   const companyDb = env.authenticatedContext("company-admin", { email: "hr@example.test" }).firestore();
   await assertSucceeds(getDoc(doc(companyDb, "companies", "company-a", "wellbeingAggregates", "2026-11")));
   await assertSucceeds(getDoc(doc(companyDb, "companies", "company-a", "members", "company-admin")));
