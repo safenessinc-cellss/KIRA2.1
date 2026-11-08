@@ -198,6 +198,10 @@ export function AdminBooksView() {
       toastError("Los enlaces externos deben usar HTTPS.");
       return;
     }
+    if (type === 'link' && price > 0) {
+      toastError("Los enlaces externos no pueden protegerse frente a descargas directas. Para vender un libro, sube el PDF a Firebase Storage.");
+      return;
+    }
 
     setPublishing(true);
     try {
