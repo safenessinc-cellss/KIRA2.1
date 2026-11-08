@@ -1,101 +1,39 @@
 import React, { useState } from 'react';
 import { useAuth, UserRole } from '../hooks/useAuth';
 import { Logo } from '../components/Brand';
-import { LogIn, ArrowRight, Mail, Lock, User, Sparkles } from 'lucide-react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { ArrowRight, Loader2, ShieldCheck, Sparkles } from 'lucide-react';
+import { Navigate } from 'react-router-dom';
 import { useToast } from '../hooks/useToast';
 
 export function Login() {
-  const { user, role, login, loginWithEmail, signUpWithEmail } = useAuth();
+  const { user, role, login } = useAuth();
   const { success: toastSuccess, error: toastError } = useToast();
-  const location = useLocation();
-
-  const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [signupRole, setSignupRole] = useState<UserRole>('alumno');
+  const [requestedRole, setRequestedRole] = useState<UserRole>('alumno');
   const [loading, setLoading] = useState(false);
 
   if (user) {
     if (role === 'admin') return <Navigate to="/admin" replace />;
     if (role === 'coach') return <Navigate to="/coach" replace />;
+    if (role === 'hr_admin' || role === 'company_admin' || role === 'company_member') return <Navigate to="/hr" replace />;
     if (role === 'alumno') return <Navigate to="/dashboard" replace />;
     return <Navigate to="/" replace />;
   }
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) {
-      toastError('Por favor completa todos los campos.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await loginWithEmail(email, password);
-      toastSuccess('¡Bienvenido de vuelta!');
-    } catch (err: any) {
-      console.error(err);
-      let friendlyMessage = 'Ocurrió un error al iniciar sesión.';
-      if (err.code === 'auth/user-not-found') {
-        friendlyMessage = 'Usuario no encontrado.';
-      } else if (err.code === 'auth/wrong-password') {
-        friendlyMessage = 'Contraseña incorrecta.';
-      } else if (err.code === 'auth/invalid-email') {
-        friendlyMessage = 'Formato de correo electrónico inválido.';
-      } else if (err.code === 'auth/too-many-requests') {
-        friendlyMessage = 'Demasiados intentos. Intenta más tarde.';
-      }
-      toastError(friendlyMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password || !name) {
-      toastError('Por favor completa todos los campos.');
-      return;
-    }
-
-    if (password.length < 6) {
-      toastError('La contraseña debe tener al menos 6 caracteres.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await signUpWithEmail(email, password, name, signupRole);
-      toastSuccess('¡Cuenta registrada exitosamente!');
-    } catch (err: any) {
-      console.error(err);
-      let friendlyMessage = 'Error al registrar la cuenta.';
-      if (err.code === 'auth/email-already-in-use') {
-        friendlyMessage = 'El correo ya está en uso por otra cuenta.';
-      } else if (err.code === 'auth/invalid-email') {
-        friendlyMessage = 'Formato de correo electrónico inválido.';
-      } else if (err.code === 'auth/weak-password') {
-        friendlyMessage = 'La contraseña es demasiado débil.';
-      }
-      toastError(friendlyMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleLogin = async (requestedRole: UserRole) => {
+  const handleGoogleLogin = async () => {
     setLoading(true);
     try {
       await login(requestedRole);
-      toastSuccess('Autenticación con Google exitosa.');
+      toastSuccess('Solicitud de acceso con Google completada.');
     } catch (err: any) {
-      console.error(err);
+      console.error('Google authentication failed:', err);
       if (err.code === 'auth/unauthorized-domain') {
-        toastError('Dominio no autorizado en Firebase. Por favor usa inicio de sesión con Correo y Contraseña.');
+        toastError('Este dominio todavía no está autorizado en Firebase Authentication. Contacta al administrador de KIRA.');
+      } else if (err.code === 'auth/popup-blocked') {
+        toastError('El navegador bloqueó la ventana de Google. Permite las ventanas emergentes y vuelve a intentarlo.');
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        toastError('El inicio de sesión fue cancelado.');
       } else {
-        toastError('Error al iniciar sesión con Google.');
+        toastError('No se pudo iniciar sesión con Google. Comprueba tu conexión e inténtalo de nuevo.');
       }
     } finally {
       setLoading(false);
@@ -103,216 +41,41 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-6 relative overflow-hidden">
-      {/* Background accents */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-        <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-kiragold/10 blur-[120px] rounded-full mix-blend-screen"></div>
-        <div className="absolute bottom-[10%] -right-[10%] w-[50%] h-[50%] bg-kirateal-light/10 blur-[120px] rounded-full mix-blend-screen"></div>
+    <main className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-slate-950 px-4 py-10">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-24 -top-24 h-80 w-80 rounded-full bg-kiragold/10 blur-[100px]" />
+        <div className="absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-kirateal-light/15 blur-[100px]" />
       </div>
-
-      <div className="w-full max-w-md bg-slate-800/80 backdrop-blur-xl rounded-3xl border border-slate-700 p-8 md:p-10 shadow-2xl relative z-10 flex flex-col items-center">
-        <Logo size={70} variant="luxury" />
-        
-        <h1 className="mt-6 text-2xl font-serif font-black text-white tracking-widest uppercase text-center">
-          Kira Coach
-        </h1>
-        <p className="mt-2 text-slate-400 text-xs leading-relaxed max-w-[280px] text-center">
-          Ingresa a tu espacio seguro dentro del ecosistema de bienestar.
-        </p>
-
-        {/* Custom Auth Tabs */}
-        <div className="w-full mt-8 grid grid-cols-2 bg-slate-900/60 p-1 rounded-xl border border-slate-700/50">
-          <button
-            onClick={() => { setActiveTab('login'); }}
-            className={`py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
-              activeTab === 'login'
-                ? 'bg-kiragold text-slate-900 shadow-md shadow-kiragold/15'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Iniciar Sesión
-          </button>
-          <button
-            onClick={() => { setActiveTab('signup'); }}
-            className={`py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
-              activeTab === 'signup'
-                ? 'bg-kiragold text-slate-900 shadow-md shadow-kiragold/15'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Crear Cuenta
-          </button>
+      <section className="relative z-10 w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900/90 p-6 shadow-2xl backdrop-blur-xl sm:p-9">
+        <div className="flex flex-col items-center text-center">
+          <Logo size={68} variant="luxury" />
+          <p className="mt-5 text-xs font-black uppercase tracking-[0.28em] text-kiragold">KIRA Coach</p>
+          <h1 className="mt-2 text-2xl font-black text-white">Tu espacio de desarrollo</h1>
+          <p className="mt-3 max-w-xs text-sm leading-6 text-slate-400">Accede de forma segura a tu aprendizaje, coaching y bienestar.</p>
         </div>
 
-        {/* Tab Forms */}
-        {activeTab === 'login' ? (
-          <form onSubmit={handleLogin} className="w-full mt-6 space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Correo Electrónico</label>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"><Mail size={16} /></span>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ejemplo@correo.com"
-                  className="w-full bg-slate-900/80 border border-slate-700/60 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-kiragold/60 focus:ring-1 focus:ring-kiragold/30 transition-all"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Contraseña</label>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"><Lock size={16} /></span>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-slate-900/80 border border-slate-700/60 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-kiragold/60 focus:ring-1 focus:ring-kiragold/30 transition-all"
-                  required
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-2 px-6 py-3.5 rounded-xl bg-kiragold text-slate-900 font-bold tracking-widest uppercase text-[11px] shadow-lg shadow-kiragold/15 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
-            >
-              {loading ? (
-                <span className="flex items-center gap-2">
-                  <span className="animate-spin h-3.5 w-3.5 border-2 border-slate-900 border-t-transparent rounded-full" />
-                  Ingresando...
-                </span>
-              ) : (
-                <>
-                  <LogIn size={14} /> Ingresar con Correo
-                </>
-              )}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleSignup} className="w-full mt-6 space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Nombre Completo</label>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"><User size={16} /></span>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Tu Nombre"
-                  className="w-full bg-slate-900/80 border border-slate-700/60 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-kiragold/60 focus:ring-1 focus:ring-kiragold/30 transition-all"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Correo Electrónico</label>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"><Mail size={16} /></span>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ejemplo@correo.com"
-                  className="w-full bg-slate-900/80 border border-slate-700/60 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-kiragold/60 focus:ring-1 focus:ring-kiragold/30 transition-all"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Contraseña</label>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"><Lock size={16} /></span>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Min. 6 caracteres"
-                  className="w-full bg-slate-900/80 border border-slate-700/60 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-kiragold/60 focus:ring-1 focus:ring-kiragold/30 transition-all"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Tipo de Perfil</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSignupRole('alumno')}
-                  className={`py-2.5 rounded-xl text-xs font-bold tracking-wider transition-all border ${
-                    signupRole === 'alumno'
-                      ? 'bg-kirateal/20 text-kirateal-light border-kirateal/50'
-                      : 'bg-slate-900/40 text-slate-400 border-slate-700/50 hover:bg-slate-900/60'
-                  }`}
-                >
-                  Alumno (Estudiante)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSignupRole('coach')}
-                  className={`py-2.5 rounded-xl text-xs font-bold tracking-wider transition-all border ${
-                    signupRole === 'coach'
-                      ? 'bg-kirateal/20 text-kirateal-light border-kirateal/50'
-                      : 'bg-slate-900/40 text-slate-400 border-slate-700/50 hover:bg-slate-900/60'
-                  }`}
-                >
-                  Coach (Profesional)
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-2 px-6 py-3.5 rounded-xl bg-kiragold text-slate-900 font-bold tracking-widest uppercase text-[11px] shadow-lg shadow-kiragold/15 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
-            >
-              {loading ? (
-                <span className="flex items-center gap-2">
-                  <span className="animate-spin h-3.5 w-3.5 border-2 border-slate-900 border-t-transparent rounded-full" />
-                  Registrando...
-                </span>
-              ) : (
-                <>
-                  <Sparkles size={14} /> Crear Cuenta Gratuita
-                </>
-              )}
-            </button>
-          </form>
-        )}
-
-        {/* Elegant Divider */}
-        <div className="relative w-full flex items-center py-5">
-          <div className="flex-grow border-t border-slate-700/60"></div>
-          <span className="flex-shrink-0 mx-4 text-slate-500 text-[9px] font-bold uppercase tracking-widest">O continúa con</span>
-          <div className="flex-grow border-t border-slate-700/60"></div>
+        <div className="mt-8">
+          <p className="mb-3 text-center text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Tipo de acceso para nuevas cuentas</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" aria-pressed={requestedRole === 'alumno'} onClick={() => setRequestedRole('alumno')} className={`min-h-12 rounded-xl border px-3 text-sm font-bold transition ${requestedRole === 'alumno' ? 'border-kiragold bg-kiragold/10 text-kiragold' : 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500'}`}>Alumno</button>
+            <button type="button" aria-pressed={requestedRole === 'coach'} onClick={() => setRequestedRole('coach')} className={`min-h-12 rounded-xl border px-3 text-sm font-bold transition ${requestedRole === 'coach' ? 'border-kiragold bg-kiragold/10 text-kiragold' : 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500'}`}>Coach</button>
+          </div>
+          <p className="mt-2 text-center text-[11px] leading-5 text-slate-500">Las cuentas nuevas quedan sujetas a aprobación. Los permisos de administración se asignan desde KIRA.</p>
         </div>
 
-        {/* Social Authentication */}
-        <div className="w-full space-y-2.5">
-          <button 
-            onClick={() => handleGoogleLogin('alumno')}
-            disabled={loading}
-            className="w-full px-4 py-3.5 rounded-xl bg-slate-900/80 border border-slate-700/50 text-white font-bold tracking-wider uppercase text-[11px] hover:bg-slate-900 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer active:scale-95 shadow-md"
-          >
-            <LogIn size={14} className="text-kiragold" /> Login con Google
-          </button>
-          <p className="text-[10px] text-slate-500 text-center leading-normal italic px-2">
-            Nota: Google Sign-In requiere que el dominio actual esté autorizado en Firebase. Si recibes error de dominio, utiliza el formulario de Correo arriba.
-          </p>
+        <button type="button" onClick={handleGoogleLogin} disabled={loading} className="mt-7 flex min-h-14 w-full items-center justify-center gap-3 rounded-xl bg-white px-5 py-3 text-sm font-extrabold text-slate-900 shadow-lg transition hover:bg-slate-100 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60">
+          {loading ? <Loader2 size={19} className="animate-spin" /> : <span className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 text-sm font-black text-blue-600">G</span>}
+          {loading ? 'Conectando con Google…' : 'Continuar con Google'}
+          {!loading && <ArrowRight size={17} />}
+        </button>
+
+        <div className="mt-6 flex items-start gap-2 rounded-xl border border-slate-700 bg-slate-800/70 p-3 text-xs leading-5 text-slate-400">
+          <ShieldCheck size={16} className="mt-0.5 shrink-0 text-kirateal-light" />
+          <p>Google es el único método de acceso disponible en esta pantalla. KIRA nunca te pedirá tu contraseña de Google.</p>
         </div>
-      </div>
-      
-      <div className="absolute bottom-6 w-full text-center text-slate-500 text-[10px] uppercase tracking-[0.2em] font-bold">
-        Creado por SAFENESS.INC
-      </div>
-    </div>
+        <p className="mt-7 text-center text-[10px] font-bold uppercase tracking-[0.2em] text-slate-600">Creado por SAFENESS.INC · KIRA Coach</p>
+      </section>
+      <Sparkles className="absolute bottom-6 left-6 text-kiragold/20" size={28} aria-hidden="true" />
+    </main>
   );
 }
