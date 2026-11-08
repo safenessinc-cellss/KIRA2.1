@@ -194,7 +194,7 @@ service cloud.firestore {
     
     function isValidEnrollment() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['userId', 'studentName', 'studentEmail', 'studentAvatar', 'courseId', 'progress', 'createdAt', 'completed', 'courseCompleted', 'completedAt', 'paymentOrderId', 'paymentStatus']) &&
+      return hasOnlyAllowedFields(['userId', 'studentName', 'studentEmail', 'studentAvatar', 'courseId', 'progress', 'createdAt', 'completed', 'courseCompleted', 'completedAt', 'completionConfirmedBy', 'paymentOrderId', 'paymentStatus']) &&
              data.userId is string &&
              data.courseId is string &&
              (!('studentName' in data) || data.studentName is string) &&
@@ -204,7 +204,8 @@ service cloud.firestore {
              data.createdAt is timestamp &&
              (!('completed' in data) || data.completed is bool) &&
              (!('courseCompleted' in data) || data.courseCompleted is bool) &&
-             (!('completedAt' in data) || data.completedAt is timestamp);
+             (!('completedAt' in data) || data.completedAt is timestamp) &&
+             (!('completionConfirmedBy' in data) || data.completionConfirmedBy is string);
     }
     
     function isValidJournal() {
