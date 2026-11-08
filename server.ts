@@ -471,7 +471,7 @@ app.put("/api/admin/payments/gateways/:provider",async(req,res)=>{
   try{
     const user=await requireSuperAdmin(req,res);if(!user)return;
     const provider=String(req.params.provider||"");
-    if(!["stripe","mercadopago","paypal","manual"].includes(provider))return res.status(400).json({error:"Pasarela no admitida."});
+    if(!["stripe","mercadopago"].includes(provider))return res.status(400).json({error:"Pasarela no admitida."});
     const body=req.body||{},id=provider,previous=await fsGet("paymentGateways",id);
     const mode=body.mode==="live"?"live":"test",priority=Math.max(0,Math.min(100,Number(body.priority||0)));
     const apiKey=typeof body.apiKey==="string"?body.apiKey.trim():"",webhookSecret=typeof body.webhookSecret==="string"?body.webhookSecret.trim():"";
@@ -625,6 +625,9 @@ app.post("/api/webhooks/mercadopago", async (req: any, res) => {
     const paymentId = String(req.query["data.id"] || req.body?.data?.id || "");
     if (!secret || !signature || !requestId || !paymentId) return res.status(401).send("Firma ausente.");
     const parts: any = Object.fromEntries(signature.split(",").map((p: string) => p.trim().split("=").map(x => x.trim())));
+    const signatureTimestamp=Number(parts.ts);
+    const signatureTimestampMs=signatureTimestamp<1e12?signatureTimestamp*1000:signatureTimestamp;
+    if(!Number.isFinite(signatureTimestampMs)||Math.abs(Date.now()-signatureTimestampMs)>5*60*1000)return res.status(401).send("Firma expirada.");
     const manifest = "id:" + paymentId.toLowerCase() + ";request-id:" + requestId + ";ts:" + parts.ts + ";";
     const expected = createHmac("sha256", secret).update(manifest).digest("hex");
     if (!parts.v1 || parts.v1.length !== expected.length || !timingSafeEqual(Buffer.from(parts.v1), Buffer.from(expected))) return res.status(401).send("Firma inválida.");
