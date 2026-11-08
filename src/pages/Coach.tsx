@@ -253,14 +253,14 @@ export function CoachDashboard() {
       {/* Navegación Modular CRM */}
       <div className="flex flex-wrap gap-2 p-1.5 bg-slate-100 rounded-[32px] w-fit shadow-sm border border-slate-200/50">
         <TabBtn active={activeTab === 'dashboard'} onClick={() => handleTabChange('dashboard')} icon={<Layout size={16}/>} label="Panel de Control" />
-        <TabBtn active={activeTab === 'courses'} onClick={() => handleTabChange('courses')} icon={<BookOpen size={16}/>} label="Studio de Cursos" disabled={!isApproved} />
-        <TabBtn active={activeTab === 'tracking'} onClick={() => handleTabChange('tracking')} icon={<BadgeCheck size={16}/>} label="Academic Tracking" disabled={!isApproved} />
-        <TabBtn active={activeTab === 'chat'} onClick={() => handleTabChange('chat')} icon={<MessageSquare size={16}/>} label="Chat Privado" disabled={!isApproved} />
-        <TabBtn active={activeTab === 'nexus'} onClick={() => handleTabChange('nexus')} icon={<FolderKanban size={16}/>} label="Legal & Revenue" disabled={!isApproved} />
-        <TabBtn active={activeTab === 'automation'} onClick={() => handleTabChange('automation')} icon={<Zap size={16}/>} label="Kira Flow™" disabled={!isApproved} />
-        <TabBtn active={activeTab === 'register'} onClick={() => handleTabChange('register')} icon={<UserPlus size={16}/>} label="Onboarding" disabled={!isApproved} />
+        <TabBtn active={activeTab === 'courses'} onClick={() => handleTabChange('courses')} icon={<BookOpen size={16}/>} label="Studio de Cursos" disabled={!isApproved || !hasMembership} />
+        <TabBtn active={activeTab === 'tracking'} onClick={() => handleTabChange('tracking')} icon={<BadgeCheck size={16}/>} label="Academic Tracking" disabled={!isApproved || !hasMembership} />
+        <TabBtn active={activeTab === 'chat'} onClick={() => handleTabChange('chat')} icon={<MessageSquare size={16}/>} label="Chat Privado" disabled={!isApproved || !hasMembership} />
+        <TabBtn active={activeTab === 'nexus'} onClick={() => handleTabChange('nexus')} icon={<FolderKanban size={16}/>} label="Legal & Revenue" disabled={!isApproved || !hasMembership} />
+        <TabBtn active={activeTab === 'automation'} onClick={() => handleTabChange('automation')} icon={<Zap size={16}/>} label="Kira Flow™" disabled={!isApproved || !hasMembership} />
+        <TabBtn active={activeTab === 'register'} onClick={() => handleTabChange('register')} icon={<UserPlus size={16}/>} label="Onboarding" disabled={!isApproved || !hasMembership} />
         <TabBtn active={activeTab === 'profile'} onClick={() => handleTabChange('profile')} icon={<Sliders size={16}/>} label="Configuración" />
-        <TabBtn active={activeTab === 'analytics'} onClick={() => handleTabChange('analytics')} icon={<BarChart3 size={16}/>} label="Performance" disabled={!isApproved} />
+        <TabBtn active={activeTab === 'analytics'} onClick={() => handleTabChange('analytics')} icon={<BarChart3 size={16}/>} label="Performance" disabled={!isApproved || !hasMembership} />
       </div>
 
       <div className="flex-1">
