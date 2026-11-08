@@ -286,13 +286,13 @@ service cloud.firestore {
     // Sanitized public projection: no email, auth metadata, tenant IDs, or private notes.
     match /coachPublicProfiles/{coachId} {
       allow read: if resource.data.status == 'published';
-      allow create, update: if isAuthenticated()
+      allow create, update: if isAdmin() || (isAuthenticated()
         && request.auth.uid == coachId
         && isApprovedCoach()
         && request.resource.data.uid == coachId
         && request.resource.data.status == 'published'
         && request.resource.data.approvalStatus == 'approved'
-        && request.resource.data.keys().hasOnly(['uid', 'displayName', 'photoURL', 'specialty', 'bio', 'specialties', 'languages', 'socialLinks', 'rating', 'studentCount', 'mediaItems', 'approvalStatus', 'status', 'updatedAt']);
+        && request.resource.data.keys().hasOnly(['uid', 'displayName', 'photoURL', 'specialty', 'bio', 'specialties', 'languages', 'socialLinks', 'rating', 'studentCount', 'mediaItems', 'approvalStatus', 'status', 'updatedAt']));
       allow delete: if isAdmin() || (isAuthenticated()
         && request.auth.uid == coachId
         && (!exists(/databases/$(database)/documents/users/$(coachId))
