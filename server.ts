@@ -583,6 +583,23 @@ async function savePrivateCertificatePdf(storagePath:string,bytes:Buffer):Promis
 }
 function pngData(buffer:Buffer):string { return "data:image/png;base64,"+buffer.toString("base64"); }
 
+app.get("/api/certificates/preview-assets",async(req,res)=>{
+  try{
+    const user=await verifiedUser(req,res);if(!user)return;
+    const admin=await fsGet("users",user.uid);
+    if(user.email?.toLowerCase()!=="safeness.c.a@gmail.com"||user.emailVerified!==true||admin?.role!=="admin")return res.status(403).json({error:"Solo el superadministrador puede previsualizar las firmas."});
+    const coachId=String(req.query.coachId||"");
+    if(!coachId)return res.status(400).json({error:"Selecciona un coach."});
+    const branding=await fsGet("settings","certificateBranding");
+    const logoPath=String(branding?.logoStoragePath||"");
+    const adminPath=String(branding?.adminSignatureStoragePath||"");
+    const coachPath=String(branding?.coachSignaturePaths?.[coachId]||"");
+    if(!logoPath||!adminPath||!coachPath)return res.status(409).json({error:"Faltan activos institucionales para la vista previa."});
+    const [logo,adminSignature,coachSignature]=await Promise.all([readPrivateCertificateAsset(logoPath),readPrivateCertificateAsset(adminPath),readPrivateCertificateAsset(coachPath)]);
+    return res.json({logo:pngData(logo),adminSignature:pngData(adminSignature),coachSignature:pngData(coachSignature)});
+  }catch(error:any){console.error("[Certificates] Preview assets failed:",error);return res.status(500).json({error:"No se pudieron cargar los activos privados."});}
+});
+
 app.post("/api/certificates", async (req,res) => {
   try {
     const user = await verifiedUser(req,res);
