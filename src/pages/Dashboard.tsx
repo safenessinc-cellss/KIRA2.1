@@ -182,7 +182,7 @@ export function Dashboard() {
     if (alreadyRequested) return alert('Ya existe una solicitud o certificado para este curso.');
     setCertificateRequestBusy(enrollment.id);
     try {
-      const coachSnap = course.coachId ? await getDoc(doc(db, 'users', course.coachId)) : null;
+      const coachSnap = course.coachId ? await getDoc(doc(db, 'coachPublicProfiles', course.coachId)) : null;
       const coach = coachSnap?.exists() ? coachSnap.data() : {};
       const coachName = course.coachName || coach?.displayName || coach?.name || '';
       const hours = Number(course.hours || course.courseHours || course.durationHours || course.totalHours || 0);
@@ -248,7 +248,7 @@ export function Dashboard() {
       // Fetch favorites
       if (user.favorites && user.favorites.length > 0) {
         const coachesQ = query(
-          collection(db, 'users'), 
+          collection(db, 'coachPublicProfiles'), 
           where('__name__', 'in', user.favorites.slice(0, 10))
         );
         const coachesSnap = await getDocs(coachesQ);
@@ -675,7 +675,7 @@ export function Dashboard() {
                                     <button
                                       onClick={async () => {
                                         try {
-                                          await addDoc(collection(db, 'enrollments'), { userId: user.uid, courseId: course.id, progress: 0, completed: false, courseCompleted: false, createdAt: new Date() });
+                                          await addDoc(collection(db, 'enrollments'), { userId: user.uid, studentName: user.displayName || user.name || user.email || 'Alumno', studentEmail: user.email || '', studentAvatar: user.photoURL || user.photoUrl || '', courseId: course.id, progress: 0, completed: false, courseCompleted: false, createdAt: new Date() });
                                           await fetchData();
                                         } catch (err) {
                                           console.error('Free enrollment failed:', err);
