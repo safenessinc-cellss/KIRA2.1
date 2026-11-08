@@ -172,6 +172,7 @@ async function firestoreToken(): Promise<string> {
   return data.access_token;
 }
 function fsValue(value: any): any {
+  if (value instanceof Date) return { timestampValue: value.toISOString() };
   if (value === null || value === undefined) return { nullValue: null };
   if (typeof value === "string") return { stringValue: value };
   if (typeof value === "boolean") return { booleanValue: value };
@@ -274,7 +275,7 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
       writes.push(existingEntitlement ? fsUpdate("bookEntitlements", entitlementId, entitlement) : fsCreate("bookEntitlements", entitlementId, entitlement));
     } else if (item.type === "membership") {
       const durationDays = Math.max(1, Math.min(3650, Number(item.durationDays || 365)));
-      const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+      const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
       const profile = await fsGet("users", order.userId);
       if (profile) writes.push(fsUpdate("users", order.userId, { ...profile, membershipStatus: "active", membershipPaidAt: now, membershipExpiresAt: expiresAt, membershipPlanId: item.id, membershipPlanName: item.title }));
       writes.push(fsCreate("memberships", idSafe(order.userId + "_" + orderId), { userId: order.userId, planId: item.id, planTitle: item.title, status: "active", paymentOrderId: orderId, startsAt: now, expiresAt, durationDays, autoRenew: false }));
