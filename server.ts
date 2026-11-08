@@ -76,7 +76,7 @@ function getGeminiAI() {
 }
 
 
-interface VerifiedFirebaseUser { uid: string; email?: string; }
+interface VerifiedFirebaseUser { uid: string; email?: string; emailVerified: boolean; }
 let firebasePublicKeys: Record<string, string> = {};
 let firebaseKeysExpiresAt = 0;
 
@@ -106,7 +106,7 @@ async function verifyFirebaseIdToken(token: string): Promise<VerifiedFirebaseUse
     if (!certificate) return null;
     const signedData = Buffer.from(parts[0] + "." + parts[1]);
     if (!verifySignature("RSA-SHA256", signedData, certificate, Buffer.from(parts[2], "base64url"))) return null;
-    return { uid: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined };
+    return { uid: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined, emailVerified: claims.email_verified === true };
   } catch {
     return null;
   }
@@ -508,17 +508,18 @@ app.post("/api/certificates/issue", async (req, res) => {
     const user = await verifiedUser(req, res);
     if (!user) return;
     const profile = await fsGet("users", user.uid);
-    const admin = user.email?.toLowerCase() === "safeness.c.a@gmail.com" || profile?.role === "admin";
-    if (!profile || (!admin && (profile.role !== "coach" || profile.approvalStatus !== "approved"))) return res.status(403).json({ error: "No tienes permiso para emitir certificados." });
+    const isKiraOwner = user.email?.toLowerCase() === "safeness.c.a@gmail.com" && user.emailVerified === true && profile?.role === "admin";
+    if (!profile || !isKiraOwner) return res.status(403).json({ error: "Solo el superadministrador verificado de KIRA puede emitir certificados." });
     const requestId = String(req.body?.requestId || "");
-    const certificateRequest = requestId ? await fsGet("certificateRequests", requestId) : null;
-    const enrollmentId = String(req.body?.enrollmentId || certificateRequest?.enrollmentId || "");
-    if (requestId && (!certificateRequest || certificateRequest.status !== "approved")) return res.status(409).json({ error: "La solicitud debe estar aprobada antes de emitir." });
+    if (!requestId) return res.status(400).json({ error: "La emisión debe partir de una solicitud aprobada." });
+    const certificateRequest = await fsGet("certificateRequests", requestId);
+    const enrollmentId = String(certificateRequest?.enrollmentId || "");
+    if (!certificateRequest || certificateRequest.status !== "approved") return res.status(409).json({ error: "La solicitud debe estar aprobada antes de emitir." });
     const enrollment = enrollmentId ? await fsGet("enrollments", enrollmentId) : null;
     if (requestId && certificateRequest && (certificateRequest.enrollmentId !== enrollmentId || certificateRequest.userId !== enrollment?.userId || certificateRequest.courseId !== enrollment?.courseId)) return res.status(409).json({ error: "La solicitud no coincide con la matrícula y el alumno." });
     if (!enrollment || (Number(enrollment.progress) < 100 && enrollment.completed !== true && enrollment.courseCompleted !== true)) return res.status(409).json({ error: "El alumno aún no ha completado el curso." });
     const course = await fsGet("courses", String(enrollment.courseId || ""));
-    if (!course || (!admin && course.coachId !== user.uid)) return res.status(403).json({ error: "Curso no autorizado para este coach." });
+    if (!course) return res.status(404).json({ error: "No se encontró el curso asociado a la solicitud." });
     if (Number(course.price || 0) > 0 && enrollment.paymentStatus !== "paid") return res.status(409).json({ error: "No hay una confirmación de pago verificada en la matrícula." });
     const student = await fsGet("users", String(enrollment.userId || ""));
     const coach = await fsGet("users", String(course.coachId || ""));
