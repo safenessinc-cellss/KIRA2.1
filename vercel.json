@@ -15,24 +15,22 @@
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
-      "dest": "/server.ts",
+      "src": "/(.*)",
       "headers": {
         "Cross-Origin-Opener-Policy": "same-origin-allow-popups"
-      }
+      },
+      "continue": true
     },
     {
-      "handle": "filesystem",
-      "headers": {
-        "Cross-Origin-Opener-Policy": "same-origin-allow-popups"
-      }
+      "src": "/api/(.*)",
+      "dest": "/server.ts"
+    },
+    {
+      "handle": "filesystem"
     },
     {
       "src": "/(.*)",
-      "dest": "/index.html",
-      "headers": {
-        "Cross-Origin-Opener-Policy": "same-origin-allow-popups"
-      }
+      "dest": "/index.html"
     }
   ],
   "$schema": "https://openapi.vercel.sh/vercel.json"
