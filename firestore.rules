@@ -307,7 +307,7 @@ service cloud.firestore {
     match /users/{userId} {
       // Read: Public can see ALL coach profiles (needed for directory query). Users can read their own. Admins all.
       // And authenticated users can read profiles for chats etc.
-      allow read: if isAdmin() || isCurrentUser(userId) || (isAuthenticated() && resource.data.role == 'coach' && resource.data.approvalStatus == 'approved');
+      allow read: if isAdmin() || isCurrentUser(userId) || isCompanyAdmin(resource.data.companyId) || (isAuthenticated() && resource.data.role == 'coach' && resource.data.approvalStatus == 'approved');
       
       // Create: Users can create their own profile. Only admins can create an admin role.
       allow create: if isAuthenticated() && isCurrentUser(userId) && isValidUser() && 
