@@ -550,7 +550,7 @@ service cloud.firestore {
 
     // Certificate lifecycle: students submit requests; only the KIRA owner issues immutable credentials.
     function isKiraOwner() {
-      return isAuthenticated() && request.auth.token.email == "safeness.c.a@gmail.com";
+      return isAuthenticated() && request.auth.token.email == "safeness.c.a@gmail.com" && request.auth.token.email_verified == true;
     }
 
     match /certificateRequests/{requestId} {
