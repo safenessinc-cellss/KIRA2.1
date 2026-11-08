@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
-import { doc, getDoc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -66,13 +66,40 @@ export function useAuth() {
                 }
 
                 setRole(currentRole);
-                setUser({ 
-                  ...userData, 
-                  ...firestoreData, 
+                setUser({
+                  ...userData,
+                  ...firestoreData,
                   displayName: resolvedDisplayName,
-                  role: currentRole, 
-                  uid: u.uid 
+                  role: currentRole,
+                  uid: u.uid
                 });
+
+                const publicCoachRef = doc(db, 'coachPublicProfiles', u.uid);
+                if (currentRole === 'coach' && firestoreData.approvalStatus === 'approved') {
+                  const publicMediaItems = Array.isArray(firestoreData.mediaItems)
+                    ? firestoreData.mediaItems
+                        .filter((item: any) => item && item.isPublic === true && Number(item.pointCost || 0) === 0 && typeof item.url === 'string')
+                        .map((item: any) => ({ id: String(item.id || item.title || ''), title: String(item.title || ''), type: String(item.type || 'link'), url: item.url }))
+                    : [];
+                  void setDoc(publicCoachRef, {
+                    uid: u.uid,
+                    displayName: resolvedDisplayName,
+                    photoURL: firestoreData.photoURL || userData.photoURL || '',
+                    specialty: firestoreData.specialty || '',
+                    bio: firestoreData.bio || '',
+                    specialties: firestoreData.specialties || [],
+                    languages: firestoreData.languages || '',
+                    socialLinks: firestoreData.socialLinks || {},
+                    rating: Number(firestoreData.rating || 0),
+                    studentCount: Number(firestoreData.studentCount || 0),
+                    mediaItems: publicMediaItems,
+                    approvalStatus: 'approved',
+                    status: 'published',
+                    updatedAt: new Date()
+                  }, { merge: true }).catch(err => console.warn('Public coach profile sync failed:', err));
+                } else {
+                  void deleteDoc(publicCoachRef).catch(err => console.warn('Public coach profile cleanup failed:', err));
+                }
 
                 // Update activity with a throttle (e.g. only if lastActivityAt is older than 1 minute)
                 const lastActivity = firestoreData.lastActivityAt?.toDate ? firestoreData.lastActivityAt.toDate() : null;
