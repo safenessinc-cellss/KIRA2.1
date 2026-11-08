@@ -52,7 +52,7 @@ export function EliteLibrary() {
 
   useEffect(() => {
     // Fetch all coaches to get their mediaItems
-    const q = query(collection(db, 'users'), where('role', '==', 'coach'));
+    const q = query(collection(db, 'coachPublicProfiles'), where('status', '==', 'published'));
     const unsub = onSnapshot(q, (snap) => {
       const coachList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setCoaches(coachList);
