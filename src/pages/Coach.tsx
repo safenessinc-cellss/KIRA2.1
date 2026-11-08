@@ -1058,6 +1058,473 @@ function AnalyticsStatCard({ icon, label, value, trend, color }: any) {
   );
 }
 
+
+function CoachContractManager() {
+  const { user } = useAuth();
+  const [contracts, setContracts] = useState<any[]>([]);
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [activeSubTab, setActiveSubTab] = useState<'contracts' | 'templates'>('contracts');
+  const [isCreating, setIsCreating] = useState(false);
+  const [formData, setFormData] = useState({ title: '', clientName: '', expiresAt: '', templateId: '' });
+  const [templateFormData, setTemplateFormData] = useState({ name: '', terms: '', expirationRules: '' });
+
+  useEffect(() => {
+    if (!user) return;
+    const qC = query(collection(db, 'contracts'), where('coachId', '==', user.uid));
+    const unsubC = onSnapshot(qC, (snap) => {
+      const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
+      list.sort((a: any, b: any) => {
+        const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
+        const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
+        return tB - tA;
+      });
+      setContracts(list);
+    });
+    
+    const qT = query(collection(db, 'contract_templates'), where('coachId', '==', user.uid));
+    const unsubT = onSnapshot(qT, (snap) => {
+      const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
+      list.sort((a: any, b: any) => {
+        const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
+        const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
+        return tB - tA;
+      });
+      setTemplates(list);
+    });
+    
+    return () => {
+      unsubC();
+      unsubT();
+    };
+  }, [user]);
+
+  const handleCreateContract = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    try {
+      let finalTerms = '';
+      if (formData.templateId) {
+        const templ = templates.find(t => t.id === formData.templateId);
+        if (templ) finalTerms = templ.terms;
+      }
+
+      await addDoc(collection(db, 'contracts'), {
+        ...formData,
+        terms: finalTerms,
+        coachId: user.uid,
+        status: 'active',
+        expiresAt: new Date(formData.expiresAt),
+        createdAt: new Date()
+      });
+      setIsCreating(false);
+      setFormData({ title: '', clientName: '', expiresAt: '', templateId: '' });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleCreateTemplate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    try {
+      await addDoc(collection(db, 'contract_templates'), {
+        ...templateFormData,
+        coachId: user.uid,
+        createdAt: new Date()
+      });
+      setIsCreating(false);
+      setTemplateFormData({ name: '', terms: '', expirationRules: '' });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-6 animate-in fade-in">
+      <div className="flex gap-4 p-1 bg-slate-100 rounded-xl w-fit mb-2">
+        <button onClick={() => setActiveSubTab('contracts')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeSubTab === 'contracts' ? "bg-white text-kirateal shadow-sm" : "text-slate-500")}>Mis Contratos</button>
+        <button onClick={() => setActiveSubTab('templates')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeSubTab === 'templates' ? "bg-white text-kirateal shadow-sm" : "text-slate-500")}>Plantillas</button>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+          <h3 className="font-bold text-slate-800 tracking-tight flex items-center gap-2">
+            <FileText size={18} className="text-primary" /> 
+            {activeSubTab === 'contracts' ? 'Gestión de Contratos' : 'Mis Plantillas Maestras'}
+          </h3>
+          <button 
+            onClick={() => setIsCreating(!isCreating)}
+            className="px-3 py-1.5 bg-primary text-white text-[11px] font-bold rounded-xl shadow-md shadow-primary/10 active:scale-95 transition-all"
+          >
+            {isCreating ? 'Cancelar' : activeSubTab === 'contracts' ? 'Generar Contrato' : 'Crear Plantilla'}
+          </button>
+        </div>
+
+        {isCreating && activeSubTab === 'contracts' && (
+          <form onSubmit={handleCreateContract} className="p-6 bg-slate-50 border-b border-slate-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in slide-in-from-top-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Servicio</label>
+              <input required value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Cliente</label>
+              <input required value={formData.clientName} onChange={e=>setFormData({...formData, clientName: e.target.value})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Plantilla</label>
+              <select value={formData.templateId} onChange={e=>setFormData({...formData, templateId: e.target.value})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none">
+                 <option value="">Ninguna (Texto libre)</option>
+                 {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Vencimiento</label>
+              <input required type="date" value={formData.expiresAt} onChange={e=>setFormData({...formData, expiresAt: e.target.value})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none" />
+            </div>
+            <button type="submit" className="lg:col-span-4 py-2.5 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-900 transition-all">Emitir Contrato con Plantilla</button>
+          </form>
+        )}
+
+        {isCreating && activeSubTab === 'templates' && (
+          <form onSubmit={handleCreateTemplate} className="p-6 bg-slate-50 border-b border-slate-100 gap-4 flex flex-col animate-in slide-in-from-top-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nombre de Plantilla</label>
+              <input required value={templateFormData.name} onChange={e=>setTemplateFormData({...templateFormData, name: e.target.value})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none" placeholder="Contrato Coach Individual" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Términos y Condiciones</label>
+              <textarea required value={templateFormData.terms} onChange={e=>setTemplateFormData({...templateFormData, terms: e.target.value})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none h-32 resize-none" placeholder="Define las cláusulas estándar aquí..." />
+            </div>
+            <button type="submit" className="py-2.5 bg-kirateal text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-kirateal-light transition-all">Guardar Plantilla Maestra</button>
+          </form>
+        )}
+
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {activeSubTab === 'contracts' && contracts.map(c => (
+            <div key={c.id} className="p-5 rounded-2xl border border-slate-100 hover:shadow-xl hover:shadow-slate-100/50 transition-all group flex flex-col justify-between h-40">
+              <div>
+                <div className="flex justify-between items-start mb-2">
+                  <h4 className="font-bold text-slate-800 text-[14px]">{c.title}</h4>
+                  <div className={cn("px-2 py-0.5 rounded-full text-[9px] font-bold uppercase", c.status === 'active' ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600")}>
+                    {c.status}
+                  </div>
+                </div>
+                <p className="text-[11px] text-slate-400 italic">Vence: {c.expiresAt?.toDate?.().toLocaleDateString() || new Date(c.expiresAt).toLocaleDateString()}</p>
+                <div className="mt-3 text-[11px] text-slate-600 font-medium">Cliente: {c.clientName}</div>
+              </div>
+              <div className="flex justify-end pt-4 border-t border-slate-50">
+                <button className="text-[11px] font-bold text-primary hover:underline">Auditar Contrato</button>
+              </div>
+            </div>
+          ))}
+
+          {activeSubTab === 'templates' && templates.map(t => (
+            <div key={t.id} className="p-5 rounded-2xl border border-slate-100/50 bg-slate-50/30 hover:bg-white hover:border-kirateal/20 transition-all group h-40 flex flex-col justify-between">
+              <div>
+                 <h4 className="font-bold text-slate-800 text-[14px] mb-2">{t.name}</h4>
+                 <p className="text-[11px] text-slate-500 line-clamp-3 leading-relaxed opacity-70 italic">{t.terms}</p>
+              </div>
+              <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+                <span className="text-[9px] text-slate-400 uppercase font-black tracking-widest">Reutilizable</span>
+                <button className="text-kirateal text-[11px] font-bold hover:underline">Refinar Cláusulas</button>
+              </div>
+            </div>
+          ))}
+
+          {((activeSubTab === 'contracts' && contracts.length === 0) || (activeSubTab === 'templates' && templates.length === 0)) && !isCreating && (
+            <div className="col-span-full py-20 flex flex-col items-center justify-center text-slate-300 gap-4 opacity-40">
+              <FileText size={56} className="bg-slate-50 p-3 rounded-full" />
+              <p className="text-[13px] font-medium italic">Todo listo para tus documentos legales.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- MODULO: MOTOR DE AUTOMATIZACIÓN (PARA COACH) ---
+function CoachAutomationView() {
+  const { user } = useAuth();
+  const { success: toastSuccess } = useToast();
+  const [rules, setRules] = useState<any[]>([]);
+  const [isAdding, setIsAdding] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<'retencion' | 'ventas' | 'logistica'>('retencion');
+  const [newRule, setNewRule] = useState({
+    name: '',
+    category: 'retencion',
+    trigger: 'inactivity',
+    threshold: 5,
+    action: 'notification',
+    message: ''
+  });
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'automations'), where('ownerId', '==', user.uid));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
+      list.sort((a: any, b: any) => {
+        const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
+        const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
+        return tB - tA;
+      });
+      setRules(list);
+    });
+    return () => unsub();
+  }, [user]);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    try {
+      await addDoc(collection(db, 'automations'), {
+        ...newRule,
+        active: true,
+        processedCount: 0,
+        ownerId: user.uid,
+        createdAt: new Date()
+      });
+      setIsAdding(false);
+      setNewRule({ name: '', category: activeCategory, trigger: 'inactivity', threshold: 5, action: 'notification', message: '' });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const templates = [
+    { 
+      title: "Reactivación Fantasma", 
+      desc: "Si 5 días sin login, enviar push de rescate.", 
+      cat: "retencion",
+      setup: { trigger: 'inactivity', threshold: 5, message: '¡Te extrañamos! Tu progreso te espera.' }
+    },
+    { 
+      title: "Upsell Strategist", 
+      desc: "Si curso completado, ofrecer Mentoría 1-a-1.", 
+      cat: "ventas",
+      setup: { trigger: 'course_complete', threshold: 0, message: '¡Felicidades! Estás listo para el siguiente nivel. Agenda tu sesión aquí.' }
+    },
+    { 
+      title: "Logística Alpha", 
+      desc: "Si 3 tareas pendientes, alerta de bloqueo.", 
+      cat: "logistica",
+      setup: { trigger: 'pending_tasks', threshold: 3, message: 'Tienes tareas acumuladas. No permitas que el momentum se pierda.' }
+    }
+  ];
+
+  const filteredRules = rules.filter(r => (r.category || 'retencion') === activeCategory);
+
+  return (
+    <div className="flex flex-col gap-10 animate-in fade-in transition-all">
+      <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50/50 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+        
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-6 mb-10">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Zap className="text-indigo-600" size={20} fill="currentColor" />
+              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Kira Flow™ Engine</h3>
+            </div>
+            <p className="text-slate-500 font-medium">El motor conductual que trabaja mientras duermes.</p>
+          </div>
+          <button 
+            onClick={() => setIsAdding(!isAdding)}
+            className="px-8 py-3.5 bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-black transition-all active:scale-95 flex items-center gap-2"
+          >
+            {isAdding ? <XCircle size={16} /> : <PlusCircle size={16} />}
+            {isAdding ? 'Cerrar Constructor' : 'Nueva Regla Conductual'}
+          </button>
+        </div>
+
+        <div className="flex gap-4 p-1.5 bg-slate-100 rounded-[28px] w-fit mb-10 border border-transparent hover:border-slate-200 transition-all">
+          <button onClick={() => setActiveCategory('retencion')} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'retencion' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Retención</button>
+          <button onClick={() => setActiveCategory('ventas')} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'ventas' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Ventas</button>
+          <button onClick={() => setActiveCategory('logistica')} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'logistica' ? "bg-white text-amber-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Logística</button>
+        </div>
+
+        {isAdding ? (
+          <form onSubmit={handleCreate} className="mb-12 animate-in slide-in-from-top-6 duration-500">
+            <div className="bg-slate-50 border border-slate-100 p-10 rounded-[40px] relative">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
+                
+                {/* IF SECTION */}
+                <div className="md:col-span-5 flex flex-col gap-4">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-100 rounded-full text-indigo-600 text-[10px] font-black uppercase tracking-widest w-fit">
+                    TRIGGER (IF)
+                  </div>
+                  <div className="space-y-4">
+                    <select 
+                      value={newRule.trigger} 
+                      onChange={e => setNewRule({...newRule, trigger: e.target.value})}
+                      className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none"
+                    >
+                      <option value="inactivity">El Alumno está Inactivo</option>
+                      <option value="course_complete">El Alumno Completa un Curso</option>
+                      <option value="pending_tasks">El Alumno tiene Tareas Pendientes</option>
+                      <option value="low_sentiment">Estado de Ánimo Detectado: Bajo</option>
+                    </select>
+                    
+                    <div className="flex items-center gap-4 bg-white border border-slate-200 rounded-2xl p-4">
+                       <span className="text-xs font-bold text-slate-400 uppercase">Durante ≥</span>
+                       <input 
+                         type="number" 
+                         value={newRule.threshold} 
+                         onChange={e => setNewRule({...newRule, threshold: parseInt(e.target.value)})}
+                         className="w-20 bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-center font-black text-slate-900 outline-none" 
+                       />
+                       <span className="text-xs font-bold text-slate-400 uppercase">Unidades</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ARROW */}
+                <div className="md:col-span-2 flex justify-center py-6">
+                  <div className="w-12 h-12 rounded-full bg-slate-900 text-white flex items-center justify-center shadow-2xl">
+                    <ChevronRight size={24} />
+                  </div>
+                </div>
+
+                {/* THEN SECTION */}
+                <div className="md:col-span-5 flex flex-col gap-4">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-100 rounded-full text-emerald-600 text-[10px] font-black uppercase tracking-widest w-fit">
+                    ACTION (THEN)
+                  </div>
+                  <div className="space-y-4">
+                    <select 
+                      value={newRule.action} 
+                      onChange={e => setNewRule({...newRule, action: e.target.value})}
+                      className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-sm font-bold focus:ring-4 focus:ring-emerald-500/10 transition-all outline-none"
+                    >
+                      <option value="notification">Enviar Notificación Push (Kira)</option>
+                      <option value="email">Desparar Email Automatizado</option>
+                      <option value="add_points">Otorgar Extra Energy Pts</option>
+                      <option value="alert_coach">Alertar a mi Command Center</option>
+                    </select>
+                    <textarea 
+                      required 
+                      value={newRule.message} 
+                      onChange={e => setNewRule({...newRule, message: e.target.value})}
+                      className="w-full h-24 bg-white border border-slate-200 rounded-2xl p-4 text-sm font-medium resize-none focus:bg-white outline-none" 
+                      placeholder="Escribe el mensaje o instrucciones..."
+                    />
+                  </div>
+                </div>
+
+              </div>
+              
+              <div className="mt-10 pt-10 border-t border-slate-200 flex justify-between items-center">
+                 <div className="flex flex-col">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Nombre de la Regla</label>
+                    <input 
+                      required 
+                      value={newRule.name} 
+                      onChange={e => setNewRule({...newRule, name: e.target.value})}
+                      className="bg-transparent border-b-2 border-slate-200 text-lg font-black text-slate-800 outline-none focus:border-indigo-500 transition-colors" 
+                      placeholder="Ej: Reactivación 5 Días" 
+                    />
+                 </div>
+                 <button type="submit" className="px-10 py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all">
+                    Inyectar Regla al Motor
+                 </button>
+              </div>
+            </div>
+          </form>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {filteredRules.length === 0 ? (
+              <div className="col-span-full py-20 flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-[40px] text-slate-300">
+                <Zap size={64} className="mb-6 opacity-20" />
+                <p className="text-lg font-black tracking-tight mb-2">El motor está esperando órdenes</p>
+                <p className="text-sm font-medium text-slate-400 italic">No hay reglas activas en la categoría {activeCategory}.</p>
+              </div>
+            ) : (
+              filteredRules.map(rule => (
+                <div key={rule.id} className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-sm hover:shadow-xl hover:shadow-slate-100/50 transition-all group flex flex-col justify-between border-b-4 border-b-indigo-500/10 hover:border-b-indigo-500">
+                   <div>
+                     <div className="flex justify-between items-start mb-6">
+                        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                           <Activity size={20} />
+                        </div>
+                        <div className={cn("px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest", rule.active ? "bg-emerald-50 text-emerald-500" : "bg-slate-50 text-slate-400")}>
+                           {rule.active ? 'Running' : 'Paused'}
+                        </div>
+                     </div>
+                     <h4 className="text-base font-black text-slate-900 tracking-tight leading-tight mb-2">{rule.name}</h4>
+                     <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold mb-6">
+                       <Clock size={12} /> {rule.trigger === 'inactivity' ? `IF Inactivo > ${rule.threshold} días` : 'Condición Especial'}
+                     </div>
+                     <div className="p-4 bg-slate-50 rounded-2xl text-[11px] text-slate-600 font-medium leading-relaxed italic mb-8">
+                       "{rule.message}"
+                     </div>
+                   </div>
+                   <div className="flex items-center justify-between pt-6 border-t border-slate-50">
+                      <div className="flex flex-col">
+                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Impacto</span>
+                         <span className="text-xl font-black text-slate-900">{rule.processedCount || 0}</span>
+                      </div>
+                      <button className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-rose-50 hover:text-rose-500 transition-all">
+                         <Trash2 size={16} />
+                      </button>
+                   </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+         <div className="lg:col-span-9">
+            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 px-4">Plantillas Sugeridas (Zero Start)</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+               {templates.map((t, idx) => (
+                 <div 
+                   key={idx} 
+                   onClick={() => {
+                     setNewRule({ ...newRule, name: t.title, category: t.cat, trigger: t.setup.trigger, threshold: t.setup.threshold, message: t.setup.message });
+                     setActiveCategory(t.cat as any);
+                     setIsAdding(true);
+                   }}
+                   className="bg-white p-8 rounded-[32px] border border-slate-200 hover:border-violet-300 shadow-sm transition-all cursor-pointer group text-left"
+                 >
+                    <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform", 
+                      t.cat === 'retencion' ? "bg-indigo-50 text-indigo-600" : t.cat === 'ventas' ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600")}>
+                       <Sparkles size={24} />
+                    </div>
+                    <h5 className="font-black text-slate-900 tracking-tight leading-tight mb-2">{t.title}</h5>
+                    <p className="text-xs text-slate-500 font-medium leading-relaxed mb-6">{t.desc}</p>
+                    <div className="flex items-center gap-2 text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+                       Usar Plantilla <ArrowRight size={12} />
+                    </div>
+                 </div>
+               ))}
+            </div>
+         </div>
+         <div className="lg:col-span-3">
+            <div className="bg-indigo-900 p-8 rounded-[40px] text-white h-full shadow-2xl relative overflow-hidden group">
+               <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 duration-700 group-hover:scale-150" />
+               <div className="relative z-10 flex flex-col justify-between h-full">
+                  <div>
+                    <h5 className="text-xl font-black tracking-tight mb-4 leading-tight">Optimiza el LTV con Kira Analytics</h5>
+                    <p className="text-indigo-200 text-sm leading-relaxed mb-8">
+                       Detectamos que el 40% de las ventas ocurren tras la automatización de la "Bóveda Élite".
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => toastSuccess("Generando informe predictivo de comportamiento de alumnos de Kira AI... Listo en instantes.")}
+                    className="w-full py-4 bg-white/10 hover:bg-white text-white hover:text-indigo-900 border border-white/20 hover:border-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
+                  >
+                     Ver Reporte IA
+                  </button>
+               </div>
+            </div>
+         </div>
+      </div>
+    </div>
+  );
+}
+
 function CoachProfileSettings({ profile }: any) {
   const { user } = useAuth();
   const { success: toastSuccess, error: toastError } = useToast();
