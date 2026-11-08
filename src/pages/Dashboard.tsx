@@ -778,7 +778,8 @@ export function Dashboard() {
                         {(() => {
                           const bookPurchase = purchases.find(p => p.productId === book.id && p.paymentStatus === 'paid');
                           const isOwned = Number(book.price || 0) === 0 || !!bookPurchase;
-                          if (isOwned) {
+                          const canOpenBook = isOwned && book.assetReady === true;
+                          if (isOwned && canOpenBook) {
                             return (
                               <div className="flex flex-col gap-2 w-full">
                                 <button onClick={() => handleOpenBook(book)} className="w-full text-[10px] py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-violet-900/20">
@@ -789,6 +790,9 @@ export function Dashboard() {
                                 </button>
                               </div>
                             );
+                          }
+                          if (isOwned && !canOpenBook) {
+                            return <button disabled className="w-full text-[10px] py-2.5 rounded-xl bg-slate-800 text-slate-500 cursor-not-allowed">Archivo no disponible</button>;
                           }
                           const isInCart = cartItems.some(item => item.id === book.id);
                           return (
