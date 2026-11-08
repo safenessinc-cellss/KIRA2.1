@@ -133,22 +133,6 @@ export function ChatWidget() {
           console.warn("Could not fetch contacts by participants array:", e);
         }
 
-        // Query by senderId (as fallback)
-        try {
-          const sentQ = query(collection(db, 'messages'), where('senderId', '==', user.uid));
-          const sentSnap = await getDocs(sentQ);
-          sentSnap.docs.forEach(d => {
-            const data = d.data();
-            if (data.chatId) {
-              const parts = data.chatId.split('_');
-              const otherId = parts.find((p: string) => p !== user.uid);
-              if (otherId) contactIdsFromMessages.add(otherId);
-            }
-          });
-        } catch (e) {
-          console.warn("Could not fetch contacts by senderId:", e);
-        }
-
         // Resolve profile information for any message contacts that aren't loaded yet
         for (const otherId of contactIdsFromMessages) {
           if (!contactsMap.has(otherId)) {
@@ -177,6 +161,7 @@ export function ChatWidget() {
     const q = query(
       collection(db, 'messages'),
       where('chatId', '==', chatId),
+      where('participants', 'array-contains', user.uid),
       orderBy('createdAt', 'desc'),
       limit(messageLimit)
     );
