@@ -9,10 +9,11 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis
 import { ImageUpload } from '../components/ImageUpload';
 import { AdminBooksView } from './AdminBooksView';
 import { AdminMembershipPlansView } from './AdminMembershipPlansView';
+import { AdminPaymentsConfig } from './AdminPaymentsConfig';
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates' | 'companies' | 'membership_plans';
+type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates' | 'companies' | 'membership_plans' | 'payments_config';
 
 export function AdminMonitor() {
   const { user } = useAuth();
@@ -84,6 +85,7 @@ export function AdminMonitor() {
     { id: 'transactions', label: 'Pagos y transacciones', icon: <CreditCard size={18}/>, category: 'Finanzas', perm: 'billing' },
     { id: 'settlement', label: 'Liquidaciones de coaches', icon: <PieChartIcon size={18}/>, category: 'Finanzas', perm: 'billing' },
     { id: 'membership_plans', label: 'Planes de membresía', icon: <CreditCard size={18}/>, category: 'Finanzas', superOnly: true },
+    { id: 'payments_config', label: 'Configuración de pagos', icon: <Settings size={18}/>, category: 'Finanzas', superOnly: true },
     { id: 'promotions', label: 'Promociones y descuentos', icon: <Star size={18}/>, category: 'Finanzas', perm: 'billing' },
   ];
 
@@ -141,6 +143,7 @@ export function AdminMonitor() {
         {activeTab === 'settlement' && hasPerm(navItems.find(i=>i.id==='settlement')) && <SettlementCenterView />}
         {activeTab === 'transactions' && hasPerm(navItems.find(i=>i.id==='transactions')) && <TransactionsMonitorView />}
         {activeTab === 'membership_plans' && isSuperAdmin && <AdminMembershipPlansView />}
+        {activeTab === 'payments_config' && isSuperAdmin && <AdminPaymentsConfig />}
       </div>
     </div>
   );
