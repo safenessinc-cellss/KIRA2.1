@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { BookOpen, FileText, Link as LinkIcon, Trash2, Plus, Loader2, UploadCloud, CheckCircle2, ShieldAlert, Sparkles, BookMarked, Eye, Search, Filter, Pencil } from 'lucide-react';
@@ -28,6 +28,7 @@ export function AdminBooksView() {
   const [coverUrl, setCoverUrl] = useState('');
   const [price, setPrice] = useState(0);
   const [currency, setCurrency] = useState('USD');
+  const [storagePath, setStoragePath] = useState('');
 
   useEffect(() => {
     // Fetch ALL books in the entire ecosystem
@@ -95,8 +96,8 @@ export function AdminBooksView() {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
       const storageRef = ref(storage, `books/admin/${user.uid}/${Date.now()}_${safeName}`);
       const uploadResult = await uploadBytes(storageRef, file, { contentType: 'application/pdf' });
-      const downloadUrl = await getDownloadURL(uploadResult.ref);
-      setUrl(downloadUrl);
+      setStoragePath(uploadResult.ref.fullPath);
+      setUrl('');
       toastSuccess("Libro administrativo cargado con éxito.");
     } catch (err: any) {
       console.error("Storage upload failed:", err);
@@ -107,12 +108,21 @@ export function AdminBooksView() {
     }
   };
 
-  const startEdit = (book: any) => {
+  const startEdit = async (book: any) => {
     setEditingBook(book);
     setTitle(book.title);
     setDescription(book.description || '');
     setType(book.type || 'pdf');
-    setUrl(book.url || '');
+    setUrl('');
+    setStoragePath('');
+    try {
+      const assetSnap = await getDoc(doc(db, 'bookAssets', book.id));
+      if (assetSnap.exists()) {
+        const asset = assetSnap.data();
+        setStoragePath(asset.storagePath || '');
+        setUrl(asset.externalUrl || '');
+      }
+    } catch (err) { console.error('Could not load private book asset:', err); toastError('No se pudo cargar el archivo privado del libro.'); }
     setCoverUrl(book.coverUrl || '');
     setPrice(Number(book.price || 0));
     setCurrency(String(book.currency || 'USD').toUpperCase());
@@ -125,6 +135,7 @@ export function AdminBooksView() {
     setDescription('');
     setType('pdf');
     setUrl('');
+    setStoragePath('');
     setCoverUrl('');
     setPrice(0);
     setCurrency('USD');
@@ -140,17 +151,18 @@ export function AdminBooksView() {
     }
 
     if (!Number.isFinite(price) || price < 0 || price > 100000) { toastError('Introduce un precio válido igual o superior a cero.'); return; }
-    let finalUrl = url.trim();
-    if (!finalUrl) {
-      toastError("Debes cargar un archivo o ingresar un enlace.");
+    let finalUrl = type === 'link' ? url.trim() : '';
+    if (type === 'pdf' && !storagePath) {
+      toastError("Debes subir el PDF a Firebase Storage antes de publicar.");
       return;
     }
-
-    // Auto prepend https:// if it looks like an external domain link and is missing protocol
-    if (type === 'link' && !finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
-      if (!finalUrl.startsWith('/') && !finalUrl.startsWith('data:')) {
-        finalUrl = 'https://' + finalUrl;
-      }
+    if (type === 'link' && !finalUrl) {
+      toastError("Debes ingresar un enlace HTTPS.");
+      return;
+    }
+    if (type === 'link' && !/^https:\/\//i.test(finalUrl)) {
+      toastError("Los enlaces externos deben usar HTTPS.");
+      return;
     }
 
     setPublishing(true);
@@ -185,42 +197,39 @@ export function AdminBooksView() {
         finalName = 'Kira Coach';
       }
 
+      const catalogData = {
+        title: title.trim(),
+        description: description.trim(),
+        type,
+        price: Number(price),
+        currency,
+        status: 'published',
+        coverUrl: coverUrl || '',
+        publisherId: user.uid,
+        publisherName: finalName,
+        publisherRole: 'admin',
+        updatedAt: serverTimestamp()
+      };
+      const privateAsset = {
+        type,
+        storagePath: type === 'pdf' ? storagePath : '',
+        externalUrl: type === 'link' ? finalUrl : '',
+        updatedAt: serverTimestamp(),
+        updatedBy: user.uid
+      };
       if (editingBook) {
-        // Edit mode
-        await updateDoc(doc(db, 'books', editingBook.id), {
-          title: title.trim(),
-          description: description.trim(),
-          type,
-          url: finalUrl,
-          fileUrl: finalUrl,
-          pdfUrl: type === 'pdf' ? finalUrl : '',
-          price: Number(price),
-          currency,
-          status: 'published',
-          coverUrl: coverUrl || '',
-          publisherName: finalName,
-          updatedAt: serverTimestamp()
-        });
+        await updateDoc(doc(db, 'books', editingBook.id), catalogData);
+        await setDoc(doc(db, 'bookAssets', editingBook.id), privateAsset, { merge: true });
         toastSuccess("¡Libro actualizado con éxito!");
         setEditingBook(null);
       } else {
-        // Create mode
-        await addDoc(collection(db, 'books'), {
-          title: title.trim(),
-          description: description.trim(),
-          type,
-          url: finalUrl,
-          fileUrl: finalUrl,
-          pdfUrl: type === 'pdf' ? finalUrl : '',
-          price: Number(price),
-          currency,
-          status: 'published',
-          coverUrl: coverUrl || '',
-          publisherId: user.uid,
-          publisherName: finalName,
-          publisherRole: 'admin',
-          createdAt: serverTimestamp()
-        });
+        const created = await addDoc(collection(db, 'books'), { ...catalogData, createdAt: serverTimestamp() });
+        try {
+          await setDoc(doc(db, 'bookAssets', created.id), { ...privateAsset, createdAt: serverTimestamp() });
+        } catch (assetError) {
+          await deleteDoc(created);
+          throw assetError;
+        }
         toastSuccess("¡Libro oficial publicado con éxito!");
       }
       
@@ -228,6 +237,7 @@ export function AdminBooksView() {
       setTitle('');
       setDescription('');
       setUrl('');
+      setStoragePath('');
       setCoverUrl('');
       setPrice(0);
       setCurrency('USD');
@@ -244,6 +254,7 @@ export function AdminBooksView() {
     
     try {
       await deleteDoc(doc(db, 'books', bookId));
+      await deleteDoc(doc(db, 'bookAssets', bookId));
       toastSuccess("Libro eliminado permanentemente.");
     } catch (err) {
       console.error("Error deleting book:", err);
@@ -345,7 +356,7 @@ export function AdminBooksView() {
             <div className="grid grid-cols-2 gap-4 bg-slate-50 p-1.5 rounded-2xl border border-slate-200/50">
               <button
                 type="button"
-                onClick={() => { setType('pdf'); setUrl(''); }}
+                onClick={() => { setType('pdf'); setUrl(''); setStoragePath(''); }}
                 className={cn(
                   "py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2",
                   type === 'pdf' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
@@ -355,7 +366,7 @@ export function AdminBooksView() {
               </button>
               <button
                 type="button"
-                onClick={() => { setType('link'); setUrl(''); }}
+                onClick={() => { setType('link'); setUrl(''); setStoragePath(''); }}
                 className={cn(
                   "py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2",
                   type === 'link' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
