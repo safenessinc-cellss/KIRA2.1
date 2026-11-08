@@ -11,7 +11,8 @@ export default function CertificateValidation() {
     let active = true;
     const params = new URLSearchParams(location.search);
     const signature = params.get('sig') || '';
-    fetch('/api/verify/' + encodeURIComponent(code) + '?sig=' + encodeURIComponent(signature))
+    const legacy = location.pathname.startsWith('/validar-certificado/') && /^[a-f0-9]{48}$/.test(code);
+    fetch(legacy ? '/api/certificates/validate/' + encodeURIComponent(code) : '/api/verify/' + encodeURIComponent(code) + '?sig=' + encodeURIComponent(signature))
       .then(async response => ({ ok: response.ok, data: await response.json() }))
       .then(({data}) => { if (active) setResult(data); })
       .catch(error => { console.error('Certificate verification error', error); if (active) setResult({valid:false,status:'unavailable'}); })
@@ -19,7 +20,7 @@ export default function CertificateValidation() {
     return () => { active = false; };
   }, [code, location.search]);
   const certificate = result?.certificate;
-  const date = certificate?.issueDate ? new Date(certificate.issueDate) : null;
+  const date = certificate?.issueDate ? new Date(certificate.issueDate) : certificate?.issuedAt ? new Date(certificate.issuedAt) : null;
   const revoked = result?.status === 'revoked';
   return <main className="min-h-screen bg-slate-50 px-4 py-10 flex items-center justify-center">
     <section className="w-full max-w-3xl bg-white border border-slate-200 rounded-3xl shadow-xl p-6 sm:p-10">
@@ -34,14 +35,14 @@ export default function CertificateValidation() {
           <p className="text-xs uppercase tracking-widest text-slate-400">Se certifica que</p>
           <h1 className="text-3xl sm:text-4xl font-black text-slate-900 mt-3">{certificate.studentName}</h1>
           <p className="text-slate-500 mt-5">Concluyó satisfactoriamente el curso</p>
-          <h2 className="text-xl sm:text-2xl font-bold text-teal-800 mt-2">{certificate.courseName}</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-teal-800 mt-2">{certificate.courseName || certificate.courseTitle}</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 rounded-2xl p-5 text-center">
           <div><div className="text-xs text-slate-400 uppercase">Coach</div><div className="font-semibold text-slate-800 mt-1">{certificate.coachName}</div></div>
-          <div><div className="text-xs text-slate-400 uppercase">Carga horaria</div><div className="font-semibold text-slate-800 mt-1">{certificate.academicHours} horas</div></div>
+          <div><div className="text-xs text-slate-400 uppercase">Carga horaria</div><div className="font-semibold text-slate-800 mt-1">{certificate.academicHours || certificate.hours} horas</div></div>
           <div><div className="text-xs text-slate-400 uppercase">Fecha de emisión</div><div className="font-semibold text-slate-800 mt-1">{date ? date.toLocaleDateString('es-ES') : 'No disponible'}</div></div>
         </div>
-        <div className="mt-6 text-center text-sm text-slate-500"><div className="font-bold text-slate-800">{certificate.kiraNumber}</div><div>Firma de verificación HMAC-SHA256: {result.valid ? 'válida' : 'no válida'}</div></div>
+        <div className="mt-6 text-center text-sm text-slate-500"><div className="font-bold text-slate-800">{certificate.kiraNumber || certificate.certificateNumber}</div><div>Firma de verificación HMAC-SHA256: {result.valid ? 'válida' : 'no válida'}</div></div>
       </> : <div className="py-16 text-center"><XCircle size={42} className="mx-auto text-rose-500 mb-4"/><h1 className="text-xl font-bold text-slate-900">{result?.status==='invalid_signature'?'Firma de verificación inválida':'Certificado no encontrado'}</h1><p className="text-slate-500 mt-2">No fue posible confirmar la autenticidad de esta credencial.</p></div>}
       <div className="mt-8 pt-5 border-t border-slate-100 text-center text-xs text-slate-400 flex items-center justify-center gap-2"><ShieldCheck size={14}/> Verificación pública KIRA · Creado por SAFENESS.INC</div>
     </section>
