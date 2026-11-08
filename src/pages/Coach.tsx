@@ -578,53 +578,14 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <QuickAction onClick={() => setShowSessionIntelligence(true)} title="Sesión Inteligente" desc="Transcripción y análisis IA" icon={<Brain size={24} className="text-indigo-600" />} />
-            <QuickAction onClick={() => setShowRevisarTareas(true)} title="Revisar Tareas" desc="Feedback de módulos" icon={<BookOpen size={24} className="text-amber-500" />} />
-            <QuickAction onClick={() => setShowAiAuditCrm(true)} title="AI Audit CRM" desc="Optimizar embudo" icon={<Activity size={24} className="text-rose-500" />} />
-            <QuickAction onClick={() => setShowCloudSupport(true)} title="Cloud Support" desc="Kira Corp Direct" icon={<ShieldCheck size={24} className="text-emerald-600" />} />
+            <QuickAction onClick={() => onNavigate('courses')} title="Studio de Cursos" desc="Crear y administrar programas" icon={<BookOpen size={24} className="text-indigo-600" />} />
+            <QuickAction onClick={() => onNavigate('tracking')} title="Progreso académico" desc="Revisar matrículas y conclusiones" icon={<GraduationCap size={24} className="text-emerald-600" />} />
           </div>
         </div>
-
-        {/* Heatmap de Energía (Resumen del equipo) */}
-        <div className={cn("bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm flex flex-col justify-center", !isApproved && "opacity-50 pointer-events-none")}>
-           <h3 className="text-lg font-black text-slate-800 mb-6 text-center">Heatmap Energía de Equipo</h3>
-           {loading ? (
-              <div className="flex justify-center py-10"><Loader2 className="animate-spin text-teal-500" size={32} /></div>
-           ) : (
-              <div className="flex flex-col gap-5">
-                 <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Sinergia (Alta)</span>
-                       <span className="text-sm font-black text-emerald-600">{Math.round(posPct)}%</span>
-                    </div>
-                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                       <div className="h-full bg-emerald-500 transition-all duration-1000 shadow-sm" style={{ width: `${posPct}%` }}></div>
-                    </div>
-                 </div>
-
-                 <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Estable (Neutral)</span>
-                       <span className="text-sm font-black text-amber-500">{Math.round(neuPct)}%</span>
-                    </div>
-                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                       <div className="h-full bg-amber-400 transition-all duration-1000 shadow-sm" style={{ width: `${neuPct}%` }}></div>
-                    </div>
-                 </div>
-
-                 <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Agotamiento (Riesgo)</span>
-                       <span className="text-sm font-black text-rose-500">{Math.round(negPct)}%</span>
-                    </div>
-                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                       <div className="h-full bg-rose-500 transition-all duration-1000 shadow-sm" style={{ width: `${negPct}%` }}></div>
-                    </div>
-                 </div>
-              </div>
-           )}
+        <div className="rounded-[32px] border border-slate-200 bg-white p-8 shadow-sm">
+          <h3 className="text-lg font-black text-slate-900">Privacidad del alumno</h3>
+          <p className="mt-2 text-sm leading-relaxed text-slate-600">Los diarios personales y notas de bienestar pertenecen al alumno. Este panel solo muestra matrículas, cursos y progreso académico autorizado.</p>
         </div>
-      </div>
 
       {/* Analysis Row: Sessions Chart and Topics */}
       <div className={cn("grid grid-cols-1 lg:grid-cols-2 gap-6", !isApproved && "opacity-50 pointer-events-none")}>
