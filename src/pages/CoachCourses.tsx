@@ -39,57 +39,33 @@ export function CoachCourses() {
   }, [user]);
 
   const fetchEnrolledStudents = async (courseList: any[]) => {
-    if (courseList.length === 0) {
-      setEnrolledStudents([]);
-      return;
-    }
+    if (courseList.length === 0) { setEnrolledStudents([]); return; }
     setLoadingStudents(true);
     try {
       const allEnrollments: any[] = [];
       for (const course of courseList) {
         const enrollQ = query(collection(db, 'enrollments'), where('courseId', '==', course.id));
         const enrollSnap = await getDocs(enrollQ);
-        enrollSnap.docs.forEach(docSnap => {
+        enrollSnap.docs.forEach(enrollmentDoc => {
+          const enrollment = enrollmentDoc.data();
           allEnrollments.push({
-            id: docSnap.id,
+            id: enrollmentDoc.id,
+            studentId: enrollment.userId,
+            studentName: enrollment.studentName || 'Alumno',
+            studentEmail: enrollment.studentEmail || '',
+            studentAvatar: enrollment.studentAvatar || '',
             courseTitle: course.title,
-            ...docSnap.data()
+            courseId: course.id,
+            progress: Number(enrollment.progress || 0),
+            createdAt: enrollment.createdAt?.seconds ? new Date(enrollment.createdAt.seconds * 1000) : new Date()
           });
         });
       }
-
-      const uniqueUserIds = Array.from(new Set(allEnrollments.map(e => e.userId)));
-      const studentProfiles: { [key: string]: any } = {};
-
-      for (const sId of uniqueUserIds) {
-        if (!sId) continue;
-        const userDoc = await getDoc(doc(db, 'users', sId));
-        if (userDoc.exists()) {
-          studentProfiles[sId] = userDoc.data();
-        }
-      }
-
-      const mergedStudents = allEnrollments.map(enroll => {
-        const p = studentProfiles[enroll.userId] || { name: 'Alumno Desconocido', email: 'S/D' };
-        return {
-          id: enroll.id,
-          studentId: enroll.userId,
-          studentName: p.name || p.displayName || 'Alumno Desconocido',
-          studentEmail: p.email || 'Sin correo',
-          studentAvatar: p.photoURL || p.avatarUrl || '',
-          courseTitle: enroll.courseTitle,
-          courseId: enroll.courseId,
-          progress: enroll.progress || 0,
-          createdAt: enroll.createdAt?.seconds ? new Date(enroll.createdAt.seconds * 1000) : new Date()
-        };
-      });
-
-      setEnrolledStudents(mergedStudents);
+      setEnrolledStudents(allEnrollments);
     } catch (e) {
-      console.error("Error fetching enrolled students:", e);
-    } finally {
-      setLoadingStudents(false);
-    }
+      console.error('Error loading course roster:', e);
+      setErrorMsg('No se pudo cargar la lista de alumnos inscritos.');
+    } finally { setLoadingStudents(false); }
   };
 
   const fetchCourses = async () => {
