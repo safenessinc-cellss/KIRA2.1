@@ -5,6 +5,7 @@ import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, 
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { NotificationCenter } from '../components/Notifications';
+import { ChatWidget } from '../components/Chat';
 import { useCart } from '../components/CartProvider';
 import { auth, db } from '../firebase';
 import { doc, updateDoc, collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
@@ -134,6 +135,7 @@ export function DashboardLayout({ title }: { title: string }) {
         </div>
 
         {toast && <div role="status" className="fixed right-3 top-20 z-[100] w-[calc(100vw-1.5rem)] max-w-sm cursor-pointer sm:right-6" onClick={() => setToast(null)}><div className="flex items-start gap-3 rounded-xl border-l-4 border-primary bg-white p-4 shadow-2xl ring-1 ring-slate-200"><div className="shrink-0 rounded-lg bg-primary/10 p-2 text-primary"><BellRing size={20} /></div><div className="min-w-0 flex-1"><h4 className="mb-0.5 text-sm font-bold text-slate-800">{toast.title}</h4><p className="line-clamp-2 text-xs text-slate-500">{toast.message}</p></div><button type="button" aria-label="Descartar notificación" className="shrink-0 text-slate-400 hover:text-slate-600" onClick={(event) => { event.stopPropagation(); setToast(null); }}><X size={14} /></button></div></div>}
+        {user && (role === 'alumno' || (role === 'coach' && user.membershipStatus === 'active')) && <ChatWidget />}
       </div>
     </div>
   );
