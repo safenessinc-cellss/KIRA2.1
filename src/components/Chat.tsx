@@ -276,52 +276,13 @@ export function ChatWidget() {
   };
 
   const handleDeclineOffer = async (msgId: string) => {
-    try {
-      const msgRef = doc(db, 'messages', msgId);
-      await updateDoc(msgRef, {
-        'offerData.status': 'declined'
-      });
-      success('Propuesta rechazada.');
-    } catch (err: any) {
-      console.error('Decline Offer Error:', err);
-      toastError('Error al declinar: ' + err.message);
-    }
+    toastError('La gestión de sesiones no está disponible hasta conectar reservas, pagos y confirmaciones verificadas.');
   };
 
-  // Complete session and prompt feedback rating
   const handleCompleteSession = async (msgId: string, offer: any) => {
-    try {
-      const msgRef = doc(db, 'messages', msgId);
-      await updateDoc(msgRef, {
-        'offerData.status': 'completed'
-      });
-
-      const chatId = [user!.uid, selectedContact.uid].sort().join('_');
-      await addDoc(collection(db, 'messages'), {
-        chatId,
-        senderId: 'kira-guard',
-        senderName: 'Mediador Kira',
-        type: 'session_review',
-        content: `Calificación de la sesión de ${selectedContact.displayName}`,
-        participants: [user!.uid, selectedContact.uid],
-        createdAt: new Date(),
-        reviewData: {
-          coachId: selectedContact.uid,
-          coachName: selectedContact.displayName,
-          studentId: user!.uid,
-          studentName: user!.displayName || 'Alumno',
-          status: 'pending'
-        }
-      });
-
-      success('¡Sesión finalizada! Se ha habilitado la calificación privada.');
-    } catch (err: any) {
-      console.error('Complete Session Error:', err);
-      toastError('Error al finalizar la sesión: ' + err.message);
-    }
+    toastError('La gestión de sesiones no está disponible hasta conectar reservas, pagos y confirmaciones verificadas.');
   };
 
-  // Submit private rating & review to the database
   const handleSubmitReview = async (msgId: string, reviewData: any) => {
     const rating = ratings[msgId] || 5;
     const comment = comments[msgId] || '';
