@@ -157,7 +157,7 @@ async function firestoreToken(): Promise<string> {
   const account = serviceAccount();
   const now = Math.floor(Date.now() / 1000);
   const unsigned = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" })) + "." + b64url(JSON.stringify({
-    iss: account.client_email, scope: "https://www.googleapis.com/auth/datastore",
+    iss: account.client_email, scope: "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/devstorage.read_only",
     aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600
   }));
   const signer = createSign("RSA-SHA256"); signer.update(unsigned); signer.end();
@@ -268,6 +268,10 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
     } else if (item.collectionName === "books" || item.type === "book") {
       const purchaseId = idSafe(order.userId + "_" + orderId + "_" + item.id);
       writes.push(fsCreate("purchases", purchaseId, { userId: order.userId, productId: item.id, productType: "book", orderId, paymentStatus: "paid", createdAt: now }));
+      const entitlementId = idSafe(order.userId + "_" + item.id);
+      const existingEntitlement = await fsGet("bookEntitlements", entitlementId);
+      const entitlement = { userId: order.userId, productId: item.id, status: "active", paymentStatus: "paid", orderId, grantedAt: now };
+      writes.push(existingEntitlement ? fsUpdate("bookEntitlements", entitlementId, entitlement) : fsCreate("bookEntitlements", entitlementId, entitlement));
     } else if (item.type === "membership") {
       const durationDays = Math.max(1, Math.min(3650, Number(item.durationDays || 365)));
       const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
@@ -502,6 +506,44 @@ app.post("/api/webhooks/mercadopago", async (req: any, res) => {
     if (error.status === 409) return res.status(200).json({ received: true, duplicate: true });
     console.error("[MercadoPago] Fulfillment failed:", error);
     return res.status(500).json({ error: "Confirmación pendiente; Mercado Pago podrá reintentar el webhook." });
+  }
+});
+
+app.get("/api/books/:bookId/download", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res);
+    if (!user) return;
+    const bookId = String(req.params.bookId || "");
+    if (!bookId || bookId.length > 160) return res.status(400).json({ error: "Libro no válido." });
+    const book = await fsGet("books", bookId);
+    if (!book || book.status !== "published") return res.status(404).json({ error: "Libro no disponible." });
+    const isFree = Number(book.price || 0) === 0;
+    const entitlementId = idSafe(user.uid + "_" + bookId);
+    const entitlement = isFree ? null : await fsGet("bookEntitlements", entitlementId);
+    if (!isFree && (!entitlement || entitlement.status !== "active" || entitlement.paymentStatus !== "paid")) {
+      return res.status(403).json({ error: "Debes comprar este libro para acceder al archivo." });
+    }
+    const asset = await fsGet("bookAssets", bookId);
+    if (!asset) return res.status(404).json({ error: "El archivo de este libro todavía no está configurado." });
+    if (asset.externalUrl && typeof asset.externalUrl === "string" && /^https:\/\//i.test(asset.externalUrl)) {
+      return res.json({ url: asset.externalUrl, type: "external" });
+    }
+    if (!asset.storagePath || typeof asset.storagePath !== "string" || asset.storagePath.includes("..")) {
+      return res.status(404).json({ error: "El archivo del libro no está disponible." });
+    }
+    const bucket = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET;
+    if (!bucket) return res.status(503).json({ error: "Firebase Storage no está configurado en el servidor." });
+    const mediaUrl = "https://storage.googleapis.com/storage/v1/b/" + encodeURIComponent(bucket) + "/o/" + encodeURIComponent(asset.storagePath) + "?alt=media";
+    const fileResponse = await fetch(mediaUrl, { headers: { Authorization: "Bearer " + await firestoreToken() } });
+    if (!fileResponse.ok) return res.status(502).json({ error: "No fue posible recuperar el archivo del libro." });
+    const bytes = Buffer.from(await fileResponse.arrayBuffer());
+    res.setHeader("Content-Type", fileResponse.headers.get("content-type") || "application/pdf");
+    res.setHeader("Content-Disposition", "inline; filename*=UTF-8''" + encodeURIComponent(String(book.title || "KIRA-book")) + ".pdf");
+    res.setHeader("Cache-Control", "private, no-store");
+    return res.status(200).send(bytes);
+  } catch (error: any) {
+    console.error("[Books] Protected download failed:", error);
+    return res.status(500).json({ error: "No fue posible abrir el libro." });
   }
 });
 
