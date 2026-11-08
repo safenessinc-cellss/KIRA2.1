@@ -463,7 +463,7 @@ app.patch("/api/admin/payments/settings",async(req,res)=>{
     const next={paymentsEnabled:body.paymentsEnabled!==false,baseCurrency:String(body.baseCurrency||"BRL").toUpperCase(),allowedCurrencies:Array.isArray(body.allowedCurrencies)?body.allowedCurrencies.map((x:any)=>String(x).toUpperCase()).filter((x:string)=>/^[A-Z]{3}$/.test(x)).slice(0,10):["BRL"],roundingRule:["half_up","up","down"].includes(body.roundingRule)?body.roundingRule:"half_up",requirePayment:body.requirePayment!==false,updatedAt:new Date().toISOString(),updatedBy:user.uid};
     if(!/^[A-Z]{3}$/.test(next.baseCurrency)||!next.allowedCurrencies.includes(next.baseCurrency))return res.status(400).json({error:"Moneda base no válida o no incluida en las monedas permitidas."});
     const before=await fsGet("paymentSettings","global");
-    await fsCommit([fsUpdate("paymentSettings","global",next),fsCreate("config_audit",randomBytes(16).toString("hex"),{scope:"payments",key:"global",actorId:user.uid,before:before||{},after:next,ip:req.ip,userAgent:String(req.headers["user-agent"]||"").slice(0,300),createdAt:next.updatedAt})]);
+    await fsCommit([before?fsUpdate("paymentSettings","global",next):fsCreate("paymentSettings","global",next),fsCreate("config_audit",randomBytes(16).toString("hex"),{scope:"payments",key:"global",actorId:user.uid,before:before||{},after:next,ip:req.ip,userAgent:String(req.headers["user-agent"]||"").slice(0,300),createdAt:next.updatedAt})]);
     return res.json({ok:true,settings:next});
   }catch(e:any){console.error("[Payments] Settings update failed:",e);return res.status(500).json({error:e.message||"No se pudo guardar la configuración."});}
 });
@@ -477,7 +477,7 @@ app.put("/api/admin/payments/gateways/:provider",async(req,res)=>{
     const apiKey=typeof body.apiKey==="string"?body.apiKey.trim():"",webhookSecret=typeof body.webhookSecret==="string"?body.webhookSecret.trim():"";
     if((apiKey||webhookSecret)&&provider!=="manual")paymentEncryptionKey();
     const next={provider,enabled:body.enabled===true,mode,priority,publicKey:String(body.publicKey||"").slice(0,500),apiKeyEncrypted:apiKey?encryptPaymentSecret(apiKey):(previous?.apiKeyEncrypted||""),webhookSecretEncrypted:webhookSecret?encryptPaymentSecret(webhookSecret):(previous?.webhookSecretEncrypted||""),updatedBy:user.uid,updatedAt:new Date().toISOString()};
-    await fsCommit([fsUpdate("paymentGateways",id,next),fsCreate("paymentAudit",randomBytes(16).toString("hex"),{actorId:user.uid,action:"gateway.updated",entity:"paymentGateways",entityId:id,before:{...previous,apiKeyEncrypted:previous?.apiKeyEncrypted?"[secret]":undefined,webhookSecretEncrypted:previous?.webhookSecretEncrypted?"[secret]":undefined},after:{...next,apiKeyEncrypted:next.apiKeyEncrypted?"[secret]":undefined,webhookSecretEncrypted:next.webhookSecretEncrypted?"[secret]":undefined},ip:req.ip,userAgent:String(req.headers["user-agent"]||"").slice(0,300),createdAt:next.updatedAt})]);
+    await fsCommit([previous?fsUpdate("paymentGateways",id,next):fsCreate("paymentGateways",id,next),fsCreate("paymentAudit",randomBytes(16).toString("hex"),{actorId:user.uid,action:"gateway.updated",entity:"paymentGateways",entityId:id,before:{...previous,apiKeyEncrypted:previous?.apiKeyEncrypted?"[secret]":undefined,webhookSecretEncrypted:previous?.webhookSecretEncrypted?"[secret]":undefined},after:{...next,apiKeyEncrypted:next.apiKeyEncrypted?"[secret]":undefined,webhookSecretEncrypted:next.webhookSecretEncrypted?"[secret]":undefined},ip:req.ip,userAgent:String(req.headers["user-agent"]||"").slice(0,300),createdAt:next.updatedAt})]);
     return res.json({ok:true,gateway:{provider,enabled:next.enabled,mode,priority,publicKey:next.publicKey,hasApiKey:!!next.apiKeyEncrypted,hasWebhookSecret:!!next.webhookSecretEncrypted}});
   }catch(e:any){console.error("[Payments] Gateway update failed:",e);return res.status(500).json({error:e.message||"No se pudo guardar la pasarela."});}
 });
@@ -586,8 +586,9 @@ app.post("/api/create-checkout-session", async (req, res) => {
 });
 
 app.post("/api/webhooks/stripe", async (req: any, res) => {
+  try {
   const signature = req.headers["stripe-signature"];
-  const gateway=await fsGet("paymentGateways","stripe").catch(()=>null);
+  const gateway=await fsGet("paymentGateways","stripe");
   const stripeSecret=gateway?.apiKeyEncrypted?decryptPaymentSecret(gateway.apiKeyEncrypted):process.env.STRIPE_SECRET_KEY;
   const webhookSecret=gateway?.webhookSecretEncrypted?decryptPaymentSecret(gateway.webhookSecretEncrypted):process.env.STRIPE_WEBHOOK_SECRET;
   const stripe=stripeSecret?new Stripe(stripeSecret,{apiVersion:"2025-01-27" as any}):null;
@@ -606,6 +607,10 @@ app.post("/api/webhooks/stripe", async (req: any, res) => {
     if (error.status === 409) return res.status(200).json({ received: true, duplicate: true });
     console.error("[Stripe] Fulfillment failed:", error);
     return res.status(500).json({ error: "Confirmación pendiente; Stripe podrá reintentar el webhook." });
+  }
+  } catch(error:any) {
+    console.error("[Stripe] Webhook configuration failed:",error);
+    return res.status(503).json({error:"Webhook de Stripe temporalmente no disponible."});
   }
 });
 
