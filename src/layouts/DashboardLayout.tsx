@@ -94,7 +94,7 @@ export function DashboardLayout({ title }: { title: string }) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-          {role === 'coach' && <span className="hidden rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 sm:inline-flex">Membresía activa</span>}
+          {role === 'coach' && user?.membershipStatus === 'active' && <span className="hidden rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 sm:inline-flex">Membresía activa</span>}
           <NotificationCenter />
           <button type="button" onClick={() => setIsCartOpen(true)} aria-label={`Ver carrito, ${cartCount} artículos`} className="relative flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"><ShoppingCart size={18} />{cartCount > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-rose-500 px-1 text-[9px] font-black text-white">{cartCount}</span>}</button>
           <div className="hidden items-center gap-2 sm:flex">
