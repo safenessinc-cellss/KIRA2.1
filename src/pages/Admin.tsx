@@ -66,28 +66,28 @@ export function AdminMonitor() {
   const categories = ['Inicio y métricas', 'Personas y acceso', 'Academia y certificados', 'Finanzas'].filter(cat => filteredNav.some(n => n.category === cat));
 
   return (
-    <div className="space-y-6">
-      <section aria-label="Módulos de administración" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-kirateal">Centro de control</p><h2 className="mt-1 text-lg font-black text-slate-900">Módulos de administración</h2><p className="mt-1 text-xs text-slate-500">Selecciona un área para gestionar KIRA.</p></div>
-          <div className="relative w-full sm:max-w-xs">
-            <Zap className="absolute left-4 top-3.5 text-slate-400" size={16} />
-            <input type="search" aria-label="Buscar módulo" placeholder="Buscar módulo..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm outline-none transition focus:border-kirateal focus:ring-4 focus:ring-kirateal/10" />
-          </div>
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
+      <aside aria-label="Navegación de administración" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-24">
+        <div className="px-3 pb-3 pt-2">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-kirateal">Centro de control</p>
+          <h2 className="mt-1 text-base font-black text-slate-900">Módulos KIRA</h2>
+          <p className="mt-1 text-xs text-slate-500">Elige un módulo; el contenido aparece a la derecha.</p>
         </div>
-        <div className="space-y-5">
+        <div className="relative mb-3">
+          <Zap className="absolute left-3 top-3 text-slate-400" size={15} />
+          <input type="search" aria-label="Buscar módulo" placeholder="Buscar módulo..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none transition focus:border-kirateal focus:ring-4 focus:ring-kirateal/10" />
+        </div>
+        <nav className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-1" aria-label="Módulos">
           {categories.map(cat => (
-            <section key={cat} aria-label={cat}>
-              <h3 className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{cat}</h3>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {filteredNav.filter(n => n.category === cat).map(item => (
-                  <NavButton key={item.id} active={activeTab === item.id} disabled={!canOpen(item)} onClick={() => { if (canOpen(item)) setActiveTab(item.id as AdminTab); }} icon={item.icon} label={item.label} />
-                ))}
-              </div>
-            </section>
+            <div key={cat} className="contents">
+              <h3 className="col-span-full px-3 pb-1 pt-3 text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">{cat}</h3>
+              {filteredNav.filter(n => n.category === cat).map(item => (
+                <NavButton key={item.id} active={activeTab === item.id} disabled={!canOpen(item)} onClick={() => { if (canOpen(item)) setActiveTab(item.id as AdminTab); }} icon={item.icon} label={item.label} />
+              ))}
+            </div>
           ))}
-        </div>
-      </section>
+        </nav>
+      </aside>
 
       {/* Área principal: dashboard inicial y contenido del módulo seleccionado */}
       <div className="min-w-0 w-full">
@@ -4446,10 +4446,13 @@ function CertificateRequestsAdminView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [issuing, setIssuing] = useState<string | null>(null);
+  const [previewRequestId, setPreviewRequestId] = useState<string | null>(null);
+  const [certificateLogo, setCertificateLogo] = useState('/assets/kira-logo.png');
   const isSuperAdmin = user?.email === 'safeness.c.a@gmail.com';
   useEffect(() => {
     return onSnapshot(collection(db, 'certificateRequests'), snap => { setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); }, err => { console.error(err); setError('No se pudieron cargar las solicitudes. Verifica las reglas de Firestore.'); setLoading(false); });
   }, []);
+  useEffect(() => onSnapshot(doc(db, 'settings', 'website'), snap => { if (snap.exists() && snap.data().logoImage) setCertificateLogo(snap.data().logoImage); }), []);
   const decide = async (r: any, status: 'approved' | 'rejected') => {
     if (!isSuperAdmin || !user) return setError('Solo el superadministrador puede revisar solicitudes.');
     if (status === 'approved' && (!(r.paymentStatus === 'paid' || r.paid === true) || !(r.courseCompleted === true || r.completed === true || Number(r.progress) >= 100))) return setError('Falta confirmar el pago o la finalización del curso.');
@@ -4500,9 +4503,30 @@ function CertificateRequestsAdminView() {
     } catch (e) { console.error(e); setError('No se pudo emitir el certificado. Revisa permisos y conexión.'); } finally { setIssuing(null); }
   };
   const pending = requests.filter(r => !['approved','rejected','issued'].includes(String(r.status || 'pending')));
+  const previewRequest = requests.find(r => r.id === previewRequestId) || requests[0] || null;
+  const previewDate = previewRequest?.issuedAt?.toDate?.() || (previewRequest?.issuedAt ? new Date(previewRequest.issuedAt) : null);
+  const previewValidationUrl = previewRequest?.validationUrl || previewRequest?.qrUrl || '';
   return <div className='space-y-5'><section className='bg-white border border-slate-200 rounded-2xl p-6 shadow-sm'><h2 className='text-xl font-bold text-slate-900 flex items-center gap-2'><FileText className='text-kirateal'/> Certificados verificables KIRA</h2><p className='text-sm text-slate-500 mt-2'>Aprobación, emisión con registro de emisor y validación pública por QR.</p><div className='flex gap-2 flex-wrap mt-4 text-xs'><span className='rounded-full bg-amber-50 text-amber-700 px-3 py-1'>Pendientes: {pending.length}</span><span className='rounded-full bg-emerald-50 text-emerald-700 px-3 py-1'>Aprobadas: {requests.filter(r=>r.status==='approved').length}</span><span className='rounded-full bg-slate-100 text-slate-600 px-3 py-1'>Emitidas: {requests.filter(r=>r.status==='issued').length}</span><span className='rounded-full bg-rose-50 text-rose-700 px-3 py-1'>Rechazadas: {requests.filter(r=>r.status==='rejected').length}</span></div></section>
   {error && <div className='rounded-xl bg-rose-50 border border-rose-200 text-rose-700 p-3 text-sm'>{error}</div>}
-  {loading ? <div className='p-8 text-center text-slate-500'>Cargando solicitudes…</div> : requests.length === 0 ? <div className='rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500'>Todavía no hay solicitudes.</div> : <div className='space-y-3'>{requests.map(r => <article key={r.id} className='bg-white border border-slate-200 rounded-2xl p-5 flex flex-col md:flex-row md:items-center gap-4'><div className='flex-1 min-w-0'><div className='font-semibold text-slate-900'>{r.courseTitle || r.courseName || r.title || 'Curso no identificado'}</div><div className='text-sm text-slate-500 mt-1'>Alumno: {r.studentName || r.userName || r.userEmail || r.userId || 'Sin identificar'}</div><div className='text-xs text-slate-400 mt-1'>Coach: {r.coachName || r.coachId || 'No especificado'} · {r.hours || r.courseHours || r.durationHours || 0} horas · Estado: {r.status || 'pending'}</div><div className='text-xs text-slate-400 mt-1'>Pago: {r.paymentRequired === false ? 'No requiere pago' : r.paymentStatus === 'paid' ? 'Confirmado por administración' : 'Pendiente de verificación'}</div><div className='text-xs text-slate-400 mt-1'>Solicitud: {r.id} {r.certificateNumber ? '· Certificado: ' + r.certificateNumber : ''}</div>{r.issuedByName && <div className='text-xs text-emerald-700 mt-1'>Emitido por: {r.issuedByName}</div>}</div>
+  <section className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6'>
+    <div className='mb-4'><p className='text-[10px] font-black uppercase tracking-[0.18em] text-kirateal'>Modelo oficial</p><h3 className='text-lg font-black text-slate-900'>Vista previa del certificado KIRA</h3><p className='text-xs text-slate-500'>A4 horizontal · logo · marca de agua · alumno · curso · coach · horas · firma electrónica · QR</p></div>
+    <div className='relative mx-auto aspect-[1.414/1] w-full max-w-4xl overflow-hidden rounded-xl border-[5px] border-double border-teal-700 bg-[#fffefa] p-[3.5%] text-center shadow-inner'>
+      <div className='pointer-events-none absolute inset-0 flex items-center justify-center'><span className='rotate-[-24deg] text-[clamp(3rem,11vw,8rem)] font-black tracking-widest text-teal-900/[0.055]'>KIRA</span></div>
+      <div className='relative flex h-full flex-col items-center justify-between'>
+        <div className='flex flex-col items-center'><img src={certificateLogo} alt='Logo KIRA' className='h-[clamp(22px,5vw,58px)] max-w-[25%] object-contain'/><div className='mt-1 text-[clamp(9px,1.5vw,18px)] font-black tracking-[0.24em] text-teal-900'>KIRA COACH</div><div className='text-[clamp(6px,0.8vw,10px)] tracking-[0.2em] text-slate-500'>CERTIFICADO DE CONCLUSIÓN</div></div>
+        <div className='relative max-w-[85%]'><p className='text-[clamp(7px,1vw,12px)] text-slate-500'>Se certifica que</p><h4 className='mt-1 break-words text-[clamp(13px,2.8vw,30px)] font-serif font-bold text-slate-900'>{previewRequest?.studentName || 'Nombre completo del alumno'}</h4><p className='mt-1 text-[clamp(7px,1vw,12px)] text-slate-600'>ha concluido satisfactoriamente el curso</p><h5 className='mt-1 break-words text-[clamp(10px,1.8vw,20px)] font-bold text-teal-800'>{previewRequest?.courseTitle || 'Nombre del curso'}</h5><p className='mt-1 text-[clamp(7px,1vw,12px)] text-slate-600'>{Number(previewRequest?.hours || previewRequest?.courseHours || previewRequest?.durationHours || 0) || '—'} horas académicas · Coach: {previewRequest?.coachName || 'Nombre del coach'}</p></div>
+        <div className='relative grid w-full grid-cols-[1fr_auto_1fr] items-end gap-2 text-[clamp(6px,0.8vw,10px)] text-slate-600'>
+          <div className='border-t border-slate-400 pt-1'><span className='block font-serif text-[clamp(8px,1.3vw,15px)] italic text-slate-800'>{previewRequest?.issuerName || 'Firma electrónica KIRA'}</span><span className='font-bold'>EMISOR AUTORIZADO</span><span className='block'>{previewRequest?.issuerName || 'Superadministrador KIRA'}</span></div>
+          <div className='flex flex-col items-center gap-1'>{previewValidationUrl ? <img src={'https://api.qrserver.com/v1/create-qr-code/?size=160x160&data='+encodeURIComponent(previewValidationUrl)} alt='QR de validación' className='h-[clamp(30px,7vw,72px)] w-[clamp(30px,7vw,72px)]'/> : <div className='flex h-[clamp(30px,7vw,72px)] w-[clamp(30px,7vw,72px)] items-center justify-center border border-dashed border-slate-400 text-center text-[7px] text-slate-400'>QR al emitir</div>}<span className='font-mono'>{previewRequest?.certificateNumber || 'N.º KIRA — pendiente'}</span></div>
+          <div className='border-t border-slate-400 pt-1'><span className='block font-serif text-[clamp(8px,1.3vw,15px)] italic text-slate-800'>{previewRequest?.coachName || 'Firma del coach'}</span><span className='font-bold'>COACH RESPONSABLE</span><span className='block'>KIRA COACH</span></div>
+        </div>
+        <div className='relative text-[clamp(6px,0.8vw,10px)] text-slate-500'>Fecha de emisión: {previewDate ? previewDate.toLocaleDateString() : 'se asigna al emitir'} · Verificación pública mediante QR</div>
+      </div>
+    </div>
+    <p className='mt-3 text-center text-[11px] text-slate-500'>Selecciona una solicitud para ver sus datos. La firma y el QR solo son válidos tras la emisión verificada por el servidor.</p>
+  </section>
+
+  {loading ? <div className='p-8 text-center text-slate-500'>Cargando solicitudes…</div> : requests.length === 0 ? <div className='rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500'>Todavía no hay solicitudes.</div> : <div className='space-y-3'>{requests.map(r => <article key={r.id} onClick={() => setPreviewRequestId(r.id)} className={'bg-white border rounded-2xl p-5 flex flex-col md:flex-row md:items-center gap-4 cursor-pointer transition-colors ' + (previewRequest?.id === r.id ? 'border-kirateal ring-2 ring-kirateal/10' : 'border-slate-200')}><div className='flex-1 min-w-0'><div className='font-semibold text-slate-900'>{r.courseTitle || r.courseName || r.title || 'Curso no identificado'}</div><div className='text-sm text-slate-500 mt-1'>Alumno: {r.studentName || r.userName || r.userEmail || r.userId || 'Sin identificar'}</div><div className='text-xs text-slate-400 mt-1'>Coach: {r.coachName || r.coachId || 'No especificado'} · {r.hours || r.courseHours || r.durationHours || 0} horas · Estado: {r.status || 'pending'}</div><div className='text-xs text-slate-400 mt-1'>Pago: {r.paymentRequired === false ? 'No requiere pago' : r.paymentStatus === 'paid' ? 'Confirmado por administración' : 'Pendiente de verificación'}</div><div className='text-xs text-slate-400 mt-1'>Solicitud: {r.id} {r.certificateNumber ? '· Certificado: ' + r.certificateNumber : ''}</div>{r.issuedByName && <div className='text-xs text-emerald-700 mt-1'>Emitido por: {r.issuedByName}</div>}</div>
   {r.status !== 'issued' && <div className='flex gap-2 flex-wrap'>{r.paymentRequired !== false && !r.paid && <button disabled={!isSuperAdmin} onClick={()=>confirmPayment(r)} className='px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-bold disabled:opacity-40'>Confirmar pago</button>}{r.status !== 'approved' && <button disabled={!isSuperAdmin} onClick={()=>decide(r,'approved')} className='px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold disabled:opacity-40'>Aprobar</button>}{r.status !== 'rejected' && <button disabled={!isSuperAdmin} onClick={()=>decide(r,'rejected')} className='px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold disabled:opacity-40'>Rechazar</button>}{r.status === 'approved' && <button disabled={!isSuperAdmin || issuing===r.id} onClick={()=>issue(r)} className='px-3 py-2 rounded-lg bg-kirateal text-white text-xs font-bold disabled:opacity-50'>{issuing===r.id ? 'Emitiendo…' : 'Emitir certificado + PDF'}</button>}</div>}</article>)}</div>}</div>;
 }
 
