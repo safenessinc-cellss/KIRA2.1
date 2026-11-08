@@ -87,6 +87,7 @@ export default function App() {
                     <Route path="/login" element={<Login />} />
                     <Route path="/microlearning" element={<Microlearning />} />
                     <Route path="/validar-certificado/:code" element={<CertificateValidation />} />
+                    <Route path="/verify/:code" element={<CertificateValidation />} />
                     
                     {/* Alumnos */}
                     <Route element={<ProtectedRoute allowedRoles={['alumno']} />}>
