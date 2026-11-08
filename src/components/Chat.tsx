@@ -268,42 +268,8 @@ export function ChatWidget() {
     toastError('La gestión de sesiones no está disponible hasta conectar reservas, pagos y confirmaciones verificadas.');
   };
 
-  const handleSubmitReview = async (msgId: string, reviewData: any) => {
-    const rating = ratings[msgId] || 5;
-    const comment = comments[msgId] || '';
-
-    if (!user) return;
-
-    setSubmittingReview(prev => ({ ...prev, [msgId]: true }));
-    try {
-      await addDoc(collection(db, 'reviews'), {
-        courseId: null,
-        bookId: null,
-        coachId: reviewData.coachId,
-        itemId: reviewData.coachId,
-        itemType: 'coach',
-        itemName: reviewData.coachName,
-        userId: user.uid,
-        rating,
-        comment,
-        status: 'published',
-        createdAt: new Date()
-      });
-
-      const msgRef = doc(db, 'messages', msgId);
-      await updateDoc(msgRef, {
-        'reviewData.status': 'completed',
-        'reviewData.rating': rating,
-        'reviewData.comment': comment
-      });
-
-      success('¡Gracias por tu calificación privada! Tu feedback ha sido guardado de forma segura.');
-    } catch (err: any) {
-      console.error('Submit Review Error:', err);
-      toastError('Error al enviar la calificación: ' + err.message);
-    } finally {
-      setSubmittingReview(prev => ({ ...prev, [msgId]: false }));
-    }
+  const handleSubmitReview = async (_msgId: string, _reviewData: any) => {
+    toastError('Las reseñas de sesiones se habilitarán después de una sesión confirmada y completada por el sistema.');
   };
 
   return (
