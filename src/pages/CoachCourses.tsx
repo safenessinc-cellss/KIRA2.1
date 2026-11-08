@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { MediaUpload } from '../components/MediaUpload';
@@ -22,6 +22,7 @@ export function CoachCourses() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState(0);
+  const [hours, setHours] = useState(1);
   const [bannerUrl, setBannerUrl] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [editingCourse, setEditingCourse] = useState<any | null>(null);
@@ -120,7 +121,7 @@ export function CoachCourses() {
     }
   };
 
-  const isApproved = true;
+  const isApproved = profile?.role === 'coach' && profile?.approvalStatus === 'approved';
 
   const handleCancel = () => {
     setIsCreating(false);
@@ -128,6 +129,7 @@ export function CoachCourses() {
     setTitle('');
     setDescription('');
     setPrice(0);
+    setHours(1);
     setBannerUrl('');
   };
 
@@ -136,6 +138,7 @@ export function CoachCourses() {
     setTitle(course.title || '');
     setDescription(course.description || '');
     setPrice(course.price || 0);
+    setHours(Number(course.hours || course.durationHours || 1));
     setBannerUrl(course.bannerUrl || '');
     setIsCreating(false);
   };
@@ -150,7 +153,9 @@ export function CoachCourses() {
         price: Number(price),
         bannerUrl,
         coachId: user.uid,
-        status: 'published',
+        hours: Number(hours),
+        coachName: profile?.displayName || user.displayName || '',
+        status: 'pending',
         createdAt: new Date()
       });
       handleCancel();
@@ -172,6 +177,7 @@ export function CoachCourses() {
         description,
         price: Number(price),
         bannerUrl,
+        hours: Number(hours),
         updatedAt: new Date()
       });
       handleCancel();
@@ -200,9 +206,11 @@ export function CoachCourses() {
       
       Devuelve la respuesta en formato JSON estrictamente válido con las llaves: "title", "description", "syllabus" (donde syllabus es un string formateado con los módulos).`;
 
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({
           model: "gemini-3.5-flash",
           contents: prompt,
@@ -280,12 +288,16 @@ export function CoachCourses() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Inversión Alumno ($)</label>
-                <input required value={price} onChange={e=>setPrice(Number(e.target.value))} type="number" min="0" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none text-slate-800 font-medium" />
+                <input required value={price} onChange={e=>setPrice(Number(e.target.value))} type="number" min="0" step="0.01" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none text-slate-800 font-medium" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Carga horaria</label>
+                <input required value={hours} onChange={e=>setHours(Number(e.target.value))} type="number" min="1" max="10000" step="0.5" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none text-slate-800 font-medium" />
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Estado de Publicación</label>
-                <div className="bg-slate-100 p-2.5 rounded-xl text-center text-xs font-bold text-emerald-700 uppercase tracking-wider border border-slate-200">
-                  {editingCourse ? editingCourse.status : 'published'}
+                <div className="bg-amber-50 p-2.5 rounded-xl text-center text-xs font-bold text-amber-700 uppercase tracking-wider border border-amber-200">
+                  {editingCourse ? editingCourse.status : 'pending · revisión admin'}
                 </div>
               </div>
             </div>
