@@ -678,6 +678,22 @@ app.get("/api/verify/:kiraNumber",async(req,res)=>{
   }catch(error){console.error("[Certificates] Public verification failed:",error);return res.status(503).json({valid:false,status:"unavailable"});}
 });
 
+
+app.get("/api/certificates/validate/:token",async(req,res)=>{
+  try{
+    const token=String(req.params.token||"");
+    if(!/^[a-f0-9]{48}$/.test(token))return res.status(404).json({valid:false});
+    const record=await fsGet("certificatePublic",token);
+    if(!record||record.status!=="issued"||record.validationToken!==token)return res.status(404).json({valid:false});
+    const full=await fsGet("certificates",String(record.certificateNumber||""));
+    if(!full)return res.status(404).json({valid:false});
+    const {signature,signatureAlgorithm,...payload}=full;
+    const expected=certSignature(payload);const actual=String(signature||"");
+    const valid=actual.length===expected.length&&timingSafeEqual(Buffer.from(actual),Buffer.from(expected));
+    return res.status(200).json({valid,certificate:valid?record:null});
+  }catch(error){console.error("[Certificates] Legacy validation failed:",error);return res.status(503).json({valid:false});}
+});
+
 app.get("/api/certificates/:kiraNumber/pdf",async(req,res)=>{
   try{
     const user=await verifiedUser(req,res);if(!user)return;
