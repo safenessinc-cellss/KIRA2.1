@@ -456,10 +456,6 @@ service cloud.firestore {
     match /paymentCoupons/{id} { allow read, write: if false; }
     match /paymentAudit/{id} { allow read, write: if false; }
     match /config_audit/{id} { allow read, write: if false; }
-    match /orders/{id} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow create, update, delete: if false;
-    }
 
     match /auditLogs/{logId} {
       allow read: if isAdmin();
