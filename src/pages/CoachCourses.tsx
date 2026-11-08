@@ -108,19 +108,6 @@ export function CoachCourses() {
     }
   };
 
-  const handleDeleteCourse = async (courseId: string) => {
-    if (!window.confirm("¿Estás seguro de que deseas eliminar este curso de tu catálogo?")) return;
-    try {
-      await deleteDoc(doc(db, 'courses', courseId));
-      fetchCourses();
-      toastSuccess("Curso eliminado exitosamente.");
-    } catch(e) {
-      console.error(e);
-      setErrorMsg('Error al eliminar el curso.');
-      setTimeout(() => setErrorMsg(''), 5000);
-    }
-  };
-
   const membershipExpiry = profile?.membershipExpiresAt?.toDate ? profile.membershipExpiresAt.toDate() : (profile?.membershipExpiresAt ? new Date(profile.membershipExpiresAt) : null);
   const isApproved = profile?.role === 'coach' && profile?.approvalStatus === 'approved' && profile?.membershipStatus === 'active' && (!membershipExpiry || membershipExpiry.getTime() > Date.now());
 
@@ -396,13 +383,7 @@ export function CoachCourses() {
                         >
                            Editar
                         </button>
-                        <button 
-                          type="button"
-                          onClick={() => handleDeleteCourse(c.id)}
-                          className="text-[11px] font-black uppercase tracking-wider text-rose-500 hover:underline flex items-center gap-1"
-                        >
-                           Eliminar
-                        </button>
+
                       </div>
                     </div>
                   </div>
