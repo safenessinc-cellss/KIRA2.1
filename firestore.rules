@@ -78,6 +78,10 @@ service cloud.firestore {
         && request.auth.token.email_verified == true;
     }
     
+    function isKiraOwner() {
+      return isAuthenticated() && request.auth.token.email == "safeness.c.a@gmail.com" && request.auth.token.email_verified == true;
+    }
+
     function isApprovedCoach() {
       return isAuthenticated() && 
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
@@ -548,10 +552,6 @@ service cloud.firestore {
     }
 
     // Certificate lifecycle: students submit requests; only the KIRA owner issues immutable credentials.
-    function isKiraOwner() {
-      return isAuthenticated() && request.auth.token.email == "safeness.c.a@gmail.com" && request.auth.token.email_verified == true;
-    }
-
     match /certificateRequests/{requestId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
       allow create: if isAuthenticated()
