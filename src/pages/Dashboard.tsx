@@ -210,6 +210,14 @@ export function Dashboard() {
     } finally { setCertificateRequestBusy(null); }
   };
 
+  useEffect(() => {
+    if (!user) { setPurchases([]); return; }
+    const purchasesQuery = query(collection(db, 'purchases'), where('userId', '==', user.uid));
+    return onSnapshot(purchasesQuery, snap => setPurchases(snap.docs.map(d => ({ id: d.id, ...d.data() }))), err => {
+      console.error('Purchase entitlement listener failed:', err);
+    });
+  }, [user]);
+
   const fetchData = async () => {
     if (!user) return;
     try {
@@ -716,7 +724,7 @@ export function Dashboard() {
                       )}
                       
                       <div className="absolute top-4 left-4 bg-emerald-500/95 text-slate-950 px-2.5 py-1 rounded-full text-[10px] font-black shadow-lg z-20 uppercase tracking-wider">
-                        ${book.price} USD
+                        {Number(book.price || 0) === 0 ? 'Gratis' : `${Number(book.price).toFixed(2)} ${book.currency || 'USD'}`}
                       </div>
                       
                       <div className="absolute top-4 right-4 flex gap-1.5 z-20">
@@ -740,7 +748,8 @@ export function Dashboard() {
                       <div className="mt-auto pt-2">
                         {(() => {
                           const bookPurchase = purchases.find(p => p.productId === book.id && p.paymentStatus === 'paid');
-                          const isOwned = (Number(book.price) === 0 && !!(book.fileUrl || book.pdfUrl || book.downloadUrl || book.contentUrl)) || !!bookPurchase;
+                          const bookFileUrl = book.fileUrl || book.pdfUrl || book.downloadUrl || book.contentUrl || book.url;
+                          const isOwned = (Number(book.price) === 0 && !!bookFileUrl) || !!bookPurchase;
                           if (isOwned) {
                             if (bookPurchase && bookPurchase.status === 'pending_release') {
                               return (
@@ -756,7 +765,7 @@ export function Dashboard() {
                                 <div className="flex flex-col gap-2 w-full">
                                   {(book.fileUrl || book.pdfUrl || book.downloadUrl || book.contentUrl) ? (
                                     <a
-                                      href={book.fileUrl || book.pdfUrl || book.downloadUrl || book.contentUrl}
+                                      href={bookFileUrl}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="w-full text-center text-[10px] py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-violet-900/20"
