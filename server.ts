@@ -270,7 +270,7 @@ async function fsListDocuments(collectionName:string,pageSize=100):Promise<any[]
   return (body.documents||[]).map((d:any)=>({id:String(d.name||"").split("/").pop(),...Object.fromEntries(Object.entries(d.fields||{}).map(([k,v])=>[k,fsDecode(v)]))}));
 }
 async function catalogItem(id: string): Promise<any | null> {
-  for (const collectionName of ["courses", "books", "products", "membershipPlans", "marketplace"]) {
+  for (const collectionName of ["courses", "books", "products", "membershipPlans", "paymentPlans", "marketplace"]) {
     const item = await fsGet(collectionName, id);
     if (item) return { ...item, id, collectionName };
   }
@@ -525,21 +525,29 @@ app.post("/api/create-checkout-session", async (req, res) => {
     const requestedItems = Array.isArray(req.body?.items) ? req.body.items : (Array.isArray(req.body?.itemIds) ? req.body.itemIds : (typeof req.body?.courseId === "string" ? req.body.courseId.split(",") : []));
     const ids = requestedItems.map((item: any) => typeof item === "string" ? { id: item, quantity: 1 } : item);
     const provider = req.body?.provider === "mercadopago" ? "mercadopago" : "stripe";
+    const globalPaymentSettings=await fsGet("paymentSettings","global");
+    if(globalPaymentSettings?.paymentsEnabled===false)return res.status(503).json({error:"El checkout está temporalmente deshabilitado por administración."});
+    const gatewaySettings=await fsGet("paymentGateways",provider);
+    if(gatewaySettings && gatewaySettings.enabled!==true)return res.status(503).json({error:"Esta pasarela está deshabilitada por administración."});
     if (!ids.length || ids.length > 20 || ids.some((item: any) => !item || typeof item.id !== "string" || item.id.length > 160 || !Number.isInteger(Number(item.quantity || 1)) || Number(item.quantity || 1) < 1 || Number(item.quantity || 1) > 20)) return res.status(400).json({ error: "Selecciona productos válidos." });
     const items: any[] = [];
     for (const requested of ids) {
       const id = requested.id;
       const product = await catalogItem(id);
       if (!product || !(["published", "active"].includes(String(product.status || "").toLowerCase()) || product.isActive === true || product.active === true)) return res.status(400).json({ error: "Producto no disponible o no publicado: " + id });
-      const price = Number(product.price ?? product.amount);
+      const price = Number(product.collectionName==="paymentPlans" ? Number(product.amountCents||0)/100 : (product.price ?? product.amount));
       if (!Number.isFinite(price) || price <= 0 || price > 100000) return res.status(400).json({ error: "Precio inválido en catálogo para " + id });
       if (product.collectionName === "books" && product.type === "link" && price > 0) return res.status(400).json({ error: "Los libros de pago deben almacenarse como PDF protegido en Firebase Storage." });
-      items.push({ id, title: String(product.title || product.name || "Producto KIRA").slice(0, 250), type: (product.type === "membership" || product.collectionName === "membershipPlans") ? "membership" : (product.collectionName === "courses" ? "course" : (product.collectionName === "books" ? "book" : (product.type || "product")) ), collectionName: product.collectionName, durationDays: product.collectionName === "membershipPlans" ? Math.max(1, Math.min(3650, Number(product.durationDays || 365))) : undefined, unitPrice: price, currency: String(product.currency || (provider === "mercadopago" ? "brl" : "usd")).toLowerCase(), quantity: Number(requested.quantity || 1) });
+      items.push({ id, title: String(product.title || product.name || "Producto KIRA").slice(0, 250), type: (product.type === "membership" || product.collectionName === "membershipPlans" || product.collectionName === "paymentPlans") ? "membership" : (product.collectionName === "courses" ? "course" : (product.collectionName === "books" ? "book" : (product.type || "product")) ), collectionName: product.collectionName, durationDays: product.collectionName === "paymentPlans" ? (product.interval==="yearly"?365:product.interval==="monthly"?30:0) : (product.collectionName === "membershipPlans" ? Math.max(1, Math.min(3650, Number(product.durationDays || 365))) : undefined), interval: product.collectionName==="paymentPlans" ? String(product.interval||"one_time") : "one_time", unitPrice: price, currency: String(product.currency || (provider === "mercadopago" ? "brl" : "usd")).toLowerCase(), quantity: Number(requested.quantity || 1) });
     }
     if (new Set(items.map(x => x.currency)).size !== 1) return res.status(400).json({ error: "Los productos deben usar la misma moneda." });
-    const stripe = provider === "stripe" ? getStripe() : null;
-    const mercadoPagoToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
-    if (provider === "stripe" && !stripe) return res.status(503).json({ error: "Stripe no está configurado en el servidor." });
+    const hasRecurring=items.some(item=>item.interval==="monthly"||item.interval==="yearly");
+    if(hasRecurring&&items.some(item=>item.interval==="one_time"))return res.status(400).json({error:"No se pueden mezclar planes recurrentes y pagos únicos en una misma orden."});
+    if(hasRecurring&&provider==="mercadopago")return res.status(400).json({error:"Los planes recurrentes por Mercado Pago aún no están habilitados; usa Stripe o un plan de pago único."});
+    const stripeSecret=gatewaySettings?.apiKeyEncrypted?decryptPaymentSecret(gatewaySettings.apiKeyEncrypted):process.env.STRIPE_SECRET_KEY;
+    const stripe = provider === "stripe" && stripeSecret ? new Stripe(stripeSecret,{apiVersion:"2025-01-27" as any}) : null;
+    const mercadoPagoToken = gatewaySettings?.apiKeyEncrypted?decryptPaymentSecret(gatewaySettings.apiKeyEncrypted):process.env.MERCADOPAGO_ACCESS_TOKEN;
+    if (provider === "stripe" && !stripe) return res.status(503).json({ error: "Stripe no está configurado en el servidor. Configura su clave en el Centro de pagos." });
     if (provider === "mercadopago" && !mercadoPagoToken) return res.status(503).json({ error: "Mercado Pago no está configurado en el servidor." });
     const orderId = randomBytes(18).toString("hex");
     const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
@@ -547,8 +555,8 @@ app.post("/api/create-checkout-session", async (req, res) => {
     const appUrl = (process.env.KIRA_APP_URL || "https://kira.coach").replace(/\/$/, "");
     if (provider === "stripe") {
       const session = await stripe!.checkout.sessions.create({
-        mode: "payment",
-        line_items: items.map(item => ({ quantity: item.quantity, price_data: { currency: item.currency, unit_amount: Math.round(item.unitPrice * 100), product_data: { name: item.title } } })),
+        mode: hasRecurring ? "subscription" : "payment",
+        line_items: items.map(item => ({ quantity: item.quantity, price_data: { currency: item.currency, unit_amount: Math.round(item.unitPrice * 100), ...(item.interval==="monthly"?{recurring:{interval:"month"}}:item.interval==="yearly"?{recurring:{interval:"year"}}:{}), product_data: { name: item.title } } })),
         client_reference_id: user.uid, metadata: { userId: user.uid, orderId },
         success_url: appUrl + "/dashboard?payment=processing&session_id={CHECKOUT_SESSION_ID}",
         cancel_url: appUrl + "/dashboard?payment=cancelled"
@@ -578,11 +586,14 @@ app.post("/api/create-checkout-session", async (req, res) => {
 });
 
 app.post("/api/webhooks/stripe", async (req: any, res) => {
-  const stripe = getStripe();
   const signature = req.headers["stripe-signature"];
-  if (!stripe || typeof signature !== "string" || !req.rawBody || !process.env.STRIPE_WEBHOOK_SECRET) return res.status(400).send("Webhook no configurado o firma ausente.");
+  const gateway=await fsGet("paymentGateways","stripe").catch(()=>null);
+  const stripeSecret=gateway?.apiKeyEncrypted?decryptPaymentSecret(gateway.apiKeyEncrypted):process.env.STRIPE_SECRET_KEY;
+  const webhookSecret=gateway?.webhookSecretEncrypted?decryptPaymentSecret(gateway.webhookSecretEncrypted):process.env.STRIPE_WEBHOOK_SECRET;
+  const stripe=stripeSecret?new Stripe(stripeSecret,{apiVersion:"2025-01-27" as any}):null;
+  if (!stripe || typeof signature !== "string" || !req.rawBody || !webhookSecret) return res.status(400).send("Webhook no configurado o firma ausente.");
   let event: Stripe.Event;
-  try { event = stripe.webhooks.constructEvent(req.rawBody, signature, process.env.STRIPE_WEBHOOK_SECRET); }
+  try { event = stripe.webhooks.constructEvent(req.rawBody, signature, webhookSecret); }
   catch { return res.status(400).send("Firma inválida."); }
   try {
     if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
@@ -600,7 +611,8 @@ app.post("/api/webhooks/stripe", async (req: any, res) => {
 
 app.post("/api/webhooks/mercadopago", async (req: any, res) => {
   try {
-    const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET || "";
+    const gateway=await fsGet("paymentGateways","mercadopago");
+    const secret = gateway?.webhookSecretEncrypted?decryptPaymentSecret(gateway.webhookSecretEncrypted):(process.env.MERCADOPAGO_WEBHOOK_SECRET||"");
     const signature = String(req.headers["x-signature"] || "");
     const requestId = String(req.headers["x-request-id"] || "");
     const paymentId = String(req.query["data.id"] || req.body?.data?.id || "");
@@ -609,7 +621,7 @@ app.post("/api/webhooks/mercadopago", async (req: any, res) => {
     const manifest = "id:" + paymentId.toLowerCase() + ";request-id:" + requestId + ";ts:" + parts.ts + ";";
     const expected = createHmac("sha256", secret).update(manifest).digest("hex");
     if (!parts.v1 || parts.v1.length !== expected.length || !timingSafeEqual(Buffer.from(parts.v1), Buffer.from(expected))) return res.status(401).send("Firma inválida.");
-    const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
+    const token = gateway?.apiKeyEncrypted?decryptPaymentSecret(gateway.apiKeyEncrypted):process.env.MERCADOPAGO_ACCESS_TOKEN;
     if (!token) return res.status(503).send("Mercado Pago no configurado.");
     const response = await fetch("https://api.mercadopago.com/v1/payments/" + encodeURIComponent(paymentId), { headers: { Authorization: "Bearer " + token } });
     if (!response.ok) throw new Error("No fue posible consultar el pago.");
