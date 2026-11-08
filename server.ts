@@ -269,9 +269,11 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
       const purchaseId = idSafe(order.userId + "_" + orderId + "_" + item.id);
       writes.push(fsCreate("purchases", purchaseId, { userId: order.userId, productId: item.id, productType: "book", orderId, paymentStatus: "paid", createdAt: now }));
     } else if (item.type === "membership") {
+      const durationDays = Math.max(1, Math.min(3650, Number(item.durationDays || 365)));
+      const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
       const profile = await fsGet("users", order.userId);
-      if (profile) writes.push(fsUpdate("users", order.userId, { ...profile, membershipStatus: "active", membershipPaidAt: now }));
-      writes.push(fsCreate("memberships", idSafe(order.userId + "_" + orderId), { userId: order.userId, planId: item.id, status: "active", paymentOrderId: orderId, startsAt: now }));
+      if (profile) writes.push(fsUpdate("users", order.userId, { ...profile, membershipStatus: "active", membershipPaidAt: now, membershipExpiresAt: expiresAt, membershipPlanId: item.id, membershipPlanName: item.title }));
+      writes.push(fsCreate("memberships", idSafe(order.userId + "_" + orderId), { userId: order.userId, planId: item.id, planTitle: item.title, status: "active", paymentOrderId: orderId, startsAt: now, expiresAt, durationDays, autoRenew: false }));
     }
   }
   await fsCommit(writes);
@@ -413,7 +415,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
       if (!product || !(["published", "active"].includes(String(product.status || "").toLowerCase()) || product.isActive === true || product.active === true)) return res.status(400).json({ error: "Producto no disponible o no publicado: " + id });
       const price = Number(product.price ?? product.amount);
       if (!Number.isFinite(price) || price <= 0 || price > 100000) return res.status(400).json({ error: "Precio inválido en catálogo para " + id });
-      items.push({ id, title: String(product.title || product.name || "Producto KIRA").slice(0, 250), type: (product.type === "membership" || product.collectionName === "membershipPlans") ? "membership" : (product.collectionName === "courses" ? "course" : (product.collectionName === "books" ? "book" : (product.type || "product")) ), collectionName: product.collectionName, unitPrice: price, currency: String(product.currency || (provider === "mercadopago" ? "brl" : "usd")).toLowerCase(), quantity: Number(requested.quantity || 1) });
+      items.push({ id, title: String(product.title || product.name || "Producto KIRA").slice(0, 250), type: (product.type === "membership" || product.collectionName === "membershipPlans") ? "membership" : (product.collectionName === "courses" ? "course" : (product.collectionName === "books" ? "book" : (product.type || "product")) ), collectionName: product.collectionName, durationDays: product.collectionName === "membershipPlans" ? Math.max(1, Math.min(3650, Number(product.durationDays || 365))) : undefined, unitPrice: price, currency: String(product.currency || (provider === "mercadopago" ? "brl" : "usd")).toLowerCase(), quantity: Number(requested.quantity || 1) });
     }
     if (new Set(items.map(x => x.currency)).size !== 1) return res.status(400).json({ error: "Los productos deben usar la misma moneda." });
     const stripe = provider === "stripe" ? getStripe() : null;
