@@ -299,6 +299,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
   const { user } = useAuth();
   const [stats, setStats] = useState({
     activeStudents: 0,
+    enrollments: 0,
     avgProgress: 0,
     recentSessions: 0,
     sentiment: { positive: 0, neutral: 0, negative: 0 }
@@ -306,8 +307,6 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
   const [sessionsData, setSessionsData] = useState<any[]>([]);
   const [topTopics, setTopTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pendingPurchases, setPendingPurchases] = useState<any[]>([]);
-  const [revenue, setRevenue] = useState(0);
 
   const [isEditingMetrics, setIsEditingMetrics] = useState(false);
   const [editedMetrics, setEditedMetrics] = useState({
@@ -348,143 +347,6 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
   const closingRate = calls > 0 ? Number(((closes / calls) * 100).toFixed(1)) : 0;
   const totalCrmRevenue = closes * crmTicketPrice;
   const valuePerLead = leads > 0 ? Number((totalCrmRevenue / leads).toFixed(1)) : 0;
-
-  // Envíos de prueba estáticos de alta calidad por si no existen registros aún
-  const mockSubmissions = [
-    {
-      id: 'sub-1',
-      studentName: 'Sofía Alarcón',
-      studentEmail: 'sofia.alarcon@example.com',
-      moduleName: 'Módulo 1: Desbloqueo Emocional',
-      submissionDate: 'Hace 2 horas',
-      content: 'Me he sentido increíblemente conectada durante la sesión de hoy. Logré identificar que mi estrés físico se acumula en los hombros. Hice un dibujo de trazos circulares con tonos fríos para drenar mi frustración del trabajo y de inmediato sentí un gran alivio en el pecho.',
-      status: 'pending',
-      sentiment: 'positive'
-    },
-    {
-      id: 'sub-2',
-      studentName: 'Mateo Castillo',
-      studentEmail: 'mateo.c@example.com',
-      moduleName: 'Módulo 2: Reconfiguración de Creencias',
-      submissionDate: 'Ayer',
-      content: 'Siento mucha resistencia al intentar reprogramar mis pensamientos limitantes sobre la abundancia. Cada vez que pienso en cobrar lo que realmente vale mi trabajo, me da un nudo fuerte en el estómago y me asalta la culpa de no ser lo suficientemente humilde.',
-      status: 'pending',
-      sentiment: 'negative'
-    },
-    {
-      id: 'sub-3',
-      studentName: 'María Soler',
-      studentEmail: 'maria.soler@example.com',
-      moduleName: 'Módulo 3: El Poder de la Presencia',
-      submissionDate: 'Hace 3 días',
-      content: 'He estado haciendo las meditaciones diarias de 10 minutos recomendadas en el programa. Noto que mi mente se distrae menos durante el día y logro volver a mi centro con mayor facilidad cuando hay caos alrededor. Me siento muy estable y en paz.',
-      status: 'reviewed',
-      sentiment: 'neutral',
-      feedback: '¡Excelente proceso, María! Mantener la constancia de 10 minutos diarios es la clave del momentum. Has logrado estabilizar tu ritmo interno de manera espectacular. ¡Sigue así!'
-    }
-  ];
-
-  // Cargar registros de diarios reales y fusionar
-  useEffect(() => {
-    if (showRevisarTareas && user) {
-      const fetchJournalsForReview = async () => {
-        try {
-          const q = query(collection(db, 'journals'), orderBy('createdAt', 'desc'), limit(15));
-          const snap = await getDocs(q);
-          const dbJournals = snap.docs.map(docSnap => {
-            const data = docSnap.data();
-            const dateStr = data.createdAt?.toDate ? data.createdAt.toDate().toLocaleDateString() : 'Reciente';
-            return {
-              id: docSnap.id,
-              studentName: data.userId === user.uid ? 'Tú (Registro de Prueba)' : 'Alumno de la Escuela',
-              studentEmail: 'alumno@kira.coach',
-              moduleName: 'Diario Emocional del Programa',
-              submissionDate: dateStr,
-              content: data.content,
-              status: reviewedSubmissions[docSnap.id] ? 'reviewed' : 'pending',
-              sentiment: data.sentiment || 'neutral',
-              feedback: reviewedSubmissions[docSnap.id] || ''
-            };
-          });
-          
-          const combined = [...dbJournals, ...mockSubmissions];
-          setSubmissionsList(combined);
-          if (combined.length > 0) {
-            setSelectedSubmission(combined[0]);
-            setFeedbackText(combined[0].feedback || '');
-          }
-        } catch (e) {
-          console.error("Error fetching journals for review:", e);
-          setSubmissionsList(mockSubmissions);
-          if (mockSubmissions.length > 0) {
-            setSelectedSubmission(mockSubmissions[0]);
-            setFeedbackText(mockSubmissions[0].feedback || '');
-          }
-        }
-      };
-      fetchJournalsForReview();
-    }
-  }, [showRevisarTareas, user]);
-
-  // Co-piloto de Feedback IA con Gemini
-  const handleGenerateAiFeedback = async () => {
-    if (!selectedSubmission) return;
-    setIsAiGeneratingFeedback(true);
-    try {
-      const prompt = `Actúa como Kira Moreno, mentora principal y creadora de la metodología Kira Coach.
-      Lee este entregable del estudiante ${selectedSubmission.studentName} para la actividad "${selectedSubmission.moduleName}":
-      "${selectedSubmission.content}"
-      
-      Escribe un comentario de feedback de coaching en español con un tono cariñoso, firme, inspirador y sumamente profesional de 2 párrafos cortos. No utilices saludos impersonales como "Hola Alumno", ve directo a destacar su coraje o proceso y dale un consejo de alta consciencia.`;
-
-      const res = await fetch('/api/gemini/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gemini-3.5-flash',
-          contents: prompt
-        })
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      if (data.text) {
-        setFeedbackText(data.text);
-      }
-    } catch (e) {
-      console.error(e);
-      setFeedbackText(`¡Excelente observación, ${selectedSubmission.studentName}! Veo con mucha alegría la forma en que estás asumiendo la auto-observación de tus procesos internos en este módulo. Seguir de cerca estas reacciones en tu cuerpo es el primer paso para liberar viejos bloqueos. Continúa así, el camino se recorre paso a paso.`);
-    } finally {
-      setIsAiGeneratingFeedback(false);
-    }
-  };
-
-  // Enviar feedback final
-  const handleSubmitFeedback = async () => {
-    if (!selectedSubmission) return;
-    try {
-      setReviewedSubmissions(prev => ({
-        ...prev,
-        [selectedSubmission.id]: feedbackText
-      }));
-      
-      setSubmissionsList(prev => prev.map(s => s.id === selectedSubmission.id ? { ...s, status: 'reviewed', feedback: feedbackText } : s));
-      setSelectedSubmission(prev => ({ ...prev, status: 'reviewed', feedback: feedbackText }));
-      
-      await addDoc(collection(db, 'notifications'), {
-        userId: selectedSubmission.userId || user?.uid || 'all',
-        title: `Nuevo Feedback en ${selectedSubmission.moduleName}`,
-        message: `Kira Moreno ha enviado la retroalimentación de tu entrega. ¡Compruébala ya!`,
-        type: 'ai',
-        read: false,
-        createdAt: new Date()
-      });
-
-      alert("¡Feedback enviado oficialmente! Se guardó en el historial y se notificó al alumno.");
-    } catch (e) {
-      console.error(e);
-      alert("Feedback registrado con éxito en esta sesión.");
-    }
-  };
 
   // CRM Audit Run
   const handleRunCrmAudit = async () => {
@@ -586,43 +448,6 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
     }
   };
 
-  const handleReleasePurchase = async (_purchase: any) => {
-    // Coaches cannot convert an unverified manual purchase into access or a financial transaction.
-    alert('La liberación manual está deshabilitada. El acceso se activará únicamente después de la confirmación del pago por el servidor.');
-  };
-
-  useEffect(() => {
-    if (profile) {
-      setEditedMetrics({
-        activeStudents: profile.manualActiveStudents !== undefined ? profile.manualActiveStudents : stats.activeStudents,
-        avgProgress: profile.manualAvgProgress !== undefined ? profile.manualAvgProgress : stats.avgProgress,
-        recentSessions: profile.manualRecentSessions !== undefined ? profile.manualRecentSessions : stats.recentSessions
-      });
-    } else {
-      setEditedMetrics({
-        activeStudents: stats.activeStudents,
-        avgProgress: stats.avgProgress,
-        recentSessions: stats.recentSessions
-      });
-    }
-  }, [profile, stats]);
-
-  const handleSaveMetrics = async () => {
-    if (!user) return;
-    try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        manualActiveStudents: Number(editedMetrics.activeStudents),
-        manualAvgProgress: Number(editedMetrics.avgProgress),
-        manualRecentSessions: Number(editedMetrics.recentSessions),
-        updatedAt: new Date()
-      });
-      setIsEditingMetrics(false);
-    } catch (e) {
-      console.error("Error saving manual metrics:", e);
-      alert("Error al guardar métricas.");
-    }
-  };
-
   useEffect(() => {
     if (!user) return;
     const fetchDashboardStats = async () => {
@@ -709,58 +534,15 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
           
         setTopTopics(sortedTopics);
 
-        // Fetch Journals to mock team energy heatmap
-        const journalsSnap = await getDocs(collection(db, 'journals')); // In a real app we'd filter by the coach's students
-        let pos = 0, neu = 0, neg = 0;
-        journalsSnap.docs.forEach(doc => {
-          const s = doc.data().sentiment || 'neutral';
-          if (s === 'positive') pos++;
-          else if (s === 'negative') neg++;
-          else neu++;
-        });
-
-        if (pos === 0 && neu === 0 && neg === 0) {
-          pos = 10; neu = 5; neg = 2; // mock data if empty
-        }
-
-        // Fetch purchases for Revenue calculation & Release control
-        let coachPending: any[] = [];
-        let totalRevenue = 0;
-        try {
-          const purchasesSnap = await getDocs(collection(db, 'purchases'));
-          const purchasesList = purchasesSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
-          
-          coachPending = purchasesList.filter(p => {
-            if (p.status !== 'pending_release') return false;
-            if (p.itemType === 'course') {
-              return courseIds.includes(p.itemId);
-            }
-            return true; // Show all ebooks/books
-          });
-
-          const releasedPurchases = purchasesList.filter(p => {
-            if (p.status !== 'released') return false;
-            if (p.itemType === 'course') {
-              return courseIds.includes(p.itemId);
-            }
-            return true;
-          });
-
-          totalRevenue = releasedPurchases.reduce((sum, p) => sum + (Number(p.itemPrice) || 0), 0);
-        } catch (pErr) {
-          console.warn("Error fetching purchases for coach dashboard:", pErr);
-        }
-
-        setPendingPurchases(coachPending);
-        setRevenue(totalRevenue);
-
         setStats({
           activeStudents,
+          enrollments: totalEnrollments,
           avgProgress: totalEnrollments > 0 ? Math.round(totalProgress / totalEnrollments) : 0,
           recentSessions: recentSessionsCount,
-          sentiment: { positive: pos, neutral: neu, negative: neg }
+          sentiment: { positive: 0, neutral: 0, negative: 0 }
         });
         setLoading(false);
+
       } catch (error) {
         console.error("Dashboard fetch error:", error);
         setLoading(false);
@@ -769,141 +551,20 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
     fetchDashboardStats();
   }, [user]);
 
-  const totalEmotions = stats.sentiment.positive + stats.sentiment.neutral + stats.sentiment.negative;
-  const posPct = totalEmotions > 0 ? (stats.sentiment.positive / totalEmotions) * 100 : 0;
-  const neuPct = totalEmotions > 0 ? (stats.sentiment.neutral / totalEmotions) * 100 : 0;
-  const negPct = totalEmotions > 0 ? (stats.sentiment.negative / totalEmotions) * 100 : 0;
-
-  const displayActiveStudents = profile?.manualActiveStudents !== undefined ? profile.manualActiveStudents : stats.activeStudents;
-  const displayAvgProgress = profile?.manualAvgProgress !== undefined ? profile.manualAvgProgress : stats.avgProgress;
-  const displayRecentSessions = profile?.manualRecentSessions !== undefined ? profile.manualRecentSessions : stats.recentSessions;
 
   return (
     <div className="flex flex-col gap-10 animate-in fade-in slide-in-from-bottom-2">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white/50 backdrop-blur-md px-8 py-5 rounded-[30px] border border-slate-200/50 shadow-sm gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-2.5 h-2.5 rounded-full bg-kirateal animate-pulse" />
-          <span className="text-sm font-black text-slate-800 tracking-tight uppercase">Métricas de Rendimiento</span>
-        </div>
-        <button 
-          onClick={() => setIsEditingMetrics(!isEditingMetrics)}
-          className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-2xl text-xs font-black uppercase tracking-wider hover:bg-black transition-all cursor-pointer active:scale-95 shadow-md shadow-slate-900/10"
-        >
-          {isEditingMetrics ? "Cancelar Edición" : "Editar Indicadores"}
-        </button>
+      <div className="flex items-center gap-3">
+        <div className="h-2.5 w-2.5 rounded-full bg-kirateal" />
+        <span className="text-sm font-black text-slate-800 tracking-tight uppercase">Métricas verificadas de tu actividad</span>
       </div>
-
-      {isEditingMetrics && (
-        <div className="bg-white rounded-[40px] border border-slate-200 p-8 shadow-xl animate-in zoom-in-95 duration-200">
-          <h3 className="text-lg font-black text-slate-900 tracking-tight mb-2">Personalizar Indicadores</h3>
-          <p className="text-xs text-slate-500 mb-6">Configura y publica manualmente los números que se muestran en tu panel de control.</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            <div className="space-y-2">
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Alumnos Activos</label>
-              <input 
-                type="number"
-                min="0"
-                value={editedMetrics.activeStudents}
-                onChange={e => setEditedMetrics({...editedMetrics, activeStudents: parseInt(e.target.value) || 0})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Promedio Progreso (%)</label>
-              <input 
-                type="number"
-                min="0"
-                max="100"
-                value={editedMetrics.avgProgress}
-                onChange={e => setEditedMetrics({...editedMetrics, avgProgress: Math.min(100, Math.max(0, parseInt(e.target.value) || 0))})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Sesiones Recientes</label>
-              <input 
-                type="number"
-                min="0"
-                value={editedMetrics.recentSessions}
-                onChange={e => setEditedMetrics({...editedMetrics, recentSessions: parseInt(e.target.value) || 0})}
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-kirateal/5 transition-all outline-none"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3">
-            <button 
-              onClick={() => setIsEditingMetrics(false)}
-              className="px-6 py-3 border border-slate-200 text-slate-600 rounded-2xl text-xs font-bold uppercase tracking-wider hover:bg-slate-50 transition-all"
-            >
-              Cancelar
-            </button>
-            <button 
-              onClick={handleSaveMetrics}
-              className="px-6 py-3 bg-kirateal text-white rounded-2xl text-xs font-black uppercase tracking-wider hover:bg-kirateal-dark transition-all shadow-lg shadow-kirateal/20"
-            >
-              Publicar Cambios
-            </button>
-          </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Alumnos Activos" value={loading ? "..." : displayActiveStudents} icon={<Users className="text-indigo-600" />} />
-        <StatCard title="Promedio Progreso" value={loading ? "..." : `${displayAvgProgress}%`} icon={<BarChart3 className="text-emerald-600" />} />
-        <StatCard title="Sesiones Recientes" value={loading ? "..." : displayRecentSessions} icon={<Calendar className="text-amber-500" />} />
-        <StatCard title="Ingresos Brutos" value={loading ? "..." : `$${revenue.toFixed(2)}`} icon={<CreditCard className="text-teal-600" />} />
+        <StatCard title="Alumnos Activos" value={loading ? "..." : stats.activeStudents} icon={<Users className="text-indigo-600" />} />
+        <StatCard title="Promedio Progreso" value={loading ? "..." : `${stats.avgProgress}%`} icon={<BarChart3 className="text-emerald-600" />} />
+        <StatCard title="Sesiones Recientes" value={loading ? "..." : stats.recentSessions} icon={<Calendar className="text-amber-500" />} />
+        <StatCard title="Matrículas" value={loading ? "..." : stats.enrollments} icon={<CreditCard className="text-teal-600" />} />
       </div>
-
-      {/* SECCIÓN DE LIBERACIÓN DE COMPRAS */}
-      {!loading && pendingPurchases.length > 0 && (
-        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 rounded-[40px] border border-slate-800 p-8 sm:p-10 shadow-2xl relative overflow-hidden text-white animate-in slide-in-from-bottom-2 duration-300">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full filter blur-3xl pointer-events-none" />
-          
-          <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4 relative z-10">
-            <div>
-              <h3 className="text-xl font-black tracking-tight flex items-center gap-3">
-                <span className="p-2 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-400/20">
-                  <CreditCard size={20} className="animate-pulse" />
-                </span>
-                Control de Accesos: Liberar Compras Pendientes
-              </h3>
-              <p className="text-sm text-slate-400 mt-1">Los alumnos han realizado simulaciones de pago y están esperando que habilites sus accesos.</p>
-            </div>
-            <span className="bg-amber-400 text-slate-950 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-wider shadow-lg shrink-0">
-              {pendingPurchases.length} Pendiente{pendingPurchases.length > 1 ? 's' : ''}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
-            {pendingPurchases.map((purchase) => (
-              <div key={purchase.id} className="bg-slate-950/60 border border-white/5 rounded-[32px] p-6 hover:border-amber-400/30 transition-all flex flex-col justify-between min-h-[200px]">
-                <div>
-                  <div className="flex justify-between items-start mb-3">
-                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${purchase.itemType === 'course' ? 'bg-kirateal/20 text-kirateal border border-kirateal/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'}`}>
-                      {purchase.itemType === 'course' ? 'Programa' : 'Ebook'}
-                    </span>
-                    <span className="text-sm font-black text-amber-400">${purchase.itemPrice} USD</span>
-                  </div>
-                  <h4 className="font-black text-base text-slate-100 line-clamp-1 mb-1">{purchase.itemTitle}</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed font-medium">
-                    Alumno: <strong className="text-slate-200">{purchase.userName}</strong>
-                  </p>
-                  <p className="text-[10px] text-slate-500 leading-none truncate mt-0.5">{purchase.userEmail}</p>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-white/5">
-                  <button
-                    onClick={() => handleReleasePurchase(purchase)}
-                    className="w-full py-3 bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-amber-400/15 hover:shadow-xl hover:shadow-amber-400/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <CheckCircle2 size={14} /> Liberar Acceso
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className={cn("lg:col-span-2 bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm", !isApproved && "opacity-50 pointer-events-none")}>
