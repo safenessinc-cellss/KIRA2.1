@@ -1482,781 +1482,97 @@ function QuickAction({ title, desc, icon, onClick }: any) {
 function CoachStudentsActivity() {
   const { user } = useAuth();
   const [students, setStudents] = useState<any[]>([]);
-  const [teamSentiment, setTeamSentiment] = useState<{ summary: string, mood: string } | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [messageTemplate, setMessageTemplate] = useState('motivacion');
-  const [customMessage, setCustomMessage] = useState('');
-  const [sending, setSending] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
+  const [loading, setLoading] = useState(true);
   const [completionBusy, setCompletionBusy] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
-    
-    // Logic: Find students enrolled in THIS coach's courses
-    const fetchStudentsAndJournals = async () => {
+    if (!user) { setStudents([]); setLoading(false); return; }
+    let cancelled = false;
+    const loadRoster = async () => {
+      setLoading(true);
       try {
-        const coursesQ = query(collection(db, 'courses'), where('coachId', '==', user.uid));
-        const coursesSnap = await getDocs(coursesQ);
-        const courseIds = coursesSnap.docs.map(d => d.id);
-        const coursesById = new Map(coursesSnap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
-
-        if (courseIds.length === 0) return;
-
-        const studentsMap = new Map();
-        for (const cid of courseIds) {
-          const enrollQ = query(collection(db, 'enrollments'), where('courseId', '==', cid));
-          const enrollSnap = await getDocs(enrollQ);
-          for (const eDoc of enrollSnap.docs) {
-            const sId = eDoc.data().userId;
-            const course = coursesById.get(cid) as any;
-            const enrollmentInfo = { enrollmentId: eDoc.id, courseId: cid, courseTitle: course?.title || 'Curso', courseHours: course?.hours || course?.courseHours || course?.durationHours || 0, progress: Number(eDoc.data().progress || 0) };
-            if (!studentsMap.has(sId)) {
-              const sProfile = await getDoc(doc(db, 'users', sId));
-              if (sProfile.exists()) {
-                studentsMap.set(sId, { id: sId, ...sProfile.data(), courseProgress: enrollmentInfo.progress, enrollmentId: eDoc.id, courseId: cid, courseTitle: enrollmentInfo.courseTitle, courseHours: enrollmentInfo.courseHours, courseEnrollments: [enrollmentInfo] });
-              }
-            } else {
-              const existingStudent = studentsMap.get(sId);
-              if (existingStudent && !existingStudent.courseEnrollments.some((item: any) => item.enrollmentId === eDoc.id)) {
-                existingStudent.courseEnrollments.push(enrollmentInfo);
-              }
-            }
-          }
-        }
-        
-        const studentsList = Array.from(studentsMap.values());
-        setStudents(studentsList);
-
-        // Fetch Journals to analyze team sentiment
-        if (studentsList.length > 0) {
-          setAnalyzing(true);
-          const studentIds = studentsList.map(s => s.id);
-          
-          let allJournals: string[] = [];
-          
-          // Firestore 'in' query has a limit of 10, chunk if necessary
-          const fetchJournalsChunk = async (ids: string[]) => {
-            const q = query(
-              collection(db, 'journals'), 
-              where('userId', 'in', ids)
-            );
-            const snap = await getDocs(q);
-            const sorted = [...snap.docs].sort((a, b) => {
-              const tA = a.data().createdAt?.seconds || a.data().createdAt?.getTime?.() / 1000 || 0;
-              const tB = b.data().createdAt?.seconds || b.data().createdAt?.getTime?.() / 1000 || 0;
-              return tB - tA;
-            }).slice(0, 20);
-            return sorted.map(d => d.data().content);
-          };
-
-          // Simple chunking up to 10
-          if (studentIds.length <= 10) {
-              const j = await fetchJournalsChunk(studentIds);
-              allJournals = allJournals.concat(j);
-          } else {
-              const first10 = await fetchJournalsChunk(studentIds.slice(0, 10));
-              allJournals = allJournals.concat(first10);
-          }
-
-          if (allJournals.length > 0) {
-            try {
-              const prompt = `Actúa como un psicólogo experto y coach de desempeño. Analiza las siguientes entradas de diario de mis estudiantes:
-              [${allJournals.join(" | ")}]
-              Devuelve un objeto JSON con dos claves: 
-              "summary": un párrafo corto (máx 3 oraciones) resumiendo el estado emocional y actitud predominante del grupo.
-              "mood": una sola palabra que los defina ("Positivo", "Neutral", "Estresado", "Frustrado", "Motivado").`;
-              
-              const res = await fetch('/api/gemini/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  model: 'gemini-3.5-flash',
-                  contents: prompt,
-                  config: { responseMimeType: "application/json" }
-                })
+        const coursesSnap = await getDocs(query(collection(db, 'courses'), where('coachId', '==', user.uid)));
+        const roster = new Map<string, any>();
+        for (const courseDoc of coursesSnap.docs) {
+          const course = { id: courseDoc.id, ...courseDoc.data() } as any;
+          const enrollmentSnap = await getDocs(query(collection(db, 'enrollments'), where('courseId', '==', course.id)));
+          for (const enrollmentDoc of enrollmentSnap.docs) {
+            const enrollment = enrollmentDoc.data();
+            const studentId = String(enrollment.userId || '');
+            if (!studentId) continue;
+            if (!roster.has(studentId)) {
+              roster.set(studentId, {
+                id: studentId,
+                studentName: enrollment.studentName || 'Alumno',
+                studentEmail: enrollment.studentEmail || '',
+                studentAvatar: enrollment.studentAvatar || '',
+                enrollments: []
               });
-              const data = await res.json();
-              if (data.error) throw new Error(data.error);
-
-              if (data.text) {
-                 const parsed = JSON.parse(data.text);
-                 setTeamSentiment(parsed);
-              }
-            } catch (error) {
-              console.error("AI Analysis error:", error);
             }
+            roster.get(studentId).enrollments.push({
+              id: enrollmentDoc.id,
+              courseId: course.id,
+              courseTitle: course.title || 'Curso',
+              progress: Number(enrollment.progress || 0),
+              completed: enrollment.completed === true || enrollment.courseCompleted === true,
+              hours: Number(course.hours || course.courseHours || course.durationHours || 0)
+            });
           }
-          setAnalyzing(false);
         }
-
-      } catch (e) {
-        console.error('Fetch Coach Students Error:', e);
-        setAnalyzing(false);
-      }
+        if (!cancelled) setStudents(Array.from(roster.values()));
+      } catch (error) {
+        console.error('Could not load coach-owned enrollments:', error);
+        if (!cancelled) setStudents([]);
+      } finally { if (!cancelled) setLoading(false); }
     };
-
-    fetchStudentsAndJournals();
+    void loadRoster();
+    return () => { cancelled = true; };
   }, [user]);
 
-  const sendBulkMessage = async () => {
-    if (!customMessage.trim() || students.length === 0 || !user) return;
-    setSending(true);
+  const markCourseCompleted = async (student: any, enrollment: any) => {
+    if (!user || completionBusy) return;
+    if (!window.confirm('¿Confirmas que ' + student.studentName + ' concluyó ' + enrollment.courseTitle + '?')) return;
+    setCompletionBusy(enrollment.id);
     try {
-      for (const student of students) {
-         await addDoc(collection(db, 'notifications'), {
-           userId: student.id,
-           title: 'Mensaje de tu Coach',
-           message: customMessage,
-           type: 'coach_message',
-           read: false,
-           createdAt: new Date()
-         });
-      }
-      setCustomMessage('');
-      setSuccessMsg("¡Mensajes enviados exitosamente a todos tus alumnos!");
-      setTimeout(() => setSuccessMsg(''), 3000);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const markCourseCompleted = async (student: any) => {
-    if (!user || !student.enrollmentId || completionBusy) return;
-    if (!confirm('¿Confirmas que ' + (student.displayName || 'el alumno') + ' concluyó ' + (student.courseTitle || 'el curso') + '?')) return;
-    setCompletionBusy(student.enrollmentId);
-    try {
-      await updateDoc(doc(db, 'enrollments', student.enrollmentId), {
-        progress: 100, completed: true, courseCompleted: true, completedAt: new Date()
+      await updateDoc(doc(db, 'enrollments', enrollment.id), {
+        progress: 100,
+        completed: true,
+        courseCompleted: true,
+        completedAt: new Date(),
+        completionConfirmedBy: user.uid
       });
-      setStudents(prev => prev.map(item => item.id === student.id ? { ...item, courseProgress: item.enrollmentId === student.enrollmentId ? 100 : item.courseProgress, courseEnrollments: (item.courseEnrollments || []).map((enrollment: any) => enrollment.enrollmentId === student.enrollmentId ? { ...enrollment, progress: 100, completed: true } : enrollment) } : item));
-      await addDoc(collection(db, 'notifications'), {
-        userId: student.id, title: 'Curso concluido',
-        message: 'Tu coach confirmó la conclusión de ' + (student.courseTitle || 'tu curso') + '. Ya puedes solicitar tu certificado en KIRA COACH.',
-        type: 'course', read: false, createdAt: new Date()
-      });
-      setSuccessMsg('Conclusión confirmada. El alumno ya puede solicitar su certificado.');
-      setTimeout(() => setSuccessMsg(''), 4000);
+      setStudents(prev => prev.map(item => item.id !== student.id ? item : ({
+        ...item,
+        enrollments: item.enrollments.map((record: any) => record.id === enrollment.id ? { ...record, progress: 100, completed: true } : record)
+      })));
     } catch (error) {
-      console.error('Could not mark course complete', error);
-      alert('No se pudo confirmar la conclusión. Verifica los permisos del curso.');
+      console.error('Could not confirm course completion:', error);
+      alert('No se pudo confirmar la conclusión. Verifica la matrícula y tu membresía.');
     } finally { setCompletionBusy(null); }
   };
 
-  const applyTemplate = (val: string) => {
-    setMessageTemplate(val);
-    if (val === 'motivacion') setCustomMessage('¡Hola equipo! Recuerden que la constancia vence al talento. Tómense 5 minutos hoy para revisar sus metas. ¡Estoy con ustedes!');
-    if (val === 'recordatorio') setCustomMessage('Recordatorio: Tenemos sesión grupal y revisión de avances pronto. Asegúrense de actualizar su progreso de módulos.');
-    if (val === 'felicitacion') setCustomMessage('He estado revisando sus avances y estoy increíblemente orgulloso del compromiso de esta semana. ¡Sigan así!');
-  };
+  if (loading) return <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin text-kirateal" size={28}/></div>;
 
-  const getStatus = (lastActivityAt: any) => {
-    if (!lastActivityAt) return { color: 'bg-slate-300', label: 'Sin Datos' };
-    const date = lastActivityAt.toDate ? lastActivityAt.toDate() : new Date(lastActivityAt);
-    const diffDays = Math.floor((new Date().getTime() - date.getTime()) / (1000 * 3600 * 24));
-    if (diffDays < 3) return { color: 'bg-emerald-500', label: 'Comprometido' };
-    if (diffDays < 7) return { color: 'bg-amber-500', label: 'En Riesgo' };
-    return { color: 'bg-rose-500', label: 'Desconectado' };
-  };
-
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-         {/* Team Emotional Insights */}
-         <div className="bg-kirateal rounded-2xl p-6 text-white shadow-xl shadow-kirateal/10 col-span-1 md:col-span-2 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
-            <div className="flex items-center gap-3 mb-4 relative z-10">
-               <Sparkles className="text-amber-300" />
-               <h3 className="font-bold text-lg">Termómetro Emocional de Equipo</h3>
-            </div>
-            {analyzing ? (
-               <div className="flex items-center gap-2 text-kirateal-light">
-                  <Loader2 size={16} className="animate-spin" /> Analizando diarios y actividad...
-               </div>
-            ) : teamSentiment ? (
-               <div className="relative z-10 animate-in fade-in">
-                  <div className="bg-white/10 border border-white/20 rounded-xl p-4 mb-4 backdrop-blur-sm">
-                    <p className="text-sm leading-relaxed text-white/90">"{teamSentiment.summary}"</p>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-kirateal-light">
-                     Estado Predominante: <span className="bg-white text-kirateal px-3 py-1 rounded-full shadow-sm">{teamSentiment.mood}</span>
-                  </div>
-               </div>
-            ) : (
-               <p className="text-indigo-200 text-sm">Aún no hay suficientes diarios de estudiantes para generar el análisis emocional.</p>
-            )}
-         </div>
-
-         {/* Bulk Messaging Widget */}
-         <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col shadow-sm">
-            <h3 className="font-bold text-slate-800 tracking-tight flex items-center gap-2 mb-4">
-              <Zap size={16} className="text-kiragold" /> Push de Motivación
-            </h3>
-            <select 
-               value={messageTemplate} 
-               onChange={(e) => applyTemplate(e.target.value)}
-               className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-lg mb-3 focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-               <option value="none">Seleccionar Template (Opcional)</option>
-               <option value="motivacion">🔥 Impulso Motivacional</option>
-               <option value="recordatorio">📅 Recordatorio de Progreso</option>
-               <option value="felicitacion">⭐ Felicitación de Grupo</option>
-            </select>
-            <textarea
-               value={customMessage}
-               onChange={(e) => setCustomMessage(e.target.value)}
-               placeholder="Escribe tu mensaje masivo..."
-               className="w-full h-24 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs resize-none mb-3 focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-            <button 
-               onClick={sendBulkMessage}
-               disabled={sending || customMessage.trim() === '' || students.length === 0}
-               className="w-full py-2.5 bg-primary text-white rounded-lg text-[13px] font-bold shadow-md hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 mt-auto"
-            >
-               {sending ? <Loader2 size={16} className="animate-spin" /> : <Users size={16} />}
-               Difundir a {students.length} Alumnos
-            </button>
-            {successMsg && (
-              <div className="mt-4 p-3 bg-emerald-50 border border-emerald-100 text-emerald-600 rounded-xl text-xs font-bold text-center">
-                {successMsg}
-              </div>
-            )}
-         </div>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden animate-in fade-in">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-          <h3 className="font-bold text-slate-800 tracking-tight flex items-center gap-2">
-            <GraduationCap size={18} className="text-primary" /> Tracking de Alumnos ({students.length})
-          </h3>
-        </div>
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b border-slate-100">
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Estudiante</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Progreso Promedio</th>
-              <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Semáforo</th>
-              <th className="px-6 py-4 text-right"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {students.map(s => {
-              const status = getStatus(s.lastActivityAt);
-              return (
-                <tr key={s.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400">
-                        {s.displayName?.[0] || 'U'}
-                      </div>
-                      <div>
-                        <div className="text-[13px] font-bold text-slate-800">{s.displayName}</div>
-                        <div className="text-[10px] text-slate-400">{s.email}</div>
-                      </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 max-w-[100px] h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                      <div className="bg-primary h-full transition-all" style={{ width: `${s.courseProgress}%` }} />
-                    </div>
-                    <span className="text-[11px] font-bold text-slate-600">{s.courseProgress}%</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    <div className={cn("w-2.5 h-2.5 rounded-full pulse-ping", status.color)} />
-                    <span className="text-[11px] font-medium text-slate-600">{status.label}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <div className="flex flex-col items-end gap-1">{(s.courseEnrollments || [{ enrollmentId: s.enrollmentId, courseTitle: s.courseTitle, progress: s.courseProgress }]).map((enrollment: any) => enrollment.progress >= 100 ? <span key={enrollment.enrollmentId} className="text-[10px] font-bold text-emerald-700">{enrollment.courseTitle}: Concluido</span> : <button key={enrollment.enrollmentId} onClick={() => markCourseCompleted({ ...s, ...enrollment })} disabled={completionBusy === enrollment.enrollmentId} className="px-3 py-2 rounded-lg bg-teal-700 text-white text-[10px] font-bold disabled:opacity-50">{completionBusy === enrollment.enrollmentId ? 'Guardando…' : 'Concluir: ' + enrollment.courseTitle}</button>)}</div>
-                </td>
-              </tr>
-            );
-          })}
-          {students.length === 0 && (
-            <tr>
-              <td colSpan={4} className="py-12 text-center text-slate-400 text-xs italic">
-                Aún no tienes alumnos inscritos en tus cursos.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-      </div>
+  return <div className="space-y-5">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <h3 className="text-lg font-black text-slate-900">Alumnos inscritos en tus cursos</h3>
+      <p className="mt-1 text-sm text-slate-500">Solo se muestran matrículas de tus propios cursos. Los diarios y notas privadas del alumno no son accesibles desde este panel.</p>
+      <p className="mt-3 text-xs font-bold uppercase tracking-wider text-kirateal">{students.length} alumnos · {students.reduce((total, student) => total + student.enrollments.length, 0)} matrículas</p>
     </div>
-  );
+    {students.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">Todavía no hay alumnos inscritos en tus cursos publicados.</div> : students.map(student => <article key={student.id} className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="mb-4 flex items-center gap-3">
+        <div className="h-11 w-11 overflow-hidden rounded-full bg-slate-100">{student.studentAvatar ? <img src={student.studentAvatar} alt="" className="h-full w-full object-cover"/> : <div className="flex h-full items-center justify-center font-bold text-slate-500">{student.studentName.slice(0,1).toUpperCase()}</div>}</div>
+        <div className="min-w-0"><h4 className="font-bold text-slate-900">{student.studentName}</h4><p className="text-xs text-slate-500">{student.studentEmail || 'Correo no compartido'}</p></div>
+      </div>
+      <div className="space-y-3">{student.enrollments.map((enrollment: any) => <div key={enrollment.id} className="rounded-xl bg-slate-50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-semibold text-slate-800">{enrollment.courseTitle}</span><span className="text-xs font-bold text-slate-600">{Math.round(enrollment.progress)}%</span></div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-kirateal" style={{ width: Math.min(100, Math.max(0, enrollment.progress)) + '%' }}/></div>
+        <div className="mt-3 flex items-center justify-between gap-3"><span className="text-[11px] text-slate-500">{enrollment.hours > 0 ? enrollment.hours + ' horas' : 'Carga horaria pendiente'} · {enrollment.completed ? 'Concluido' : 'En curso'}</span><button disabled={enrollment.completed || completionBusy === enrollment.id} onClick={() => markCourseCompleted(student, enrollment)} className="rounded-lg bg-kirateal px-3 py-2 text-[11px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">{completionBusy === enrollment.id ? 'Guardando…' : enrollment.completed ? 'Concluido' : 'Confirmar conclusión'}</button></div>
+      </div>)}</div>
+    </article>)}
+  </div>;
 }
 
-// --- MODULO: GESTOR DE CONTRATOS (PARA COACH) ---
-function CoachContractManager() {
-  const { user } = useAuth();
-  const [contracts, setContracts] = useState<any[]>([]);
-  const [templates, setTemplates] = useState<any[]>([]);
-  const [activeSubTab, setActiveSubTab] = useState<'contracts' | 'templates'>('contracts');
-  const [isCreating, setIsCreating] = useState(false);
-  const [formData, setFormData] = useState({ title: '', clientName: '', expiresAt: '', templateId: '' });
-  const [templateFormData, setTemplateFormData] = useState({ name: '', terms: '', expirationRules: '' });
-
-  useEffect(() => {
-    if (!user) return;
-    const qC = query(collection(db, 'contracts'), where('coachId', '==', user.uid));
-    const unsubC = onSnapshot(qC, (snap) => {
-      const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      list.sort((a: any, b: any) => {
-        const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
-        const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
-        return tB - tA;
-      });
-      setContracts(list);
-    });
-    
-    const qT = query(collection(db, 'contract_templates'), where('coachId', '==', user.uid));
-    const unsubT = onSnapshot(qT, (snap) => {
-      const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      list.sort((a: any, b: any) => {
-        const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
-        const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
-        return tB - tA;
-      });
-      setTemplates(list);
-    });
-    
-    return () => {
-      unsubC();
-      unsubT();
-    };
-  }, [user]);
-
-  const handleCreateContract = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    try {
-      let finalTerms = '';
-      if (formData.templateId) {
-        const templ = templates.find(t => t.id === formData.templateId);
-        if (templ) finalTerms = templ.terms;
-      }
-
-      await addDoc(collection(db, 'contracts'), {
-        ...formData,
-        terms: finalTerms,
-        coachId: user.uid,
-        status: 'active',
-        expiresAt: new Date(formData.expiresAt),
-        createdAt: new Date()
-      });
-      setIsCreating(false);
-      setFormData({ title: '', clientName: '', expiresAt: '', templateId: '' });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleCreateTemplate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    try {
-      await addDoc(collection(db, 'contract_templates'), {
-        ...templateFormData,
-        coachId: user.uid,
-        createdAt: new Date()
-      });
-      setIsCreating(false);
-      setTemplateFormData({ name: '', terms: '', expirationRules: '' });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-6 animate-in fade-in">
-      <div className="flex gap-4 p-1 bg-slate-100 rounded-xl w-fit mb-2">
-        <button onClick={() => setActiveSubTab('contracts')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeSubTab === 'contracts' ? "bg-white text-kirateal shadow-sm" : "text-slate-500")}>Mis Contratos</button>
-        <button onClick={() => setActiveSubTab('templates')} className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeSubTab === 'templates' ? "bg-white text-kirateal shadow-sm" : "text-slate-500")}>Plantillas</button>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-          <h3 className="font-bold text-slate-800 tracking-tight flex items-center gap-2">
-            <FileText size={18} className="text-primary" /> 
-            {activeSubTab === 'contracts' ? 'Gestión de Contratos' : 'Mis Plantillas Maestras'}
-          </h3>
-          <button 
-            onClick={() => setIsCreating(!isCreating)}
-            className="px-3 py-1.5 bg-primary text-white text-[11px] font-bold rounded-xl shadow-md shadow-primary/10 active:scale-95 transition-all"
-          >
-            {isCreating ? 'Cancelar' : activeSubTab === 'contracts' ? 'Generar Contrato' : 'Crear Plantilla'}
-          </button>
-        </div>
-
-        {isCreating && activeSubTab === 'contracts' && (
-          <form onSubmit={handleCreateContract} className="p-6 bg-slate-50 border-b border-slate-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in slide-in-from-top-4">
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Servicio</label>
-              <input required value={formData.title} onChange={e=>setFormData({...formData, title: e.target.value})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Cliente</label>
-              <input required value={formData.clientName} onChange={e=>setFormData({...formData, clientName: e.target.value})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Plantilla</label>
-              <select value={formData.templateId} onChange={e=>setFormData({...formData, templateId: e.target.value})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none">
-                 <option value="">Ninguna (Texto libre)</option>
-                 {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Vencimiento</label>
-              <input required type="date" value={formData.expiresAt} onChange={e=>setFormData({...formData, expiresAt: e.target.value})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none" />
-            </div>
-            <button type="submit" className="lg:col-span-4 py-2.5 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-900 transition-all">Emitir Contrato con Plantilla</button>
-          </form>
-        )}
-
-        {isCreating && activeSubTab === 'templates' && (
-          <form onSubmit={handleCreateTemplate} className="p-6 bg-slate-50 border-b border-slate-100 gap-4 flex flex-col animate-in slide-in-from-top-4">
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nombre de Plantilla</label>
-              <input required value={templateFormData.name} onChange={e=>setTemplateFormData({...templateFormData, name: e.target.value})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none" placeholder="Contrato Coach Individual" />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Términos y Condiciones</label>
-              <textarea required value={templateFormData.terms} onChange={e=>setTemplateFormData({...templateFormData, terms: e.target.value})} className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm outline-none h-32 resize-none" placeholder="Define las cláusulas estándar aquí..." />
-            </div>
-            <button type="submit" className="py-2.5 bg-kirateal text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-kirateal-light transition-all">Guardar Plantilla Maestra</button>
-          </form>
-        )}
-
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {activeSubTab === 'contracts' && contracts.map(c => (
-            <div key={c.id} className="p-5 rounded-2xl border border-slate-100 hover:shadow-xl hover:shadow-slate-100/50 transition-all group flex flex-col justify-between h-40">
-              <div>
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="font-bold text-slate-800 text-[14px]">{c.title}</h4>
-                  <div className={cn("px-2 py-0.5 rounded-full text-[9px] font-bold uppercase", c.status === 'active' ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600")}>
-                    {c.status}
-                  </div>
-                </div>
-                <p className="text-[11px] text-slate-400 italic">Vence: {c.expiresAt?.toDate?.().toLocaleDateString() || new Date(c.expiresAt).toLocaleDateString()}</p>
-                <div className="mt-3 text-[11px] text-slate-600 font-medium">Cliente: {c.clientName}</div>
-              </div>
-              <div className="flex justify-end pt-4 border-t border-slate-50">
-                <button className="text-[11px] font-bold text-primary hover:underline">Auditar Contrato</button>
-              </div>
-            </div>
-          ))}
-
-          {activeSubTab === 'templates' && templates.map(t => (
-            <div key={t.id} className="p-5 rounded-2xl border border-slate-100/50 bg-slate-50/30 hover:bg-white hover:border-kirateal/20 transition-all group h-40 flex flex-col justify-between">
-              <div>
-                 <h4 className="font-bold text-slate-800 text-[14px] mb-2">{t.name}</h4>
-                 <p className="text-[11px] text-slate-500 line-clamp-3 leading-relaxed opacity-70 italic">{t.terms}</p>
-              </div>
-              <div className="flex justify-between items-center pt-3 border-t border-slate-100">
-                <span className="text-[9px] text-slate-400 uppercase font-black tracking-widest">Reutilizable</span>
-                <button className="text-kirateal text-[11px] font-bold hover:underline">Refinar Cláusulas</button>
-              </div>
-            </div>
-          ))}
-
-          {((activeSubTab === 'contracts' && contracts.length === 0) || (activeSubTab === 'templates' && templates.length === 0)) && !isCreating && (
-            <div className="col-span-full py-20 flex flex-col items-center justify-center text-slate-300 gap-4 opacity-40">
-              <FileText size={56} className="bg-slate-50 p-3 rounded-full" />
-              <p className="text-[13px] font-medium italic">Todo listo para tus documentos legales.</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// --- MODULO: MOTOR DE AUTOMATIZACIÓN (PARA COACH) ---
-function CoachAutomationView() {
-  const { user } = useAuth();
-  const { success: toastSuccess } = useToast();
-  const [rules, setRules] = useState<any[]>([]);
-  const [isAdding, setIsAdding] = useState(false);
-  const [activeCategory, setActiveCategory] = useState<'retencion' | 'ventas' | 'logistica'>('retencion');
-  const [newRule, setNewRule] = useState({
-    name: '',
-    category: 'retencion',
-    trigger: 'inactivity',
-    threshold: 5,
-    action: 'notification',
-    message: ''
-  });
-
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'automations'), where('ownerId', '==', user.uid));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      list.sort((a: any, b: any) => {
-        const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
-        const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
-        return tB - tA;
-      });
-      setRules(list);
-    });
-    return () => unsub();
-  }, [user]);
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    try {
-      await addDoc(collection(db, 'automations'), {
-        ...newRule,
-        active: true,
-        processedCount: 0,
-        ownerId: user.uid,
-        createdAt: new Date()
-      });
-      setIsAdding(false);
-      setNewRule({ name: '', category: activeCategory, trigger: 'inactivity', threshold: 5, action: 'notification', message: '' });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const templates = [
-    { 
-      title: "Reactivación Fantasma", 
-      desc: "Si 5 días sin login, enviar push de rescate.", 
-      cat: "retencion",
-      setup: { trigger: 'inactivity', threshold: 5, message: '¡Te extrañamos! Tu progreso te espera.' }
-    },
-    { 
-      title: "Upsell Strategist", 
-      desc: "Si curso completado, ofrecer Mentoría 1-a-1.", 
-      cat: "ventas",
-      setup: { trigger: 'course_complete', threshold: 0, message: '¡Felicidades! Estás listo para el siguiente nivel. Agenda tu sesión aquí.' }
-    },
-    { 
-      title: "Logística Alpha", 
-      desc: "Si 3 tareas pendientes, alerta de bloqueo.", 
-      cat: "logistica",
-      setup: { trigger: 'pending_tasks', threshold: 3, message: 'Tienes tareas acumuladas. No permitas que el momentum se pierda.' }
-    }
-  ];
-
-  const filteredRules = rules.filter(r => (r.category || 'retencion') === activeCategory);
-
-  return (
-    <div className="flex flex-col gap-10 animate-in fade-in transition-all">
-      <div className="bg-white p-10 rounded-[40px] border border-slate-200 shadow-sm relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50/50 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
-        
-        <div className="relative z-10 flex flex-wrap items-center justify-between gap-6 mb-10">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Zap className="text-indigo-600" size={20} fill="currentColor" />
-              <h3 className="text-2xl font-black text-slate-900 tracking-tight">Kira Flow™ Engine</h3>
-            </div>
-            <p className="text-slate-500 font-medium">El motor conductual que trabaja mientras duermes.</p>
-          </div>
-          <button 
-            onClick={() => setIsAdding(!isAdding)}
-            className="px-8 py-3.5 bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest rounded-2xl shadow-xl hover:bg-black transition-all active:scale-95 flex items-center gap-2"
-          >
-            {isAdding ? <XCircle size={16} /> : <PlusCircle size={16} />}
-            {isAdding ? 'Cerrar Constructor' : 'Nueva Regla Conductual'}
-          </button>
-        </div>
-
-        <div className="flex gap-4 p-1.5 bg-slate-100 rounded-[28px] w-fit mb-10 border border-transparent hover:border-slate-200 transition-all">
-          <button onClick={() => setActiveCategory('retencion')} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'retencion' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Retención</button>
-          <button onClick={() => setActiveCategory('ventas')} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'ventas' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Ventas</button>
-          <button onClick={() => setActiveCategory('logistica')} className={cn("px-8 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all", activeCategory === 'logistica' ? "bg-white text-amber-600 shadow-sm" : "text-slate-400 hover:text-slate-600")}>Logística</button>
-        </div>
-
-        {isAdding ? (
-          <form onSubmit={handleCreate} className="mb-12 animate-in slide-in-from-top-6 duration-500">
-            <div className="bg-slate-50 border border-slate-100 p-10 rounded-[40px] relative">
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
-                
-                {/* IF SECTION */}
-                <div className="md:col-span-5 flex flex-col gap-4">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-indigo-100 rounded-full text-indigo-600 text-[10px] font-black uppercase tracking-widest w-fit">
-                    TRIGGER (IF)
-                  </div>
-                  <div className="space-y-4">
-                    <select 
-                      value={newRule.trigger} 
-                      onChange={e => setNewRule({...newRule, trigger: e.target.value})}
-                      className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-sm font-bold focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none"
-                    >
-                      <option value="inactivity">El Alumno está Inactivo</option>
-                      <option value="course_complete">El Alumno Completa un Curso</option>
-                      <option value="pending_tasks">El Alumno tiene Tareas Pendientes</option>
-                      <option value="low_sentiment">Estado de Ánimo Detectado: Bajo</option>
-                    </select>
-                    
-                    <div className="flex items-center gap-4 bg-white border border-slate-200 rounded-2xl p-4">
-                       <span className="text-xs font-bold text-slate-400 uppercase">Durante ≥</span>
-                       <input 
-                         type="number" 
-                         value={newRule.threshold} 
-                         onChange={e => setNewRule({...newRule, threshold: parseInt(e.target.value)})}
-                         className="w-20 bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 text-center font-black text-slate-900 outline-none" 
-                       />
-                       <span className="text-xs font-bold text-slate-400 uppercase">Unidades</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* ARROW */}
-                <div className="md:col-span-2 flex justify-center py-6">
-                  <div className="w-12 h-12 rounded-full bg-slate-900 text-white flex items-center justify-center shadow-2xl">
-                    <ChevronRight size={24} />
-                  </div>
-                </div>
-
-                {/* THEN SECTION */}
-                <div className="md:col-span-5 flex flex-col gap-4">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-100 rounded-full text-emerald-600 text-[10px] font-black uppercase tracking-widest w-fit">
-                    ACTION (THEN)
-                  </div>
-                  <div className="space-y-4">
-                    <select 
-                      value={newRule.action} 
-                      onChange={e => setNewRule({...newRule, action: e.target.value})}
-                      className="w-full bg-white border border-slate-200 rounded-2xl p-4 text-sm font-bold focus:ring-4 focus:ring-emerald-500/10 transition-all outline-none"
-                    >
-                      <option value="notification">Enviar Notificación Push (Kira)</option>
-                      <option value="email">Desparar Email Automatizado</option>
-                      <option value="add_points">Otorgar Extra Energy Pts</option>
-                      <option value="alert_coach">Alertar a mi Command Center</option>
-                    </select>
-                    <textarea 
-                      required 
-                      value={newRule.message} 
-                      onChange={e => setNewRule({...newRule, message: e.target.value})}
-                      className="w-full h-24 bg-white border border-slate-200 rounded-2xl p-4 text-sm font-medium resize-none focus:bg-white outline-none" 
-                      placeholder="Escribe el mensaje o instrucciones..."
-                    />
-                  </div>
-                </div>
-
-              </div>
-              
-              <div className="mt-10 pt-10 border-t border-slate-200 flex justify-between items-center">
-                 <div className="flex flex-col">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Nombre de la Regla</label>
-                    <input 
-                      required 
-                      value={newRule.name} 
-                      onChange={e => setNewRule({...newRule, name: e.target.value})}
-                      className="bg-transparent border-b-2 border-slate-200 text-lg font-black text-slate-800 outline-none focus:border-indigo-500 transition-colors" 
-                      placeholder="Ej: Reactivación 5 Días" 
-                    />
-                 </div>
-                 <button type="submit" className="px-10 py-4 bg-indigo-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all">
-                    Inyectar Regla al Motor
-                 </button>
-              </div>
-            </div>
-          </form>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredRules.length === 0 ? (
-              <div className="col-span-full py-20 flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-[40px] text-slate-300">
-                <Zap size={64} className="mb-6 opacity-20" />
-                <p className="text-lg font-black tracking-tight mb-2">El motor está esperando órdenes</p>
-                <p className="text-sm font-medium text-slate-400 italic">No hay reglas activas en la categoría {activeCategory}.</p>
-              </div>
-            ) : (
-              filteredRules.map(rule => (
-                <div key={rule.id} className="bg-white border border-slate-100 rounded-[32px] p-8 shadow-sm hover:shadow-xl hover:shadow-slate-100/50 transition-all group flex flex-col justify-between border-b-4 border-b-indigo-500/10 hover:border-b-indigo-500">
-                   <div>
-                     <div className="flex justify-between items-start mb-6">
-                        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-                           <Activity size={20} />
-                        </div>
-                        <div className={cn("px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest", rule.active ? "bg-emerald-50 text-emerald-500" : "bg-slate-50 text-slate-400")}>
-                           {rule.active ? 'Running' : 'Paused'}
-                        </div>
-                     </div>
-                     <h4 className="text-base font-black text-slate-900 tracking-tight leading-tight mb-2">{rule.name}</h4>
-                     <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold mb-6">
-                       <Clock size={12} /> {rule.trigger === 'inactivity' ? `IF Inactivo > ${rule.threshold} días` : 'Condición Especial'}
-                     </div>
-                     <div className="p-4 bg-slate-50 rounded-2xl text-[11px] text-slate-600 font-medium leading-relaxed italic mb-8">
-                       "{rule.message}"
-                     </div>
-                   </div>
-                   <div className="flex items-center justify-between pt-6 border-t border-slate-50">
-                      <div className="flex flex-col">
-                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Impacto</span>
-                         <span className="text-xl font-black text-slate-900">{rule.processedCount || 0}</span>
-                      </div>
-                      <button className="p-3 bg-slate-50 text-slate-400 rounded-xl hover:bg-rose-50 hover:text-rose-500 transition-all">
-                         <Trash2 size={16} />
-                      </button>
-                   </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-         <div className="lg:col-span-9">
-            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 px-4">Plantillas Sugeridas (Zero Start)</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-               {templates.map((t, idx) => (
-                 <div 
-                   key={idx} 
-                   onClick={() => {
-                     setNewRule({ ...newRule, name: t.title, category: t.cat, trigger: t.setup.trigger, threshold: t.setup.threshold, message: t.setup.message });
-                     setActiveCategory(t.cat as any);
-                     setIsAdding(true);
-                   }}
-                   className="bg-white p-8 rounded-[32px] border border-slate-200 hover:border-violet-300 shadow-sm transition-all cursor-pointer group text-left"
-                 >
-                    <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform", 
-                      t.cat === 'retencion' ? "bg-indigo-50 text-indigo-600" : t.cat === 'ventas' ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600")}>
-                       <Sparkles size={24} />
-                    </div>
-                    <h5 className="font-black text-slate-900 tracking-tight leading-tight mb-2">{t.title}</h5>
-                    <p className="text-xs text-slate-500 font-medium leading-relaxed mb-6">{t.desc}</p>
-                    <div className="flex items-center gap-2 text-[10px] font-black text-indigo-600 uppercase tracking-widest">
-                       Usar Plantilla <ArrowRight size={12} />
-                    </div>
-                 </div>
-               ))}
-            </div>
-         </div>
-         <div className="lg:col-span-3">
-            <div className="bg-indigo-900 p-8 rounded-[40px] text-white h-full shadow-2xl relative overflow-hidden group">
-               <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -mr-16 -mt-16 duration-700 group-hover:scale-150" />
-               <div className="relative z-10 flex flex-col justify-between h-full">
-                  <div>
-                    <h5 className="text-xl font-black tracking-tight mb-4 leading-tight">Optimiza el LTV con Kira Analytics</h5>
-                    <p className="text-indigo-200 text-sm leading-relaxed mb-8">
-                       Detectamos que el 40% de las ventas ocurren tras la automatización de la "Bóveda Élite".
-                    </p>
-                  </div>
-                  <button 
-                    onClick={() => toastSuccess("Generando informe predictivo de comportamiento de alumnos de Kira AI... Listo en instantes.")}
-                    className="w-full py-4 bg-white/10 hover:bg-white text-white hover:text-indigo-900 border border-white/20 hover:border-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all"
-                  >
-                     Ver Reporte IA
-                  </button>
-               </div>
-            </div>
-         </div>
-      </div>
-    </div>
-  );
-}
 function CoachRegisterClient() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
