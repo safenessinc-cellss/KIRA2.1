@@ -139,6 +139,7 @@ export function CoachDashboard() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [profile, setProfile] = useState<any>(null);
+  const [membershipPlans, setMembershipPlans] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<CoachTab>(() => {
     const tabParam = searchParams.get('tab');
     if (tabParam && ['dashboard', 'courses', 'tracking', 'nexus', 'register', 'automation', 'profile', 'analytics', 'chat'].includes(tabParam)) {
@@ -153,41 +154,21 @@ export function CoachDashboard() {
   };
 
   useEffect(() => {
-    if (user) {
-      const unsub = onSnapshot(doc(db, 'users', user.uid), async (d) => {
-        if (d.exists()) {
-          const data = d.data();
-          setProfile(data);
-          // Auto-aprobar si el usuario accede al panel de coach para que no falle Firestore
-          if (data.role !== 'coach' || data.approvalStatus !== 'approved') {
-            try {
-              await updateDoc(doc(db, 'users', user.uid), {
-                role: 'coach',
-                approvalStatus: 'approved'
-              });
-            } catch (err) {
-              console.warn("Could not auto-approve coach profile:", err);
-            }
-          }
-        } else {
-          // Crear perfil inicial como coach aprobado
-          try {
-            await setDoc(doc(db, 'users', user.uid), {
-              uid: user.uid,
-              email: user.email || '',
-              role: 'coach',
-              approvalStatus: 'approved',
-              createdAt: new Date()
-            });
-          } catch (err) {
-            console.warn("Could not auto-create coach profile:", err);
-          }
-        }
-      });
-      handlePaymentSuccess();
-      return () => unsub();
-    }
+    if (!user) { setProfile(null); return; }
+    const unsub = onSnapshot(doc(db, 'users', user.uid), d => {
+      setProfile(d.exists() ? d.data() : null);
+    }, err => console.error('Coach profile listener failed:', err));
+    return () => unsub();
   }, [user]);
+
+  useEffect(() => {
+    const q = query(collection(db, 'membershipPlans'), where('status', '==', 'published'));
+    const unsub = onSnapshot(q, snap => setMembershipPlans(snap.docs.map(d => ({ id: d.id, ...d.data() }))), err => {
+      console.error('Membership plans could not be loaded:', err);
+      setMembershipPlans([]);
+    });
+    return () => unsub();
+  }, []);
 
   const handlePaymentSuccess = () => {
     // Never activate a membership from URL parameters; only a verified backend webhook may.
@@ -197,26 +178,27 @@ export function CoachDashboard() {
     }
   };
   
-  const isApproved = user?.approvalStatus === 'approved';
-  const hasMembership = user?.membershipStatus === 'active';
+  const isApproved = profile?.role === 'coach' && profile?.approvalStatus === 'approved';
+  const membershipExpiry = profile?.membershipExpiresAt?.toDate ? profile.membershipExpiresAt.toDate() : (profile?.membershipExpiresAt ? new Date(profile.membershipExpiresAt) : null);
+  const hasMembership = profile?.membershipStatus === 'active' && (!membershipExpiry || membershipExpiry.getTime() > Date.now());
+  const selectedPlan = membershipPlans[0] || null;
 
   const handleMembershipCheckout = async () => {
-    if(!user) return;
+    if (!user || !selectedPlan) return;
     try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
       const resp = await fetch('/api/create-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.uid,
-          amount: 49.99,
-          title: 'Plan Coach PRO (Anual)',
-          type: 'coach_membership'
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
+        body: JSON.stringify({ items: [{ id: selectedPlan.id, quantity: 1 }], provider: 'mercadopago' })
       });
-      const { url } = await resp.json();
-      window.location.href = url;
+      const data = await resp.json();
+      if (!resp.ok || !data.url) throw new Error(data.error || 'No se pudo iniciar el pago.');
+      window.location.href = data.url;
     } catch(e) {
       console.error('Membership checkout error:', e);
+      alert(e instanceof Error ? e.message : 'No se pudo iniciar el pago.');
     }
   };
 
@@ -250,25 +232,19 @@ export function CoachDashboard() {
 
       {!hasMembership && isApproved && (
         <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-[40px] p-10 shadow-2xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-[100px] -mr-48 -mt-48 transition-transform group-hover:scale-110 duration-700" />
           <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
             <div className="max-w-xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-indigo-300 text-[10px] font-black uppercase tracking-widest mb-6 border border-white/5">
-                Membresía Requerida
-              </div>
-              <h2 className="text-4xl font-black mb-4 tracking-tighter">Activa tu Plan Coach Pro</h2>
-              <p className="text-slate-300 text-lg leading-relaxed">
-                Desbloquea el Studio de Cursos, analíticas avanzadas de retención y la pasarela de pagos automatizada.
-              </p>
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-indigo-300 text-[10px] font-black uppercase tracking-widest mb-6 border border-white/5">Membresía</div>
+              <h2 className="text-4xl font-black mb-4 tracking-tighter">Activa tu membresía de coach</h2>
+              <p className="text-slate-300 text-lg leading-relaxed">Elige un plan publicado por KIRA. Tu acceso se activa únicamente después de verificar el pago.</p>
             </div>
             <div className="text-center md:text-right shrink-0">
-              <div className="text-5xl font-black mb-6 tracking-tighter">$49.99<span className="text-lg font-normal text-slate-400">/y</span></div>
-              <button 
-                onClick={handleMembershipCheckout}
-                className="px-10 py-5 bg-white text-indigo-950 rounded-3xl font-black text-sm uppercase tracking-widest hover:bg-slate-50 transition shadow-xl active:scale-95"
-              >
-                Comenzar Expansión
-              </button>
+              {selectedPlan ? <>
+                <div className="text-2xl font-black mb-1">{selectedPlan.title}</div>
+                <div className="text-4xl font-black mb-2 tracking-tighter">{Number(selectedPlan.price).toFixed(2)} {selectedPlan.currency}</div>
+                <p className="mb-5 text-xs text-slate-300">Vigencia: {selectedPlan.durationDays} días</p>
+                <button onClick={handleMembershipCheckout} className="px-10 py-5 bg-white text-indigo-950 rounded-3xl font-black text-sm uppercase tracking-widest hover:bg-slate-50 transition shadow-xl active:scale-95">Pagar membresía</button>
+              </> : <p className="max-w-xs text-sm text-slate-300">No hay planes publicados. Contacta al administrador de KIRA.</p>}
             </div>
           </div>
         </div>
