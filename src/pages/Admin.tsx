@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CertificateManagementView } from './CertificateManagementView';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../hooks/useAuth';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
@@ -4471,95 +4472,7 @@ function PromotionsManagerView() {
 }
 
 
-function CertificateRequestsAdminView() {
-  const { user } = useAuth();
-  const [requests, setRequests] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [issuing, setIssuing] = useState<string | null>(null);
-  const [previewRequestId, setPreviewRequestId] = useState<string | null>(null);
-  const [certificateLogo, setCertificateLogo] = useState('/assets/kira-logo.png');
-  const isSuperAdmin = user?.email === 'safeness.c.a@gmail.com';
-  useEffect(() => {
-    return onSnapshot(collection(db, 'certificateRequests'), snap => { setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); }, err => { console.error(err); setError('No se pudieron cargar las solicitudes. Verifica las reglas de Firestore.'); setLoading(false); });
-  }, []);
-  useEffect(() => onSnapshot(doc(db, 'settings', 'website'), snap => { if (snap.exists() && snap.data().logoImage) setCertificateLogo(snap.data().logoImage); }), []);
-  const decide = async (r: any, status: 'approved' | 'rejected') => {
-    if (!isSuperAdmin || !user) return setError('Solo el superadministrador puede revisar solicitudes.');
-    if (status === 'approved' && (!(r.paymentStatus === 'paid' || r.paid === true) || !(r.courseCompleted === true || r.completed === true || Number(r.progress) >= 100))) return setError('Falta confirmar el pago o la finalización del curso.');
-    try { await updateDoc(doc(db, 'certificateRequests', r.id), { status, reviewedBy: user.uid, reviewedByName: user.displayName || user.email, reviewedAt: new Date() }); setError(''); } catch (e) { console.error(e); setError('No se pudo actualizar la solicitud.'); }
-  };
-  const confirmPayment = async (r: any) => {
-    if (!isSuperAdmin || !user) return setError('Solo el superadministrador puede confirmar pagos.');
-    try {
-      await updateDoc(doc(db, 'certificateRequests', r.id), {
-        paid: true, paymentStatus: 'paid', paymentVerifiedBy: user.uid,
-        paymentVerifiedByName: user.displayName || user.email, paymentVerifiedAt: new Date()
-      });
-      setError('');
-    } catch (error) { console.error(error); setError('No se pudo registrar la verificación del pago.'); }
-  };
-  const issue = async (r: any) => {
-    if (!isSuperAdmin || !user || r.status !== 'approved') return;
-    const hours = Number(r.hours || r.courseHours || r.durationHours || 0);
-    if (!(r.paymentStatus === 'paid' || r.paid === true) || !(r.courseCompleted === true || r.completed === true || Number(r.progress) >= 100) || !r.studentName || !r.courseTitle || !r.coachName || hours <= 0) return setError('No se emite: verifica pago, curso concluido, alumno, coach y horas.');
-    setIssuing(r.id);
-    try {
-      const idToken = await auth.currentUser?.getIdToken();
-      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
-      const issueResponse = await fetch('/api/certificates/issue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
-        body: JSON.stringify({ requestId: r.id, enrollmentId: r.enrollmentId })
-      });
-      const issueData = await issueResponse.json();
-      if (!issueResponse.ok || !issueData.certificateNumber || !issueData.validationUrl) throw new Error(issueData.error || 'No se pudo emitir el certificado firmado.');
-      const number = issueData.certificateNumber;
-      const token = issueData.validationUrl.split('/').pop() || '';
-      const issuedAt = new Date();
-      const issuerName = user.displayName || user.email || 'KIRA COACH';
-      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-      pdf.setFillColor(250,252,253); pdf.rect(0,0,297,210,'F'); pdf.setDrawColor(25,166,160); pdf.setLineWidth(1.5); pdf.roundedRect(9,9,279,192,4,4,'S');
-      pdf.setTextColor(229,237,238); pdf.setFont('helvetica','bold'); pdf.setFontSize(58); pdf.text('KIRA',148.5,112,{align:'center'});
-      try { const settingsSnap = await getDoc(doc(db, 'settings', 'website')); const configuredLogo = settingsSnap.exists() ? settingsSnap.data().logoImage : ''; const logoUrl = configuredLogo || '/assets/kira-logo.png'; const logoResponse = await fetch(logoUrl.startsWith('http') || logoUrl.startsWith('data:') ? logoUrl : window.location.origin + (logoUrl.startsWith('/') ? logoUrl : '/' + logoUrl)); if (logoResponse.ok) { const logoBlob = await logoResponse.blob(); const logoData = await new Promise<string>((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(logoBlob); }); pdf.addImage(logoData,'PNG',136,12,25,15); } } catch (logoError) { console.warn('Logo KIRA no disponible para el PDF.', logoError); }
-      pdf.setTextColor(20,75,82); pdf.setFontSize(22); pdf.text('KIRA COACH',148.5,32,{align:'center'}); pdf.setFont('helvetica','normal'); pdf.setFontSize(10); pdf.text('CERTIFICADO DE CONCLUSIÓN',148.5,42,{align:'center'});
-      pdf.setTextColor(50,60,68); pdf.setFontSize(13); pdf.text('Se certifica que',148.5,65,{align:'center'}); pdf.setTextColor(20,100,102); pdf.setFont('helvetica','bold'); pdf.setFontSize(26); pdf.text(r.studentName,148.5,82,{align:'center',maxWidth:240});
-      pdf.setTextColor(50,60,68); pdf.setFont('helvetica','normal'); pdf.setFontSize(12); pdf.text('ha concluido satisfactoriamente el curso',148.5,96,{align:'center'}); pdf.setFont('helvetica','bold'); pdf.setFontSize(19); pdf.text(r.courseTitle,148.5,109,{align:'center',maxWidth:240});
-      pdf.setFont('helvetica','normal'); pdf.setFontSize(11); pdf.text(hours + ' horas académicas · Coach: ' + r.coachName,148.5,123,{align:'center',maxWidth:240});
-      pdf.setDrawColor(25,166,160); pdf.line(28,151,104,151); pdf.line(193,151,269,151); pdf.setTextColor(55,65,75); pdf.setFontSize(9); pdf.setFont('times','italic'); pdf.setFontSize(17); pdf.text(issuerName,66,151,{align:'center',maxWidth:72}); pdf.setFont('helvetica','normal'); pdf.setFontSize(9); pdf.text(issuerName,66,158,{align:'center',maxWidth:72}); pdf.text('Registro de emisor autenticado por KIRA',66,164,{align:'center'}); pdf.text('KIRA COACH · SAFENESS.INC',231,157,{align:'center'});
-      pdf.setTextColor(20,75,82); pdf.setFont('helvetica','bold'); pdf.text(number,148.5,179,{align:'center'});
-      const url = issueData.validationUrl; pdf.setFont('helvetica','normal'); pdf.setFontSize(8); pdf.text('Validación QR: ' + url,148.5,187,{align:'center',maxWidth:250});
-      try { const response = await fetch('https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url)); if (response.ok) { const blob = await response.blob(); const data = await new Promise<string>((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(blob); }); pdf.addImage(data,'PNG',263,15,20,20); } } catch (e) { console.warn('QR no incrustado; la URL queda impresa.',e); }
-      pdf.save(number + '.pdf'); setError('');
-    } catch (e) { console.error(e); setError('No se pudo emitir el certificado. Revisa permisos y conexión.'); } finally { setIssuing(null); }
-  };
-  const pending = requests.filter(r => !['approved','rejected','issued'].includes(String(r.status || 'pending')));
-  const previewRequest = requests.find(r => r.id === previewRequestId) || requests[0] || null;
-  const previewDate = previewRequest?.issuedAt?.toDate?.() || (previewRequest?.issuedAt ? new Date(previewRequest.issuedAt) : null);
-  const previewValidationUrl = previewRequest?.validationUrl || previewRequest?.qrUrl || '';
-  return <div className='space-y-5'><section className='bg-white border border-slate-200 rounded-2xl p-6 shadow-sm'><h2 className='text-xl font-bold text-slate-900 flex items-center gap-2'><FileText className='text-kirateal'/> Certificados verificables KIRA</h2><p className='text-sm text-slate-500 mt-2'>Aprobación, emisión con registro de emisor y validación pública por QR.</p><div className='flex gap-2 flex-wrap mt-4 text-xs'><span className='rounded-full bg-amber-50 text-amber-700 px-3 py-1'>Pendientes: {pending.length}</span><span className='rounded-full bg-emerald-50 text-emerald-700 px-3 py-1'>Aprobadas: {requests.filter(r=>r.status==='approved').length}</span><span className='rounded-full bg-slate-100 text-slate-600 px-3 py-1'>Emitidas: {requests.filter(r=>r.status==='issued').length}</span><span className='rounded-full bg-rose-50 text-rose-700 px-3 py-1'>Rechazadas: {requests.filter(r=>r.status==='rejected').length}</span></div></section>
-  {error && <div className='rounded-xl bg-rose-50 border border-rose-200 text-rose-700 p-3 text-sm'>{error}</div>}
-  <section className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6'>
-    <div className='mb-4'><p className='text-[10px] font-black uppercase tracking-[0.18em] text-kirateal'>Modelo oficial</p><h3 className='text-lg font-black text-slate-900'>Vista previa del certificado KIRA</h3><p className='text-xs text-slate-500'>A4 horizontal · logo · marca de agua · alumno · curso · coach · horas · firma electrónica · QR</p></div>
-    <div className='relative mx-auto aspect-[1.414/1] w-full max-w-4xl overflow-hidden rounded-xl border-[5px] border-double border-teal-700 bg-[#fffefa] p-[3.5%] text-center shadow-inner'>
-      <div className='pointer-events-none absolute inset-0 flex items-center justify-center'><span className='rotate-[-24deg] text-[clamp(3rem,11vw,8rem)] font-black tracking-widest text-teal-900/[0.055]'>KIRA</span></div>
-      <div className='relative flex h-full flex-col items-center justify-between'>
-        <div className='flex flex-col items-center'><img src={certificateLogo} alt='Logo KIRA' className='h-[clamp(22px,5vw,58px)] max-w-[25%] object-contain'/><div className='mt-1 text-[clamp(9px,1.5vw,18px)] font-black tracking-[0.24em] text-teal-900'>KIRA COACH</div><div className='text-[clamp(6px,0.8vw,10px)] tracking-[0.2em] text-slate-500'>CERTIFICADO DE CONCLUSIÓN</div></div>
-        <div className='relative max-w-[85%]'><p className='text-[clamp(7px,1vw,12px)] text-slate-500'>Se certifica que</p><h4 className='mt-1 break-words text-[clamp(13px,2.8vw,30px)] font-serif font-bold text-slate-900'>{previewRequest?.studentName || 'Nombre completo del alumno'}</h4><p className='mt-1 text-[clamp(7px,1vw,12px)] text-slate-600'>ha concluido satisfactoriamente el curso</p><h5 className='mt-1 break-words text-[clamp(10px,1.8vw,20px)] font-bold text-teal-800'>{previewRequest?.courseTitle || 'Nombre del curso'}</h5><p className='mt-1 text-[clamp(7px,1vw,12px)] text-slate-600'>{Number(previewRequest?.hours || previewRequest?.courseHours || previewRequest?.durationHours || 0) || '—'} horas académicas · Coach: {previewRequest?.coachName || 'Nombre del coach'}</p></div>
-        <div className='relative grid w-full grid-cols-[1fr_auto_1fr] items-end gap-2 text-[clamp(6px,0.8vw,10px)] text-slate-600'>
-          <div className='border-t border-slate-400 pt-1'><span className='block font-serif text-[clamp(8px,1.3vw,15px)] italic text-slate-800'>{previewRequest?.issuerName || 'Firma electrónica KIRA'}</span><span className='font-bold'>EMISOR AUTORIZADO</span><span className='block'>{previewRequest?.issuerName || 'Superadministrador KIRA'}</span></div>
-          <div className='flex flex-col items-center gap-1'>{previewValidationUrl ? <img src={'https://api.qrserver.com/v1/create-qr-code/?size=160x160&data='+encodeURIComponent(previewValidationUrl)} alt='QR de validación' className='h-[clamp(30px,7vw,72px)] w-[clamp(30px,7vw,72px)]'/> : <div className='flex h-[clamp(30px,7vw,72px)] w-[clamp(30px,7vw,72px)] items-center justify-center border border-dashed border-slate-400 text-center text-[7px] text-slate-400'>QR al emitir</div>}<span className='font-mono'>{previewRequest?.certificateNumber || 'N.º KIRA — pendiente'}</span></div>
-          <div className='border-t border-slate-400 pt-1'><span className='block font-serif text-[clamp(8px,1.3vw,15px)] italic text-slate-800'>{previewRequest?.coachName || 'Firma del coach'}</span><span className='font-bold'>COACH RESPONSABLE</span><span className='block'>KIRA COACH</span></div>
-        </div>
-        <div className='relative text-[clamp(6px,0.8vw,10px)] text-slate-500'>Fecha de emisión: {previewDate ? previewDate.toLocaleDateString() : 'se asigna al emitir'} · Verificación pública mediante QR</div>
-      </div>
-    </div>
-    <p className='mt-3 text-center text-[11px] text-slate-500'>Selecciona una solicitud para ver sus datos. La firma y el QR solo son válidos tras la emisión verificada por el servidor.</p>
-  </section>
-
-  {loading ? <div className='p-8 text-center text-slate-500'>Cargando solicitudes…</div> : requests.length === 0 ? <div className='rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500'>Todavía no hay solicitudes.</div> : <div className='space-y-3'>{requests.map(r => <article key={r.id} onClick={() => setPreviewRequestId(r.id)} className={'bg-white border rounded-2xl p-5 flex flex-col md:flex-row md:items-center gap-4 cursor-pointer transition-colors ' + (previewRequest?.id === r.id ? 'border-kirateal ring-2 ring-kirateal/10' : 'border-slate-200')}><div className='flex-1 min-w-0'><div className='font-semibold text-slate-900'>{r.courseTitle || r.courseName || r.title || 'Curso no identificado'}</div><div className='text-sm text-slate-500 mt-1'>Alumno: {r.studentName || r.userName || r.userEmail || r.userId || 'Sin identificar'}</div><div className='text-xs text-slate-400 mt-1'>Coach: {r.coachName || r.coachId || 'No especificado'} · {r.hours || r.courseHours || r.durationHours || 0} horas · Estado: {r.status || 'pending'}</div><div className='text-xs text-slate-400 mt-1'>Pago: {r.paymentRequired === false ? 'No requiere pago' : r.paymentStatus === 'paid' ? 'Confirmado por administración' : 'Pendiente de verificación'}</div><div className='text-xs text-slate-400 mt-1'>Solicitud: {r.id} {r.certificateNumber ? '· Certificado: ' + r.certificateNumber : ''}</div>{r.issuedByName && <div className='text-xs text-emerald-700 mt-1'>Emitido por: {r.issuedByName}</div>}</div>
-  {r.status !== 'issued' && <div className='flex gap-2 flex-wrap'>{r.paymentRequired !== false && !r.paid && <button disabled={!isSuperAdmin} onClick={()=>confirmPayment(r)} className='px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-bold disabled:opacity-40'>Confirmar pago</button>}{r.status !== 'approved' && <button disabled={!isSuperAdmin} onClick={()=>decide(r,'approved')} className='px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold disabled:opacity-40'>Aprobar</button>}{r.status !== 'rejected' && <button disabled={!isSuperAdmin} onClick={()=>decide(r,'rejected')} className='px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold disabled:opacity-40'>Rechazar</button>}{r.status === 'approved' && <button disabled={!isSuperAdmin || issuing===r.id} onClick={()=>issue(r)} className='px-3 py-2 rounded-lg bg-kirateal text-white text-xs font-bold disabled:opacity-50'>{issuing===r.id ? 'Emitiendo…' : 'Emitir certificado + PDF'}</button>}</div>}</article>)}</div>}</div>;
-}
+function CertificateRequestsAdminView() { return <CertificateManagementView />; }
 
 // Compatibilidad con rutas anteriores
 export function AdminCoaches() { return <AdminMonitor />; }
