@@ -26,6 +26,8 @@ export function AdminBooksView() {
   const [type, setType] = useState<'pdf' | 'link'>('pdf');
   const [url, setUrl] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
+  const [price, setPrice] = useState(0);
+  const [currency, setCurrency] = useState('USD');
 
   useEffect(() => {
     // Fetch ALL books in the entire ecosystem
@@ -86,27 +88,19 @@ export function AdminBooksView() {
     setUploadingFile(true);
     try {
       const storageBucket = storage.app.options.storageBucket || '';
-      const isMock = !storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value';
-
-      if (isMock) {
-        // Wait 1.2 seconds for simulation
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        const mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-        setUrl(mockUrl);
-        toastSuccess("Archivo cargado en modo simulación administrativa.");
-      } else {
-        const storageRef = ref(storage, `books/admin/${Date.now()}_${file.name}`);
-        const uploadResult = await uploadBytes(storageRef, file);
-        const downloadUrl = await getDownloadURL(uploadResult.ref);
-        
-        setUrl(downloadUrl);
-        toastSuccess("Libro administrativo cargado con éxito.");
+      if (!storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value') {
+        throw new Error('Firebase Storage no está configurado. No se publicará un archivo de demostración.');
       }
+      if (file.size > 25 * 1024 * 1024) throw new Error('El PDF supera el límite de 25 MB.');
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storageRef = ref(storage, `books/admin/${user.uid}/${Date.now()}_${safeName}`);
+      const uploadResult = await uploadBytes(storageRef, file, { contentType: 'application/pdf' });
+      const downloadUrl = await getDownloadURL(uploadResult.ref);
+      setUrl(downloadUrl);
+      toastSuccess("Libro administrativo cargado con éxito.");
     } catch (err: any) {
-      console.warn("Storage upload failed, using simulation mode fallback:", err);
-      const mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-      setUrl(mockUrl);
-      toastSuccess("Libro cargado en modo de respaldo (simulado).");
+      console.error("Storage upload failed:", err);
+      toastError(err?.message || "No se pudo subir el PDF. No se publicará un enlace de prueba.");
     } finally {
       setUploadingFile(false);
       e.target.value = '';
@@ -120,6 +114,8 @@ export function AdminBooksView() {
     setType(book.type || 'pdf');
     setUrl(book.url || '');
     setCoverUrl(book.coverUrl || '');
+    setPrice(Number(book.price || 0));
+    setCurrency(String(book.currency || 'USD').toUpperCase());
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -130,6 +126,8 @@ export function AdminBooksView() {
     setType('pdf');
     setUrl('');
     setCoverUrl('');
+    setPrice(0);
+    setCurrency('USD');
   };
 
   const handlePublish = async (e: React.FormEvent) => {
@@ -141,6 +139,7 @@ export function AdminBooksView() {
       return;
     }
 
+    if (!Number.isFinite(price) || price < 0 || price > 100000) { toastError('Introduce un precio válido igual o superior a cero.'); return; }
     let finalUrl = url.trim();
     if (!finalUrl) {
       toastError("Debes cargar un archivo o ingresar un enlace.");
@@ -193,7 +192,12 @@ export function AdminBooksView() {
           description: description.trim(),
           type,
           url: finalUrl,
-          coverUrl: coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400',
+          fileUrl: finalUrl,
+          pdfUrl: type === 'pdf' ? finalUrl : '',
+          price: Number(price),
+          currency,
+          status: 'published',
+          coverUrl: coverUrl || '',
           publisherName: finalName,
           updatedAt: serverTimestamp()
         });
@@ -206,7 +210,12 @@ export function AdminBooksView() {
           description: description.trim(),
           type,
           url: finalUrl,
-          coverUrl: coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400',
+          fileUrl: finalUrl,
+          pdfUrl: type === 'pdf' ? finalUrl : '',
+          price: Number(price),
+          currency,
+          status: 'published',
+          coverUrl: coverUrl || '',
           publisherId: user.uid,
           publisherName: finalName,
           publisherRole: 'admin',
@@ -220,6 +229,8 @@ export function AdminBooksView() {
       setDescription('');
       setUrl('');
       setCoverUrl('');
+      setPrice(0);
+      setCurrency('USD');
     } catch (err: any) {
       console.error("Error saving admin book:", err);
       toastError(editingBook ? "Error al actualizar el libro." : "Error al publicar el libro.");
@@ -316,6 +327,19 @@ export function AdminBooksView() {
                 rows={3}
                 className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none resize-none"
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Precio de venta</label>
+                <input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Moneda</label>
+                <select value={currency} onChange={e => setCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm">
+                  <option value="USD">USD</option><option value="BRL">BRL</option><option value="EUR">EUR</option>
+                </select>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 bg-slate-50 p-1.5 rounded-2xl border border-slate-200/50">
