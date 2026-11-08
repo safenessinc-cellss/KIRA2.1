@@ -56,6 +56,8 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
-    "@types/qrcode": "^1.5.5"
+    "@types/qrcode": "^1.5.5",
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase-tools": "^14.0.0"
   }
 }
