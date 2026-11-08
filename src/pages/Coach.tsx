@@ -586,6 +586,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
           <h3 className="text-lg font-black text-slate-900">Privacidad del alumno</h3>
           <p className="mt-2 text-sm leading-relaxed text-slate-600">Los diarios personales y notas de bienestar pertenecen al alumno. Este panel solo muestra matrículas, cursos y progreso académico autorizado.</p>
         </div>
+      </div>
 
       {/* Analysis Row: Sessions Chart and Topics */}
       <div className={cn("grid grid-cols-1 lg:grid-cols-2 gap-6", !isApproved && "opacity-50 pointer-events-none")}>
