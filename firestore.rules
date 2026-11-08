@@ -321,6 +321,16 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Private storage pointers and paid-book entitlements never appear in public catalog documents.
+    match /bookAssets/{bookId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /bookEntitlements/{entitlementId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
     match /membershipPlans/{planId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
       allow create, update, delete: if isAdmin();
