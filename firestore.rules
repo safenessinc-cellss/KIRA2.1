@@ -269,6 +269,23 @@ service cloud.firestore {
     // Collection Rules
     // ===============================================================
     
+    // Sanitized public projection: no email, auth metadata, tenant IDs, or private notes.
+    match /coachPublicProfiles/{coachId} {
+      allow read: if resource.data.status == 'published';
+      allow create, update: if isAuthenticated()
+        && request.auth.uid == coachId
+        && isApprovedCoach()
+        && request.resource.data.uid == coachId
+        && request.resource.data.status == 'published'
+        && request.resource.data.approvalStatus == 'approved'
+        && request.resource.data.keys().hasOnly(['uid', 'displayName', 'photoURL', 'specialty', 'bio', 'specialties', 'languages', 'socialLinks', 'rating', 'studentCount', 'mediaItems', 'approvalStatus', 'status', 'updatedAt']);
+      allow delete: if isAdmin() || (isAuthenticated()
+        && request.auth.uid == coachId
+        && (!exists(/databases/$(database)/documents/users/$(coachId))
+          || get(/databases/$(database)/documents/users/$(coachId)).data.role != 'coach'
+          || get(/databases/$(database)/documents/users/$(coachId)).data.approvalStatus != 'approved'));
+    }
+
     match /users/{userId} {
       // Read: Public can see ALL coach profiles (needed for directory query). Users can read their own. Admins all.
       // And authenticated users can read profiles for chats etc.
