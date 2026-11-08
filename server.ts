@@ -265,7 +265,7 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
       const enrollmentId = idSafe(order.userId + "_" + item.id);
       if (!(await fsGet("enrollments", enrollmentId))) writes.push(fsCreate("enrollments", enrollmentId, {
         userId: order.userId, studentName: buyerProfile?.displayName || buyerProfile?.name || "Alumno", studentEmail: buyerProfile?.email || "", studentAvatar: buyerProfile?.photoURL || "", courseId: item.id, progress: 0, completed: false, courseCompleted: false,
-        paymentOrderId: orderId, paymentStatus: "paid", createdAt: now
+        paymentOrderId: orderId, paymentStatus: "paid", createdAt: new Date(now)
       }));
     } else if (item.collectionName === "books" || item.type === "book") {
       const purchaseId = idSafe(order.userId + "_" + orderId + "_" + item.id);
