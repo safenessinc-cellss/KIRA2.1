@@ -26,10 +26,15 @@ La emisión utiliza el backend Express y el proyecto Firebase existente. Los doc
 
 Variables de servidor requeridas en Vercel (Production y Preview):
 
-- `CERT_SECRET`: secreto aleatorio de al menos 32 caracteres para HMAC-SHA256. Mantener exclusivamente como variable sensible del servidor.
+- `KIRA_CERTIFICATE_SIGNING_SECRET`: secreto aleatorio de al menos 32 caracteres para HMAC-SHA256 de certificados. Mantener exclusivamente como variable sensible del servidor.
+- `KIRA_CONFIG_ENCRYPTION_KEY`: clave AES-256 de 32 bytes (base64 o 64 caracteres hex) para cifrar claves de pasarelas en Firestore; nunca se guarda en la base de datos.
 - `FIREBASE_SERVICE_ACCOUNT_JSON`: cuenta de servicio del proyecto `kira2-a6a20`, con permisos Firestore y Firebase Storage.
 - `FIREBASE_STORAGE_BUCKET` (o `VITE_FIREBASE_STORAGE_BUCKET`): bucket del proyecto Firebase.
 - `KIRA_APP_URL`: URL pública canónica, por ejemplo `https://kira.coach`.
+
+### Centro de Pagos (solo superadministrador)
+
+El panel `Admin > Finanzas > Configuración de pagos` administra `paymentSettings/global`, `paymentGateways`, `paymentPlans`, `paymentCoupons`, `paymentAudit` y `config_audit`. Los secretos se cifran con AES-256-GCM en el backend y nunca se devuelven al cliente. La configuración global puede apagar checkout y restringe las monedas aceptadas. Los planes de pago único y recurrentes Stripe pueden crear sesiones; Mercado Pago recurrente permanece deshabilitado. Reembolsos, facturación fiscal, impuestos, dunning y payouts aún requieren implementación y pruebas antes de considerarlos disponibles.
 
 En el panel de administración, cargar el logo PNG institucional, la firma del superadministrador y la firma PNG de cada coach. Se almacenan bajo `certificates/private/` y las reglas de Storage impiden su lectura pública. No subir secretos al repositorio ni compartirlos por chat.
 
