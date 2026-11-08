@@ -160,9 +160,13 @@ service cloud.firestore {
 
     function isValidMessage() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['chatId', 'senderId', 'senderName', 'content', 'createdAt']) &&
+      return hasOnlyAllowedFields(['chatId', 'senderId', 'senderName', 'content', 'createdAt', 'participants']) &&
              data.chatId is string && data.senderId is string &&
              (!('senderName' in data) || data.senderName is string) &&
+             data.participants is list && data.participants.size() == 2 &&
+             request.auth.uid in data.participants &&
+             data.participants[0] < data.participants[1] &&
+             data.chatId == data.participants[0] + '_' + data.participants[1] &&
              data.content is string && data.content.size() > 0 && data.content.size() < 10000 &&
              data.createdAt is timestamp;
     }
@@ -492,7 +496,7 @@ service cloud.firestore {
     }
 
     match /messages/{messageId} {
-      allow read: if isAuthenticated() && (isAdmin() || resource.data.chatId.matches('.*' + request.auth.uid + '.*'));
+      allow read: if isAuthenticated() && (isAdmin() || (resource.data.participants is list && request.auth.uid in resource.data.participants));
       allow create: if isAuthenticated() && isValidMessage() && request.auth.uid == request.resource.data.senderId;
       allow update, delete: if isAdmin();
     }
@@ -506,8 +510,8 @@ service cloud.firestore {
 
     match /notifications/{id} {
       allow read: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
-      allow create: if isAuthenticated() && isValidNotification();
-      allow update: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidNotification() && (isAdmin() || request.resource.data.userId == request.auth.uid);
+      allow update: if isAuthenticated() && (isAdmin() || (resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']) && request.resource.data.read is bool));
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
 
