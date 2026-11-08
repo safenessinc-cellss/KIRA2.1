@@ -308,25 +308,13 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
   const [topTopics, setTopTopics] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [isEditingMetrics, setIsEditingMetrics] = useState(false);
-  const [editedMetrics, setEditedMetrics] = useState({
-    activeStudents: 0,
-    avgProgress: 0,
-    recentSessions: 0
-  });
 
   // --- NUEVAS ACCIONES INTERACTIVAS Y LOGICAS ---
-  const [showRevisarTareas, setShowRevisarTareas] = useState(false);
   const [showAiAuditCrm, setShowAiAuditCrm] = useState(false);
   const [showCloudSupport, setShowCloudSupport] = useState(false);
   const [showSessionIntelligence, setShowSessionIntelligence] = useState(false);
 
   // 1. Estados para Revisar Tareas
-  const [selectedSubmission, setSelectedSubmission] = useState<any>(null);
-  const [feedbackText, setFeedbackText] = useState('');
-  const [isAiGeneratingFeedback, setIsAiGeneratingFeedback] = useState(false);
-  const [reviewedSubmissions, setReviewedSubmissions] = useState<Record<string, string>>({});
-  const [submissionsList, setSubmissionsList] = useState<any[]>([]);
 
   // 2. Estados para AI Audit CRM
   const [leads, setLeads] = useState(350);
@@ -635,153 +623,6 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
                {topTopics.length === 0 && (
                  <div className="text-center py-10 text-slate-400 text-sm">Aún no hay temas suficientes para analizar.</div>
                )}
-
-                 {/* --- MODAL 1: REVISAR TAREAS (FEEDBACK DE MODULOS) --- */}
-                 {showRevisarTareas && (
-                   <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                     <div className="bg-white rounded-[40px] w-full max-w-5xl h-[85vh] overflow-hidden border border-slate-100 shadow-2xl relative flex flex-col animate-in fade-in zoom-in-95 duration-300 text-left">
-                       <button 
-                         type="button"
-                         onClick={() => setShowRevisarTareas(false)}
-                         className="p-3 bg-slate-50 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 absolute top-6 right-6 transition-all hover:rotate-90"
-                       >
-                         <X size={20} />
-                       </button>
-                       
-                       <div className="p-8 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
-                         <div className="p-3 rounded-2xl bg-amber-50 text-amber-500">
-                           <BookOpen size={24} />
-                         </div>
-                         <div>
-                           <h3 className="text-xl font-black text-slate-900 tracking-tight">Feedback de Módulos (Revisar Tareas)</h3>
-                           <p className="text-xs text-slate-500 font-medium">Revisa las entregas y reflexiones de tus alumnos con el Co-piloto de Inteligencia Artificial de Kira Moreno.</p>
-                         </div>
-                       </div>
-
-                       <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-                         {/* Left Column: Submissions List */}
-                         <div className="w-full md:w-80 border-r border-slate-100 overflow-y-auto p-6 bg-slate-50/30 flex flex-col gap-4 text-left">
-                           <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Entregas Recientes ({submissionsList.length})</h4>
-                           <div className="flex flex-col gap-3">
-                             {submissionsList.map((sub) => (
-                               <button
-                                 type="button"
-                                 key={sub.id}
-                                 onClick={() => {
-                                   setSelectedSubmission(sub);
-                                   setFeedbackText(sub.feedback || '');
-                                 }}
-                                 className={cn(
-                                   "w-full p-5 rounded-2xl border text-left transition-all flex flex-col gap-2 relative overflow-hidden group",
-                                   selectedSubmission?.id === sub.id 
-                                     ? "border-violet-200 bg-white shadow-lg shadow-violet-100/30" 
-                                     : "border-slate-100 bg-white hover:border-slate-200 hover:shadow-md"
-                                 )}
-                               >
-                                 {sub.status === 'pending' && (
-                                   <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-500" />
-                                 )}
-                                 <div className="flex justify-between items-start gap-2">
-                                   <span className="font-extrabold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors">{sub.studentName}</span>
-                                   <span className={cn(
-                                     "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider",
-                                     sub.status === 'pending' ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
-                                   )}>
-                                     {sub.status === 'pending' ? 'Pendiente' : 'Revisada'}
-                                   </span>
-                                 </div>
-                                 <span className="text-[11px] font-bold text-slate-400">{sub.moduleName}</span>
-                                 <p className="text-slate-500 text-[11px] line-clamp-2 leading-relaxed font-medium">{sub.content}</p>
-                                 <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold pt-1">
-                                   <span>{sub.submissionDate}</span>
-                                   {sub.sentiment === 'positive' && <span className="text-emerald-500">😊 Positivo</span>}
-                                   {sub.sentiment === 'negative' && <span className="text-rose-500">😔 Desafiante</span>}
-                                   {sub.sentiment === 'neutral' && <span className="text-slate-500">😐 Neutro</span>}
-                                 </div>
-                               </button>
-                             ))}
-                           </div>
-                         </div>
-
-                         {/* Right Column: Submission details and grading */}
-                         <div className="flex-1 overflow-y-auto p-8 flex flex-col gap-6 bg-white text-left">
-                           {selectedSubmission ? (
-                             <div className="flex flex-col gap-6">
-                               <div className="p-6 rounded-3xl bg-slate-50 border border-slate-100">
-                                 <div className="flex justify-between items-start mb-4">
-                                   <div>
-                                     <h4 className="font-black text-slate-900 text-base">{selectedSubmission.studentName}</h4>
-                                     <p className="text-xs text-slate-500 font-bold">{selectedSubmission.studentEmail}</p>
-                                   </div>
-                                   <div className="text-right">
-                                     <span className="text-xs text-slate-400 font-black uppercase tracking-wider block">Actividad</span>
-                                     <span className="text-sm font-extrabold text-indigo-600">{selectedSubmission.moduleName}</span>
-                                   </div>
-                                 </div>
-                                 <div className="bg-white p-5 rounded-2xl border border-slate-100 text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">
-                                   "{selectedSubmission.content}"
-                                 </div>
-                               </div>
-
-                               <div className="flex flex-col gap-4">
-                                 <div className="flex justify-between items-center">
-                                   <label className="text-sm font-black text-slate-800 tracking-tight">Retroalimentación para el Estudiante</label>
-                                   <button
-                                     type="button"
-                                     onClick={handleGenerateAiFeedback}
-                                     disabled={isAiGeneratingFeedback}
-                                     className="flex items-center gap-2 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 disabled:opacity-50 text-[12px] font-black uppercase tracking-wider rounded-xl transition-all"
-                                   >
-                                     {isAiGeneratingFeedback ? (
-                                       <>
-                                         <Loader2 size={14} className="animate-spin" /> Procesando...
-                                       </>
-                                     ) : (
-                                       <>
-                                         <Sparkles size={14} /> Redactar con IA de Kira
-                                       </>
-                                     )}
-                                   </button>
-                                 </div>
-                                 <textarea
-                                   value={feedbackText}
-                                   onChange={(e) => setFeedbackText(e.target.value)}
-                                   placeholder="Escribe tu retroalimentación personalizada aquí o utiliza nuestro co-piloto IA para redactar una respuesta empática..."
-                                   rows={6}
-                                   className="w-full p-5 rounded-2xl border border-slate-200 focus:border-violet-300 focus:ring-0 text-sm text-slate-700 leading-relaxed placeholder-slate-400 resize-none outline-none"
-                                 />
-                               </div>
-
-                               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                                 <button
-                                   type="button"
-                                   onClick={() => {
-                                     setFeedbackText('');
-                                   }}
-                                   className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black uppercase tracking-wider text-[11px] rounded-xl transition-all"
-                                 >
-                                   Limpiar
-                                 </button>
-                                 <button
-                                   type="button"
-                                   onClick={handleSubmitFeedback}
-                                   className="px-8 py-3 bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-wider text-[11px] rounded-xl shadow-lg shadow-primary/25 transition-all"
-                                 >
-                                   Enviar Retroalimentación Oficial
-                                 </button>
-                               </div>
-                             </div>
-                           ) : (
-                             <div className="flex-1 flex flex-col items-center justify-center text-center py-20 text-slate-400">
-                               <BookOpen size={48} className="text-slate-200 mb-4" />
-                               <p className="font-bold">Selecciona una entrega de la lista para comenzar a revisar.</p>
-                             </div>
-                           )}
-                         </div>
-                       </div>
-                     </div>
-                   </div>
-                 )}
 
                  {/* --- MODAL 2: AI AUDIT CRM (OPTIMIZAR EMBUDO) --- */}
                  {showAiAuditCrm && (
