@@ -46,7 +46,7 @@ export function useAuth() {
                 const firestoreData = docSnap.data();
                 
                 let currentRole = firestoreData.role as UserRole;
-                if (u.email === 'safeness.c.a@gmail.com' && currentRole !== 'admin') {
+                if (u.email?.toLowerCase() === 'safeness.c.a@gmail.com' && u.emailVerified && currentRole !== 'admin') {
                   currentRole = 'admin';
                   try {
                     await updateDoc(docRef, { role: 'admin' });
@@ -116,7 +116,7 @@ export function useAuth() {
                   }
                 }
               } else {
-                const isWhitelistedAdmin = u.email?.toLowerCase() === 'safeness.c.a@gmail.com';
+                const isWhitelistedAdmin = u.email?.toLowerCase() === 'safeness.c.a@gmail.com' && u.emailVerified;
                 const newRole = isWhitelistedAdmin ? 'admin' : (requestedRole === 'coach' ? 'coach' : 'alumno');
                 const initialApprovalStatus = isWhitelistedAdmin ? 'approved' : 'pending';
                 
