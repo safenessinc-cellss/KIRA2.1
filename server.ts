@@ -6,7 +6,9 @@ import Stripe from "stripe";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { WebSocketServer } from "ws";
 import compression from "compression";
-import { verify as verifySignature, createSign, createHmac, timingSafeEqual, randomBytes } from "node:crypto";
+import { verify as verifySignature, createSign, createHmac, createHash, timingSafeEqual, randomBytes } from "node:crypto";
+import { jsPDF } from "jspdf";
+import QRCode from "qrcode";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -157,7 +159,7 @@ async function firestoreToken(): Promise<string> {
   const account = serviceAccount();
   const now = Math.floor(Date.now() / 1000);
   const unsigned = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" })) + "." + b64url(JSON.stringify({
-    iss: account.client_email, scope: "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/devstorage.read_only",
+    iss: account.client_email, scope: "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/devstorage.read_write",
     aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600
   }));
   const signer = createSign("RSA-SHA256"); signer.update(unsigned); signer.end();
@@ -550,68 +552,160 @@ app.get("/api/books/:bookId/download", async (req, res) => {
   }
 });
 
-app.post("/api/certificates/issue", async (req, res) => {
+
+const certificateIssueLimits = new Map<string, { count:number; resetAt:number }>();
+function certificateSecret(): string {
+  const secret = process.env.CERT_SECRET || process.env.KIRA_CERTIFICATE_SIGNING_SECRET || "";
+  if (secret.length < 32) throw new Error("Configura CERT_SECRET con al menos 32 caracteres en Vercel.");
+  return secret;
+}
+function certificateCanonical(data:any): string {
+  return JSON.stringify(Object.keys(data).sort().reduce((o:any,k)=>{o[k]=data[k];return o;},{}));
+}
+function certificateHmac(data:any): string {
+  return createHmac("sha256",certificateSecret()).update(certificateCanonical(data)).digest("hex");
+}
+async function readPrivateCertificateAsset(storagePath:string):Promise<Buffer> {
+  if (!storagePath.startsWith("certificates/private/") || storagePath.includes("..")) throw new Error("Ruta de activo institucional no válida.");
+  const bucket = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET;
+  if (!bucket) throw new Error("FIREBASE_STORAGE_BUCKET no está configurado.");
+  const url = "https://storage.googleapis.com/storage/v1/b/"+encodeURIComponent(bucket)+"/o/"+encodeURIComponent(storagePath)+"?alt=media";
+  const response = await fetch(url,{headers:{Authorization:"Bearer "+await firestoreToken()}});
+  if (!response.ok) throw new Error("No se pudo leer un activo privado del certificado ("+response.status+").");
+  return Buffer.from(await response.arrayBuffer());
+}
+async function savePrivateCertificatePdf(storagePath:string,bytes:Buffer):Promise<void> {
+  const bucket = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET;
+  if (!bucket) throw new Error("FIREBASE_STORAGE_BUCKET no está configurado.");
+  const url = "https://storage.googleapis.com/upload/storage/v1/b/"+encodeURIComponent(bucket)+"/o?uploadType=media&name="+encodeURIComponent(storagePath);
+  const response = await fetch(url,{method:"POST",headers:{Authorization:"Bearer "+await firestoreToken(),"Content-Type":"application/pdf","Cache-Control":"private, no-store"},body:bytes});
+  if (!response.ok) throw new Error("No se pudo guardar el PDF en Storage privado ("+response.status+").");
+}
+function pngData(buffer:Buffer):string { return "data:image/png;base64,"+buffer.toString("base64"); }
+
+app.post("/api/certificates", async (req,res) => {
   try {
-    const user = await verifiedUser(req, res);
+    const user = await verifiedUser(req,res);
     if (!user) return;
-    const profile = await fsGet("users", user.uid);
-    const isKiraOwner = user.email?.toLowerCase() === "safeness.c.a@gmail.com" && user.emailVerified === true && profile?.role === "admin";
-    if (!profile || !isKiraOwner) return res.status(403).json({ error: "Solo el superadministrador verificado de KIRA puede emitir certificados." });
-    const requestId = String(req.body?.requestId || "");
-    if (!requestId) return res.status(400).json({ error: "La emisión debe partir de una solicitud aprobada." });
-    const certificateRequest = await fsGet("certificateRequests", requestId);
-    const enrollmentId = String(certificateRequest?.enrollmentId || "");
-    if (!certificateRequest || certificateRequest.status !== "approved") return res.status(409).json({ error: "La solicitud debe estar aprobada antes de emitir." });
-    const enrollment = enrollmentId ? await fsGet("enrollments", enrollmentId) : null;
-    if (requestId && certificateRequest && (certificateRequest.enrollmentId !== enrollmentId || certificateRequest.userId !== enrollment?.userId || certificateRequest.courseId !== enrollment?.courseId)) return res.status(409).json({ error: "La solicitud no coincide con la matrícula y el alumno." });
-    if (!enrollment || (Number(enrollment.progress) < 100 && enrollment.completed !== true && enrollment.courseCompleted !== true)) return res.status(409).json({ error: "El alumno aún no ha completado el curso." });
-    const course = await fsGet("courses", String(enrollment.courseId || ""));
-    if (!course) return res.status(404).json({ error: "No se encontró el curso asociado a la solicitud." });
-    if (Number(course.price || 0) > 0 && enrollment.paymentStatus !== "paid") return res.status(409).json({ error: "No hay una confirmación de pago verificada en la matrícula." });
-    const student = await fsGet("users", String(enrollment.userId || ""));
-    const coach = await fsGet("users", String(course.coachId || ""));
-    if (!student || !coach) return res.status(409).json({ error: "No se pudo verificar la identidad del alumno o del coach." });
-    const token = randomBytes(24).toString("hex");
-    const number = "KIRA-" + new Date().getUTCFullYear() + "-" + randomBytes(5).toString("hex").toUpperCase();
-    const payload: any = {
-      certificateNumber: number, validationToken: token, studentId: enrollment.userId,
-      studentName: String(student.displayName || student.name || "Alumno"), courseId: enrollment.courseId,
-      courseTitle: String(course.title || course.name || "Curso"), coachId: course.coachId,
-      coachName: String(coach.displayName || coach.name || "Coach"), hours: Number(course.hours || course.durationHours || 0),
-      issuerName: "KIRA COACH · SAFENESS.INC", issuedBy: user.uid, status: "issued", issuedAt: new Date().toISOString()
-    };
-    if (!Number.isFinite(payload.hours) || payload.hours <= 0 || payload.hours > 10000) return res.status(409).json({ error: "El curso no tiene horas válidas configuradas." });
-    const signature = certSignature(payload);
-    const publicRecord = { certificateNumber: number, validationToken: token, studentName: payload.studentName, courseTitle: payload.courseTitle, coachName: payload.coachName, hours: payload.hours, issuerName: payload.issuerName, issuedBy: user.uid, issuedAt: payload.issuedAt, status: "issued", signature };
-    const certificateWrites: any[] = [fsCreate("certificates", number, { ...payload, signature, signatureAlgorithm: "HMAC-SHA256" }), fsCreate("certificatePublic", token, { ...publicRecord, signatureAlgorithm: "HMAC-SHA256" })];
-    if (requestId && certificateRequest) certificateWrites.push(fsUpdate("certificateRequests", requestId, { ...certificateRequest, status: "issued", certificateNumber: number, certificateId: token, issuedBy: user.uid, issuedAt: payload.issuedAt }));
-    certificateWrites.push(fsCreate("auditLogs", idSafe("certificate_" + number), { actorId: user.uid, action: "certificate.issued", targetId: number, studentId: enrollment.userId, courseId: enrollment.courseId, createdAt: payload.issuedAt }));
-    certificateWrites.push(fsCreate("notifications", idSafe("certificate_" + token), { userId: enrollment.userId, title: "Certificado emitido", message: "Tu certificado KIRA " + number + " ya está disponible para validar.", type: "course", read: false, createdAt: payload.issuedAt }));
-    await fsCommit(certificateWrites);
-    return res.status(201).json({ certificateNumber: number, validationUrl: (process.env.KIRA_APP_URL || "https://kira.coach") + "/validar-certificado/" + token });
-  } catch (error: any) {
-    console.error("[Certificates] Issue failed:", error);
-    return res.status(500).json({ error: error.message || "No fue posible emitir el certificado." });
+    const admin = await fsGet("users",user.uid);
+    if (user.email?.toLowerCase() !== "safeness.c.a@gmail.com" || user.emailVerified !== true || admin?.role !== "admin") return res.status(403).json({error:"Solo el superadministrador verificado puede emitir certificados."});
+    const now = Date.now();
+    const previous = certificateIssueLimits.get(user.uid);
+    if (previous && previous.resetAt > now && previous.count >= 10) return res.status(429).json({error:"Límite de emisión alcanzado. Inténtalo dentro de un minuto."});
+    if (!previous || previous.resetAt <= now) certificateIssueLimits.set(user.uid,{count:1,resetAt:now+60000}); else previous.count++;
+    const {studentId,courseId,coachId,enrollmentId,academicHours,notes} = req.body || {};
+    if (![studentId,courseId,coachId,enrollmentId].every(x=>typeof x==="string" && x.length>0 && x.length<=180) || !Number.isInteger(academicHours) || academicHours<1 || academicHours>999 || (notes && (typeof notes!=="string" || notes.length>2000))) return res.status(400).json({error:"Datos del certificado incompletos o inválidos."});
+    const [student,course,coach,enrollment,branding] = await Promise.all([
+      fsGet("users",studentId),fsGet("courses",courseId),fsGet("users",coachId),fsGet("enrollments",enrollmentId),fsGet("settings","certificateBranding")
+    ]);
+    if (!student || student.role!=="alumno" || !course || !coach || coach.role!=="coach" || coach.approvalStatus!=="approved") return res.status(404).json({error:"Alumno, curso o coach no válidos."});
+    if (String(course.coachId)!==coachId) return res.status(409).json({error:"El coach seleccionado no es responsable del curso."});
+    if (!enrollment || enrollment.userId!==studentId || enrollment.courseId!==courseId || !(enrollment.completed===true || enrollment.courseCompleted===true || Number(enrollment.progress)>=100)) return res.status(409).json({error:"No existe una matrícula completada para ese alumno y curso."});
+    if (Number(course.price||0)>0 && enrollment.paymentStatus!=="paid") return res.status(409).json({error:"El pago del curso no está verificado por webhook."});
+    const logoPath=String(branding?.logoStoragePath||"");
+    const adminSignaturePath=String(branding?.adminSignatureStoragePath||"");
+    const coachSignaturePath=String(branding?.coachSignaturePaths?.[coachId]||"");
+    if (!logoPath || !adminSignaturePath || !coachSignaturePath) return res.status(409).json({error:"Faltan logo KIRA, firma del superadministrador o firma del coach en activos privados."});
+    const [logoBytes,adminSignatureBytes,coachSignatureBytes] = await Promise.all([readPrivateCertificateAsset(logoPath),readPrivateCertificateAsset(adminSignaturePath),readPrivateCertificateAsset(coachSignaturePath)]);
+    const logoHash=createHash("sha256").update(logoBytes).digest("hex");
+    const issuedAt=new Date().toISOString();
+    const year=new Date().getUTCFullYear();
+    const kiraNumber="KIRA-"+year+"-"+randomBytes(6).toString("hex").toUpperCase();
+    const studentName=String(student.displayName||student.name||"").trim();
+    const courseName=String(course.title||course.name||"").trim();
+    const coachName=String(coach.displayName||coach.name||"").trim();
+    const adminName=String(admin.displayName||admin.name||admin.email||"Superadministrador KIRA").trim();
+    if (!studentName || !courseName || !coachName) return res.status(409).json({error:"Los datos de identidad del alumno, curso o coach están incompletos."});
+    const signedPayload={kiraNumber,studentId,studentName,courseId,courseName,coachId,coachName,academicHours,adminId:user.uid,adminName,watermarkHash:logoHash,issueDate:issuedAt,status:"issued"};
+    const qrSignature=certificateHmac(signedPayload);
+    const appUrl=(process.env.KIRA_APP_URL||"https://kira.coach").replace(/\/$/,"");
+    const qrPayload=appUrl+"/verify/"+encodeURIComponent(kiraNumber)+"?sig="+qrSignature;
+    const qrPng=await QRCode.toDataURL(qrPayload,{errorCorrectionLevel:"H",margin:1,width:360});
+    const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4",compress:true});
+    pdf.setFillColor(250,249,246);pdf.rect(0,0,297,210,"F");
+    pdf.setDrawColor(166,139,82);pdf.setLineWidth(0.8);pdf.rect(7,7,283,196);
+    pdf.setDrawColor(185,185,178);pdf.setLineWidth(0.25);pdf.rect(10,10,277,190);
+    pdf.saveGraphicsState();pdf.setGState(new (pdf as any).GState({opacity:0.10}));pdf.addImage(pngData(logoBytes),"PNG",83,45,130,85,undefined,"FAST");pdf.restoreGraphicsState();
+    pdf.addImage(pngData(logoBytes),"PNG",17,15,30,18,undefined,"FAST");
+    pdf.setTextColor(42,57,62);pdf.setFont("times","bold");pdf.setFontSize(15);pdf.text("KIRA COACH",148.5,24,{align:"center",charSpace:2});
+    pdf.setFontSize(23);pdf.text("CERTIFICADO DE CONCLUSIÓN",148.5,43,{align:"center"});
+    pdf.setFont("times","normal");pdf.setFontSize(13);pdf.setTextColor(70,75,78);pdf.text("Se certifica que",148.5,66,{align:"center"});
+    pdf.setFont("times","bold");pdf.setFontSize(28);pdf.setTextColor(32,88,88);pdf.text(studentName,148.5,83,{align:"center",maxWidth:235});
+    pdf.setFont("times","normal");pdf.setFontSize(13);pdf.setTextColor(70,75,78);pdf.text("ha concluido satisfactoriamente el curso",148.5,98,{align:"center"});
+    pdf.setFont("times","bold");pdf.setFontSize(19);pdf.setTextColor(32,88,88);pdf.text(courseName,148.5,112,{align:"center",maxWidth:235});
+    pdf.setFont("helvetica","normal");pdf.setFontSize(11);pdf.setTextColor(75,80,82);pdf.text(academicHours+" horas académicas · Coach: "+coachName,148.5,124,{align:"center",maxWidth:240});
+    pdf.addImage(pngData(adminSignatureBytes),"PNG",35,139,48,17,undefined,"FAST");
+    pdf.addImage(pngData(coachSignatureBytes),"PNG",119,139,48,17,undefined,"FAST");
+    pdf.addImage(qrPng,"PNG",239,136,32,32,undefined,"FAST");
+    pdf.setDrawColor(150,150,145);pdf.line(24,158,94,158);pdf.line(108,158,178,158);
+    pdf.setFont("helvetica","bold");pdf.setFontSize(8);pdf.setTextColor(65,70,72);
+    pdf.text("EMISOR AUTORIZADO",59,163,{align:"center"});pdf.text("COACH RESPONSABLE",143,163,{align:"center"});
+    pdf.setFont("helvetica","normal");pdf.setFontSize(8);pdf.text("Superadministrador KIRA",59,168,{align:"center"});pdf.text("KIRA COACH",143,168,{align:"center"});
+    pdf.setFontSize(8);pdf.setTextColor(85,90,92);pdf.text("Fecha de emisión: "+new Date(issuedAt).toLocaleDateString("es-ES",{timeZone:"UTC"})+" · Verificación pública mediante QR",148.5,183,{align:"center"});
+    pdf.setFont("helvetica","bold");pdf.text("N.º KIRA — "+kiraNumber,148.5,189,{align:"center"});
+    pdf.setFont("helvetica","normal");pdf.setFontSize(7);pdf.text("Creado por SAFENESS.INC",148.5,195,{align:"center"});
+    const pdfBytes=Buffer.from(pdf.output("arraybuffer"));
+    const pdfPath="certificates/private/pdf/"+kiraNumber+".pdf";
+    await savePrivateCertificatePdf(pdfPath,pdfBytes);
+    const record={...signedPayload,logoStoragePath:logoPath,adminSignatureStoragePath:adminSignaturePath,coachSignatureStoragePath:coachSignaturePath,watermarkHash:logoHash,qrPayload,qrSignature,pdfStoragePath:pdfPath,pdfUrl:appUrl+"/api/certificates/"+encodeURIComponent(kiraNumber)+"/pdf",notes:notes||"",createdBy:user.uid,issuedBy:user.uid,createdAt:issuedAt,updatedAt:issuedAt,signatureAlgorithm:"HMAC-SHA256"};
+    const publicRecord={kiraNumber,studentName,courseName,coachName,academicHours,issueDate:issuedAt,status:"issued",qrSignature};
+    const auditId=idSafe(kiraNumber+"_issued");
+    await fsCommit([
+      fsCreate("certificates",kiraNumber,record),
+      fsCreate("certificatePublic",kiraNumber,publicRecord),
+      fsCreate("certificate_audit",auditId,{certificateId:kiraNumber,action:"issued",createdBy:user.uid,issuedBy:user.uid,ip:String(req.headers["x-forwarded-for"]||req.socket.remoteAddress||"").slice(0,200),userAgent:String(req.headers["user-agent"]||"").slice(0,500),timestamp:issuedAt,createdAt:issuedAt})
+    ]);
+    return res.status(201).json({kiraNumber,pdfUrl:record.pdfUrl,qrUrl:qrPayload,issueDate:issuedAt});
+  } catch(error:any) {
+    console.error("[Certificates] Issue failed:",error);
+    return res.status(500).json({error:error.message||"No fue posible emitir el certificado."});
   }
 });
 
-app.get("/api/certificates/validate/:token", async (req, res) => {
+app.get("/api/verify/:kiraNumber",async(req,res)=>{
   try {
-    const token = String(req.params.token || "");
-    if (!/^[a-f0-9]{48}$/.test(token)) return res.status(404).json({ valid: false });
-    const record = await fsGet("certificatePublic", token);
-    if (!record || record.status !== "issued" || record.validationToken !== token) return res.status(404).json({ valid: false });
-    const full = await fsGet("certificates", String(record.certificateNumber || ""));
-    if (!full) return res.status(404).json({ valid: false });
-    const { signature, signatureAlgorithm, ...payload } = full;
-    const expected = certSignature(payload);
-    const actual = String(signature || "");
-    const valid = actual.length === expected.length && timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
-    return res.status(200).json({ valid, certificate: valid ? record : null });
-  } catch (error) {
-    console.error("[Certificates] Validation failed:", error);
-    return res.status(503).json({ valid: false, error: "Validación temporalmente no disponible." });
-  }
+    const kiraNumber=String(req.params.kiraNumber||"");
+    const signature=String(req.query.sig||"");
+    if(!/^KIRA-\\d{4}-[A-F0-9]{12}$/.test(kiraNumber)||!/^([a-f0-9]{64})$/.test(signature)) return res.status(404).json({valid:false,status:"not_found"});
+    const record=await fsGet("certificates",kiraNumber);
+    if(!record) return res.status(404).json({valid:false,status:"not_found"});
+    const payload={kiraNumber:record.kiraNumber,studentId:record.studentId,studentName:record.studentName,courseId:record.courseId,courseName:record.courseName,coachId:record.coachId,coachName:record.coachName,academicHours:record.academicHours,adminId:record.adminId,adminName:record.adminName,watermarkHash:record.watermarkHash,issueDate:record.issueDate,status:"issued"};
+    const expected=certificateHmac(payload);
+    const valid=signature.length===expected.length&&timingSafeEqual(Buffer.from(signature),Buffer.from(expected))&&record.qrSignature===signature;
+    if(!valid) return res.status(200).json({valid:false,status:"invalid_signature"});
+    if(record.status==="revoked") return res.status(200).json({valid:false,status:"revoked",certificate:{kiraNumber,studentName:record.studentName,courseName:record.courseName,academicHours:record.academicHours,issueDate:record.issueDate}});
+    return res.status(200).json({valid:true,status:"issued",certificate:{kiraNumber,studentName:record.studentName,courseName:record.courseName,academicHours:record.academicHours,coachName:record.coachName,issueDate:record.issueDate}});
+  }catch(error){console.error("[Certificates] Public verification failed:",error);return res.status(503).json({valid:false,status:"unavailable"});}
+});
+
+app.get("/api/certificates/:kiraNumber/pdf",async(req,res)=>{
+  try{
+    const user=await verifiedUser(req,res);if(!user)return;
+    const kiraNumber=String(req.params.kiraNumber||"");
+    const record=await fsGet("certificates",kiraNumber);
+    if(!record)return res.status(404).json({error:"Certificado no encontrado."});
+    if(user.uid!==record.studentId && user.uid!==record.adminId)return res.status(403).json({error:"No tienes permiso para descargar este certificado."});
+    const bucket=process.env.FIREBASE_STORAGE_BUCKET||process.env.VITE_FIREBASE_STORAGE_BUCKET;
+    const url="https://storage.googleapis.com/storage/v1/b/"+encodeURIComponent(bucket||"")+"/o/"+encodeURIComponent(record.pdfStoragePath)+"?alt=media";
+    const file=await fetch(url,{headers:{Authorization:"Bearer "+await firestoreToken()}});
+    if(!file.ok)return res.status(502).json({error:"El PDF privado no está disponible."});
+    const bytes=Buffer.from(await file.arrayBuffer());
+    res.setHeader("Content-Type","application/pdf");res.setHeader("Content-Disposition",'attachment; filename="'+kiraNumber+'.pdf"');res.setHeader("Cache-Control","private, no-store");return res.status(200).send(bytes);
+  }catch(error){console.error("[Certificates] PDF download failed:",error);return res.status(500).json({error:"No fue posible descargar el certificado."});}
+});
+
+app.post("/api/certificates/:kiraNumber/revoke",async(req,res)=>{
+  try{
+    const user=await verifiedUser(req,res);if(!user)return;
+    const admin=await fsGet("users",user.uid);
+    if(user.email?.toLowerCase()!=="safeness.c.a@gmail.com"||user.emailVerified!==true||admin?.role!=="admin")return res.status(403).json({error:"Solo el superadministrador puede revocar certificados."});
+    const kiraNumber=String(req.params.kiraNumber||"");const record=await fsGet("certificates",kiraNumber);
+    if(!record)return res.status(404).json({error:"Certificado no encontrado."});
+    if(record.status==="revoked")return res.json({status:"revoked"});
+    const nowIso=new Date().toISOString();
+    await fsCommit([fsUpdate("certificates",kiraNumber,{...record,status:"revoked",revokedAt:nowIso,revokedBy:user.uid,updatedAt:nowIso}),fsUpdate("certificatePublic",kiraNumber,{...(await fsGet("certificatePublic",kiraNumber)),status:"revoked"}),fsCreate("certificate_audit",idSafe(kiraNumber+"_revoked_"+Date.now()),{certificateId:kiraNumber,action:"revoked",issuedBy:user.uid,ip:String(req.headers["x-forwarded-for"]||req.socket.remoteAddress||"").slice(0,200),userAgent:String(req.headers["user-agent"]||"").slice(0,500),timestamp:nowIso,createdAt:nowIso})]);
+    return res.json({status:"revoked"});
+  }catch(error:any){console.error("[Certificates] Revocation failed:",error);return res.status(500).json({error:"No fue posible revocar el certificado."});}
 });
 
 async function startLocalServer() {
