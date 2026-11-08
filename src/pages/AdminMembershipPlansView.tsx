@@ -16,7 +16,7 @@ export function AdminMembershipPlansView() {
   const [editing, setEditing] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [price, setPrice] = useState(49.99);
+  const [price, setPrice] = useState(0);
   const [currency, setCurrency] = useState('USD');
   const [durationDays, setDurationDays] = useState(365);
   const [status, setStatus] = useState<'draft' | 'published'>('draft');
@@ -26,7 +26,7 @@ export function AdminMembershipPlansView() {
     setLoading(false);
   }, err => { console.error(err); error('No se pudieron cargar los planes.'); setLoading(false); }), [error]);
 
-  const reset = () => { setEditing(null); setTitle(''); setDescription(''); setPrice(49.99); setCurrency('USD'); setDurationDays(365); setStatus('draft'); };
+  const reset = () => { setEditing(null); setTitle(''); setDescription(''); setPrice(0); setCurrency('USD'); setDurationDays(365); setStatus('draft'); };
   const startEdit = (plan: Plan) => {
     setEditing(plan.id); setTitle(plan.title); setDescription(plan.description || '');
     setPrice(Number(plan.price)); setCurrency(plan.currency || 'USD');
