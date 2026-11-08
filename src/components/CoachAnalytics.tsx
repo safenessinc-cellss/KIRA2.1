@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -99,6 +99,6 @@ export function CoachAnalytics({ coachId }: { coachId?: string }) {
   </div>;
 }
 
-function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
+function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: string | number }) {
   return <div className="rounded-2xl border border-slate-200 bg-white p-5"><div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-teal-700">{icon}</div><p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 text-3xl font-black text-slate-900">{value}</p></div>;
 }
