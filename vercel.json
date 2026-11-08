@@ -15,10 +15,6 @@
   ],
   "routes": [
     {
-      "src": "/(.*)",
-      "continue": true
-    },
-    {
       "src": "/api/(.*)",
       "dest": "/server.ts"
     },
