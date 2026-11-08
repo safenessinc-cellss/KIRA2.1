@@ -371,7 +371,7 @@ service cloud.firestore {
     }
     
     match /enrollments/{enrollmentId} {
-      allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid)));
+      allow read: if isAdmin() || isKiraStaffAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid)));
       // Enrollment is a business entitlement, not a client-side payment flag.
       // Students may self-enroll only in published free courses. Paid enrollments
       // must be created by a trusted backend after a verified payment webhook.
@@ -565,7 +565,7 @@ service cloud.firestore {
 
     // Certificate lifecycle: students submit requests; only the KIRA owner issues immutable credentials.
     match /certificateRequests/{requestId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow read: if isAdmin() || isKiraStaffAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
       allow create: if isAuthenticated()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'pending'
