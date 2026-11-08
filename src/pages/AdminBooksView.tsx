@@ -55,8 +55,8 @@ export function AdminBooksView() {
             let storagePath = '';
             try {
               const parsed = new URL(legacyUrl);
-              const objectMatch = parsed.pathname.match(/\\/o\\/([^/]+)$/);
-              if (parsed.hostname.includes('firebasestorage.googleapis.com') && objectMatch) storagePath = decodeURIComponent(objectMatch[1]);
+              const objectIndex = parsed.pathname.indexOf('/o/');
+              if (parsed.hostname.includes('firebasestorage.googleapis.com') && objectIndex >= 0) storagePath = decodeURIComponent(parsed.pathname.slice(objectIndex + 3));
               else if (parsed.hostname === 'storage.googleapis.com') storagePath = decodeURIComponent(parsed.pathname.split('/').slice(2).join('/'));
             } catch { /* retain a valid HTTPS external link only */ }
             await setDoc(assetRef, {
