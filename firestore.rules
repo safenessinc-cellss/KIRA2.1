@@ -82,6 +82,13 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.token.email == "safeness.c.a@gmail.com" && request.auth.token.email_verified == true;
     }
 
+    function isKiraStaffAdmin() {
+      return isAuthenticated()
+        && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
     function isApprovedCoach() {
       return isAuthenticated() && 
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
@@ -308,7 +315,7 @@ service cloud.firestore {
     match /users/{userId} {
       // Read: Public can see ALL coach profiles (needed for directory query). Users can read their own. Admins all.
       // And authenticated users can read profiles for chats etc.
-      allow read: if isAdmin() || isCurrentUser(userId) || isCompanyAdmin(resource.data.companyId);
+      allow read: if isAdmin() || isKiraStaffAdmin() || isCurrentUser(userId) || isCompanyAdmin(resource.data.companyId);
       
       // Create: Users can create their own profile. Only admins can create an admin role.
       allow create: if isAuthenticated() && isCurrentUser(userId) && isValidUser() && 
@@ -346,7 +353,7 @@ service cloud.firestore {
     }
 
     match /bookEntitlements/{entitlementId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow read: if isAdmin() || isKiraStaffAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
       allow create, update, delete: if false;
     }
 
@@ -356,7 +363,7 @@ service cloud.firestore {
     }
 
     match /courses/{courseId} {
-      allow read: if isAuthenticated() && (isAdmin() || resource.data.status == 'published' || (isAuthenticated() && resource.data.coachId == request.auth.uid));
+      allow read: if isAuthenticated() && (isAdmin() || isKiraStaffAdmin() || resource.data.status == 'published' || (isAuthenticated() && resource.data.coachId == request.auth.uid));
       allow create: if isValidCourse() && (isAdmin() || (hasActiveCoachMembership() && request.resource.data.coachId == request.auth.uid && request.resource.data.status in ['draft', 'pending']));
       allow update: if isAuthenticated() && isValidCourse() && areImmutableFieldsUnchanged(['coachId', 'createdAt']) && 
                     (isAdmin() || (hasActiveCoachMembership() && resource.data.coachId == request.auth.uid && request.resource.data.status == resource.data.status));
@@ -583,13 +590,13 @@ service cloud.firestore {
     }
 
     match /certificates/{certificateId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.studentId == request.auth.uid);
+      allow read: if isAdmin() || isKiraStaffAdmin() || (isAuthenticated() && resource.data.studentId == request.auth.uid);
       // All issuance and revocation writes are performed by the trusted server.
       allow create, update, delete: if false;
     }
 
     match /certificate_audit/{auditId} {
-      allow read: if isAdmin();
+      allow read: if isAdmin() || isKiraStaffAdmin();
       allow create, update, delete: if false;
     }
 
