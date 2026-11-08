@@ -6,7 +6,7 @@ import Stripe from "stripe";
 import { GoogleGenAI, Modality } from "@google/genai";
 import { WebSocketServer } from "ws";
 import compression from "compression";
-import { verify as verifySignature, createSign, createHmac, createHash, timingSafeEqual, randomBytes } from "node:crypto";
+import { verify as verifySignature, createSign, createHmac, createHash, timingSafeEqual, randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 
@@ -235,6 +235,40 @@ async function verifiedUser(req: express.Request, res: express.Response): Promis
   return user;
 }
 function idSafe(value: string): string { return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120); }
+
+function paymentEncryptionKey(): Buffer {
+  const raw=process.env.KIRA_CONFIG_ENCRYPTION_KEY||"";
+  const key=/^[a-f0-9]{64}$/i.test(raw)?Buffer.from(raw,"hex"):Buffer.from(raw,"base64");
+  if(key.length!==32)throw new Error("Configura KIRA_CONFIG_ENCRYPTION_KEY como 32 bytes (base64 o 64 caracteres hex).");
+  return key;
+}
+function encryptPaymentSecret(value:string):string {
+  const iv=randomBytes(12),cipher=createCipheriv("aes-256-gcm",paymentEncryptionKey(),iv);
+  const encrypted=Buffer.concat([cipher.update(value,"utf8"),cipher.final()]);
+  return [iv.toString("base64"),cipher.getAuthTag().toString("base64"),encrypted.toString("base64")].join(".");
+}
+function decryptPaymentSecret(value:string):string {
+  const [iv,tag,data]=String(value||"").split(".");
+  if(!iv||!tag||!data)throw new Error("Secreto de pasarela cifrado inválido.");
+  const decipher=createDecipheriv("aes-256-gcm",paymentEncryptionKey(),Buffer.from(iv,"base64"));
+  decipher.setAuthTag(Buffer.from(tag,"base64"));
+  return Buffer.concat([decipher.update(Buffer.from(data,"base64")),decipher.final()]).toString("utf8");
+}
+async function requireSuperAdmin(req:express.Request,res:express.Response):Promise<VerifiedFirebaseUser|null>{
+  const user=await verifiedUser(req,res);if(!user)return null;
+  const profile=await fsGet("users",user.uid);
+  if(user.email?.toLowerCase()!=="safeness.c.a@gmail.com"||user.emailVerified!==true||profile?.role!=="admin"){
+    res.status(403).json({error:"Solo el superadministrador KIRA verificado puede administrar pagos y configuración."});return null;
+  }
+  return user;
+}
+async function fsListDocuments(collectionName:string,pageSize=100):Promise<any[]>{
+  const url="https://firestore.googleapis.com/v1/projects/"+serviceAccount().project_id+"/databases/(default)/documents/"+collectionName+"?pageSize="+Math.min(200,Math.max(1,pageSize));
+  const response=await fetch(url,{headers:{Authorization:"Bearer "+await firestoreToken()}});
+  if(!response.ok)throw new Error("Firestore list failed ("+response.status+").");
+  const body=await response.json() as any;
+  return (body.documents||[]).map((d:any)=>({id:String(d.name||"").split("/").pop(),...Object.fromEntries(Object.entries(d.fields||{}).map(([k,v])=>[k,fsDecode(v)]))}));
+}
 async function catalogItem(id: string): Promise<any | null> {
   for (const collectionName of ["courses", "books", "products", "membershipPlans", "marketplace"]) {
     const item = await fsGet(collectionName, id);
@@ -405,6 +439,82 @@ app.post("/api/gemini/generate", async (req, res) => {
     console.error("Gemini API server proxy error:", error);
     res.status(500).json({ error: error.message || "Un error ocurrió al llamar a la API de Gemini en el servidor." });
   }
+});
+
+
+/* Superadmin-only payment configuration API. Provider credentials are AES-256-GCM encrypted at rest. */
+app.get("/api/admin/payments/config",async(req,res)=>{
+  try{
+    const user=await requireSuperAdmin(req,res);if(!user)return;
+    const [global,gateways,plans,coupons]=await Promise.all([
+      fsGet("paymentSettings","global"),fsListDocuments("paymentGateways"),fsListDocuments("paymentPlans"),fsListDocuments("paymentCoupons")
+    ]);
+    return res.json({
+      settings:{paymentsEnabled:global?.paymentsEnabled!==false,baseCurrency:global?.baseCurrency||"BRL",allowedCurrencies:global?.allowedCurrencies||["BRL","USD","EUR"],roundingRule:global?.roundingRule||"half_up",requirePayment:global?.requirePayment!==false},
+      gateways:gateways.map(g=>({id:g.id,provider:g.provider,enabled:g.enabled===true,mode:g.mode==="live"?"live":"test",priority:Number(g.priority||0),publicKey:g.publicKey||"",hasApiKey:!!g.apiKeyEncrypted,hasWebhookSecret:!!g.webhookSecretEncrypted,maskedApiKey:g.apiKeyEncrypted?"•••••••• configurada":"No configurada",updatedAt:g.updatedAt||null})),
+      plans:plans.map(({id,...p})=>({id,...p})),coupons:coupons.map(({id,...p})=>({id,...p}))
+    });
+  }catch(e:any){console.error("[Payments] Config read failed:",e);return res.status(500).json({error:e.message||"No se pudo leer la configuración."});}
+});
+app.patch("/api/admin/payments/settings",async(req,res)=>{
+  try{
+    const user=await requireSuperAdmin(req,res);if(!user)return;
+    const body=req.body||{};
+    const next={paymentsEnabled:body.paymentsEnabled!==false,baseCurrency:String(body.baseCurrency||"BRL").toUpperCase(),allowedCurrencies:Array.isArray(body.allowedCurrencies)?body.allowedCurrencies.map((x:any)=>String(x).toUpperCase()).filter((x:string)=>/^[A-Z]{3}$/.test(x)).slice(0,10):["BRL"],roundingRule:["half_up","up","down"].includes(body.roundingRule)?body.roundingRule:"half_up",requirePayment:body.requirePayment!==false,updatedAt:new Date().toISOString(),updatedBy:user.uid};
+    if(!/^[A-Z]{3}$/.test(next.baseCurrency)||!next.allowedCurrencies.includes(next.baseCurrency))return res.status(400).json({error:"Moneda base no válida o no incluida en las monedas permitidas."});
+    const before=await fsGet("paymentSettings","global");
+    await fsCommit([fsUpdate("paymentSettings","global",next),fsCreate("config_audit",randomBytes(16).toString("hex"),{scope:"payments",key:"global",actorId:user.uid,before:before||{},after:next,ip:req.ip,userAgent:String(req.headers["user-agent"]||"").slice(0,300),createdAt:next.updatedAt})]);
+    return res.json({ok:true,settings:next});
+  }catch(e:any){console.error("[Payments] Settings update failed:",e);return res.status(500).json({error:e.message||"No se pudo guardar la configuración."});}
+});
+app.put("/api/admin/payments/gateways/:provider",async(req,res)=>{
+  try{
+    const user=await requireSuperAdmin(req,res);if(!user)return;
+    const provider=String(req.params.provider||"");
+    if(!["stripe","mercadopago","paypal","manual"].includes(provider))return res.status(400).json({error:"Pasarela no admitida."});
+    const body=req.body||{},id=provider,previous=await fsGet("paymentGateways",id);
+    const mode=body.mode==="live"?"live":"test",priority=Math.max(0,Math.min(100,Number(body.priority||0)));
+    const apiKey=typeof body.apiKey==="string"?body.apiKey.trim():"",webhookSecret=typeof body.webhookSecret==="string"?body.webhookSecret.trim():"";
+    if((apiKey||webhookSecret)&&provider!=="manual")paymentEncryptionKey();
+    const next={provider,enabled:body.enabled===true,mode,priority,publicKey:String(body.publicKey||"").slice(0,500),apiKeyEncrypted:apiKey?encryptPaymentSecret(apiKey):(previous?.apiKeyEncrypted||""),webhookSecretEncrypted:webhookSecret?encryptPaymentSecret(webhookSecret):(previous?.webhookSecretEncrypted||""),updatedBy:user.uid,updatedAt:new Date().toISOString()};
+    await fsCommit([fsUpdate("paymentGateways",id,next),fsCreate("paymentAudit",randomBytes(16).toString("hex"),{actorId:user.uid,action:"gateway.updated",entity:"paymentGateways",entityId:id,before:{...previous,apiKeyEncrypted:previous?.apiKeyEncrypted?"[secret]":undefined,webhookSecretEncrypted:previous?.webhookSecretEncrypted?"[secret]":undefined},after:{...next,apiKeyEncrypted:next.apiKeyEncrypted?"[secret]":undefined,webhookSecretEncrypted:next.webhookSecretEncrypted?"[secret]":undefined},ip:req.ip,userAgent:String(req.headers["user-agent"]||"").slice(0,300),createdAt:next.updatedAt})]);
+    return res.json({ok:true,gateway:{provider,enabled:next.enabled,mode,priority,publicKey:next.publicKey,hasApiKey:!!next.apiKeyEncrypted,hasWebhookSecret:!!next.webhookSecretEncrypted}});
+  }catch(e:any){console.error("[Payments] Gateway update failed:",e);return res.status(500).json({error:e.message||"No se pudo guardar la pasarela."});}
+});
+app.post("/api/admin/payments/plans",async(req,res)=>{
+  try{
+    const user=await requireSuperAdmin(req,res);if(!user)return;
+    const b=req.body||{},name=String(b.name||"").trim(),amountCents=Number(b.amountCents),currency=String(b.currency||"BRL").toUpperCase(),interval=String(b.interval||"one_time");
+    if(!name||name.length>120||!Number.isSafeInteger(amountCents)||amountCents<0||amountCents>100000000||!/^[A-Z]{3}$/.test(currency)||!["one_time","monthly","yearly"].includes(interval))return res.status(400).json({error:"Datos de plan inválidos."});
+    const id=randomBytes(16).toString("hex"),now=new Date().toISOString(),plan={name,amountCents,currency,interval,trialDays:Math.max(0,Math.min(365,Number(b.trialDays||0))),courseId:String(b.courseId||""),status:"active",createdBy:user.uid,createdAt:now,updatedAt:now};
+    await fsCommit([fsCreate("paymentPlans",id,plan),fsCreate("paymentAudit",randomBytes(16).toString("hex"),{actorId:user.uid,action:"plan.created",entity:"paymentPlans",entityId:id,after:plan,createdAt:now})]);
+    return res.status(201).json({id,...plan});
+  }catch(e:any){console.error("[Payments] Plan create failed:",e);return res.status(500).json({error:"No se pudo crear el plan."});}
+});
+app.patch("/api/admin/payments/plans/:id",async(req,res)=>{
+  try{
+    const user=await requireSuperAdmin(req,res);if(!user)return;
+    const id=idSafe(String(req.params.id||"")),before=await fsGet("paymentPlans",id);if(!before)return res.status(404).json({error:"Plan no encontrado."});
+    const b=req.body||{},next={...before,name:typeof b.name==="string"?b.name.trim().slice(0,120):before.name,amountCents:b.amountCents===undefined?before.amountCents:Number(b.amountCents),currency:b.currency===undefined?before.currency:String(b.currency).toUpperCase(),interval:b.interval===undefined?before.interval:String(b.interval),status:b.status==="archived"?"archived":before.status,updatedAt:new Date().toISOString(),updatedBy:user.uid};
+    if(!next.name||!Number.isSafeInteger(next.amountCents)||next.amountCents<0||!/^[A-Z]{3}$/.test(next.currency)||!["one_time","monthly","yearly"].includes(next.interval))return res.status(400).json({error:"Datos de plan inválidos."});
+    await fsCommit([fsUpdate("paymentPlans",id,next),fsCreate("paymentAudit",randomBytes(16).toString("hex"),{actorId:user.uid,action:"plan.updated",entity:"paymentPlans",entityId:id,before,after:next,createdAt:next.updatedAt})]);
+    return res.json({id,...next});
+  }catch(e:any){console.error("[Payments] Plan update failed:",e);return res.status(500).json({error:"No se pudo actualizar el plan."});}
+});
+app.post("/api/admin/payments/coupons",async(req,res)=>{
+  try{
+    const user=await requireSuperAdmin(req,res);if(!user)return;
+    const b=req.body||{},code=String(b.code||"").trim().toUpperCase(),type=String(b.type||"percent"),value=Number(b.value),maxUses=b.maxUses===""||b.maxUses==null?null:Number(b.maxUses);
+    if(!/^[A-Z0-9_-]{3,40}$/.test(code)||!["percent","fixed"].includes(type)||!Number.isFinite(value)||value<=0||(type==="percent"&&value>100)||(maxUses!==null&&(!Number.isInteger(maxUses)||maxUses<1)))return res.status(400).json({error:"Cupón inválido."});
+    const existing=await fsGet("paymentCoupons",idSafe(code));if(existing)return res.status(409).json({error:"Ese código ya existe."});
+    const now=new Date().toISOString(),coupon={code,type,value,maxUses,usedCount:0,expiresAt:b.expiresAt||null,status:"active",createdBy:user.uid,createdAt:now};
+    await fsCommit([fsCreate("paymentCoupons",idSafe(code),coupon),fsCreate("paymentAudit",randomBytes(16).toString("hex"),{actorId:user.uid,action:"coupon.created",entity:"paymentCoupons",entityId:idSafe(code),after:coupon,createdAt:now})]);
+    return res.status(201).json({id:idSafe(code),...coupon});
+  }catch(e:any){console.error("[Payments] Coupon create failed:",e);return res.status(500).json({error:"No se pudo crear el cupón."});}
+});
+app.get("/api/admin/payments/audit",async(req,res)=>{
+  try{const user=await requireSuperAdmin(req,res);if(!user)return;const [payments,configs]=await Promise.all([fsListDocuments("paymentAudit",100),fsListDocuments("config_audit",100)]);return res.json({items:[...payments,...configs].sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||""))).slice(0,150)});}
+  catch(e:any){console.error("[Payments] Audit read failed:",e);return res.status(500).json({error:"No se pudo consultar la auditoría."});}
 });
 
 // Server-priced checkout and signed provider webhooks. No browser amount is trusted.
