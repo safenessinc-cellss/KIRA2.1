@@ -133,7 +133,7 @@ const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000,
   });
 };
 
-type CoachTab = 'dashboard' | 'courses' | 'tracking' | 'nexus' | 'register' | 'automation' | 'profile' | 'analytics' | 'chat';
+type CoachTab = 'dashboard' | 'courses' | 'tracking' | 'nexus' | 'automation' | 'profile' | 'analytics' | 'chat';
 
 export function CoachDashboard() {
   const { user } = useAuth();
@@ -142,7 +142,7 @@ export function CoachDashboard() {
   const [membershipPlans, setMembershipPlans] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<CoachTab>(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['dashboard', 'courses', 'tracking', 'nexus', 'register', 'automation', 'profile', 'analytics', 'chat'].includes(tabParam)) {
+    if (tabParam && ['dashboard', 'courses', 'tracking', 'nexus', 'automation', 'profile', 'analytics', 'chat'].includes(tabParam)) {
       return tabParam as CoachTab;
     }
     return 'dashboard';
@@ -258,7 +258,6 @@ export function CoachDashboard() {
         <TabBtn active={activeTab === 'chat'} onClick={() => handleTabChange('chat')} icon={<MessageSquare size={16}/>} label="Chat Privado" disabled={!isApproved || !hasMembership} />
         <TabBtn active={activeTab === 'nexus'} onClick={() => handleTabChange('nexus')} icon={<FolderKanban size={16}/>} label="Legal & Revenue" disabled={!isApproved || !hasMembership} />
         <TabBtn active={activeTab === 'automation'} onClick={() => handleTabChange('automation')} icon={<Zap size={16}/>} label="Kira Flow™" disabled={!isApproved || !hasMembership} />
-        <TabBtn active={activeTab === 'register'} onClick={() => handleTabChange('register')} icon={<UserPlus size={16}/>} label="Onboarding" disabled={!isApproved || !hasMembership} />
         <TabBtn active={activeTab === 'profile'} onClick={() => handleTabChange('profile')} icon={<Sliders size={16}/>} label="Configuración" />
         <TabBtn active={activeTab === 'analytics'} onClick={() => handleTabChange('analytics')} icon={<BarChart3 size={16}/>} label="Performance" disabled={!isApproved || !hasMembership} />
       </div>
@@ -270,7 +269,6 @@ export function CoachDashboard() {
         {activeTab === 'chat' && <CoachChat className="h-[500px] max-w-3xl mx-auto rounded-3xl" />}
         {activeTab === 'nexus' && <CoachContractManager />}
         {activeTab === 'automation' && <CoachAutomationView />}
-        {activeTab === 'register' && <CoachRegisterClient />}
         {activeTab === 'profile' && <CoachProfileSettings profile={profile} />}
         {activeTab === 'analytics' && <CoachAnalytics coachId={user?.uid} />}
       </div>
@@ -1573,144 +1571,6 @@ function CoachStudentsActivity() {
   </div>;
 }
 
-function CoachRegisterClient() {
-  const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ name: '', email: '', courseId: '' });
-  const [courses, setCourses] = useState<any[]>([]);
-
-  useEffect(() => {
-    if (!user) return;
-    const fetch = async () => {
-      const q = query(collection(db, 'courses'), where('coachId', '==', user.uid));
-      const snap = await getDocs(q);
-      setCourses(snap.docs.map(d => ({id: d.id, ...d.data()})));
-    };
-    fetch();
-  }, [user]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    try {
-      console.log(`[Registro Alumno] Registrando nuevo alumno con email: ${formData.email}...`);
-      
-      // 1. Create User Document
-      const userRef = await addDoc(collection(db, 'users'), {
-        displayName: formData.name,
-        email: formData.email,
-        role: 'alumno',
-        createdAt: new Date(),
-        registeredByCoach: user?.uid,
-        points: 0,
-        status: 'awaiting_login'
-      });
-      
-      console.log(`[Registro Alumno] Alumno creado con ID: ${userRef.id}. Ejecutando acciones secundarias en paralelo...`);
-
-      const secondaryTasks: Promise<any>[] = [];
-
-      // 2. Enroll in course if selected
-      if (formData.courseId) {
-        console.log(`[Registro Alumno] Agregando inscripción para el curso: ${formData.courseId}...`);
-        secondaryTasks.push(
-          addDoc(collection(db, 'enrollments'), {
-            userId: userRef.id,
-            courseId: formData.courseId,
-            progress: 0,
-            enrolledAt: new Date()
-          })
-        );
-      }
-
-      // 3. Create initial notification
-      secondaryTasks.push(
-        addDoc(collection(db, 'notifications'), {
-          userId: userRef.id,
-          title: '¡Bienvenido a Kira Coach!',
-          message: `Has sido registrado por tu coach. Completa tu primer diario hoy.`,
-          read: false,
-          createdAt: new Date(),
-          type: 'system'
-        })
-      );
-
-      // Execute dependent tasks in parallel
-      await Promise.all(secondaryTasks);
-      console.log(`[Registro Alumno] Acciones secundarias completadas exitosamente.`);
-
-      setSuccess(true);
-      setFormData({ name: '', email: '', courseId: '' });
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (e) {
-      console.error('[Registro Alumno] Error al registrar alumno:', e);
-      setError('Error registrando alumno.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="max-w-xl bg-white rounded-2xl border border-slate-200 p-8 animate-in zoom-in-95 duration-200">
-      <div className="mb-6">
-        <h3 className="text-lg font-bold text-slate-800 tracking-tight">Registro Manual de Alumno</h3>
-        <p className="text-[13px] text-slate-500 mt-1">Registra a un cliente externo y otórgale acceso inmediato a tus planes.</p>
-      </div>
-
-      {error && (
-        <div className="mb-6 p-3 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl text-xs font-bold text-center">
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Nombre Completo</label>
-          <input 
-            required
-            value={formData.name}
-            onChange={e => setFormData({...formData, name: e.target.value})}
-            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-            placeholder="Ej: Juan Pérez"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Correo Electrónico</label>
-          <input 
-            required
-            type="email"
-            value={formData.email}
-            onChange={e => setFormData({...formData, email: e.target.value})}
-            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none"
-            placeholder="juan@ejemplo.com"
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Asignar a Curso (Opcional)</label>
-          <select 
-            value={formData.courseId}
-            onChange={e => setFormData({...formData, courseId: e.target.value})}
-            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-          >
-            <option value="">Ninguno</option>
-            {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-          </select>
-        </div>
-
-        <button 
-          type="submit" 
-          disabled={loading}
-          className="w-full py-3 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 mt-4 active:scale-95 disabled:opacity-50"
-        >
-          {loading ? "Procesando..." : success ? <><CheckCircle2 size={18}/> ¡Registrado!</> : "Dar de Alta"}
-        </button>
-      </form>
-    </div>
-  );
-}
 // --- COMPONENTE DE ANALÍTICAS ---
 function CoachAnalyticsOld({ coachId }: { coachId?: string }) {
   const [stats, setStats] = useState({
