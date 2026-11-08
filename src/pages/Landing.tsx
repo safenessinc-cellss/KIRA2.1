@@ -112,18 +112,11 @@ export function Landing() {
   }, [selectedCoach]);
 
   useEffect(() => {
-    // Simplified query to avoid composite index requirements (role + approved)
-    const q = query(
-      collection(db, 'users'), 
-      where('role', '==', 'coach')
-    );
+    const q = query(collection(db, 'coachPublicProfiles'), where('status', '==', 'published'));
     const unsubscribe = onSnapshot(q, (snap) => {
-      const approvedCoaches = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter((c: any) => c.approvalStatus === 'approved');
-      setCoaches(approvedCoaches);
+      setCoaches(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'users (coaches query)');
+      handleFirestoreError(error, OperationType.GET, 'coachPublicProfiles');
     });
     return () => unsubscribe();
   }, []);
