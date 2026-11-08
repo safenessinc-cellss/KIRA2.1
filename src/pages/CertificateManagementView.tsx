@@ -87,6 +87,15 @@ export function CertificateManagementView() {
     } catch(e:any) { setError(e?.message || 'No se pudo emitir el certificado.'); }
     finally { setBusy(false); }
   };
+  const revoke = async (kiraNumber:string) => {
+    if (!isSuperAdmin || !window.confirm('¿Revocar definitivamente el certificado '+kiraNumber+'?')) return;
+    try {
+      const token=await auth.currentUser?.getIdToken();
+      const response=await fetch('/api/certificates/'+encodeURIComponent(kiraNumber)+'/revoke',{method:'POST',headers:{Authorization:'Bearer '+token}});
+      const data=await response.json(); if(!response.ok) throw new Error(data.error||'No se pudo revocar.');
+      setMessage('Certificado '+kiraNumber+' revocado. La página pública mostrará el estado revocado.');
+    } catch(e:any) { setError(e?.message||'No se pudo revocar el certificado.'); }
+  };
   const selectedStudent = students.find(x => x.id === studentId);
   const selectedCourse = courses.find(x => x.id === courseId);
   const selectedCoach = coaches.find(x => x.id === coachId);
@@ -123,6 +132,6 @@ export function CertificateManagementView() {
       {message && <p role="status" className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{message}</p>}
       {selectedEnrollment && <p className="mt-2 text-xs text-slate-400">Matrícula verificada: {selectedEnrollment.id}</p>}
     </section>
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h3 className="mb-3 flex items-center gap-2 font-bold text-slate-900"><FileText size={18}/> Registro de certificados</h3>{certificates.length===0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-500">Todavía no hay solicitudes.</p> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-xs uppercase text-slate-400"><th className="p-2">N.º KIRA</th><th className="p-2">Alumno</th><th className="p-2">Curso</th><th className="p-2">Fecha</th><th className="p-2">Estado</th></tr></thead><tbody>{certificates.map(c=><tr key={c.id} className="border-b last:border-0"><td className="p-2 font-mono text-xs">{c.kiraNumber || c.certificateNumber || c.id}</td><td className="p-2">{c.studentName}</td><td className="p-2">{c.courseName || c.courseTitle}</td><td className="p-2">{c.issueDate ? new Date(c.issueDate).toLocaleDateString() : c.issuedAt ? new Date(c.issuedAt).toLocaleDateString() : '—'}</td><td className="p-2"><span className={c.status==='revoked'?'text-rose-700':'text-emerald-700'}>{c.status}</span></td></tr>)}</tbody></table></div>}</section>
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h3 className="mb-3 flex items-center gap-2 font-bold text-slate-900"><FileText size={18}/> Registro de certificados</h3>{certificates.length===0 ? <p className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-500">Todavía no hay solicitudes.</p> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-xs uppercase text-slate-400"><th className="p-2">N.º KIRA</th><th className="p-2">Alumno</th><th className="p-2">Curso</th><th className="p-2">Fecha</th><th className="p-2">Estado</th></tr></thead><tbody>{certificates.map(c=><tr key={c.id} className="border-b last:border-0"><td className="p-2 font-mono text-xs">{c.kiraNumber || c.certificateNumber || c.id}</td><td className="p-2">{c.studentName}</td><td className="p-2">{c.courseName || c.courseTitle}</td><td className="p-2">{c.issueDate ? new Date(c.issueDate).toLocaleDateString() : c.issuedAt ? new Date(c.issuedAt).toLocaleDateString() : '—'}</td><td className="p-2"><span className={c.status==='revoked'?'text-rose-700':'text-emerald-700'}>{c.status}</span>{c.status==='issued' && <button type="button" onClick={()=>revoke(c.kiraNumber||c.id)} className="ml-2 rounded-lg border border-rose-200 px-2 py-1 text-xs text-rose-700">Revocar</button>}</td></tr>)}</tbody></table></div>}</section>
   </div>;
 }
