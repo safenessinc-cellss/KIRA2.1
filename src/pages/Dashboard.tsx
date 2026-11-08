@@ -116,9 +116,7 @@ export function Dashboard() {
     }
   };
 
-  const userDocPoints = user?.points || 0;
-
-  // Simulate popular courses by sorting (price as proxy if no rating)
+  // Mostrar cursos publicados disponibles en el catálogo
   const popularCourses = [...availableCourses].slice(0, 3);
   const totalSlides = popularCourses.length;
 
@@ -141,15 +139,7 @@ export function Dashboard() {
     }
   };
 
-  const getTier = (pts: number) => {
-    if (pts <= 500) return { name: 'Bronce', next: 501, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-100', icon: <Zap size={14} /> };
-    if (pts <= 1500) return { name: 'Plata', next: 1501, color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-200', icon: <ShieldCheck size={14} /> };
-    if (pts <= 5000) return { name: 'Oro', next: 5001, color: 'text-kiragold', bg: 'bg-kiragold/10', border: 'border-kiragold/20', icon: <Star size={14} /> };
-    return { name: 'Platino', next: Infinity, color: 'text-kirateal', bg: 'bg-kirateal/10', border: 'border-kirateal/20', icon: <Award size={14} /> };
-  };
 
-  const currentTier = getTier(userDocPoints);
-  const progressToNext = currentTier.next === Infinity ? 100 : Math.round((userDocPoints / currentTier.next) * 100);
 
   useEffect(() => {
     fetchData();
@@ -396,10 +386,10 @@ export function Dashboard() {
         </div>
                <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-[24px] border border-slate-100 shadow-inner">
           <div className="px-6 py-3 bg-white rounded-2xl shadow-sm border border-slate-200/60">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">Energy Pts</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">Mis matrículas</p>
             <div className="flex items-center gap-2">
-              <Zap size={16} className="text-kiragold fill-kiragold" />
-              <span className="text-2xl font-black text-slate-900 tracking-tight">{userDocPoints.toLocaleString()}</span>
+              <BookOpen size={16} className="text-kirateal" />
+              <span className="text-2xl font-black text-slate-900 tracking-tight">{myEnrollments.length}</span>
             </div>
           </div>
           {(user?.role === 'admin' || user?.role === 'coach') && (
