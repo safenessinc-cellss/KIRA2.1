@@ -259,11 +259,12 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
     fsCreate("auditLogs", idSafe("payment_" + provider + "_" + paymentId), { actorId: "payment_webhook", action: "payment.confirmed", targetId: orderId, provider, paymentId, amount: order.amount, currency: order.currency, createdAt: now }),
     fsCreate("notifications", idSafe("payment_" + orderId), { userId: order.userId, title: "Pago confirmado", message: "Tu pago fue verificado. El acceso comprado ya está siendo habilitado.", type: "system", read: false, createdAt: now })
   ];
+  const buyerProfile = await fsGet("users", order.userId);
   for (const item of order.items || []) {
     if (item.type === "course" || item.collectionName === "courses") {
       const enrollmentId = idSafe(order.userId + "_" + item.id);
       if (!(await fsGet("enrollments", enrollmentId))) writes.push(fsCreate("enrollments", enrollmentId, {
-        userId: order.userId, courseId: item.id, progress: 0, completed: false, courseCompleted: false,
+        userId: order.userId, studentName: buyerProfile?.displayName || buyerProfile?.name || "Alumno", studentEmail: buyerProfile?.email || "", studentAvatar: buyerProfile?.photoURL || "", courseId: item.id, progress: 0, completed: false, courseCompleted: false,
         paymentOrderId: orderId, paymentStatus: "paid", createdAt: now
       }));
     } else if (item.collectionName === "books" || item.type === "book") {
