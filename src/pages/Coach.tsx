@@ -191,7 +191,7 @@ export function CoachDashboard() {
       const resp = await fetch('/api/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
-        body: JSON.stringify({ items: [{ id: selectedPlan.id, quantity: 1 }], provider: 'mercadopago' })
+        body: JSON.stringify({ items: [{ id: selectedPlan.id, quantity: 1 }], provider: String(selectedPlan.currency).toUpperCase() === 'BRL' ? 'mercadopago' : 'stripe' })
       });
       const data = await resp.json();
       if (!resp.ok || !data.url) throw new Error(data.error || 'No se pudo iniciar el pago.');
