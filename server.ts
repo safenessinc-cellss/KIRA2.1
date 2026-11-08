@@ -587,7 +587,7 @@ app.get("/api/certificates/preview-assets",async(req,res)=>{
   try{
     const user=await verifiedUser(req,res);if(!user)return;
     const admin=await fsGet("users",user.uid);
-    if(user.email?.toLowerCase()!=="safeness.c.a@gmail.com"||user.emailVerified!==true||admin?.role!=="admin")return res.status(403).json({error:"Solo el superadministrador puede previsualizar las firmas."});
+    if(user.emailVerified!==true||admin?.role!=="admin")return res.status(403).json({error:"Solo administradores verificados pueden previsualizar los certificados."});
     const coachId=String(req.query.coachId||"");
     if(!coachId)return res.status(400).json({error:"Selecciona un coach."});
     const branding=await fsGet("settings","certificateBranding");
@@ -605,7 +605,7 @@ app.post("/api/certificates", async (req,res) => {
     const user = await verifiedUser(req,res);
     if (!user) return;
     const admin = await fsGet("users",user.uid);
-    if (user.email?.toLowerCase() !== "safeness.c.a@gmail.com" || user.emailVerified !== true || admin?.role !== "admin") return res.status(403).json({error:"Solo el superadministrador verificado puede emitir certificados."});
+    if (user.emailVerified !== true || admin?.role !== "admin") return res.status(403).json({error:"Solo administradores verificados pueden emitir certificados."});
     const now = Date.now();
     const previous = certificateIssueLimits.get(user.uid);
     if (previous && previous.resetAt > now && previous.count >= 10) return res.status(429).json({error:"Límite de emisión alcanzado. Inténtalo dentro de un minuto."});
@@ -731,7 +731,7 @@ app.post("/api/certificates/:kiraNumber/revoke",async(req,res)=>{
   try{
     const user=await verifiedUser(req,res);if(!user)return;
     const admin=await fsGet("users",user.uid);
-    if(user.email?.toLowerCase()!=="safeness.c.a@gmail.com"||user.emailVerified!==true||admin?.role!=="admin")return res.status(403).json({error:"Solo el superadministrador puede revocar certificados."});
+    if(user.emailVerified!==true||admin?.role!=="admin")return res.status(403).json({error:"Solo administradores verificados pueden revocar certificados."});
     const kiraNumber=String(req.params.kiraNumber||"");const record=await fsGet("certificates",kiraNumber);
     if(!record)return res.status(404).json({error:"Certificado no encontrado."});
     if(record.status==="revoked")return res.json({status:"revoked"});
