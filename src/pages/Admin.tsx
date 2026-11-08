@@ -17,7 +17,7 @@ export function AdminMonitor() {
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [profile, setProfile] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
 
   useEffect(() => {
     if (user) {
@@ -63,72 +63,34 @@ export function AdminMonitor() {
 
   const canOpen = (item: any) => item.superOnly ? isSuperAdmin : hasPerm(item);
 
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-    'Inicio y métricas': true,
-    'Personas y acceso': true,
-    'Academia y certificados': true,
-    'Finanzas': true,
-    'Marketing y ventas': true
-  });
-
   const categories = ['Inicio y métricas', 'Personas y acceso', 'Academia y certificados', 'Finanzas'].filter(cat => filteredNav.some(n => n.category === cat));
 
-  const toggleCategory = (cat: string) => {
-    setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
-  };
-
   return (
-    <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start">
-      {/* Sidebar Refinada */}
-      <aside className="w-full lg:w-72 lg:shrink-0 lg:sticky lg:top-4 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-        {/* Búsqueda rápida de módulos */}
-        <div className="relative group mb-2">
-           <Zap className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-cyan-500 transition-colors" size={16} />
-           <input 
-             type="text" 
-             placeholder="Buscar módulo..." 
-             value={searchQuery}
-             onChange={e => setSearchQuery(e.target.value)}
-             className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-12 py-3 text-[13px] outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 shadow-sm transition-all"
-           />
-           <div className="absolute right-4 top-3.5 flex items-center justify-center bg-slate-100 w-6 h-6 rounded text-slate-400 font-bold text-[10px] border border-slate-200 shadow-inner">
-             ⌘K
-           </div>
+    <div className="space-y-6">
+      <section aria-label="Módulos de administración" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-kirateal">Centro de control</p><h2 className="mt-1 text-lg font-black text-slate-900">Módulos de administración</h2><p className="mt-1 text-xs text-slate-500">Selecciona un área para gestionar KIRA.</p></div>
+          <div className="relative w-full sm:max-w-xs">
+            <Zap className="absolute left-4 top-3.5 text-slate-400" size={16} />
+            <input type="search" aria-label="Buscar módulo" placeholder="Buscar módulo..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="min-h-11 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm outline-none transition focus:border-kirateal focus:ring-4 focus:ring-kirateal/10" />
+          </div>
         </div>
-
-
-        <div className="flex flex-col gap-2 max-h-[55vh] overflow-y-auto overscroll-contain pr-1 lg:max-h-[calc(100vh-16rem)]">
+        <div className="space-y-5">
           {categories.map(cat => (
-            <div key={cat} className="flex flex-col mb-1">
-              <button 
-                onClick={() => toggleCategory(cat)}
-                className="flex items-center justify-between px-4 py-2 hover:bg-slate-50 rounded-xl transition-colors text-left"
-              >
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{cat}</span>
-                <span className="text-slate-400">
-                  {expandedCategories[cat] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                </span>
-              </button>
-              
-              <div className={cn("flex flex-col gap-1 mt-1 overflow-hidden transition-all duration-300 ease-in-out px-2", expandedCategories[cat] ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0")}>
+            <section key={cat} aria-label={cat}>
+              <h3 className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">{cat}</h3>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {filteredNav.filter(n => n.category === cat).map(item => (
-                  <NavButton 
-                    key={item.id}
-                    active={activeTab === item.id} 
-                    disabled={!canOpen(item)}
-                    onClick={() => { if (canOpen(item)) { setActiveTab(item.id as AdminTab); setMobileNavOpen(false); } }} 
-                    icon={item.icon} 
-                    label={item.label} 
-                  />
+                  <NavButton key={item.id} active={activeTab === item.id} disabled={!canOpen(item)} onClick={() => { if (canOpen(item)) setActiveTab(item.id as AdminTab); }} icon={item.icon} label={item.label} />
                 ))}
               </div>
-            </div>
+            </section>
           ))}
         </div>
-      </aside>
+      </section>
 
       {/* Área principal: dashboard inicial y contenido del módulo seleccionado */}
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 w-full">
         {activeTab === 'dashboard' && hasPerm(navItems.find(i=>i.id==='dashboard')) && <GlobalDashboardView />}
         {activeTab === 'analytics' && hasPerm(navItems.find(i=>i.id==='analytics')) && <BIView />}
 
@@ -158,16 +120,16 @@ function NavButton({ active, onClick, icon, label, disabled = false }: { active:
       onClick={onClick}
       disabled={disabled}
       title={disabled ? 'Tu rol no tiene permiso para abrir este módulo' : label}
-      className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left text-[13px] font-medium transition-all ${
-        active 
-          ? 'bg-kirateal text-white shadow-md shadow-kirateal/10' 
+      className={`flex min-h-20 w-full items-center gap-3 rounded-xl border p-4 text-left text-[13px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kirateal ${
+        active
+          ? 'border-kirateal/40 bg-kirateal text-white shadow-md shadow-kirateal/10'
           : disabled
-            ? 'text-slate-400 opacity-70 cursor-not-allowed'
-            : 'text-slate-600 hover:bg-slate-50 hover:text-kirateal'
+            ? 'border-slate-100 bg-slate-50 text-slate-400 opacity-70 cursor-not-allowed'
+            : 'border-slate-200 bg-white text-slate-700 hover:border-kirateal/40 hover:bg-teal-50/50 hover:text-kirateal hover:shadow-sm'
       }`}
     >
-      {icon}
-      <span className="flex-1">{label}</span>
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${active ? 'bg-white/15' : 'bg-slate-100'}`}>{icon}</span>
+      <span className="min-w-0 flex-1">{label}</span>
       {disabled && <ShieldAlert size={13} aria-label="Sin permisos" />}
     </button>
   );
