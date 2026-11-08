@@ -584,20 +584,19 @@ service cloud.firestore {
 
     match /certificates/{certificateId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.studentId == request.auth.uid);
-      allow create: if isKiraOwner()
-        && request.resource.data.status == 'issued'
-        && request.resource.data.validationToken == certificateId
-        && request.resource.data.issuedBy == request.auth.uid;
-      allow update, delete: if false;
+      // All issuance and revocation writes are performed by the trusted server.
+      allow create, update, delete: if false;
     }
 
-    // This public projection deliberately contains only certificate verification fields.
-    match /certificatePublic/{token} {
-      allow read: if resource.data.status == 'issued' && resource.data.validationToken == token;
-      allow create: if isKiraOwner()
-        && request.resource.data.status == 'issued'
-        && request.resource.data.validationToken == token;
-      allow update, delete: if false;
+    match /certificate_audit/{auditId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Public projection contains only fields needed for verification.
+    match /certificatePublic/{certificateId} {
+      allow read: if resource.data.status in ['issued', 'revoked'];
+      allow create, update, delete: if false;
     }
 
     match /urgent_escalations/{id} {
