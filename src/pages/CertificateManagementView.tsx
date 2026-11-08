@@ -13,6 +13,7 @@ export function CertificateManagementView() {
   const [enrollments, setEnrollments] = useState<Row[]>([]);
   const [certificates, setCertificates] = useState<Row[]>([]);
   const [branding, setBranding] = useState<any>({});
+  const [previewAssets, setPreviewAssets] = useState<any>(null);
   const [studentId, setStudentId] = useState('');
   const [courseId, setCourseId] = useState('');
   const [coachId, setCoachId] = useState('');
@@ -96,6 +97,21 @@ export function CertificateManagementView() {
       setMessage('Certificado '+kiraNumber+' revocado. La página pública mostrará el estado revocado.');
     } catch(e:any) { setError(e?.message||'No se pudo revocar el certificado.'); }
   };
+  useEffect(() => {
+    let alive=true;
+    setPreviewAssets(null);
+    if(!coachId || !branding.logoStoragePath || !branding.adminSignatureStoragePath || !branding.coachSignaturePaths?.[coachId]) return;
+    (async()=>{
+      try{
+        const token=await auth.currentUser?.getIdToken();
+        const response=await fetch('/api/certificates/preview-assets?coachId='+encodeURIComponent(coachId),{headers:{Authorization:'Bearer '+token}});
+        const data=await response.json();
+        if(!response.ok)throw new Error(data.error||'No se pudieron cargar los activos.');
+        if(alive)setPreviewAssets(data);
+      }catch(e:any){if(alive)setError(e?.message||'No se pudo preparar la vista previa.');}
+    })();
+    return ()=>{alive=false;};
+  },[coachId,branding.logoStoragePath,branding.adminSignatureStoragePath,branding.coachSignaturePaths]);
   const selectedStudent = students.find(x => x.id === studentId);
   const selectedCourse = courses.find(x => x.id === courseId);
   const selectedCoach = coaches.find(x => x.id === coachId);
@@ -114,6 +130,23 @@ export function CertificateManagementView() {
         <label className="rounded-xl border border-dashed border-slate-300 p-3 text-sm"><span className="block font-semibold">Firma del coach seleccionado</span><span className="text-xs text-slate-500">{branding.coachSignaturePaths?.[coachId] ? 'Configurada' : 'Requerida'}</span><input className="mt-2 block w-full text-xs" type="file" accept="image/png" disabled={!isSuperAdmin || !coachId || !!uploading} onChange={e=>uploadAsset('coach',e.target.files?.[0])}/></label>
       </div>
       {uploading && <p className="mt-2 text-xs text-teal-700">Guardando {uploading}…</p>}
+    </section>
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h3 className="mb-3 font-bold text-slate-900">Vista previa A4 horizontal · 297 × 210 mm</h3>
+      {previewAssets ? <div className="relative mx-auto aspect-[297/210] w-full max-w-5xl overflow-hidden border-[5px] border-double border-[#a68b52] bg-[#faf9f6] p-[3%] shadow-inner">
+        <img src={previewAssets.logo} alt="Logo KIRA" className="absolute left-[5%] top-[5%] h-[11%] max-w-[15%] object-contain"/>
+        <img src={previewAssets.logo} alt="" aria-hidden="true" className="pointer-events-none absolute left-1/2 top-1/2 h-[55%] w-[42%] -translate-x-1/2 -translate-y-1/2 object-contain opacity-[0.10]"/>
+        <div className="relative flex h-full flex-col items-center justify-between text-center text-slate-700">
+          <div className="pt-[1%]"><p className="font-serif text-[clamp(10px,1.7vw,19px)] tracking-[0.22em] text-slate-800">KIRA COACH</p><h4 className="mt-2 font-serif text-[clamp(12px,2.4vw,25px)] font-bold tracking-wide">CERTIFICADO DE CONCLUSIÓN</h4></div>
+          <div className="w-[82%]"><p className="text-[clamp(8px,1vw,12px)]">Se certifica que</p><p className="mt-1 break-words font-serif text-[clamp(16px,3vw,32px)] text-teal-900">{selectedStudent?.displayName || selectedStudent?.name || 'Nombre completo del alumno'}</p><p className="mt-2 text-[clamp(8px,1vw,12px)]">ha concluido satisfactoriamente el curso</p><p className="mt-1 break-words text-[clamp(11px,1.8vw,20px)] font-bold text-teal-900">{selectedCourse?.title || selectedCourse?.name || 'Nombre del curso'}</p><p className="mt-1 text-[clamp(8px,1vw,12px)]">{hours || '—'} horas académicas · Coach: {selectedCoach?.displayName || selectedCoach?.name || 'Coach'}</p></div>
+          <div className="grid w-full grid-cols-[1fr_1fr_auto] items-end gap-2 px-[3%] text-[clamp(6px,0.8vw,10px)]">
+            <div className="text-center"><img src={previewAssets.adminSignature} alt="Firma superadministrador" className="mx-auto h-[clamp(18px,4vw,38px)] max-w-[85%] object-contain"/><div className="border-t border-slate-400 pt-1 font-bold">EMISOR AUTORIZADO</div><div>Superadministrador KIRA</div></div>
+            <div className="text-center"><img src={previewAssets.coachSignature} alt="Firma del coach" className="mx-auto h-[clamp(18px,4vw,38px)] max-w-[85%] object-contain"/><div className="border-t border-slate-400 pt-1 font-bold">COACH RESPONSABLE</div><div>KIRA COACH</div></div>
+            <div className="flex flex-col items-center justify-end"><div className="flex h-[clamp(34px,7vw,66px)] w-[clamp(34px,7vw,66px)] items-center justify-center border border-dashed border-slate-400 p-1 text-center text-[7px] text-slate-500">QR firmado al emitir</div></div>
+          </div>
+          <div className="text-[clamp(6px,0.8vw,10px)] text-slate-500">Fecha de emisión: se asigna al emitir · Verificación pública mediante QR · Creado por SAFENESS.INC</div>
+        </div>
+      </div> : <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">Carga el logo institucional y las dos firmas privadas, y selecciona un coach para generar la vista previa real.</p>}
     </section>
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <h3 className="mb-1 flex items-center gap-2 text-lg font-bold text-slate-900"><FileCheck2 size={19}/> Emitir nuevo certificado</h3>
