@@ -7,6 +7,15 @@ service firebase.storage {
         && request.auth.token.email_verified == true;
     }
 
+    // Certificate branding, coach/admin signatures and issued PDFs are private.
+    match /certificates/private/{allPaths=**} {
+      allow read: if false;
+      allow create, update: if isKiraOwner()
+        && request.resource.size <= 5 * 1024 * 1024
+        && (request.resource.contentType == 'image/png' || request.resource.contentType == 'application/pdf');
+      allow delete: if isKiraOwner();
+    }
+
     // Paid book files are never readable directly from the client. The API
     // checks the user's server-created entitlement and streams the file.
     match /books/admin/{ownerId}/{fileName} {
