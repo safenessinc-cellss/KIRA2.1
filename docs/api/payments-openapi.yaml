@@ -1,0 +1,139 @@
+openapi: 3.1.0
+info:
+  title: KIRA Payments & Configuration API
+  version: 1.0.0
+  description: API de administración de pagos. Todas las rutas /admin requieren superadministrador verificado.
+servers:
+  - url: https://kira.coach
+security:
+  - FirebaseBearer: []
+paths:
+  /api/admin/payments/config:
+    get:
+      summary: Leer configuración global, pasarelas enmascaradas, planes y cupones
+      responses:
+        '200': { description: Configuración sin secretos en claro }
+        '403': { description: Solo superadministrador }
+    patch:
+      summary: Actualizar checkout global y moneda
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paymentsEnabled: { type: boolean }
+                baseCurrency: { type: string, pattern: '^[A-Z]{3}$' }
+                allowedCurrencies: { type: array, items: { type: string } }
+                roundingRule: { type: string, enum: [half_up, up, down] }
+                requirePayment: { type: boolean }
+      responses:
+        '200': { description: Guardado y auditado }
+        '400': { description: Validación fallida }
+        '403': { description: No autorizado }
+  /api/admin/payments/gateways/{provider}:
+    put:
+      summary: Configurar una pasarela; claves nuevas cifradas en servidor
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema: { type: string, enum: [stripe, mercadopago, paypal, manual] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                mode: { type: string, enum: [test, live] }
+                priority: { type: integer, minimum: 0, maximum: 100 }
+                publicKey: { type: string }
+                apiKey: { type: string, writeOnly: true }
+                webhookSecret: { type: string, writeOnly: true }
+      responses:
+        '200': { description: Pasarela guardada; secretos no retornados }
+        '403': { description: No autorizado }
+  /api/admin/payments/plans:
+    post:
+      summary: Crear plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, amountCents, currency, interval]
+              properties:
+                name: { type: string, maxLength: 120 }
+                amountCents: { type: integer, minimum: 0 }
+                currency: { type: string, pattern: '^[A-Z]{3}$' }
+                interval: { type: string, enum: [one_time, monthly, yearly] }
+                trialDays: { type: integer, minimum: 0, maximum: 365 }
+                courseId: { type: string }
+      responses:
+        '201': { description: Plan creado }
+  /api/admin/payments/plans/{id}:
+    patch:
+      summary: Actualizar o archivar un plan
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Plan actualizado }
+        '404': { description: Plan no encontrado }
+  /api/admin/payments/coupons:
+    post:
+      summary: Crear cupón
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, type, value]
+              properties:
+                code: { type: string, minLength: 3, maxLength: 40 }
+                type: { type: string, enum: [percent, fixed] }
+                value: { type: number, exclusiveMinimum: 0 }
+                maxUses: { type: integer, minimum: 1, nullable: true }
+                expiresAt: { type: string, format: date-time, nullable: true }
+      responses:
+        '201': { description: Cupón creado }
+        '409': { description: Código duplicado }
+  /api/admin/payments/audit:
+    get:
+      summary: Consultar historial de configuración y pagos
+      responses:
+        '200': { description: Eventos auditados }
+  /api/create-checkout-session:
+    post:
+      summary: Crear checkout con precios consultados desde el catálogo del servidor
+      responses:
+        '200': { description: URL de checkout externa }
+        '400': { description: Producto inválido o moneda inconsistente }
+        '503': { description: Checkout o pasarela deshabilitados }
+  /api/webhooks/stripe:
+    post:
+      security: []
+      summary: Webhook Stripe firmado
+      responses:
+        '200': { description: Evento recibido o duplicado }
+        '400': { description: Firma inválida }
+  /api/webhooks/mercadopago:
+    post:
+      security: []
+      summary: Webhook Mercado Pago firmado
+      responses:
+        '200': { description: Evento recibido }
+        '401': { description: Firma inválida }
+components:
+  securitySchemes:
+    FirebaseBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID Token
