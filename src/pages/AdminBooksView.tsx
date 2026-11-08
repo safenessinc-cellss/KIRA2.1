@@ -242,6 +242,7 @@ export function AdminBooksView() {
         price: Number(price),
         currency,
         status: 'published',
+        assetReady: true,
         coverUrl: coverUrl || '',
         publisherId: user.uid,
         publisherName: finalName,
