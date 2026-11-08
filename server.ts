@@ -421,6 +421,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
       if (!product || !(["published", "active"].includes(String(product.status || "").toLowerCase()) || product.isActive === true || product.active === true)) return res.status(400).json({ error: "Producto no disponible o no publicado: " + id });
       const price = Number(product.price ?? product.amount);
       if (!Number.isFinite(price) || price <= 0 || price > 100000) return res.status(400).json({ error: "Precio inválido en catálogo para " + id });
+      if (product.collectionName === "books" && product.type === "link" && price > 0) return res.status(400).json({ error: "Los libros de pago deben almacenarse como PDF protegido en Firebase Storage." });
       items.push({ id, title: String(product.title || product.name || "Producto KIRA").slice(0, 250), type: (product.type === "membership" || product.collectionName === "membershipPlans") ? "membership" : (product.collectionName === "courses" ? "course" : (product.collectionName === "books" ? "book" : (product.type || "product")) ), collectionName: product.collectionName, durationDays: product.collectionName === "membershipPlans" ? Math.max(1, Math.min(3650, Number(product.durationDays || 365))) : undefined, unitPrice: price, currency: String(product.currency || (provider === "mercadopago" ? "brl" : "usd")).toLowerCase(), quantity: Number(requested.quantity || 1) });
     }
     if (new Set(items.map(x => x.currency)).size !== 1) return res.status(400).json({ error: "Los productos deben usar la misma moneda." });
