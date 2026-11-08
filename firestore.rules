@@ -194,9 +194,12 @@ service cloud.firestore {
     
     function isValidEnrollment() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['userId', 'courseId', 'progress', 'createdAt', 'completed', 'courseCompleted', 'completedAt', 'paymentOrderId', 'paymentStatus']) &&
+      return hasOnlyAllowedFields(['userId', 'studentName', 'studentEmail', 'studentAvatar', 'courseId', 'progress', 'createdAt', 'completed', 'courseCompleted', 'completedAt', 'paymentOrderId', 'paymentStatus']) &&
              data.userId is string &&
              data.courseId is string &&
+             (!('studentName' in data) || data.studentName is string) &&
+             (!('studentEmail' in data) || data.studentEmail is string) &&
+             (!('studentAvatar' in data) || data.studentAvatar is string) &&
              data.progress is number && data.progress >= 0 && data.progress <= 100 &&
              data.createdAt is timestamp &&
              (!('completed' in data) || data.completed is bool) &&
