@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDoc, serverTimestamp, setDoc, deleteField } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { BookOpen, FileText, Link as LinkIcon, Trash2, Plus, Loader2, UploadCloud, CheckCircle2, ShieldAlert, Sparkles, BookMarked, Eye, Search, Filter, Pencil } from 'lucide-react';
@@ -33,12 +33,46 @@ export function AdminBooksView() {
   useEffect(() => {
     // Fetch ALL books in the entire ecosystem
     const q = collection(db, 'books');
+    const migrating = new Set<string>();
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const list = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data() as any
+      const list = snapshot.docs.map(bookDoc => ({
+        id: bookDoc.id,
+        ...bookDoc.data() as any
       }));
+
+      // Move legacy public file URLs into admin-only asset documents, then
+      // remove them from the public catalog so paid files cannot be scraped.
+      for (const bookDoc of snapshot.docs) {
+        const data = bookDoc.data() as any;
+        const legacyUrl = data.fileUrl || data.pdfUrl || data.downloadUrl || data.contentUrl || data.url;
+        if (!legacyUrl || migrating.has(bookDoc.id)) continue;
+        migrating.add(bookDoc.id);
+        void (async () => {
+          const assetRef = doc(db, 'bookAssets', bookDoc.id);
+          const existingAsset = await getDoc(assetRef);
+          if (!existingAsset.exists()) {
+            let storagePath = '';
+            try {
+              const parsed = new URL(legacyUrl);
+              const objectMatch = parsed.pathname.match(/\\/o\\/([^/]+)$/);
+              if (parsed.hostname.includes('firebasestorage.googleapis.com') && objectMatch) storagePath = decodeURIComponent(objectMatch[1]);
+              else if (parsed.hostname === 'storage.googleapis.com') storagePath = decodeURIComponent(parsed.pathname.split('/').slice(2).join('/'));
+            } catch { /* retain a valid HTTPS external link only */ }
+            await setDoc(assetRef, {
+              type: data.type || (storagePath ? 'pdf' : 'link'),
+              storagePath,
+              externalUrl: storagePath ? '' : (String(legacyUrl).startsWith('https://') ? legacyUrl : ''),
+              migratedAt: serverTimestamp(),
+              migratedBy: user?.uid || ''
+            });
+          }
+          await updateDoc(doc(db, 'books', bookDoc.id), {
+            url: deleteField(), fileUrl: deleteField(), pdfUrl: deleteField(),
+            downloadUrl: deleteField(), contentUrl: deleteField()
+          });
+        })().catch(err => console.error('Legacy book asset migration failed:', bookDoc.id, err)).finally(() => migrating.delete(bookDoc.id));
+      }
       // Sort client-side
       list.sort((a: any, b: any) => {
         const t1 = a.createdAt?.seconds || 0;
