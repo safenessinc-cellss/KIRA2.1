@@ -29,7 +29,7 @@ export function AdminMonitor() {
     }
   }, [user]);
 
-  const isSuperAdmin = user?.email === 'safeness.c.a@gmail.com';
+  const isSuperAdmin = user?.email?.toLowerCase() === 'safeness.c.a@gmail.com' && user?.emailVerified === true;
   const perms = profile?.staffPermissions || [];
 
   const hasPerm = (item: any) => {
