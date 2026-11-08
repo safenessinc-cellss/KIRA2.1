@@ -121,7 +121,8 @@ export function CoachCourses() {
     }
   };
 
-  const isApproved = profile?.role === 'coach' && profile?.approvalStatus === 'approved';
+  const membershipExpiry = profile?.membershipExpiresAt?.toDate ? profile.membershipExpiresAt.toDate() : (profile?.membershipExpiresAt ? new Date(profile.membershipExpiresAt) : null);
+  const isApproved = profile?.role === 'coach' && profile?.approvalStatus === 'approved' && profile?.membershipStatus === 'active' && (!membershipExpiry || membershipExpiry.getTime() > Date.now());
 
   const handleCancel = () => {
     setIsCreating(false);
@@ -237,7 +238,7 @@ export function CoachCourses() {
     return (
       <div className="bg-white rounded-xl border border-slate-200 p-8 text-center animate-in zoom-in-95">
         <h2 className="text-lg font-bold text-slate-800 mb-2 tracking-tight">Acceso Restringido</h2>
-        <p className="text-sm text-slate-500">Debes ser aprobado por un administrador antes de subir cursos.</p>
+        <p className="text-sm text-slate-500">Necesitas aprobación de KIRA y una membresía vigente para administrar cursos.</p>
       </div>
     );
   }
