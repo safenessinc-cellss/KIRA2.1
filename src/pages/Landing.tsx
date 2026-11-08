@@ -95,23 +95,6 @@ export function Landing() {
   };
 
   useEffect(() => {
-    if (selectedCoach && selectedCoach.id && !selectedCoach.id.startsWith('demo')) {
-      // Increment view count
-      const incrementView = async () => {
-        try {
-          const coachRef = doc(db, 'users', selectedCoach.id);
-          await updateDoc(coachRef, {
-            viewCount: (selectedCoach.viewCount || 0) + 1
-          });
-        } catch (err) {
-          console.error("Error updating view count:", err);
-        }
-      };
-      incrementView();
-    }
-  }, [selectedCoach]);
-
-  useEffect(() => {
     const q = query(collection(db, 'coachPublicProfiles'), where('status', '==', 'published'));
     const unsubscribe = onSnapshot(q, (snap) => {
       setCoaches(snap.docs.map(d => ({ id: d.id, ...d.data() })));
