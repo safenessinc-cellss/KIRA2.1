@@ -30,6 +30,34 @@ export function AdminMonitor() {
   }, [user]);
 
   const isSuperAdmin = user?.email?.toLowerCase() === 'safeness.c.a@gmail.com' && user?.emailVerified === true;
+
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    const q = query(collection(db, 'users'), where('role', '==', 'coach'), where('approvalStatus', '==', 'approved'));
+    const unsub = onSnapshot(q, snap => {
+      for (const coachDoc of snap.docs) {
+        const coach = coachDoc.data();
+        const publicRef = doc(db, 'coachPublicProfiles', coachDoc.id);
+        void getDoc(publicRef).then(existing => {
+          if (existing.exists()) return;
+          const publicMediaItems = Array.isArray(coach.mediaItems)
+            ? coach.mediaItems.filter((item: any) => item && item.isPublic === true && Number(item.pointCost || 0) === 0 && typeof item.url === 'string')
+                .map((item: any) => ({ id: String(item.id || item.title || ''), title: String(item.title || ''), type: String(item.type || 'link'), url: item.url }))
+            : [];
+          return setDoc(publicRef, {
+            uid: coachDoc.id, displayName: coach.displayName || coach.name || 'Coach',
+            photoURL: coach.photoURL || '', specialty: coach.specialty || '', bio: coach.bio || '',
+            specialties: coach.specialties || [], languages: coach.languages || '',
+            socialLinks: coach.socialLinks || {}, rating: Number(coach.rating || 0),
+            studentCount: Number(coach.studentCount || 0), mediaItems: publicMediaItems,
+            approvalStatus: 'approved', status: 'published', updatedAt: new Date()
+          }, { merge: true });
+        }).catch(error => console.warn('Coach public profile backfill failed:', error));
+      }
+    }, error => console.error('Coach directory backfill listener failed:', error));
+    return () => unsub();
+  }, [isSuperAdmin]);
+
   const perms = profile?.staffPermissions || [];
 
   const hasPerm = (item: any) => {
