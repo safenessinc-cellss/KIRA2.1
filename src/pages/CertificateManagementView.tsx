@@ -34,18 +34,18 @@ export function CertificateManagementView() {
       getDocs(collection(db, 'settings'))
     ]).then(([u,c,e,s]) => {
       if (!alive) return;
-      const userRows = u.docs.map(d => ({ id:d.id, ...d.data() }));
+      const userRows: Row[] = u.docs.map(d => ({ id:d.id, ...d.data() } as Row));
       setStudents(userRows.filter(x => x.role === 'alumno'));
       setCoaches(userRows.filter(x => x.role === 'coach' && x.approvalStatus === 'approved'));
-      setCourses(c.docs.map(d => ({ id:d.id, ...d.data() })).filter(x => x.status === 'published'));
-      setEnrollments(e.docs.map(d => ({ id:d.id, ...d.data() })));
+      setCourses(c.docs.map(d => ({ id:d.id, ...d.data() } as Row)).filter(x => x.status === 'published'));
+      setEnrollments(e.docs.map(d => ({ id:d.id, ...d.data() } as Row)));
       const settings = s.docs.find(d => d.id === 'certificateBranding');
       if (settings) setBranding(settings.data());
     }).catch(e => setError(e?.message || 'No se pudieron cargar los datos de KIRA.'));
     return () => { alive = false; };
   }, []);
   useEffect(() => onSnapshot(collection(db,'certificates'), snap => {
-    setCertificates(snap.docs.map(d => ({ id:d.id, ...d.data() })).sort((a,b) => String(b.issueDate || '').localeCompare(String(a.issueDate || ''))));
+    setCertificates(snap.docs.map(d => ({ id:d.id, ...d.data() } as Row)).sort((a,b) => String(b.issueDate || '').localeCompare(String(a.issueDate || ''))));
   }, e => setError(e?.message || 'No se pudo cargar el registro de certificados.')), []);
   const selectedEnrollment = useMemo(() => enrollments.find(e => e.id === enrollmentId), [enrollments,enrollmentId]);
   const eligibleEnrollments = useMemo(() => enrollments.filter(e => e.userId === studentId && e.courseId === courseId && (e.courseCompleted === true || e.completed === true || Number(e.progress) >= 100)), [enrollments,studentId,courseId]);
