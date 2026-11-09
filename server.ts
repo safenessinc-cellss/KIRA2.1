@@ -1566,12 +1566,31 @@ app.get("/api/admin/enrollments/:id/contract/download", async (req, res) => {
   } catch (error: any) { console.error("[Contracts] download failed:", error); return res.status(500).json({ error: "No se pudo descargar el contrato." }); }
 });
 
-app.post("/api/admin/enrollments/:id/contract/sign", async (req, res) => {
+app.get("/api/enrollments/:id/contract/download", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const user = await verifiedUser(req, res); if (!user) return;
+    const id = academicId(String(req.params.id)), enrollment = await fsGet("enrollments", id);
+    if (!enrollment || enrollment.userId !== user.uid || !enrollment.contractUrl || !String(enrollment.contractUrl).startsWith("gs://")) return res.status(404).json({ error: "Contrato no encontrado." });
+    const bucket = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || "";
+    if (!bucket || !String(enrollment.contractUrl).startsWith("gs://" + bucket + "/")) return res.status(500).json({ error: "El bucket del contrato no coincide con la configuración." });
+    const objectPath = String(enrollment.contractUrl).slice(("gs://" + bucket + "/").length);
+    const url = "https://storage.googleapis.com/storage/v1/b/" + encodeURIComponent(bucket) + "/o/" + encodeURIComponent(objectPath) + "?alt=media";
+    const response = await fetch(url, { headers: { Authorization: "Bearer " + await firestoreToken() } });
+    if (!response.ok) return res.status(502).json({ error: "No se pudo recuperar el contrato privado." });
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (createHash("sha256").update(bytes).digest("hex") !== enrollment.contractHash) return res.status(409).json({ error: "La integridad del contrato no coincide." });
+    res.setHeader("Content-Type", "application/pdf"); res.setHeader("Content-Disposition", "attachment; filename=KIRA-contrato-" + id + ".pdf");
+    return res.send(bytes);
+  } catch (error: any) { console.error("[Contracts] student download failed:", error); return res.status(500).json({ error: "No se pudo descargar el contrato." }); }
+});
+
+app.post("/api/enrollments/:id/contract/sign", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
     if (req.body?.accepted !== true) return res.status(400).json({ error: "Se requiere aceptación explícita del contrato." });
     const id = academicId(String(req.params.id)), enrollment = await fsGet("enrollments", id);
-    if (!enrollment || !enrollment.contractUrl || !/^[a-f0-9]{64}$/i.test(String(enrollment.contractHash || ""))) return res.status(409).json({ error: "Genera primero un contrato válido." });
+    if (!enrollment || enrollment.userId !== user.uid) return res.status(404).json({ error: "Matrícula no encontrada." });
+    if (!enrollment.contractUrl || !/^[a-f0-9]{64}$/i.test(String(enrollment.contractHash || ""))) return res.status(409).json({ error: "Genera primero un contrato válido." });
     if (enrollment.contractSignedAt) return res.status(409).json({ error: "El contrato ya fue firmado." });
     const signedAt = new Date().toISOString();
     const signature = createHmac("sha256", contractSigningSecret()).update(String(enrollment.contractHash)).digest("hex");
