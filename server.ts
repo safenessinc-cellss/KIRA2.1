@@ -67,9 +67,9 @@ function getStripe() {
 let geminiClient: GoogleGenAI | null = null;
 function getGeminiAI() {
   if (!geminiClient) {
-    const key = process.env.GEMINI_API_KEY;
+    const key = process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY;
     if (!isValidGeminiKey(key)) {
-      throw new Error("GEMINI_API_KEY is not defined or is a placeholder in environment variables. Please add a real key under Settings > Secrets.");
+      throw new Error("GOOGLE_GENAI_API_KEY (or legacy GEMINI_API_KEY) is not configured on the server.");
     }
     geminiClient = new GoogleGenAI({
       apiKey: key,
@@ -149,8 +149,16 @@ type ServiceAccount = { project_id: string; client_email: string; private_key: s
 let serviceTokenCache: { token: string; expiresAt: number } | null = null;
 function serviceAccount(): ServiceAccount {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (!raw) throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON no está configurada.");
-  const account = JSON.parse(raw) as ServiceAccount;
+  const account = raw
+    ? JSON.parse(raw) as ServiceAccount
+    : {
+        project_id: process.env.FIREBASE_PROJECT_ID || "",
+        client_email: process.env.FIREBASE_CLIENT_EMAIL || "",
+        private_key: process.env.FIREBASE_PRIVATE_KEY || "",
+      };
+  if (!account.project_id || !account.client_email || !account.private_key) {
+    throw new Error("Configura FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL y FIREBASE_PRIVATE_KEY (o una service account JSON legacy).");
+  }
   if (!account.project_id || !account.client_email || !account.private_key) throw new Error("La cuenta de servicio de Firebase está incompleta.");
   const expectedProject = process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || "kira2-a6a20";
   if (account.project_id !== expectedProject) throw new Error("La cuenta de servicio no pertenece al proyecto Firebase configurado.");
@@ -1109,7 +1117,7 @@ app.post("/api/invoices/:id/checkout", async (req, res) => {
     const item = { id: String(course.id || invoice.courseId), type: "course", collectionName: "courses", title: "Cuota " + String(invoice.periodLabel || ""), quantity: 1, unitPrice: amount, currency };
     const order = { userId: user.uid, provider, status: "pending", currency, amount, items: [item], invoiceId, createdAt: new Date().toISOString() };
     if (previous) await fsCommit([fsUpdate("orders", orderId, order)]); else await fsCommit([fsCreate("orders", orderId, order)]);
-    const appUrl = (process.env.KIRA_APP_URL || "https://kira.coach").replace(/\/$/, "");
+    const appUrl = (process.env.APP_URL || process.env.KIRA_APP_URL || "https://kira.coach").replace(/\/$/, "");
     if (provider === "stripe") {
       const stripe = new Stripe(stripeSecret!, { apiVersion: "2025-01-27" as any });
       const session = await stripe.checkout.sessions.create({
