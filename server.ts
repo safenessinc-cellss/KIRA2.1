@@ -488,11 +488,12 @@ app.post("/api/webhooks/stripe", async (req: any, res) => {
 });
 
 app.post("/api/webhooks/mercadopago", async (req: any, res) => {
+  let paymentId = "";
   try {
     const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET || "";
     const signature = String(req.headers["x-signature"] || "");
     const requestId = String(req.headers["x-request-id"] || "");
-    const paymentId = String(req.query["data.id"] || req.body?.data?.id || "");
+    paymentId = String(req.query["data.id"] || req.body?.data?.id || "");
     if (!secret || !signature || !requestId || !paymentId) return res.status(401).send("Firma ausente.");
     const parts: any = Object.fromEntries(signature.split(",").map((p: string) => p.trim().split("=").map(x => x.trim())));
     const manifest = "id:" + paymentId.toLowerCase() + ";request-id:" + requestId + ";ts:" + parts.ts + ";";
