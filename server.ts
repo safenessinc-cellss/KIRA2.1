@@ -14,7 +14,7 @@ import { canSettleInvoice, installmentAmountCents, invoiceDocumentId, isValidPer
 import { isOutboxEventEligible, outboxFailureTransition } from "./server/outbox-domain.js";
 import { registerBackofficeExtensions } from "./server/backoffice-extensions.js";
 import { hasRecentMfaAuthentication } from "./server/security-domain.js";
-import { hasDelegatedPermission, hasScopedPermission } from "./server/permissions-domain.js";
+import { hasDelegatedPermission } from "./server/permissions-domain.js";
 import { calculateCoachClientRetention, homeworkPointsAward, normalizeCoachLeadStage, validateHomeworkReview } from "./server/coach-domain.js";
 import { aggregateCompanyWellbeing, isValidWellbeingCheckin } from "./server/wellbeing-domain.js";
 
