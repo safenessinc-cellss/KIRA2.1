@@ -789,10 +789,15 @@ app.get("/api/admin/payments/payouts", async (_req,res) => {
 app.get("/api/admin/payments/summary", async (_req,res) => {
   try {
     const [transactions,refunds,payouts]=await Promise.all([fsList("transactions"),fsList("refunds"),fsList("payouts")]);
-    const gross=transactions.filter(t=>["paid","refunded"].includes(t.status)).reduce((n,t)=>n+Number(t.amount||0),0);
-    const refunded=refunds.reduce((n,t)=>n+Number(t.amount||0),0);
-    const paidOut=payouts.reduce((n,t)=>n+Number(t.amount||0),0);
-    res.json({gross,kiraNet:gross*.7,coachPayouts:gross*.3,refunds:refunded,netFinal:gross-refunded-paidOut});
+    const currencies=Array.from(new Set([...transactions.map(t=>String(t.currency||"").toUpperCase()),...refunds.map(t=>String(t.currency||"").toUpperCase()),...payouts.map(t=>String(t.currency||"").toUpperCase())].filter(Boolean)));
+    const totalsByCurrency=Object.fromEntries(currencies.map(currency=>{
+      const gross=transactions.filter(t=>["paid","refunded"].includes(t.status)&&String(t.currency||"").toUpperCase()===currency).reduce((n,t)=>n+Number(t.amount||0),0);
+      const refunded=refunds.filter(t=>String(t.currency||"").toUpperCase()===currency).reduce((n,t)=>n+Number(t.amount||0),0);
+      const paidOut=payouts.filter(t=>String(t.currency||"").toUpperCase()===currency).reduce((n,t)=>n+Number(t.amount||0),0);
+      return [currency,{gross,kiraNet:gross*.7,coachPayouts:gross*.3,refunds:refunded,netFinal:gross-refunded-paidOut}];
+    }));
+    const single=currencies.length===1?totalsByCurrency[currencies[0]]:null;
+    res.json({mixedCurrencies:currencies.length>1,currencies,totalsByCurrency,...(single||{gross:null,kiraNet:null,coachPayouts:null,refunds:null,netFinal:null})});
   } catch(e){console.error(e);res.status(500).json({error:"No fue posible calcular totales."});}
 });
 app.post("/api/admin/payments/refund", async (req: AdminRequest,res) => {
