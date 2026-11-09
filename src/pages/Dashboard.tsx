@@ -195,7 +195,7 @@ export function Dashboard() {
     if (!user || certificateRequestBusy) return;
     const course = availableCourses.find(c => c.id === enrollment.courseId);
     if (!course) return alert('No se encontró la información del curso.');
-    const completed = enrollment.completed === true || enrollment.courseCompleted === true || Number(enrollment.progress) >= 100;
+    const completed = enrollment.status === "completed";
     if (!completed) return alert('El certificado estará disponible cuando el curso figure como concluido.');
     const alreadyRequested = myCertificateRequests.some(r => r.courseId === enrollment.courseId && ['pending','approved','issued'].includes(r.status || 'pending'));
     if (alreadyRequested) return alert('Ya existe una solicitud o certificado para este curso.');
