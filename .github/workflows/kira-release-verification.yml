@@ -42,7 +42,7 @@ jobs:
       - name: Build
         run: npm run build
       - name: Domain and Firestore rules tests
-        run: npm run test:all
+        run: npm test && npx firebase emulators:exec --only firestore --project demo-kira-rules --non-interactive "npm run test:rules"
       - name: Client bundle secret scan
         shell: bash
         run: |
