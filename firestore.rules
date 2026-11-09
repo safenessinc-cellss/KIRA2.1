@@ -470,6 +470,9 @@ service cloud.firestore {
     match /role_permissions/{id} { allow read, write: if false; }
     match /webhook_inbox/{id} { allow read, write: if false; }
     match /payment_reminders/{id} { allow read, write: if false; }
+    match /invoice_payment_claims/{id} { allow read, write: if false; }
+    match /paymentReconciliationReports/{id} { allow read, write: if false; }
+    match /counters/{id} { allow read, write: if false; }
     match /dashboard_aggregates/{id} { allow read, write: if false; }
     match /outbox/{id} { allow read, write: if false; }
 
