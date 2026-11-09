@@ -77,11 +77,11 @@ export function DashboardLayout({ title }: { title: string }) {
 
   return (
     <div className="flex min-h-[100dvh] w-full flex-col bg-slate-50 text-slate-900">
-      {(user?.approvalStatus === 'suspended' || user?.approvalStatus === 'pending') && role !== 'admin' && (
+      {(user?.isBanned === true || user?.status === 'banned' || user?.approvalStatus === 'suspended' || user?.approvalStatus === 'pending') && role !== 'admin' && (
         <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-white/95 p-6 text-center backdrop-blur-sm">
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-amber-200 bg-amber-100 text-amber-600"><Activity size={30} /></div>
-          <h2 className="mb-3 text-2xl font-bold text-slate-800">{user?.approvalStatus === 'suspended' ? 'Servicio suspendido' : 'Cuenta en revisión'}</h2>
-          <p className="mb-7 max-w-md text-sm leading-relaxed text-slate-500">{user?.approvalStatus === 'suspended' ? 'Tu acceso a la plataforma ha sido pausado. Contacta a soporte o a tu administrador si necesitas ayuda.' : 'Estamos revisando tu solicitud para habilitar el acceso a la comunidad.'}</p>
+          <h2 className="mb-3 text-2xl font-bold text-slate-800">{user?.isBanned || user?.status === 'banned' ? 'Cuenta bloqueada' : user?.approvalStatus === 'suspended' ? 'Servicio suspendido' : 'Cuenta en revisión'}</h2>
+          <p className="mb-7 max-w-md text-sm leading-relaxed text-slate-500">{user?.isBanned || user?.status === 'banned' ? 'Tu acceso a la plataforma ha sido bloqueado por un administrador. Contacta a soporte para solicitar una revisión.' : user?.approvalStatus === 'suspended' ? 'Tu acceso a la plataforma ha sido pausado. Contacta a soporte o a tu administrador si necesitas ayuda.' : 'Estamos revisando tu solicitud para habilitar el acceso a la comunidad.'}</p>
           <button onClick={logout} className="flex min-h-11 items-center gap-2 rounded-xl bg-slate-800 px-6 py-3 font-bold text-white"><LogOut size={18} /> Cerrar sesión</button>
         </div>
       )}
