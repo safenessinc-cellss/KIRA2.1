@@ -47,7 +47,11 @@ export function HRDashboard() {
   const sampleSize = Number(latestAggregate?.sampleSize ?? latestAggregate?.cohortSize ?? latestAggregate?.participantCount ?? 0);
   const minimumCohortSize = Math.max(5, Number(latestAggregate?.minimumCohortSize ?? latestAggregate?.minCohortSize ?? 5));
   const privacyThresholdMet = Boolean(latestAggregate && sampleSize >= minimumCohortSize && latestAggregate.suppressed !== true);
-  const highRiskCount = Number(latestAggregate?.highRiskCount ?? latestAggregate?.riskHigh ?? 0);
+  const highRiskRaw = latestAggregate && Object.prototype.hasOwnProperty.call(latestAggregate, "highRiskCount")
+    ? latestAggregate.highRiskCount
+    : latestAggregate?.riskHigh;
+  const highRiskCount = typeof highRiskRaw === "number" && Number.isFinite(highRiskRaw) ? highRiskRaw : null;
+  const hasHighRiskCount = privacyThresholdMet && highRiskCount !== null;
   const averageEngagement = Number(latestAggregate?.averageEngagement ?? latestAggregate?.engagementScore ?? 0);
   const hasWellbeingAggregate = Boolean(privacyThresholdMet && (latestAggregate.highRiskCount !== undefined || latestAggregate.riskHigh !== undefined || latestAggregate.averageEngagement !== undefined || latestAggregate.engagementScore !== undefined));
 
@@ -81,8 +85,8 @@ export function HRDashboard() {
         </article>
         <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Check-ins con energía o claridad baja (agregado)</span><ShieldCheck className="text-teal-700" size={20} /></div>
-          <p className="mt-4 text-4xl font-black tabular-nums text-slate-900">{loading || !hasWellbeingAggregate ? "—" : highRiskCount}</p>
-          <p className="mt-2 text-xs text-slate-500">{hasWellbeingAggregate ? "Solo check-ins consentidos y agregados" : "Disponible cuando existan evaluaciones agregadas"}</p>
+          <p className="mt-4 text-4xl font-black tabular-nums text-slate-900">{loading || !hasHighRiskCount ? "—" : highRiskCount}</p>
+          <p className="mt-2 text-xs text-slate-500">{hasHighRiskCount ? "Solo check-ins consentidos y agregados" : "Oculto para proteger grupos pequeños"}</p>
         </article>
         <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:col-span-2 xl:col-span-1">
           <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Energía y claridad promedio</span><BarChart3 className="text-teal-700" size={20} /></div>
