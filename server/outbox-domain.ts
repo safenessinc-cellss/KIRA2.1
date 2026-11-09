@@ -1,3 +1,19 @@
+export interface OutboxDispatchCandidate {
+  status?: string;
+  nextAttemptAt?: string | null;
+  leaseUntil?: string | null;
+}
+
+/** Excludes events that are terminal, in backoff, or held by an active lease. */
+export function isOutboxEventEligible(event: OutboxDispatchCandidate, now = Date.now()): boolean {
+  if (event.status === "processed" || event.status === "failed") return false;
+  const nextAttemptAt = event.nextAttemptAt ? Date.parse(event.nextAttemptAt) : 0;
+  const leaseUntil = event.leaseUntil ? Date.parse(event.leaseUntil) : 0;
+  if (Number.isFinite(nextAttemptAt) && nextAttemptAt > now) return false;
+  if (event.status === "processing" && Number.isFinite(leaseUntil) && leaseUntil > now) return false;
+  return true;
+}
+
 export interface OutboxFailureInput {
   id: string;
   eventId?: string;
