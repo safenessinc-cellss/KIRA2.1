@@ -318,6 +318,8 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
   if (!order) throw new Error("La orden no existe.");
   if (order.status === "paid") return;
   if (order.provider !== provider || (expectedUserId && order.userId !== expectedUserId) || Math.abs(Math.round(Number(order.amount) * 100) - paidMinor) > 1 || String(order.currency).toLowerCase() !== currency.toLowerCase()) throw new Error("El importe, la moneda, el usuario o el proveedor no coincide con la orden.");
+  const invoice = order.invoiceId ? await fsGet("invoices", String(order.invoiceId)) : null;
+  if (order.invoiceId && (!invoice || invoice.studentId !== order.userId || Number(invoice.amountCents) !== paidMinor || String(invoice.currency).toLowerCase() !== currency.toLowerCase() || invoice.status === "void" || (invoice.status === "paid" && invoice.paymentId !== paymentId))) throw new Error("La factura no coincide con el pago o ya fue liquidada.");
   const now = new Date().toISOString();
   const writes: any[] = [
     fsCreate("paymentEvents", idSafe(provider + "_" + eventId), { provider, eventId, orderId, status: "processed", processedAt: now }),
@@ -326,6 +328,11 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
     fsCreate("auditLogs", idSafe("payment_" + provider + "_" + paymentId), { actorId: "payment_webhook", action: "payment.confirmed", targetId: orderId, provider, paymentId, amount: order.amount, currency: order.currency, createdAt: now }),
     fsCreate("notifications", idSafe("payment_" + orderId), { userId: order.userId, title: "Pago confirmado", message: "Tu pago fue verificado. El acceso comprado ya está siendo habilitado.", type: "system", read: false, createdAt: now })
   ];
+  if (invoice) {
+    writes.push(fsCreate("invoice_payment_claims", idSafe(String(order.invoiceId)), { invoiceId: order.invoiceId, paymentId, orderId, claimedAt: now }));
+    writes.push(fsUpdate("invoices", String(order.invoiceId), { ...invoice, status: "paid", paymentId, paidAt: now, updatedAt: now }));
+    writes.push(fsCreate("outbox", "invoice_paid_" + order.invoiceId, { eventId: "invoice.paid." + order.invoiceId, type: "invoice.paid.v1", aggregate: "invoice", aggregateId: String(order.invoiceId), schemaVersion: 1, payload: { invoiceId: order.invoiceId, enrollmentId: invoice.enrollmentId, studentId: invoice.studentId, paymentId, orderId }, status: "pending", attempts: 0, createdAt: now }));
+  }
   const buyerProfile = await fsGet("users", order.userId);
   for (const item of order.items || []) {
     if (item.type === "course" || item.collectionName === "courses") {
@@ -880,6 +887,52 @@ app.post("/api/admin/crm/leads/:id/convert-to-enrollment", async (req, res) => {
 });
 
 // Server-priced checkout and signed provider webhooks. No browser amount is trusted.
+app.post("/api/invoices/:id/checkout", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const invoiceId = academicId(String(req.params.id)), invoice = await fsGet("invoices", invoiceId);
+    if (!invoice || invoice.studentId !== user.uid) return res.status(404).json({ error: "Cuota no encontrada." });
+    if (!["open", "overdue"].includes(String(invoice.status)) || invoice.paymentId) return res.status(409).json({ error: "La cuota no está disponible para pago." });
+    const [enrollment, course] = await Promise.all([fsGet("enrollments", invoice.enrollmentId), fsGet("courses", invoice.courseId || "")]);
+    if (!enrollment || enrollment.userId !== user.uid || !course) return res.status(409).json({ error: "Matrícula o curso no disponible." });
+    const provider = req.body?.provider === "mercadopago" ? "mercadopago" : "stripe";
+    const gateway = await fsGet("paymentGateways", provider);
+    if (gateway && gateway.enabled !== true) return res.status(503).json({ error: "La pasarela está deshabilitada." });
+    const stripeSecret = gateway?.apiKeyEncrypted ? decryptPaymentSecret(gateway.apiKeyEncrypted) : process.env.STRIPE_SECRET_KEY;
+    const mpToken = gateway?.apiKeyEncrypted ? decryptPaymentSecret(gateway.apiKeyEncrypted) : process.env.MERCADOPAGO_ACCESS_TOKEN;
+    if (provider === "stripe" && !stripeSecret) return res.status(503).json({ error: "Stripe no está configurado." });
+    if (provider === "mercadopago" && !mpToken) return res.status(503).json({ error: "Mercado Pago no está configurado." });
+    const orderId = academicId("invoice_" + invoiceId);
+    const previous = await fsGet("orders", orderId);
+    if (previous?.status === "paid") return res.status(409).json({ error: "La cuota ya fue pagada." });
+    if (previous?.checkoutUrl && previous.status === "pending") return res.json({ url: previous.checkoutUrl, orderId, provider });
+    const amount = Number(invoice.amountCents) / 100, currency = String(invoice.currency || "BRL").toLowerCase();
+    const item = { id: String(course.id || invoice.courseId), type: "course", collectionName: "courses", title: "Cuota " + String(invoice.periodLabel || ""), quantity: 1, unitPrice: amount, currency };
+    const order = { userId: user.uid, provider, status: "pending", currency, amount, items: [item], invoiceId, createdAt: new Date().toISOString() };
+    if (previous) await fsCommit([fsUpdate("orders", orderId, order)]); else await fsCommit([fsCreate("orders", orderId, order)]);
+    const appUrl = (process.env.KIRA_APP_URL || "https://kira.coach").replace(/\/$/, "");
+    if (provider === "stripe") {
+      const stripe = new Stripe(stripeSecret!, { apiVersion: "2025-01-27" as any });
+      const session = await stripe.checkout.sessions.create({
+        mode: "payment", line_items: [{ quantity: 1, price_data: { currency, unit_amount: Number(invoice.amountCents), product_data: { name: item.title + " · " + String(course.title || course.name || invoice.courseId) } } }],
+        client_reference_id: user.uid, metadata: { userId: user.uid, orderId, invoiceId },
+        success_url: appUrl + "/dashboard?payment=processing&invoice=" + encodeURIComponent(invoiceId),
+        cancel_url: appUrl + "/dashboard?payment=cancelled&invoice=" + encodeURIComponent(invoiceId)
+      });
+      await fsCommit([fsUpdate("orders", orderId, { ...order, providerSessionId: session.id, checkoutUrl: session.url })]);
+      return res.json({ url: session.url, orderId, provider });
+    }
+    const preferenceResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
+      method: "POST", headers: { Authorization: "Bearer " + mpToken, "Content-Type": "application/json", "X-Idempotency-Key": orderId },
+      body: JSON.stringify({ external_reference: orderId, notification_url: appUrl + "/api/webhooks/mercadopago", items: [{ id: item.id, title: item.title, quantity: 1, currency_id: currency.toUpperCase(), unit_price: amount }], back_urls: { success: appUrl + "/dashboard?payment=processing", pending: appUrl + "/dashboard?payment=pending", failure: appUrl + "/dashboard?payment=cancelled" }, auto_return: "approved", payer: user.email ? { email: user.email } : undefined })
+    });
+    if (!preferenceResponse.ok) throw new Error("Mercado Pago no pudo crear el pago de la cuota.");
+    const preference = await preferenceResponse.json() as any;
+    await fsCommit([fsUpdate("orders", orderId, { ...order, providerPreferenceId: preference.id, checkoutUrl: preference.init_point })]);
+    return res.json({ url: preference.init_point, orderId, provider });
+  } catch (error: any) { console.error("[Invoices] checkout failed:", error); return res.status(500).json({ error: "No se pudo iniciar el pago de la cuota." }); }
+});
+
 app.post("/api/create-checkout-session", async (req, res) => {
   try {
     const user = await verifiedUser(req, res);
