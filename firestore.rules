@@ -522,7 +522,14 @@ service cloud.firestore {
       }
 
       match /wellbeingAggregates/{aggregateId} {
-        allow read: if isAdmin() || isCompanyMember(companyId);
+        // HR may read only pre-aggregated cohorts with a minimum sample of five.
+        // Individual-level records and suppressed small cohorts remain inaccessible.
+        allow read: if isAdmin() || (
+          (isCompanyAdmin(companyId) || isCompanyMember(companyId))
+          && resource.data.sampleSize is number
+          && resource.data.sampleSize >= 5
+          && (!('suppressed' in resource.data) || resource.data.suppressed != true)
+        );
         allow create, update, delete: if false;
       }
 
