@@ -33,7 +33,7 @@ paths:
           schema: { type: string, format: date }
       responses:
         '200':
-          description: Aggregates from persisted Firestore records; current implementation scans up to 200 documents per collection.
+          description: Persisted monthly aggregates from dashboard_aggregates; widgets are omitted when the caller lacks the corresponding role permission.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Dashboard' }
