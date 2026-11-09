@@ -107,7 +107,7 @@ export function DashboardLayout({ title }: { title: string }) {
       </header>
 
       <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-stretch lg:gap-6 lg:px-8">
-        {role !== 'admin' && <section aria-label="Módulos principales" className="w-full shrink-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:sticky lg:top-[5.25rem] lg:w-64 lg:self-start">
+        {role !== 'admin' && <section aria-label="Módulos principales" className="w-full shrink-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:sticky lg:top-[5.25rem] lg:w-[19rem] lg:self-start">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Espacio de trabajo</p><h2 className="mt-1 text-base font-bold text-slate-800">Tus módulos</h2></div>
             <div className="flex items-center gap-2">
@@ -118,12 +118,12 @@ export function DashboardLayout({ title }: { title: string }) {
               ].map((theme) => <button key={theme.id} type="button" onClick={() => changeTheme(theme.id)} aria-label={`Tema ${theme.id}`} aria-pressed={theme.id === (user?.theme || 'teal')} className={cn('h-5 w-5 rounded-full border border-white shadow-sm ring-offset-2', theme.color, theme.id === (user?.theme || 'teal') && 'ring-2 ring-slate-300')} />)}
             </div>
           </div>
-          <nav aria-label="Navegación de módulos" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-col xl:grid-cols-1">
+          <nav aria-label="Navegación de módulos" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2 lg:content-start">
             {currentLinks.map((item) => {
               const active = isActive(item.to);
-              return <Link key={item.to} to={item.to} aria-current={active ? 'page' : undefined} className={cn('group flex min-h-24 min-w-0 flex-col items-start gap-2 rounded-xl border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-4 lg:min-h-16 lg:flex-row lg:items-center lg:gap-3 lg:hover:translate-y-0', active ? 'border-primary/40 bg-primary/[0.06] shadow-sm' : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-white')}>
-                <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', active ? 'bg-primary text-white' : 'bg-white text-slate-500 shadow-sm')}><item.icon size={19} /></span>
-                <span className="min-w-0"><span className={cn('block truncate text-xs font-bold sm:text-sm', active ? 'text-primary' : 'text-slate-800')}>{item.label}</span><span className="mt-1 hidden text-xs leading-4 text-slate-500 sm:block">{item.detail}</span></span>
+              return <Link key={item.to} to={item.to} aria-current={active ? 'page' : undefined} className={cn('group flex min-h-[112px] min-w-0 flex-col items-center justify-center gap-2 rounded-[1.35rem] border p-3 text-center transition-all duration-200 hover:-translate-y-1 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:min-h-[124px] sm:p-3', active ? 'border-primary/40 bg-primary/[0.08] shadow-md ring-1 ring-primary/10' : 'border-white/80 bg-white/75 shadow-sm backdrop-blur-xl hover:border-primary/20 hover:bg-white')}>
+                <span className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-sm transition-transform group-hover:scale-105', active ? 'bg-primary text-white shadow-primary/20' : 'bg-slate-100/90 text-slate-600 group-hover:bg-primary/10 group-hover:text-primary')}><item.icon size={22} strokeWidth={1.8} /></span>
+                <span className="min-w-0 w-full"><span className={cn('block truncate text-xs font-bold sm:text-[13px]', active ? 'text-primary' : 'text-slate-800')}>{item.label}</span><span className="mt-1 block truncate text-[10px] leading-4 text-slate-500">{item.detail}</span></span>
               </Link>;
             })}
           </nav>
