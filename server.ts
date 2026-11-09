@@ -270,6 +270,23 @@ async function fsListDocuments(collectionName:string,pageSize=100):Promise<any[]
   const body=await response.json() as any;
   return (body.documents||[]).map((d:any)=>({id:String(d.name||"").split("/").pop(),...Object.fromEntries(Object.entries(d.fields||{}).map(([k,v])=>[k,fsDecode(v)]))}));
 }
+async function fsListAllDocuments(collectionName: string, maxDocuments = 10000): Promise<any[]> {
+  const results: any[] = [];
+  let pageToken = "";
+  while (results.length < maxDocuments) {
+    const query = new URLSearchParams({ pageSize: String(Math.min(1000, maxDocuments - results.length)) });
+    if (pageToken) query.set("pageToken", pageToken);
+    const response = await fetch("https://firestore.googleapis.com/v1/projects/" + serviceAccount().project_id + "/databases/(default)/documents/" + collectionName + "?" + query.toString(), {
+      headers: { Authorization: "Bearer " + await firestoreToken() }
+    });
+    if (!response.ok) throw new Error("Firestore paginated list failed (" + response.status + ").");
+    const body = await response.json() as any;
+    results.push(...(body.documents || []).map((d: any) => ({ id: String(d.name || "").split("/").pop(), ...Object.fromEntries(Object.entries(d.fields || {}).map(([k, v]) => [k, fsDecode(v)])) })));
+    pageToken = String(body.nextPageToken || "");
+    if (!pageToken || !(body.documents || []).length) break;
+  }
+  return results;
+}
 async function catalogItem(id: string): Promise<any | null> {
   for (const collectionName of ["courses", "books", "products", "membershipPlans", "paymentPlans", "marketplace"]) {
     const item = await fsGet(collectionName, id);
@@ -1232,8 +1249,8 @@ async function writeAcademicEvent(userId: string, type: string, aggregate: strin
 }
 async function refreshStudentPerformance(studentId: string, groupId: string, sourceEventId: string) {
   const [sessions, attendance, assessments, group] = await Promise.all([
-    fsListDocuments("group_sessions", 200), fsListDocuments("attendance", 200),
-    fsListDocuments("assessments", 200), fsGet("course_groups", groupId)
+    fsListAllDocuments("group_sessions"), fsListAllDocuments("attendance"),
+    fsListAllDocuments("assessments"), fsGet("course_groups", groupId)
   ]);
   const groupSessions = sessions.filter(x => x.groupId === groupId && x.status !== "cancelled");
   const sessionIds = new Set(groupSessions.map(x => x.id));
@@ -1288,8 +1305,8 @@ app.post("/api/admin/groups/:id/sessions", async (req, res) => {
     if (!group || !["planned", "active"].includes(group.status)) return res.status(404).json({ error: "Grupo no disponible." });
     const startsAt = academicDate(req.body?.startsAt), endsAt = academicDate(req.body?.endsAt);
     if (!startsAt || !endsAt || endsAt <= startsAt) return res.status(400).json({ error: "El horario debe tener fechas válidas y finalizar después de comenzar." });
-    const existing = await fsListDocuments("group_sessions", 200);
-    const groups = await fsListDocuments("course_groups", 200);
+    const existing = await fsListAllDocuments("group_sessions");
+    const groups = await fsListAllDocuments("course_groups");
     const groupById = new Map(groups.map(x => [x.id, x]));
     const room = String(req.body?.room || "").trim().toLowerCase();
     const collision = existing.some(session => {
