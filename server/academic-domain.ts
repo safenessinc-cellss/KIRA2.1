@@ -14,7 +14,7 @@ export function calculateAcademicPerformance(sessions: SessionRecord[], marks: A
   const avgScorePct = totalWeight
     ? Math.round(validGrades.reduce((sum, grade) => sum + (Number(grade.score) / Number(grade.maxScore)) * 100 * Number(grade.weight ?? 1), 0) / totalWeight * 100) / 100
     : 0;
-  return { attendancePct, avgScorePct };
+  return { attendancePct, avgScorePct, lessonsCompleted: attended };
 }
 
 export function hasScheduleConflict(start: Date, end: Date, otherStart: Date, otherEnd: Date): boolean {
