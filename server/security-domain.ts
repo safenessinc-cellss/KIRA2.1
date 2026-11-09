@@ -16,3 +16,16 @@ export function hasRecentMfaAuthentication(
   const age = nowMs - authTimeMs;
   return age >= -futureClockSkewMs && age <= maxAgeMs;
 }
+
+/** Superadmin has an explicit root bypass; staff must hold the exact permission.
+ * The legacy "system" token is deliberately not treated as a wildcard.
+ */
+export function canAccessBackofficePermission(
+  isSuperAdmin: boolean,
+  permissions: unknown,
+  permission?: string
+): boolean {
+  if (isSuperAdmin) return true;
+  if (!permission) return true;
+  return Array.isArray(permissions) && permissions.includes(permission);
+}
