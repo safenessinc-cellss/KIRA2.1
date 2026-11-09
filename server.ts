@@ -687,8 +687,10 @@ app.post("/api/reviews", async (req, res) => {
     const comment = typeof req.body?.comment === "string" ? req.body.comment.trim().slice(0, 2000) : "";
     if (!itemType || !itemId || !Number.isInteger(rating) || rating < 1 || rating > 5) return res.status(400).json({ error: "La calificación debe ser de 1 a 5 estrellas." });
 
+    const priorReviews = await fsListDocuments("reviews", 1000);
+    const legacyReview = priorReviews.find((entry: any) => entry.userId === user.uid && entry.itemType === itemType && entry.itemId === itemId);
     transaction = await beginFirestoreTransaction();
-    const reviewId = idSafe(user.uid + "_" + itemType + "_" + itemId);
+    const reviewId = idSafe(legacyReview?.id || user.uid + "_" + itemType + "_" + itemId);
     const existing = await fsGetInTransaction("reviews", reviewId, transaction);
     const item = await fsGetInTransaction(itemType === "course" ? "courses" : "books", itemId, transaction);
     if (!item) throw new Error("El curso o libro no existe.");
