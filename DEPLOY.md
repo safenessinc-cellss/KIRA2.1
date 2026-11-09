@@ -5,7 +5,7 @@
 
 ## Estado real
 - Commits de implementación enviados a GitHub en la rama.
-- Vercel Preview: no creado. La API devolvió HTTP 402 `api-deployments-free-per-day`, retryAfter 86400.
+- Vercel: el intento asociado a un commit documental quedó CANCELED por Ignored Build Step. El intento forzado con la rama actual fue rechazado HTTP 402 `api-deployments-free-per-day`, retryAfter 86400. No existe Preview listo.
 - PR a main: no abierto, porque Preview/CI no están verificados.
 - Producción: no desplegada.
 - Tag `v2.1.0-admin-expanded`: no creado.
