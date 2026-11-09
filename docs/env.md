@@ -14,6 +14,7 @@ Todos los valores sensibles son server-only. Nunca añadir valores a Git, PR, lo
 | `WHATSAPP_WEBHOOK_SECRET` | Firma HMAC de eventos entrantes WhatsApp | Integración WhatsApp |
 | `LANDING_CAPTCHA_SECRET` | Validación server-side CAPTCHA de formularios | Landing pages |
 | `CRON_SECRET` | Bearer secreto para Cloud Scheduler; mínimo 24 caracteres aleatorios | Jobs financieros programados |
+| `KIRA_OUTBOX_CRON_SECRET` | Bearer secreto independiente para reintentos del outbox académico | Proyección de asistencia y evaluaciones |
 | `STRIPE_SECRET_KEY` | Acceso API Stripe (si no se usa secreto cifrado en Firestore) | Stripe |
 | `STRIPE_WEBHOOK_SECRET` | Verificación de webhook Stripe | Stripe |
 | `MERCADOPAGO_ACCESS_TOKEN` | Acceso API Mercado Pago | Mercado Pago |
