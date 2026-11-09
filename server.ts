@@ -1267,6 +1267,41 @@ async function refreshStudentPerformance(studentId: string, groupId: string, sou
   return { attendancePct, avgScorePct };
 }
 
+app.get("/api/admin/groups", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const courseId = String(req.query.courseId || ""), status = String(req.query.status || "");
+    const groups = await fsListAllDocuments("course_groups");
+    return res.json({ items: groups.filter(g => (!courseId || g.courseId === courseId) && (!status || g.status === status)).sort((a,b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))) });
+  } catch (error: any) { console.error("[Groups] list failed:", error); return res.status(500).json({ error: "No se pudieron consultar los grupos." }); }
+});
+app.get("/api/admin/groups/:id/sessions", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const groupId = academicId(String(req.params.id)), group = await fsGet("course_groups", groupId);
+    if (!group) return res.status(404).json({ error: "Grupo no encontrado." });
+    const sessions = await fsListAllDocuments("group_sessions");
+    return res.json({ items: sessions.filter(x => x.groupId === groupId).sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt))) });
+  } catch (error: any) { console.error("[Groups] sessions list failed:", error); return res.status(500).json({ error: "No se pudieron consultar las sesiones." }); }
+});
+app.get("/api/admin/groups/:id/enrollments", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const groupId = academicId(String(req.params.id)), group = await fsGet("course_groups", groupId);
+    if (!group) return res.status(404).json({ error: "Grupo no encontrado." });
+    const enrollments = await fsListAllDocuments("enrollments");
+    return res.json({ items: enrollments.filter(x => x.groupId === groupId && !["cancelled", "suspended"].includes(x.status)) });
+  } catch (error: any) { console.error("[Groups] enrollments list failed:", error); return res.status(500).json({ error: "No se pudieron consultar las matrículas del grupo." }); }
+});
+app.get("/api/admin/groups/:id/performance", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const groupId = academicId(String(req.params.id));
+    const projections = await fsListAllDocuments("student_performance");
+    return res.json({ items: projections.filter(x => x.groupId === groupId) });
+  } catch (error: any) { console.error("[Academic] performance list failed:", error); return res.status(500).json({ error: "No se pudo consultar el rendimiento." }); }
+});
+
 app.post("/api/admin/groups", async (req, res) => {
   try {
     const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
