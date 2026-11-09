@@ -61,5 +61,5 @@ Mantener el webhook existente y su validación de firma. No crear una segunda ru
 4. Crear tag `v2.1.0` en el commit validado.
 5. Rollback: Vercel → Deployments → seleccionar deployment Production anterior validado → Promote. No promover automáticamente un build no probado.
 
-## Limitaciones de esta auditoría
+## Estado de ejecución de este release\n- GitHub Actions inicial detectó que \`npm ci\` falla porque el \`package-lock.json\` existente no contiene dependencias que npm espera. El workflow se ajustó a \`npm install --no-audit --no-fund\` para poder evaluar build/typecheck mientras se corrige el lockfile.\n- Vercel Preview no pudo crearse: la API de Vercel devolvió HTTP 402 por límite \`api-deployments-free-per-day\` y ventana de 24 horas. No se modificó el dashboard.\n- Producción y reglas remotas no se han modificado.\n\n## Limitaciones de esta auditoría
 No se han consultado ni cambiado secretos del dashboard Vercel. Esta sesión no ha ejecutado comandos shell ni emulador local; reportar los resultados del Preview como evidencia antes de considerar el release completo.
