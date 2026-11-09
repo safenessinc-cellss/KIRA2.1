@@ -517,12 +517,12 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
 
       match /members/{memberId} {
-        allow read: if isAdmin() || isCompanyAdmin(companyId);
-        allow create, update, delete: if isAdmin();
+        // Individual roster records are not exposed to HR/company admins.
+        allow read, create, update, delete: if isAdmin();
       }
 
       match /wellbeingAggregates/{aggregateId} {
-        allow read: if isAdmin() || isCompanyMember(companyId);
+        allow read: if isAdmin() || isCompanyAdmin(companyId);
         allow create, update, delete: if false;
       }
 
