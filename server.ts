@@ -577,6 +577,142 @@ app.post("/api/gemini/generate", async (req, res) => {
 });
 
 
+
+// Purpose-specific AI endpoints. The generic Gemini proxy remains available for legacy clients.
+const purposeAiLimits = new Map<string, { count: number; resetAt: number }>();
+function allowPurposeAi(uid: string, res: express.Response): boolean {
+  const now = Date.now();
+  const current = purposeAiLimits.get(uid);
+  if (current && current.resetAt > now && current.count >= 10) {
+    res.status(429).json({ error: "Límite de IA alcanzado: máximo 10 solicitudes por minuto." });
+    return false;
+  }
+  if (!current || current.resetAt <= now) purposeAiLimits.set(uid, { count: 1, resetAt: now + 60000 });
+  else current.count += 1;
+  return true;
+}
+async function generatePurposeAi(prompt: string, model = "gemini-3.5-flash"): Promise<string> {
+  const ai = getGeminiAI();
+  let lastError: any;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await ai.models.generateContent({ model, contents: prompt });
+      return String(response.text || "").slice(0, 12000);
+    } catch (error: any) {
+      lastError = error;
+      const status = Number(error?.status || error?.code || 0);
+      const quota = status === 429 || /quota|rate.?limit|resource.?exhausted/i.test(String(error?.message || ""));
+      if (!quota || attempt === 2) break;
+      await new Promise(resolve => setTimeout(resolve, 500 * Math.pow(2, attempt)));
+    }
+  }
+  throw lastError || new Error("El servicio de IA no está disponible.");
+}
+
+app.post("/api/ai/chat", async (req, res) => {
+  try {
+    const user = await requireFirebaseUser(req, res);
+    if (!user || !allowPurposeAi(user.uid, res)) return;
+    const messages = Array.isArray(req.body?.messages) ? req.body.messages.slice(-12) : [];
+    const route = typeof req.body?.route === "string" ? req.body.route.slice(0, 120) : "/";
+    if (!messages.length || messages.some((item: any) => !item || !["user", "assistant"].includes(item.role) || typeof item.content !== "string" || item.content.length > 6000)) {
+      return res.status(400).json({ error: "El mensaje de KIRA AI no es válido." });
+    }
+    const profile = await fsGet("users", user.uid);
+    const role = String(profile?.role || "alumno");
+    const context = role === "coach" ? "coach" : role === "admin" ? "administrador" : role === "hr_admin" || role === "company_admin" ? "recursos humanos; solo métricas agregadas" : "alumno";
+    const transcript = messages.map((item: any) => (item.role === "assistant" ? "KIRA: " : "Usuario: ") + item.content).join("\n");
+    const prompt = "Eres KIRA, asistente profesional de coaching y bienestar. Responde en español, con claridad y sin inventar datos. Contexto de portal: " + context + ". Ruta: " + route + ". No solicites ni reveles contraseñas, secretos, diarios ajenos, transcripciones privadas ni datos personales de terceros.\n" + transcript;
+    const textResult = await generatePurposeAi(prompt);
+    return res.json({ text: textResult || "Ahora mismo no puedo generar una respuesta. Inténtalo nuevamente." });
+  } catch (error: any) {
+    console.error("[AI Chat] Request failed:", error);
+    return res.status(503).json({ error: "KIRA AI no está disponible temporalmente.", fallback: true });
+  }
+});
+
+app.post("/api/ai/analyze-journal", async (req, res) => {
+  try {
+    const user = await requireFirebaseUser(req, res);
+    if (!user || !allowPurposeAi(user.uid, res)) return;
+    const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+    const mood = typeof req.body?.mood === "string" ? req.body.mood.slice(0, 40) : "no especificado";
+    if (!text || text.length > 20000) return res.status(400).json({ error: "La entrada del diario debe tener entre 1 y 20.000 caracteres." });
+    const prompt = "Analiza esta reflexión personal con empatía y sin diagnosticar. Devuelve JSON con: summary (máx. 80 palabras), themes (máx. 5 strings), gentleQuestion (una pregunta), supportiveNudge (una frase). Estado indicado: " + mood + ". Texto privado del propio usuario: " + text;
+    const result = await generatePurposeAi(prompt);
+    return res.json({ analysis: result });
+  } catch (error: any) {
+    console.error("[AI Journal] Analysis failed:", error);
+    return res.status(503).json({ error: "No fue posible analizar la reflexión ahora.", fallback: true });
+  }
+});
+
+app.post("/api/ai/nudges", async (req, res) => {
+  try {
+    const user = await requireFirebaseUser(req, res);
+    if (!user || !allowPurposeAi(user.uid, res)) return;
+    const profile = await fsGet("users", user.uid);
+    if (!profile || profile.role !== "alumno") return res.status(403).json({ error: "Los nudges de aprendizaje están disponibles para alumnos." });
+    const points = Math.max(0, Number(profile.energyPoints ?? profile.points ?? 0));
+    const enrollments = (await fsListDocuments("enrollments", 1000)).filter((item: any) => item.userId === user.uid);
+    const active = enrollments.length;
+    const prompt = "Crea un nudge breve, respetuoso y práctico para un alumno de una plataforma de aprendizaje. Responde JSON con title (máx. 50 caracteres), message (máx. 180 caracteres), type (motivation|progress|wellbeing). Datos agregados del alumno: puntos=" + points + ", matrículas=" + active + ". No inventes progreso ni datos personales.";
+    const raw = await generatePurposeAi(prompt);
+    let parsed: any;
+    try { parsed = JSON.parse(raw); } catch { parsed = { title: "Un paso a la vez", message: raw.slice(0, 180), type: "motivation" }; }
+    const id = randomBytes(12).toString("hex");
+    const nudge = { title: String(parsed.title || "Un paso a la vez").slice(0, 50), message: String(parsed.message || "Dedica unos minutos a tu siguiente aprendizaje.").slice(0, 180), type: ["motivation", "progress", "wellbeing"].includes(parsed.type) ? parsed.type : "motivation", createdAt: new Date().toISOString(), readAt: null };
+    await fsCommit([fsCreate("users/" + user.uid + "/nudges", id, nudge)]);
+    return res.status(201).json({ id, ...nudge });
+  } catch (error: any) {
+    console.error("[AI Nudges] Generation failed:", error);
+    return res.status(503).json({ error: "No fue posible generar un recordatorio ahora.", fallback: true });
+  }
+});
+
+app.post("/api/ai/analyze-session", async (req, res) => {
+  try {
+    const user = await requireFirebaseUser(req, res);
+    if (!user || !allowPurposeAi(user.uid, res)) return;
+    const profile = await fsGet("users", user.uid);
+    if (!profile || !["coach", "admin"].includes(String(profile.role))) return res.status(403).json({ error: "Solo coaches autorizados pueden analizar sesiones." });
+    const transcript = typeof req.body?.transcript === "string" ? req.body.transcript.trim() : "";
+    const consent = req.body?.consent === true;
+    if (!consent) return res.status(400).json({ error: "Se requiere consentimiento explícito de las personas participantes." });
+    if (!transcript || transcript.length > 30000) return res.status(400).json({ error: "La transcripción debe tener entre 1 y 30.000 caracteres." });
+    const prompt = "Analiza esta sesión de coaching con enfoque profesional, sin diagnóstico clínico. Devuelve JSON con resumen_ejecutivo, nuevos_compromisos, patrones_detectados, focus_heatmap (pasado_problemas, presente, futuro_soluciones de 0 a 100), prosodic_inference (si no hay audio indica no disponible), roleplay_scenarios y personal_mantra. Transcripción autorizada: " + transcript;
+    const result = await generatePurposeAi(prompt);
+    return res.json({ analysis: result });
+  } catch (error: any) {
+    console.error("[AI Session] Analysis failed:", error);
+    return res.status(503).json({ error: "El análisis de sesión no está disponible temporalmente.", fallback: true });
+  }
+});
+
+app.post("/api/ai/business-insights", async (req, res) => {
+  try {
+    const user = await requireSuperAdmin(req, res);
+    if (!user) return;
+    const period = ["24h", "7d", "30d", "90d"].includes(String(req.body?.period)) ? String(req.body.period) : "30d";
+    const cacheKey = "business-insights:" + period;
+    const cached = getCache(cacheKey);
+    if (cached) return res.json({ insights: cached, cached: true });
+    const collections = ["users", "companies", "courses", "enrollments", "sessions", "transactions", "orders", "certificates"];
+    const counts: Record<string, number> = {};
+    for (const name of collections) counts[name] = (await fsListDocuments(name, 1000)).length;
+    const aggregateOnly = { period, counts, generatedAt: new Date().toISOString() };
+    const prompt = "Analiza únicamente estos conteos agregados de negocio. No infieras identidades, PII, salud individual ni valores monetarios no suministrados. Devuelve un resumen ejecutivo breve, riesgos operativos y tres recomendaciones. Datos: " + JSON.stringify(aggregateOnly);
+    const result = await generatePurposeAi(prompt);
+    const payload = { ...aggregateOnly, summary: result };
+    setCache(cacheKey, payload, 60 * 60 * 1000);
+    return res.json({ insights: payload, cached: false });
+  } catch (error: any) {
+    console.error("[AI Business Insights] Failed:", error);
+    return res.status(503).json({ error: "Los indicadores de negocio no están disponibles temporalmente.", fallback: true });
+  }
+});
+
+
 /* Superadmin-only payment configuration API. Provider credentials are AES-256-GCM encrypted at rest. */
 app.get("/api/admin/payments/config",async(req,res)=>{
   try{
