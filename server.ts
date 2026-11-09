@@ -735,7 +735,10 @@ app.patch("/api/admin/crm/leads/:id", async (req, res) => {
       if (!allowedStages.includes(body.stage)) return res.status(400).json({ error: "Etapa CRM inválida." });
       next.stage = body.stage;
     }
-    if (typeof body.assignedTo === "string") next.assignedTo = body.assignedTo.slice(0, 180);
+    if (typeof body.assignedTo === "string") {
+      if (user.email?.toLowerCase() !== "safeness.c.a@gmail.com" && body.assignedTo !== user.uid) return res.status(403).json({ error: "Solo el superadministrador puede reasignar leads a otro responsable." });
+      next.assignedTo = body.assignedTo.slice(0, 180);
+    }
     if (body.score !== undefined) {
       const score = Number(body.score); if (!Number.isInteger(score) || score < 0 || score > 100) return res.status(400).json({ error: "Score debe estar entre 0 y 100." });
       next.score = score;
