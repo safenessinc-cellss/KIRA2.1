@@ -43,6 +43,6 @@ export function aggregateCompanyWellbeing(
     averageEnergy,
     averageClarity,
     averageEngagement: Math.round(((averageEnergy + averageClarity) / 2) * 100) / 100,
-    highRiskCount
+    highRiskCount: highRiskCount === 0 || highRiskCount === rows.length || (highRiskCount >= minimumCohortSize && rows.length - highRiskCount >= minimumCohortSize) ? highRiskCount : null
   };
 }
