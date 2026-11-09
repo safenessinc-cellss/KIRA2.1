@@ -26,6 +26,7 @@ try {
     await setDoc(doc(db, "enrollments", "expired-coach-enrollment"), { userId: "student-a", studentName: "Student A", courseId: "paid-course", progress: 25, createdAt: new Date(), paymentStatus: "paid" });
     await setDoc(doc(db, "messages", "private-message"), { chatId: "student-b_coach-a", senderId: "student-b", content: "private", participants: ["coach-a", "student-b"], createdAt: new Date() });
     await setDoc(doc(db, "journals", "journal-b"), { userId: "student-b", content: "private", createdAt: new Date() });
+    await setDoc(doc(db, "journal_entries", "entry-b"), { userId: "student-b", text: "private", mood: "neutral", createdAt: new Date() });
     await setDoc(doc(db, "companies", "company-a"), { name: "Company A" });
     await setDoc(doc(db, "companies", "company-b"), { name: "Company B" });
     await setDoc(doc(db, "companies", "company-a", "members", "company-admin"), { uid: "company-admin", role: "company_admin" });
@@ -67,6 +68,8 @@ try {
   const studentDb = env.authenticatedContext("student-a", { email: "a@example.test" }).firestore();
   await assertSucceeds(setDoc(doc(studentDb, "journals", "journal-a"), { userId: "student-a", content: "my private journal", createdAt: serverTimestamp() }));
   await assertFails(getDoc(doc(studentDb, "journals", "journal-b")));
+  await assertSucceeds(setDoc(doc(studentDb, "journal_entries", "entry-a"), { userId: "student-a", text: "my private entry", mood: "neutral", createdAt: serverTimestamp() }));
+  await assertFails(getDoc(doc(studentDb, "journal_entries", "entry-b")));
   await assertFails(setDoc(doc(studentDb, "transactions", "fake"), { userId: "student-a", amount: 999, status: "paid" }));
   await assertFails(setDoc(doc(studentDb, "orders", "fake"), { userId: "student-a", amount: 1, status: "paid" }));
   await assertFails(setDoc(doc(studentDb, "enrollments", "paid-fake"), { userId: "student-a", courseId: "paid-course", progress: 0, createdAt: serverTimestamp() }));
@@ -115,9 +118,10 @@ try {
 
   const companyDb = env.authenticatedContext("company-admin", { email: "hr@example.test" }).firestore();
   await assertSucceeds(getDoc(doc(companyDb, "companies", "company-a", "wellbeingAggregates", "2026-11")));
-  await assertSucceeds(getDoc(doc(companyDb, "companies", "company-a", "members", "company-admin")));
+  await assertFails(getDoc(doc(companyDb, "companies", "company-a", "members", "company-admin")));
   await assertFails(getDoc(doc(companyDb, "companies", "company-b", "members", "other-admin")));
   await assertFails(getDoc(doc(companyDb, "journals", "journal-b")));
+  await assertFails(getDoc(doc(companyDb, "journal_entries", "entry-b")));
 
   console.log("Firestore rules smoke tests passed.");
 } finally {
