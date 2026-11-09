@@ -9,11 +9,11 @@ import compression from "compression";
 import { verify as verifySignature, createSign, createHmac, createHash, timingSafeEqual, randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
-import { calculateAcademicPerformance, hasScheduleConflict, meetsCompletionThresholds, sessionDayKeysUTC } from "./server/academic-domain";
-import { canSettleInvoice, installmentAmountCents, invoiceDocumentId } from "./server/finance-domain";
-import { outboxFailureTransition } from "./server/outbox-domain";
-import { registerBackofficeExtensions } from "./server/backoffice-extensions";
-import { hasRecentMfaAuthentication } from "./server/security-domain";
+import { calculateAcademicPerformance, hasScheduleConflict, meetsCompletionThresholds, sessionDayKeysUTC } from "./server/academic-domain.js";
+import { canSettleInvoice, installmentAmountCents, invoiceDocumentId } from "./server/finance-domain.js";
+import { outboxFailureTransition } from "./server/outbox-domain.js";
+import { registerBackofficeExtensions } from "./server/backoffice-extensions.js";
+import { hasRecentMfaAuthentication } from "./server/security-domain.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
