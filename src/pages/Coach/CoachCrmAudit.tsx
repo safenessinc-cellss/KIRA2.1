@@ -80,7 +80,7 @@ export function CoachCrmAudit() {
           enrollments: metrics.enrollments,
           coverage: metrics.coverage
         })
-      ].join('\\n\\n');
+      ].join('\n\n');
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
