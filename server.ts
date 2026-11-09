@@ -697,11 +697,45 @@ app.post("/api/ai/business-insights", async (req, res) => {
     const cacheKey = "business-insights:" + period;
     const cached = getCache(cacheKey);
     if (cached) return res.json({ insights: cached, cached: true });
-    const collections = ["users", "companies", "courses", "enrollments", "sessions", "transactions", "orders", "certificates"];
-    const counts: Record<string, number> = {};
-    for (const name of collections) counts[name] = (await fsListDocuments(name, 1000)).length;
-    const aggregateOnly = { period, counts, generatedAt: new Date().toISOString() };
-    const prompt = "Analiza únicamente estos conteos agregados de negocio. No infieras identidades, PII, salud individual ni valores monetarios no suministrados. Devuelve un resumen ejecutivo breve, riesgos operativos y tres recomendaciones. Datos: " + JSON.stringify(aggregateOnly);
+
+    const periodMs: Record<string, number> = { "24h": 86400000, "7d": 604800000, "30d": 2592000000, "90d": 7776000000 };
+    const now = Date.now(), since = now - periodMs[period];
+    const [users, transactions, companies, courses, enrollments, sessions, orders, certificates] = await Promise.all([
+      fsListDocuments("users", 1000), fsListDocuments("transactions", 1000),
+      fsListDocuments("companies", 1000), fsListDocuments("courses", 1000),
+      fsListDocuments("enrollments", 1000), fsListDocuments("sessions", 1000),
+      fsListDocuments("orders", 1000), fsListDocuments("certificates", 1000)
+    ]);
+    const toMillis = (value: any): number => {
+      if (value?.toMillis) return value.toMillis();
+      if (value?.toDate) return value.toDate().getTime();
+      const parsed = new Date(value || 0).getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const paid = transactions.filter((item: any) => ["paid", "completed", "succeeded"].includes(String(item.status || "").toLowerCase()) && toMillis(item.createdAt || item.paidAt) >= since);
+    const revenue: Record<string, number> = {};
+    for (const item of paid) {
+      const currency = String(item.currency || "BRL").toUpperCase();
+      revenue[currency] = (revenue[currency] || 0) + Math.max(0, Number(item.amount || 0));
+    }
+    const revenueSplit = Object.fromEntries(Object.entries(revenue).map(([currency, amount]) => [currency, {
+      gross: Number(amount.toFixed(2)), coach70: Number((amount * 0.7).toFixed(2)), platform30: Number((amount * 0.3).toFixed(2))
+    }]));
+    const dau = users.filter((item: any) => toMillis(item.lastActivityAt || item.lastLoginAt) >= now - 86400000).length;
+    const wau = users.filter((item: any) => toMillis(item.lastActivityAt || item.lastLoginAt) >= now - 604800000).length;
+    const activeMemberships = users.filter((item: any) => item.membershipStatus === "active").length;
+    const expiredMemberships = users.filter((item: any) => item.membershipStatus === "expired").length;
+    const churnProxy = activeMemberships + expiredMemberships > 0 ? Number((expiredMemberships / (activeMemberships + expiredMemberships) * 100).toFixed(1)) : null;
+    const aggregateOnly = {
+      period, generatedAt: new Date().toISOString(),
+      counts: { users: users.length, companies: companies.length, courses: courses.length, enrollments: enrollments.length, sessions: sessions.length, transactions: transactions.length, orders: orders.length, certificates: certificates.length },
+      activity: { dau, wau },
+      memberships: { active: activeMemberships, expired: expiredMemberships, churnProxyPercent: churnProxy },
+      finance: { paidTransactions: paid.length, revenueByCurrency: revenueSplit, split: "70% coach / 30% plataforma" },
+      wellbeing: { burnoutPercent: null, note: "Sin agregado de burnout publicado; no se infiere a partir de datos individuales." },
+      coverage: "Conteos limitados a 1.000 documentos por colección; no equivalen a un ledger histórico completo."
+    };
+    const prompt = "Resume estos indicadores agregados de KIRA. No infieras identidades, PII, salud individual ni importes ausentes. Aclara las limitaciones de cobertura y que churnProxyPercent es una aproximación por estado de membresía. Devuelve recomendaciones operativas breves. Datos: " + JSON.stringify(aggregateOnly);
     const result = await generatePurposeAi(prompt);
     const payload = { ...aggregateOnly, summary: result };
     setCache(cacheKey, payload, 60 * 60 * 1000);
@@ -711,7 +745,6 @@ app.post("/api/ai/business-insights", async (req, res) => {
     return res.status(503).json({ error: "Los indicadores de negocio no están disponibles temporalmente.", fallback: true });
   }
 });
-
 
 /* Superadmin-only payment configuration API. Provider credentials are AES-256-GCM encrypted at rest. */
 app.get("/api/admin/payments/config",async(req,res)=>{
