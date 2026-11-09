@@ -865,6 +865,148 @@ app.post("/api/journals", async (req, res) => {
   }
 });
 
+app.get("/api/student/wellbeing/checkin", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const day = new Date().toISOString().slice(0, 10);
+    const id = idSafe(user.uid + "_" + day);
+    const item = await fsGet("wellbeing_checkins", id);
+    return res.json({ item: item || null, day });
+  } catch (error) {
+    console.error("[Wellbeing Check-in] read failed:", error);
+    return res.status(500).json({ error: "No se pudo consultar el check-in de hoy." });
+  }
+});
+
+app.post("/api/wellbeing/checkin", async (req, res) => {
+  let transaction = "";
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    if (!profile || !["alumno", "company_member"].includes(String(profile.role || ""))) {
+      return res.status(403).json({ error: "El check-in está disponible únicamente para alumnos y colaboradores." });
+    }
+    const energyLevel = Number(req.body?.energyLevel);
+    const clarityLevel = Number(req.body?.clarityLevel);
+    const shareWithCompany = req.body?.shareWithCompany === true && Boolean(profile.companyId);
+    if (!Number.isInteger(energyLevel) || energyLevel < 1 || energyLevel > 5 ||
+      !Number.isInteger(clarityLevel) || clarityLevel < 1 || clarityLevel > 5) {
+      return res.status(400).json({ error: "Energía y claridad deben estar entre 1 y 5." });
+    }
+    const day = new Date().toISOString().slice(0, 10);
+    const id = idSafe(user.uid + "_" + day);
+    transaction = await beginFirestoreTransaction();
+    const existing = await fsGetInTransaction("wellbeing_checkins", id, transaction);
+    const now = new Date();
+    const item = {
+      userId: user.uid,
+      companyId: shareWithCompany ? String(profile.companyId) : null,
+      shareWithCompany,
+      energyLevel,
+      clarityLevel,
+      period: day.slice(0, 7),
+      day,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+      ...(shareWithCompany ? { consentAt: existing?.consentAt || now } : { consentAt: null })
+    };
+    const writes: any[] = [
+      existing ? fsUpdate("wellbeing_checkins", id, item) : fsCreate("wellbeing_checkins", id, item)
+    ];
+    if (!existing) writes.push({
+      transform: {
+        document: fsDocumentPath("users", user.uid),
+        fieldTransforms: [{ fieldPath: "points", increment: { integerValue: "5" } }]
+      }
+    });
+    await fsCommitTransaction(writes, transaction);
+    transaction = "";
+    return res.status(existing ? 200 : 201).json({
+      item: { energyLevel, clarityLevel, shareWithCompany, day },
+      pointsAwarded: existing ? 0 : 5
+    });
+  } catch (error: any) {
+    if (transaction) await rollbackFirestoreTransaction(transaction);
+    console.error("[Wellbeing Check-in] save failed:", error);
+    return res.status(error?.status === 409 || error?.status === 412 ? 409 : 500).json({ error: "No se pudo guardar el check-in." });
+  }
+});
+
+app.get("/api/cron/hr/aggregate", async (req, res) => {
+  try {
+    const secret = String(process.env.CRON_SECRET || "");
+    const authHeader = String(req.headers.authorization || "");
+    if (!secret) return res.status(503).json({ error: "CRON_SECRET no está configurado." });
+    if (authHeader !== "Bearer " + secret) return res.status(401).json({ error: "No autorizado." });
+    if (KIRA_DEMO_MODE) return res.status(423).json({ error: "El modo DEMO no permite generar agregados." });
+
+    const period = new Date().toISOString().slice(0, 7);
+    const [users, checkins] = await Promise.all([
+      fsListAllDocuments("users", 20000),
+      fsListAllDocuments("wellbeing_checkins", 100000)
+    ]);
+    const companyIds = new Set(users.map((item: any) => String(item.companyId || "")).filter(Boolean));
+    const participants = new Map<string, Map<string, any>>();
+    for (const item of checkins) {
+      if (item.period !== period || item.shareWithCompany !== true || !item.companyId || !item.userId) continue;
+      const companyId = String(item.companyId);
+      const companyMap = participants.get(companyId) || new Map<string, any>();
+      const previous = companyMap.get(String(item.userId));
+      const currentDate = new Date(item.updatedAt || item.createdAt || 0).getTime();
+      const previousDate = previous ? new Date(previous.updatedAt || previous.createdAt || 0).getTime() : -1;
+      if (!previous || currentDate > previousDate) companyMap.set(String(item.userId), item);
+      participants.set(companyId, companyMap);
+    }
+
+    let published = 0;
+    let suppressed = 0;
+    for (const companyId of companyIds) {
+      const rows = [...(participants.get(companyId)?.values() || [])];
+      const collectionName = "companies/" + idSafe(companyId) + "/wellbeingAggregates";
+      const aggregateId = idSafe(period);
+      const existing = await fsGet(collectionName, aggregateId);
+      const now = new Date();
+      let aggregate: any;
+      if (rows.length < 5) {
+        aggregate = {
+          period,
+          sampleSize: 0,
+          minimumCohortSize: 5,
+          suppressed: true,
+          updatedAt: now
+        };
+        suppressed++;
+      } else {
+        const average = (key: "energyLevel" | "clarityLevel") =>
+          Math.round(rows.reduce((sum, row) => sum + Number(row[key] || 0), 0) / rows.length * 100) / 100;
+        const averageEnergy = average("energyLevel");
+        const averageClarity = average("clarityLevel");
+        const highRiskCount = rows.filter(row => Number(row.energyLevel) <= 2 || Number(row.clarityLevel) <= 2).length;
+        aggregate = {
+          period,
+          sampleSize: rows.length,
+          minimumCohortSize: 5,
+          suppressed: false,
+          averageEnergy,
+          averageClarity,
+          averageEngagement: Math.round(((averageEnergy + averageClarity) / 2) * 100) / 100,
+          highRiskCount,
+          updatedAt: now
+        };
+        published++;
+      }
+      const write = existing
+        ? fsUpdate(collectionName, aggregateId, aggregate)
+        : fsCreate(collectionName, aggregateId, aggregate);
+      await fsCommit([write]);
+    }
+    return res.json({ period, companiesProcessed: companyIds.size, published, suppressed });
+  } catch (error) {
+    console.error("[HR Aggregation] refresh failed:", error);
+    return res.status(500).json({ error: "No se pudieron actualizar los agregados corporativos." });
+  }
+});
+
 app.get("/api/student/homework", async (req, res) => {
   try {
     const user = await verifiedUser(req, res); if (!user) return;
