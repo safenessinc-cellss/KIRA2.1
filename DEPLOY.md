@@ -35,7 +35,7 @@ La auditoría verifica referencias de código, no los valores del panel. No se c
 - `FIREBASE_CLIENT_EMAIL` (consumida por `server.ts`; legacy JSON aún compatible)
 - `FIREBASE_PRIVATE_KEY` (consumida por `server.ts`; legacy JSON aún compatible)
 - `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET` (validar consumo en el webhook vigente)
+- `STRIPE_WEBHOOK_SECRET` (consumida por la verificación de firma en `/api/webhooks/stripe`)
 - `GOOGLE_GENAI_API_KEY` (consumida por `server.ts`; legacy `GEMINI_API_KEY`)
 - `APP_URL` (consumida por `server.ts`; fallback `KIRA_APP_URL`)
 
@@ -62,8 +62,8 @@ Mantener el webhook existente y su validación de firma. No crear una segunda ru
 5. Rollback: Vercel → Deployments → seleccionar deployment Production anterior validado → Promote. No promover automáticamente un build no probado.
 
 ## Estado de ejecución de este release
-- GitHub Actions inicial detectó que \`npm ci\` falla porque el \`package-lock.json\` existente no contiene dependencias que npm espera. El workflow se ajustó a \`npm install --no-audit --no-fund\` para poder evaluar build/typecheck mientras se corrige el lockfile.
-- Vercel Preview no pudo crearse: la API de Vercel devolvió HTTP 402 por límite \`api-deployments-free-per-day\` y ventana de 24 horas. No se modificó el dashboard.
+- GitHub Actions inicial detectó que `npm ci` falla porque el `package-lock.json` existente no contiene dependencias que npm espera. El workflow se ajustó a `npm install --no-audit --no-fund` para poder evaluar build/typecheck mientras se corrige el lockfile.
+- Vercel Preview no pudo crearse: la API de Vercel devolvió HTTP 402 por límite `api-deployments-free-per-day` y ventana de 24 horas. No se modificó el dashboard.
 - Producción y reglas remotas no se han modificado.
 
 ## Limitaciones de esta auditoría
