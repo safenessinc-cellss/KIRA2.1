@@ -450,6 +450,7 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
 }
 
 const app = express();
+const KIRA_DEMO_MODE = String(process.env.KIRA_DEMO_MODE || "").toLowerCase() === "true";
 app.use(compression({
   filter: (req, res) => {
     if (req.headers['x-no-compression']) return false;
@@ -457,6 +458,18 @@ app.use(compression({
   }
 }));
 app.use(express.json({ limit: "5mb", verify: (req: any, _res, buffer) => { req.rawBody = Buffer.from(buffer); } })); // Preserve exact webhook bytes
+
+// Explicit read-only mode: do not expose write endpoints until required server secrets and E2E gates are satisfied.
+app.use((req, res, next) => {
+  if (KIRA_DEMO_MODE && req.path.startsWith("/api/") && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+    return res.status(423).json({
+      code: "KIRA_DEMO_READ_ONLY",
+      mode: "demo",
+      error: "KIRA está en modo DEMO de solo lectura. Las operaciones reales se habilitan al configurar las credenciales y desactivar el modo demo."
+    });
+  }
+  return next();
+});
 
 // API Routes
 app.get("/api/firebase/messaging-config", (_req, res) => {
@@ -477,8 +490,21 @@ app.get("/api/firebase/messaging-config", (_req, res) => {
   return res.json(config);
 });
 
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
+app.get("/api/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    mode: KIRA_DEMO_MODE ? "demo" : "production",
+    readOnly: KIRA_DEMO_MODE,
+    integrations: {
+      firebaseAdmin: !!process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
+      certificates: !!(process.env.KIRA_CERT_SECRET || process.env.KIRA_CERTIFICATE_SIGNING_SECRET),
+      captcha: !!process.env.LANDING_CAPTCHA_SECRET,
+      stripe: !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET),
+      mercadoPago: !!(process.env.MERCADOPAGO_ACCESS_TOKEN && process.env.MERCADOPAGO_WEBHOOK_SECRET),
+      whatsapp: !!process.env.WHATSAPP_WEBHOOK_SECRET,
+      gemini: isValidGeminiKey(process.env.GEMINI_API_KEY)
+    }
+  });
 });
 
 // Report configuration truthfully; never claim the AI is ready when no key is configured.
