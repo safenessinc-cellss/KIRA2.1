@@ -315,36 +315,88 @@ function certSignature(data: any): string {
   return createHmac("sha256", secret).update(canonical).digest("hex");
 }
 async function fulfillOrder(orderId: string, provider: string, paymentId: string, eventId: string, paidMinor: number, currency: string, expectedUserId?: string): Promise<void> {
-  const order = await fsGet("orders", orderId);
-  if (!order) throw new Error("La orden no existe.");
-  if (order.status === "paid") return;
-  if (order.provider !== provider || (expectedUserId && order.userId !== expectedUserId) || Math.abs(Math.round(Number(order.amount) * 100) - paidMinor) > 1 || String(order.currency).toLowerCase() !== currency.toLowerCase()) throw new Error("El importe, la moneda, el usuario o el proveedor no coincide con la orden.");
-  const invoice = order.invoiceId ? await fsGet("invoices", String(order.invoiceId)) : null;
-  if (order.invoiceId && !canSettleInvoice(invoice, paidMinor, currency, order.userId)) throw new Error("La factura no coincide con el pago o ya fue liquidada.");
-  const now = new Date().toISOString();
-  const writes: any[] = [
-    fsCreate("paymentEvents", idSafe(provider + "_" + eventId), { provider, eventId, orderId, status: "processed", processedAt: now }),
-    fsCreate("transactions", idSafe(provider + "_" + paymentId), { userId: order.userId, orderId, courseId: (order.items || []).find((item: any) => item.type === "course")?.id || "", courseIds: (order.items || []).filter((item: any) => item.type === "course").map((item: any) => item.id), provider, providerPaymentId: paymentId, amount: order.amount, currency: order.currency, status: "paid", createdAt: now }),
-    fsUpdate("orders", orderId, { ...order, status: "paid", providerPaymentId: paymentId, paidAt: now, updatedAt: now }),
-    fsCreate("auditLogs", idSafe("payment_" + provider + "_" + paymentId), { actorId: "payment_webhook", action: "payment.confirmed", targetId: orderId, provider, paymentId, amount: order.amount, currency: order.currency, createdAt: now }),
-    fsCreate("notifications", idSafe("payment_" + orderId), { userId: order.userId, title: "Pago confirmado", message: "Tu pago fue verificado. El acceso comprado ya está siendo habilitado.", type: "system", read: false, createdAt: now })
-  ];
-  if (invoice) {
-    writes.push(fsCreate("invoice_payment_claims", idSafe(String(order.invoiceId)), { invoiceId: order.invoiceId, paymentId, orderId, claimedAt: now }));
-    writes.push(fsUpdate("invoices", String(order.invoiceId), { ...invoice, status: "paid", paymentId, paidAt: now, updatedAt: now }));
-    writes.push(fsCreate("outbox", "invoice_paid_" + order.invoiceId, { eventId: "invoice.paid." + order.invoiceId, type: "invoice.paid.v1", aggregate: "invoice", aggregateId: String(order.invoiceId), schemaVersion: 1, payload: { invoiceId: order.invoiceId, enrollmentId: invoice.enrollmentId, studentId: invoice.studentId, paymentId, orderId }, status: "pending", attempts: 0, createdAt: now }));
-  }
-  const buyerProfile = await fsGet("users", order.userId);
-  for (const item of order.items || []) {
-    if (item.type === "course" || item.collectionName === "courses") {
+  const transaction = await beginFirestoreTransaction();
+  let openTransaction = transaction;
+  try {
+    const order = await fsGetInTransaction("orders", orderId, transaction);
+    if (!order) throw new Error("La orden no existe.");
+    const eventDocId = idSafe(provider + "_" + eventId);
+    const paymentDocId = idSafe(provider + "_" + paymentId);
+    const [existingEvent, existingPayment] = await Promise.all([
+      fsGetInTransaction("paymentEvents", eventDocId, transaction),
+      fsGetInTransaction("transactions", paymentDocId, transaction)
+    ]);
+    if (existingEvent?.status === "processed" || order.status === "paid") {
+      await rollbackFirestoreTransaction(transaction); openTransaction = "";
+      return;
+    }
+    if (existingPayment) {
+      if (existingPayment.orderId === orderId && existingPayment.status === "paid") {
+        await rollbackFirestoreTransaction(transaction); openTransaction = "";
+        return;
+      }
+      throw new Error("El identificador de pago ya está asociado a otra orden.");
+    }
+    if (order.provider !== provider || (expectedUserId && order.userId !== expectedUserId)
+      || Math.abs(Math.round(Number(order.amount) * 100) - paidMinor) > 1
+      || String(order.currency).toLowerCase() !== currency.toLowerCase()) {
+      throw new Error("El importe, la moneda, el usuario o el proveedor no coincide con la orden.");
+    }
+
+    const invoiceId = order.invoiceId ? String(order.invoiceId) : "";
+    let invoice: any = null, invoiceClaim: any = null;
+    if (invoiceId) {
+      [invoice, invoiceClaim] = await Promise.all([
+        fsGetInTransaction("invoices", invoiceId, transaction),
+        fsGetInTransaction("invoice_payment_claims", idSafe(invoiceId), transaction)
+      ]);
+      if (invoiceClaim || !canSettleInvoice(invoice, paidMinor, currency, order.userId)) {
+        throw new Error("La factura no coincide con el pago o ya fue liquidada/reclamada.");
+      }
+    }
+
+    const items = Array.isArray(order.items) ? order.items : [];
+    const courseItems = items.filter((item: any) => item.type === "course" || item.collectionName === "courses");
+    const bookItems = items.filter((item: any) => item.collectionName === "books" || item.type === "book");
+    const membershipItems = items.filter((item: any) => item.type === "membership");
+    const buyerProfile = await fsGetInTransaction("users", order.userId, transaction);
+    const [courseEnrollments, bookRecords, memberships] = await Promise.all([
+      Promise.all(courseItems.map((item: any) => fsGetInTransaction("enrollments", idSafe(order.userId + "_" + item.id), transaction))),
+      Promise.all(bookItems.map(async (item: any) => {
+        const purchaseId = idSafe(order.userId + "_" + orderId + "_" + item.id);
+        const entitlementId = idSafe(order.userId + "_" + item.id);
+        const [purchase, entitlement] = await Promise.all([
+          fsGetInTransaction("purchases", purchaseId, transaction),
+          fsGetInTransaction("bookEntitlements", entitlementId, transaction)
+        ]);
+        return { purchaseId, entitlementId, purchase, entitlement, item };
+      })),
+      Promise.all(membershipItems.map((item: any) => fsGetInTransaction("memberships", idSafe(order.userId + "_" + orderId), transaction)))
+    ]);
+
+    const now = new Date().toISOString();
+    const writes: any[] = [
+      fsCreate("paymentEvents", eventDocId, { provider, eventId, orderId, status: "processed", processedAt: now }),
+      fsCreate("transactions", paymentDocId, { userId: order.userId, orderId, courseId: courseItems[0]?.id || "", courseIds: courseItems.map((item: any) => item.id), provider, providerPaymentId: paymentId, amount: order.amount, currency: order.currency, status: "paid", createdAt: now }),
+      fsUpdate("orders", orderId, { ...order, status: "paid", providerPaymentId: paymentId, paidAt: now, updatedAt: now }),
+      fsCreate("auditLogs", idSafe("payment_" + provider + "_" + paymentId), { actorId: "payment_webhook", action: "payment.confirmed", targetId: orderId, provider, paymentId, amount: order.amount, currency: order.currency, createdAt: now }),
+      fsCreate("notifications", idSafe("payment_" + orderId), { userId: order.userId, title: "Pago confirmado", message: "Tu pago fue verificado. El acceso comprado ya está siendo habilitado.", type: "system", read: false, createdAt: now })
+    ];
+    if (invoice) {
+      writes.push(fsCreate("invoice_payment_claims", idSafe(invoiceId), { invoiceId, paymentId, orderId, claimedAt: now }));
+      writes.push(fsUpdate("invoices", invoiceId, { ...invoice, status: "paid", paymentId, paidAt: now, updatedAt: now }));
+      writes.push(fsCreate("outbox", "invoice_paid_" + invoiceId, { eventId: "invoice.paid." + invoiceId, type: "invoice.paid.v1", aggregate: "invoice", aggregateId: invoiceId, schemaVersion: 1, payload: { invoiceId, enrollmentId: invoice.enrollmentId, studentId: invoice.studentId, paymentId, orderId }, status: "pending", attempts: 0, createdAt: now }));
+    }
+    courseItems.forEach((item: any, index: number) => {
+      const existingEnrollment = courseEnrollments[index];
       const enrollmentId = idSafe(order.userId + "_" + item.id);
-      const existingEnrollment = await fsGet("enrollments", enrollmentId);
       const enrollment = {
         ...(existingEnrollment || {}),
         userId: order.userId, studentName: existingEnrollment?.studentName || buyerProfile?.displayName || buyerProfile?.name || "Alumno",
         studentEmail: existingEnrollment?.studentEmail || buyerProfile?.email || "", studentAvatar: existingEnrollment?.studentAvatar || buyerProfile?.photoURL || "",
         courseId: item.id, progress: Number(existingEnrollment?.progress || 0), completed: existingEnrollment?.completed === true,
-        courseCompleted: existingEnrollment?.courseCompleted === true, status: existingEnrollment?.completed === true ? "completed" : "active",
+        courseCompleted: existingEnrollment?.courseCompleted === true,
+        status: existingEnrollment?.status === "completed" ? "completed" : existingEnrollment?.status === "suspended" ? "suspended" : "active",
         paymentOrderId: orderId, paymentStatus: "paid", paidAt: now, updatedAt: now, createdAt: existingEnrollment?.createdAt || now
       };
       writes.push(existingEnrollment ? fsUpdate("enrollments", enrollmentId, enrollment) : fsCreate("enrollments", enrollmentId, enrollment));
@@ -353,27 +405,33 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
         aggregate: "enrollment", aggregateId: enrollmentId, schemaVersion: 1,
         payload: { enrollmentId, userId: order.userId, courseId: item.id, orderId }, status: "pending", attempts: 0, createdAt: now
       }));
-    } else if (item.collectionName === "books" || item.type === "book") {
-      const purchaseId = idSafe(order.userId + "_" + orderId + "_" + item.id);
-      writes.push(fsCreate("purchases", purchaseId, { userId: order.userId, productId: item.id, productType: "book", orderId, paymentStatus: "paid", createdAt: now }));
-      const entitlementId = idSafe(order.userId + "_" + item.id);
-      const existingEntitlement = await fsGet("bookEntitlements", entitlementId);
-      const entitlement = { userId: order.userId, productId: item.id, status: "active", paymentStatus: "paid", orderId, grantedAt: now };
-      writes.push(existingEntitlement ? fsUpdate("bookEntitlements", entitlementId, entitlement) : fsCreate("bookEntitlements", entitlementId, entitlement));
-    } else if (item.type === "membership") {
+    });
+    bookRecords.forEach(({ purchaseId, entitlementId, purchase, entitlement, item }: any) => {
+      const purchase = { userId: order.userId, productId: item.id, productType: "book", orderId, paymentStatus: "paid", createdAt: purchase?.createdAt || now };
+      writes.push(purchase ? fsUpdate("purchases", purchaseId, purchase) : fsCreate("purchases", purchaseId, purchase));
+      const nextEntitlement = { userId: order.userId, productId: item.id, status: "active", paymentStatus: "paid", orderId, grantedAt: now };
+      writes.push(entitlement ? fsUpdate("bookEntitlements", entitlementId, nextEntitlement) : fsCreate("bookEntitlements", entitlementId, nextEntitlement));
+    });
+    membershipItems.forEach((item: any, index: number) => {
+      const existingMembership = memberships[index];
       const durationDays = Math.max(1, Math.min(3650, Number(item.durationDays || 365)));
       const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
-      const profile = await fsGet("users", order.userId);
-      if (profile) writes.push(fsUpdate("users", order.userId, { ...profile, membershipStatus: "active", membershipPaidAt: now, membershipExpiresAt: expiresAt, membershipPlanId: item.id, membershipPlanName: item.title }));
-      writes.push(fsCreate("memberships", idSafe(order.userId + "_" + orderId), { userId: order.userId, planId: item.id, planTitle: item.title, status: "active", paymentOrderId: orderId, startsAt: now, expiresAt, durationDays, autoRenew: false }));
-    }
+      const membershipId = idSafe(order.userId + "_" + orderId);
+      const membership = { userId: order.userId, planId: item.id, planTitle: item.title, status: "active", paymentOrderId: orderId, startsAt: now, expiresAt, durationDays, autoRenew: false };
+      writes.push(existingMembership ? fsUpdate("memberships", membershipId, membership) : fsCreate("memberships", membershipId, membership));
+      if (buyerProfile) writes.push(fsUpdate("users", order.userId, { ...buyerProfile, membershipStatus: "active", membershipPaidAt: now, membershipExpiresAt: expiresAt, membershipPlanId: item.id, membershipPlanName: item.title }));
+    });
+    writes.push(fsCreate("outbox", "payment_paid_" + orderId, {
+      eventId: "payment.paid." + orderId, type: "payment.paid.v1", aggregate: "order", aggregateId: orderId,
+      schemaVersion: 1, payload: { orderId, provider, paymentId, userId: order.userId, amount: order.amount, currency: order.currency },
+      status: "pending", attempts: 0, createdAt: now
+    }));
+    await fsCommitTransaction(writes, transaction);
+    openTransaction = "";
+  } catch (error) {
+    if (openTransaction) await rollbackFirestoreTransaction(openTransaction);
+    throw error;
   }
-  writes.push(fsCreate("outbox", "payment_paid_" + orderId, {
-    eventId: "payment.paid." + orderId, type: "payment.paid.v1", aggregate: "order", aggregateId: orderId,
-    schemaVersion: 1, payload: { orderId, provider, paymentId, userId: order.userId, amount: order.amount, currency: order.currency },
-    status: "pending", attempts: 0, createdAt: now
-  }));
-  await fsCommit(writes);
 }
 
 const app = express();
