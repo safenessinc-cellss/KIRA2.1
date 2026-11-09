@@ -2880,7 +2880,7 @@ registerBackofficeExtensions(app, {
 });
 
 async function startLocalServer() {
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
   
   // Vite integration
   if (process.env.NODE_ENV !== "production") {
