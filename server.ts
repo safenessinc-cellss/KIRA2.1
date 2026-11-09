@@ -1032,7 +1032,9 @@ app.get("/api/coach/homework", async (req, res) => {
       ...item,
       courseTitle: item.courseTitle || courseById.get(String(item.courseId || ""))?.title || "Curso"
     })).sort((a: any, b: any) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-    return res.json({ items, assignments: coachAssignments, total: items.length, generatedAt: new Date().toISOString() });
+    const coachCourses = courses.filter((course: any) => isAdmin || course.coachId === user.uid)
+      .map((course: any) => ({ id: course.id, title: course.title, status: course.status || "draft" }));
+    return res.json({ items, assignments: coachAssignments, courses: coachCourses, total: items.length, generatedAt: new Date().toISOString() });
   } catch (error) {
     console.error("[Coach Homework] list failed:", error);
     return res.status(500).json({ error: "No se pudieron cargar las entregas." });
