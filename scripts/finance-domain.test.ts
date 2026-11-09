@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canSettleInvoice, installmentAmountCents, invoiceDocumentId } from "../server/finance-domain";
+import { canSettleInvoice, installmentAmountCents, invoiceDocumentId, isValidPeriodLabel } from "../server/finance-domain";
 
 test("invoice document IDs are deterministic per enrollment and period", () => {
   assert.equal(invoiceDocumentId("enroll/123", "2026-11"), "enroll_123_2026-11");
@@ -21,4 +21,12 @@ test("invoice settlement requires verified matching student, amount, currency an
   assert.equal(canSettleInvoice(invoice, 12499, "BRL", "student-1"), false);
   assert.equal(canSettleInvoice(invoice, 12500, "BRL", "student-2"), false);
   assert.equal(canSettleInvoice({ ...invoice, status: "paid" }, 12500, "BRL", "student-1"), false);
+});
+
+test("monthly period labels accept valid YYYY-MM and reject invalid months", () => {
+  assert.equal(isValidPeriodLabel("2026-11"), true);
+  assert.equal(isValidPeriodLabel("2026-01"), true);
+  assert.equal(isValidPeriodLabel("2026-00"), false);
+  assert.equal(isValidPeriodLabel("2026-13"), false);
+  assert.equal(isValidPeriodLabel("26-11"), false);
 });

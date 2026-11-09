@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize, reopened]
   workflow_dispatch: {}
   push:
-    branches: [main, "fix/**", "audit/**"]
+    branches: [main, "fix/**", "audit/**", "feature/**"]
 
 permissions:
   contents: read
@@ -37,6 +37,8 @@ jobs:
         run: npm test
       - name: Production frontend build
         run: npm run build
+      - name: Verify installable PWA artifacts
+        run: npm run verify:pwa
       - name: Install Firestore rules test tooling
         run: npm install --no-save --package-lock=false --legacy-peer-deps @firebase/rules-unit-testing firebase-tools
       - name: Run Firestore security rules tests

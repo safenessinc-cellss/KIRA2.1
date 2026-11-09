@@ -10,6 +10,7 @@ test("academic attendance and weighted grade thresholds are deterministic", () =
   );
   assert.equal(performance.attendancePct, 100);
   assert.equal(performance.avgScorePct, 70);
+  assert.equal(performance.lessonsCompleted, 2);
   assert.equal(meetsCompletionThresholds(performance, 75, 60), true);
 });
 

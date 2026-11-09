@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from '../components/Brand';
-import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart } from 'lucide-react';
+import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart, Mic, ClipboardCheck, ShieldCheck, Headset, HeartPulse } from 'lucide-react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { NotificationCenter } from '../components/Notifications';
@@ -58,10 +58,16 @@ export function DashboardLayout({ title }: { title: string }) {
     coach: [
       { to: '/coach', icon: Activity, label: 'Gestión académica', detail: 'Resumen, alumnos y actividad' },
       { to: '/coach/courses', icon: BookOpen, label: 'Studio de cursos', detail: 'Cursos, contenidos y programas' },
+      { to: '/coach/session', icon: Mic, label: 'Session Intelligence', detail: 'Sesiones, transcripción y análisis' },
+      { to: '/coach/homework', icon: ClipboardCheck, label: 'Revisión de tareas', detail: 'Seguimiento y feedback de alumnos' },
+      { to: '/coach/crm-audit', icon: ShieldCheck, label: 'Auditoría CRM', detail: 'Trazabilidad y actividad de clientes' },
+      { to: '/coach/support', icon: Headset, label: 'Soporte', detail: 'Ayuda y acompañamiento' },
       { to: '/coach/profile', icon: Users, label: 'Perfil profesional', detail: 'Datos y presencia del coach' },
     ],
     alumno: [
       { to: '/dashboard', icon: BookOpen, label: 'Mi aprendizaje', detail: 'Plan de aprendizaje y progreso' },
+      { to: '/dashboard/homework', icon: ClipboardCheck, label: 'Mis actividades', detail: 'Entregas y feedback del coach' },
+      { to: '/dashboard/check-in', icon: HeartPulse, label: 'Check-in diario', detail: 'Energía y claridad personal' },
       { to: '/dashboard/elite-library', icon: Sparkles, label: 'Biblioteca', detail: 'Recursos y contenidos exclusivos' },
       { to: '/dashboard/journal', icon: Activity, label: 'Diario inteligente', detail: 'Reflexión y seguimiento personal' },
       { to: '/dashboard/community', icon: Users, label: 'Comunidad', detail: 'Conexión y participación' },
@@ -69,11 +75,13 @@ export function DashboardLayout({ title }: { title: string }) {
     ],
   };
   const currentLinks = links[role as keyof typeof links] || links.alumno;
-  const isActive = (path: string) => path === '/coach'
-    ? location.pathname === '/coach' && !location.search.includes('tab=courses')
-    : path === '/coach/courses'
-      ? location.pathname === '/coach/courses' || (location.pathname === '/coach' && location.search.includes('tab=courses'))
-      : location.pathname === path || (location.pathname.startsWith(path + '/') && path !== '/');
+  const isActive = (path: string) => path === '/coach/support'
+    ? location.pathname === '/coach' && location.search.includes('tab=support')
+    : path === '/coach'
+      ? location.pathname === '/coach' && !location.search.includes('tab=courses') && !location.search.includes('tab=support')
+      : path === '/coach/courses'
+        ? location.pathname === '/coach/courses' || (location.pathname === '/coach' && location.search.includes('tab=courses'))
+        : location.pathname === path || (location.pathname.startsWith(path + '/') && path !== '/');
 
   return (
     <div className="flex min-h-[100dvh] w-full flex-col bg-slate-50 text-slate-900">

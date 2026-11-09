@@ -17,9 +17,206 @@ import { Funnel, PhoneCall, BadgeCheck, GraduationCap, CalendarDays, Layers3, Us
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'certificates' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions';
+type AdminTab = 'dashboard' | 'activity' | 'certificates' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions';
 
 type BackofficeItem = { id: AdminTab; label: string; icon: React.ReactNode; permission: string; ready: boolean; countKey?: 'leads' | 'overdue' };
+
+function OwnerActivityView() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser || currentUser.email?.toLowerCase() !== "safeness.c.a@gmail.com" || !currentUser.emailVerified) {
+        throw new Error("El centro global solo está disponible para la cuenta propietaria verificada.");
+      }
+
+      // Firebase client reads are governed by the owner-only Firestore rules.
+      // This keeps the owner dashboard readable even while server-only service credentials
+      // are not configured in Vercel. Sensitive collections remain excluded by design.
+      const [auditSnap, logsSnap, usersSnap, companiesSnap, coursesSnap, enrollmentsSnap, sessionsSnap, transactionsSnap, ordersSnap, certificatesSnap] = await Promise.all([
+        getDocs(query(collection(db, "auditLogs"), orderBy("createdAt", "desc"), limit(200))),
+        getDocs(query(collection(db, "logs"), orderBy("createdAt", "desc"), limit(100))),
+        getDocs(query(collection(db, "users"), limit(2000))),
+        getDocs(query(collection(db, "companies"), limit(2000))),
+        getDocs(query(collection(db, "courses"), limit(2000))),
+        getDocs(query(collection(db, "enrollments"), limit(2000))),
+        getDocs(query(collection(db, "sessions"), limit(2000))),
+        getDocs(query(collection(db, "transactions"), limit(2000))),
+        getDocs(query(collection(db, "orders"), limit(2000))),
+        getDocs(query(collection(db, "certificates"), limit(2000)))
+      ]);
+
+      const users = usersSnap.docs.map(snapshot => ({ id: snapshot.id, ...snapshot.data() })) as any[];
+      const events: any[] = [
+        ...auditSnap.docs.map(snapshot => {
+          const item = snapshot.data();
+          return {
+            id: "audit:" + snapshot.id, source: "auditLogs",
+            action: String(item.action || "system.event"),
+            actorId: String(item.actorId || "system"),
+            target: String(item.targetId || item.nodePath || ""),
+            provider: String(item.provider || item.source || "KIRA"),
+            status: String(item.status || ""),
+            timestamp: item.createdAt || null,
+            error: ""
+          };
+        }),
+        ...logsSnap.docs.map(snapshot => {
+          const item = snapshot.data();
+          return {
+            id: "log:" + snapshot.id, source: "logs",
+            action: String(item.action || "security.event"),
+            actorId: String(item.actorId || "system"),
+            target: String(item.targetId || ""),
+            provider: "KIRA",
+            status: String(item.status || ""),
+            timestamp: item.createdAt || null,
+            error: ""
+          };
+        }),
+        ...users.filter(item => item.lastLoginAt).map(item => ({
+          id: "login:" + item.id, source: "Firebase Authentication",
+          action: "user.login", actorId: String(item.email || item.id),
+          target: String(item.role || "unknown"), provider: "Firebase",
+          status: String(item.status || item.approvalStatus || "active"),
+          timestamp: item.lastLoginAt, error: ""
+        }))
+      ];
+      const time = (value: any) => {
+        const date = value?.toDate ? value.toDate() : new Date(value || 0);
+        return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+      };
+      events.sort((a, b) => time(b.timestamp) - time(a.timestamp));
+
+      const recentUsers = users
+        .slice()
+        .sort((a, b) => time(b.lastActivityAt || b.lastLoginAt) - time(a.lastActivityAt || a.lastLoginAt))
+        .slice(0, 100)
+        .map(item => ({
+          uid: item.uid || item.id,
+          email: item.email || "",
+          displayName: item.displayName || item.name || "",
+          role: item.role || "unknown",
+          approvalStatus: item.approvalStatus || "",
+          status: item.status || "",
+          companyName: item.companyName || "",
+          lastLoginAt: item.lastLoginAt || null,
+          lastActivityAt: item.lastActivityAt || null
+        }));
+
+      setData({
+        owner: { email: currentUser.email, verified: currentUser.emailVerified },
+        generatedAt: new Date().toISOString(),
+        counts: {
+          users: usersSnap.size, companies: companiesSnap.size, courses: coursesSnap.size,
+          enrollments: enrollmentsSnap.size, sessions: sessionsSnap.size,
+          transactions: transactionsSnap.size, orders: ordersSnap.size,
+          certificates: certificatesSnap.size
+        },
+        eventCount: events.length,
+        events: events.slice(0, 250),
+        recentUsers,
+        limits: { perCollection: 2000, events: 250, recentUsers: 100 },
+        privacy: "Se muestran metadatos operativos y de auditoría. No se consultan contraseñas, secretos, tokens, diarios personales, transcripciones, facturas privadas ni payloads de webhooks."
+      });
+    } catch (cause: any) {
+      console.error("[Owner Activity] Firestore read failed:", cause);
+      setError(cause?.message || "No fue posible leer la actividad autorizada de KIRA. Verifica la cuenta propietaria y las reglas Firestore.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(); }, []);
+
+  const counts = data?.counts || {};
+  const metrics = [
+    ["Usuarios (muestra)", counts.users ?? 0],
+    ["Empresas", counts.companies ?? 0],
+    ["Cursos", counts.courses ?? 0],
+    ["Matrículas", counts.enrollments ?? 0],
+    ["Sesiones", counts.sessions ?? 0],
+    ["Transacciones", counts.transactions ?? 0],
+    ["Órdenes", counts.orders ?? 0],
+    ["Certificados", counts.certificates ?? 0]
+  ];
+
+  const formatTimestamp = (value: any) => {
+    if (!value) return "Sin fecha";
+    const date = value?.toDate ? value.toDate() : new Date(value);
+    return Number.isNaN(date.getTime()) ? "Sin fecha" : date.toLocaleString();
+  };
+
+  return <div className="space-y-6">
+    <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[.18em] text-teal-700">SAFENESS · Propietario único</p>
+          <h2 className="mt-1 text-2xl font-black text-slate-900">Centro de Control Global KIRA</h2>
+          <p className="mt-2 text-sm text-slate-600">Actividad operativa, accesos, auditoría y volumen de los módulos de toda la plataforma.</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">{data?.owner?.email || "safeness.c.a@gmail.com"} · {data?.owner?.verified ? "Cuenta verificada" : "Verificación pendiente"}</p>
+        </div>
+        <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          <Activity size={16} className={loading ? "animate-pulse" : ""}/> Actualizar actividad
+        </button>
+      </div>
+    </header>
+    {error && <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{error}</div>}
+    <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      {metrics.map(([label, value]) => <article key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
+        <p className="mt-2 text-2xl font-black tabular-nums text-slate-900">{loading ? "—" : Number(value).toLocaleString()}</p>
+      </article>)}
+    </section>
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 p-5">
+        <h3 className="font-bold text-slate-900">Registro global de actividad</h3>
+        <p className="mt-1 text-xs text-slate-500">{data?.eventCount ?? 0} eventos encontrados · mostrando hasta 250 recientes</p>
+      </div>
+      {loading ? <div className="p-8 text-center text-sm text-slate-500">Consultando eventos de la plataforma…</div> :
+        !data?.events?.length ? <div className="p-8 text-center text-sm text-slate-500">No hay eventos disponibles en las fuentes de auditoría consultadas.</div> :
+        <div className="max-h-[620px] overflow-auto">
+          {data.events.map((event: any) => <article key={event.id} className="grid gap-2 border-b border-slate-100 px-5 py-4 md:grid-cols-[170px_minmax(0,1fr)_170px]">
+            <time className="text-xs text-slate-500">{formatTimestamp(event.timestamp)}</time>
+            <div className="min-w-0">
+              <p className="break-words text-sm font-bold text-slate-800">{event.action}</p>
+              <p className="mt-1 break-all text-xs text-slate-500">{event.source} · Actor: {event.actorId} · Destino: {event.target || "—"}</p>
+              {event.error && <p className="mt-1 break-words text-xs text-rose-700">{event.error}</p>}
+            </div>
+            <div className="text-xs text-slate-500 md:text-right">{event.provider}{event.status ? " · " + event.status : ""}</div>
+          </article>)}
+        </div>}
+    </section>
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 p-5">
+        <h3 className="font-bold text-slate-900">Usuarios y últimos accesos</h3>
+        <p className="mt-1 text-xs text-slate-500">Identidad, rol, estado y actividad de acceso de toda KIRA.</p>
+      </div>
+      {loading ? <div className="p-8 text-center text-sm text-slate-500">Cargando usuarios…</div> :
+        <div className="max-h-[460px] overflow-auto">
+          <table className="w-full min-w-[700px] text-left text-xs">
+            <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-3">Usuario</th><th className="px-5 py-3">Rol</th><th className="px-5 py-3">Empresa</th><th className="px-5 py-3">Estado</th><th className="px-5 py-3">Último acceso</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {(data?.recentUsers || []).map((item: any) => <tr key={item.uid}>
+                <td className="px-5 py-3"><p className="font-semibold text-slate-800">{item.displayName || "Sin nombre"}</p><p className="mt-1 text-slate-500">{item.email}</p></td>
+                <td className="px-5 py-3 font-semibold text-slate-700">{item.role}</td>
+                <td className="px-5 py-3 text-slate-600">{item.companyName || "—"}</td>
+                <td className="px-5 py-3 text-slate-600">{item.status || item.approvalStatus || "—"}</td>
+                <td className="px-5 py-3 text-slate-500">{formatTimestamp(item.lastLoginAt)}</td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>}
+    </section>
+    <p className="text-xs leading-relaxed text-slate-500">{data?.privacy || "La auditoría muestra metadatos operativos. No se exponen credenciales ni contenido privado de usuarios."}</p>
+    {data?.limits && <p className="text-[10px] text-slate-400">Cobertura de consulta: máximo {data.limits.perCollection} registros por colección; {data.limits.events} eventos y {data.limits.recentUsers} usuarios en la vista. No representa un archivo histórico ilimitado.</p>}
+  </div>;
+}
 
 export function AdminMonitor() {
   const { user } = useAuth();
@@ -49,10 +246,14 @@ export function AdminMonitor() {
   }, [user]);
 
   const isSuperAdmin = user?.email?.toLowerCase() === 'safeness.c.a@gmail.com' && user?.emailVerified === true;
+  useEffect(() => { if (isSuperAdmin) setActiveTab('activity'); }, [isSuperAdmin]);
   const perms: string[] = Array.isArray(profile?.staffPermissions) ? profile.staffPermissions : [];
   const canOpen = (item: BackofficeItem) => item.ready && (isSuperAdmin || (item.permission !== 'superadmin' && (perms.includes('system') || perms.includes(item.permission))));
   const tree: Array<{ label: string; items: BackofficeItem[] }> = [
-    { label: 'Dashboard', items: [{ id: 'dashboard', label: 'Visión General de Ventas y Matrículas', icon: <LayoutDashboard size={18}/>, permission: 'system', ready: true }] },
+    { label: 'Control Global', items: [
+      { id: 'activity', label: 'Actividad Global y Auditoría', icon: <Activity size={18}/>, permission: 'superadmin', ready: true },
+      { id: 'dashboard', label: 'Visión General de Ventas y Matrículas', icon: <LayoutDashboard size={18}/>, permission: 'system', ready: true }
+    ] },
     { label: 'Embudo de Ventas (CRM)', items: [
       { id: 'crm_leads', label: 'Leads Captados', icon: <Funnel size={18}/>, permission: 'crm', ready: true, countKey: 'leads' },
       { id: 'crm_interactions', label: 'Intentos de Contacto', icon: <PhoneCall size={18}/>, permission: 'crm', ready: true },
@@ -83,6 +284,7 @@ export function AdminMonitor() {
   const activeGroup = tree.find(group => group.items.some(item => item.id === activeTab));
   const renderContent = () => {
     switch (activeTab) {
+      case 'activity': return isSuperAdmin ? <OwnerActivityView /> : null;
       case 'dashboard': return <BackofficeDashboard />;
       case 'crm_leads': return <BackofficeCRM view="leads" />;
       case 'crm_interactions': return <BackofficeCRM view="interactions" />;
@@ -102,7 +304,7 @@ export function AdminMonitor() {
     }
   };
 
-  return <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
+  return <div className="grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[280px_minmax(0,1fr)] xl:items-start">
     <Sidebar tree={tree} activeTab={activeTab} onSelect={setActiveTab} canOpen={canOpen} counts={counts}/>
     <div className="min-w-0 space-y-4">
       <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -121,7 +323,7 @@ export function Sidebar({ tree, activeTab, onSelect, canOpen, counts }: {
   canOpen: (item: BackofficeItem) => boolean;
   counts: { leads: number; overdue: number };
 }) {
-  return <aside aria-label="Navegación oficial KIRA" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-24">
+  return <aside aria-label="Navegación oficial KIRA" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm xl:sticky xl:top-24">
     <div className="px-3 pb-3 pt-2"><p className="text-[10px] font-black uppercase tracking-[.18em] text-teal-700">KIRA · Backoffice</p><h2 className="mt-1 text-base font-black text-slate-900">Navegación principal</h2><p className="mt-1 text-xs text-slate-500">Estructura oficial de gestión.</p></div>
     <nav className="space-y-4">
       {tree.map(group => <section key={group.label}><h3 className="px-3 pb-1 text-[10px] font-black uppercase tracking-[.13em] text-slate-400">{group.label}</h3><div className="space-y-1">{group.items.map(item => {
@@ -3194,6 +3396,10 @@ function SecurityView() {
   }
 
   const changeRole = async (userId: string, newRole: string) => {
+    if (searchResult?.email?.toLowerCase() === 'safeness.c.a@gmail.com') {
+      alert('La cuenta propietaria de KIRA es inmutable y no puede cambiar de rol.');
+      return;
+    }
     if (!confirm(`¿Estás seguro de cambiar el rol a ${newRole}?`)) return;
     try {
       await updateDoc(doc(db, 'users', userId), { role: newRole });
@@ -3214,6 +3420,10 @@ function SecurityView() {
   }
 
   const togglePermission = async (userId: string, current: string[], perm: string) => {
+    if (staff.find(member => member.id === userId)?.email?.toLowerCase() === 'safeness.c.a@gmail.com') {
+      alert('No se pueden modificar los permisos de la cuenta propietaria.');
+      return;
+    }
     try {
       const next = current?.includes(perm) ? current.filter(p => p !== perm) : [...(current || []), perm];
       await updateDoc(doc(db, 'users', userId), { staffPermissions: next });
@@ -3236,6 +3446,10 @@ function SecurityView() {
   };
 
   const toggleStatus = async (userId: string, currentStatus: string) => {
+    if (staff.find(member => member.id === userId)?.email?.toLowerCase() === 'safeness.c.a@gmail.com') {
+      alert('La cuenta propietaria no puede ser suspendida desde el backoffice.');
+      return;
+    }
     try {
       const next = currentStatus === 'frozen' ? 'active' : 'frozen';
       await updateDoc(doc(db, 'users', userId), { status: next });

@@ -10,10 +10,13 @@ import { verify as verifySignature, createSign, createHmac, createHash, timingSa
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import { calculateAcademicPerformance, hasScheduleConflict, meetsCompletionThresholds, sessionDayKeysUTC } from "./server/academic-domain.js";
-import { canSettleInvoice, installmentAmountCents, invoiceDocumentId } from "./server/finance-domain.js";
+import { canSettleInvoice, installmentAmountCents, invoiceDocumentId, isValidPeriodLabel } from "./server/finance-domain.js";
 import { isOutboxEventEligible, outboxFailureTransition } from "./server/outbox-domain.js";
 import { registerBackofficeExtensions } from "./server/backoffice-extensions.js";
 import { hasRecentMfaAuthentication } from "./server/security-domain.js";
+import { hasDelegatedPermission } from "./server/permissions-domain.js";
+import { calculateCoachClientRetention, homeworkPointsAward, normalizeCoachLeadStage, validateHomeworkReview } from "./server/coach-domain.js";
+import { aggregateCompanyWellbeing, isValidWellbeingCheckin } from "./server/wellbeing-domain.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -265,7 +268,7 @@ async function requireSuperAdmin(req:express.Request,res:express.Response):Promi
   if(user.email?.toLowerCase()!=="safeness.c.a@gmail.com"||user.emailVerified!==true||profile?.role!=="admin"){
     res.status(403).json({error:"Solo el superadministrador KIRA verificado puede administrar pagos y configuración."});return null;
   }
-  if (!hasRecentMfaAuthentication(user)) {
+  if (!hasRecentMfaAuthentication(user, Date.now(), 5 * 60 * 1000)) {
     res.status(403).json({ error: "Se requiere MFA reciente para esta acción. Cierra sesión e inicia sesión nuevamente con el segundo factor habilitado en Firebase." });
     return null;
   }
@@ -457,7 +460,7 @@ app.use(compression({
 }));
 app.use(express.json({ limit: "5mb", verify: (req: any, _res, buffer) => { req.rawBody = Buffer.from(buffer); } })); // Preserve exact webhook bytes
 
-// Explicit read-only demo mode: never simulate writes, payments, webhooks or official issuance.
+// Explicit read-only mode: do not expose write endpoints until required server secrets and E2E gates are satisfied.
 app.use((req, res, next) => {
   if (KIRA_DEMO_MODE && req.path.startsWith("/api/") && ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
     return res.status(423).json({
@@ -470,7 +473,25 @@ app.use((req, res, next) => {
 });
 
 // API Routes
-app.get("/api/health", (req, res) => {
+app.get("/api/firebase/messaging-config", (_req, res) => {
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "kira2-a6a20";
+  const config = {
+    apiKey: process.env.VITE_FIREBASE_API_KEY || "",
+    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || projectId + ".firebaseapp.com",
+    projectId,
+    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || projectId + ".firebasestorage.app",
+    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+    appId: process.env.VITE_FIREBASE_APP_ID || "",
+    measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || ""
+  };
+  if (!config.apiKey || !config.messagingSenderId || !config.appId) {
+    return res.status(503).json({ error: "Firebase Messaging no está configurado." });
+  }
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  return res.json(config);
+});
+
+app.get("/api/health", (_req, res) => {
   res.json({
     status: "ok",
     mode: KIRA_DEMO_MODE ? "demo" : "production",
@@ -481,7 +502,8 @@ app.get("/api/health", (req, res) => {
       captcha: !!process.env.LANDING_CAPTCHA_SECRET,
       stripe: !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET),
       mercadoPago: !!(process.env.MERCADOPAGO_ACCESS_TOKEN && process.env.MERCADOPAGO_WEBHOOK_SECRET),
-      whatsapp: !!process.env.WHATSAPP_WEBHOOK_SECRET
+      whatsapp: !!process.env.WHATSAPP_WEBHOOK_SECRET,
+      gemini: isValidGeminiKey(process.env.GEMINI_API_KEY)
     }
   });
 });
@@ -756,13 +778,34 @@ async function backofficeAdmin(req: express.Request, res: express.Response, perm
   if (activeMatrix?.permissions && typeof activeMatrix.permissions === "object") {
     const map = activeMatrix.permissions as Record<string, boolean>;
     const prefix = permission === "system" ? "dashboard." : permission === "users" ? "students." : permission + ".";
-    const allowed = Object.entries(map).some(([key, enabled]) => enabled === true && (key === "*" || key === permission || key.startsWith(prefix)));
+    const allowed = Object.entries(map).some(([key, enabled]) => enabled === true && key !== "*" && (key === permission || key.startsWith(prefix)));
     if (!allowed) { res.status(403).json({ error: "No tienes permiso activo para esta operación del backoffice." }); return null; }
   } else {
     const legacy = Array.isArray(profile.staffPermissions) ? profile.staffPermissions : [];
     if (!canAccessBackofficePermission(false, legacy, permission)) {
       res.status(403).json({ error: "No tienes permiso para esta operación del backoffice." }); return null;
     }
+  }
+  return user;
+}
+
+async function backofficePermission(
+  req: express.Request,
+  res: express.Response,
+  permission: string,
+  scope: "assigned" | "own" | "all" = "all"
+): Promise<VerifiedFirebaseUser | null> {
+  const user = await verifiedUser(req, res);
+  if (!user) return null;
+  if (user.emailVerified !== true) { res.status(403).json({ error: "Se requiere una cuenta verificada." }); return null; }
+  if (user.email?.toLowerCase() === "safeness.c.a@gmail.com") return user;
+  const profile = await fsGet("users", user.uid);
+  const role = String(profile?.role === "alumno" ? "student" : profile?.role || "");
+  if (!["admin", "coach", "sales", "finance"].includes(role)) { res.status(403).json({ error: "Rol sin acceso al backoffice." }); return null; }
+  const matrix = await fsGet("role_permissions", role);
+  if (!matrix?.permissions || !hasDelegatedPermission(matrix.permissions, permission, scope)) {
+    res.status(403).json({ error: "No tienes el permiso requerido: " + permission + " (" + scope + ")." });
+    return null;
   }
   return user;
 }
@@ -773,6 +816,630 @@ function auditWrite(userId: string, action: string, nodePath: string, entityId: 
     createdAt: now, source: "backoffice-api"
   });
 }
+
+
+app.post("/api/journals", async (req, res) => {
+  let transaction = "";
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const content = String(req.body?.content || "").trim();
+    const sentiment = String(req.body?.sentiment || "unknown");
+    const idempotencyKey = String(req.body?.idempotencyKey || "");
+    if (!content || content.length > 10000 || !["positive", "neutral", "negative", "unknown"].includes(sentiment) ||
+      !/^[a-zA-Z0-9_-]{16,80}$/.test(idempotencyKey)) {
+      return res.status(400).json({ error: "La entrada, el estado y la clave de idempotencia no son válidos." });
+    }
+    transaction = await beginFirestoreTransaction();
+    const journalId = idSafe(user.uid + "_" + idempotencyKey);
+    const existing = await fsGetInTransaction("journals", journalId, transaction);
+    if (existing) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.json({ id: journalId, created: false, pointsAwarded: 0, message: "Esta entrada ya fue guardada." });
+    }
+    const profile = await fsGetInTransaction("users", user.uid, transaction);
+    if (!profile) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(404).json({ error: "No se encontró el perfil del alumno." });
+    }
+    const createdAt = new Date();
+    await fsCommitTransaction([
+      fsCreate("journals", journalId, {
+        userId: user.uid,
+        content,
+        sentiment,
+        createdAt,
+        pointsAwarded: 20
+      }),
+      {
+        transform: {
+          document: fsDocumentPath("users", user.uid),
+          fieldTransforms: [{ fieldPath: "points", increment: { integerValue: "20" } }]
+        }
+      }
+    ], transaction);
+    transaction = "";
+    return res.status(201).json({ id: journalId, created: true, pointsAwarded: 20, createdAt: createdAt.toISOString() });
+  } catch (error: any) {
+    if (transaction) await rollbackFirestoreTransaction(transaction);
+    console.error("[Journal] save failed:", error);
+    return res.status(error?.status === 409 || error?.status === 412 ? 409 : 500).json({ error: "No se pudo guardar el diario de forma segura." });
+  }
+});
+
+app.get("/api/student/wellbeing/checkin", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const day = new Date().toISOString().slice(0, 10);
+    const id = idSafe(user.uid + "_" + day);
+    const item = await fsGet("wellbeing_checkins", id);
+    return res.json({ item: item || null, day });
+  } catch (error) {
+    console.error("[Wellbeing Check-in] read failed:", error);
+    return res.status(500).json({ error: "No se pudo consultar el check-in de hoy." });
+  }
+});
+
+app.post("/api/wellbeing/checkin", async (req, res) => {
+  let transaction = "";
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    if (!profile || !["alumno", "company_member"].includes(String(profile.role || ""))) {
+      return res.status(403).json({ error: "El check-in está disponible únicamente para alumnos y colaboradores." });
+    }
+    const energyLevel = Number(req.body?.energyLevel);
+    const clarityLevel = Number(req.body?.clarityLevel);
+    const shareWithCompany = req.body?.shareWithCompany === true && Boolean(profile.companyId);
+    if (!isValidWellbeingCheckin(energyLevel, clarityLevel)) {
+      return res.status(400).json({ error: "Energía y claridad deben estar entre 1 y 5." });
+    }
+    const day = new Date().toISOString().slice(0, 10);
+    const id = idSafe(user.uid + "_" + day);
+    transaction = await beginFirestoreTransaction();
+    const existing = await fsGetInTransaction("wellbeing_checkins", id, transaction);
+    const now = new Date();
+    const item = {
+      userId: user.uid,
+      companyId: shareWithCompany ? String(profile.companyId) : null,
+      shareWithCompany,
+      energyLevel,
+      clarityLevel,
+      period: day.slice(0, 7),
+      day,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+      ...(shareWithCompany ? { consentAt: existing?.consentAt || now } : { consentAt: null })
+    };
+    const writes: any[] = [
+      existing ? fsUpdate("wellbeing_checkins", id, item) : fsCreate("wellbeing_checkins", id, item)
+    ];
+    if (!existing) writes.push({
+      transform: {
+        document: fsDocumentPath("users", user.uid),
+        fieldTransforms: [{ fieldPath: "points", increment: { integerValue: "5" } }]
+      }
+    });
+    await fsCommitTransaction(writes, transaction);
+    transaction = "";
+    return res.status(existing ? 200 : 201).json({
+      item: { energyLevel, clarityLevel, shareWithCompany, day },
+      pointsAwarded: existing ? 0 : 5
+    });
+  } catch (error: any) {
+    if (transaction) await rollbackFirestoreTransaction(transaction);
+    console.error("[Wellbeing Check-in] save failed:", error);
+    return res.status(error?.status === 409 || error?.status === 412 ? 409 : 500).json({ error: "No se pudo guardar el check-in." });
+  }
+});
+
+app.get("/api/cron/hr/aggregate", async (req, res) => {
+  try {
+    const secret = String(process.env.CRON_SECRET || "");
+    const authHeader = String(req.headers.authorization || "");
+    if (!secret) return res.status(503).json({ error: "CRON_SECRET no está configurado." });
+    if (authHeader !== "Bearer " + secret) return res.status(401).json({ error: "No autorizado." });
+    if (KIRA_DEMO_MODE) return res.status(423).json({ error: "El modo DEMO no permite generar agregados." });
+
+    const period = new Date().toISOString().slice(0, 7);
+    const [users, checkins] = await Promise.all([
+      fsListAllDocuments("users", 20000),
+      fsListAllDocuments("wellbeing_checkins", 100000)
+    ]);
+    const companyIds = new Set(users.map((item: any) => String(item.companyId || "")).filter(Boolean));
+    const participants = new Map<string, Map<string, any>>();
+    for (const item of checkins) {
+      if (item.period !== period || item.shareWithCompany !== true || !item.companyId || !item.userId) continue;
+      const companyId = String(item.companyId);
+      const companyMap = participants.get(companyId) || new Map<string, any>();
+      const previous = companyMap.get(String(item.userId));
+      const currentDate = new Date(item.updatedAt || item.createdAt || 0).getTime();
+      const previousDate = previous ? new Date(previous.updatedAt || previous.createdAt || 0).getTime() : -1;
+      if (!previous || currentDate > previousDate) companyMap.set(String(item.userId), item);
+      participants.set(companyId, companyMap);
+    }
+
+    let published = 0;
+    let suppressed = 0;
+    for (const companyId of companyIds) {
+      const rows = [...(participants.get(companyId)?.values() || [])];
+      const collectionName = "companies/" + idSafe(companyId) + "/wellbeingAggregates";
+      const aggregateId = idSafe(period);
+      const existing = await fsGet(collectionName, aggregateId);
+      const now = new Date();
+      const periodStart = new Date(Date.UTC(Number(period.slice(0, 4)), Number(period.slice(5, 7)) - 1, 1));
+      const result = aggregateCompanyWellbeing(rows, 5);
+      const aggregate: any = {
+        ...result,
+        period,
+        periodStart,
+        periodEnd: now,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now
+      };
+      if (result.suppressed) suppressed++;
+      else published++;
+      const write = existing
+        ? fsUpdate(collectionName, aggregateId, aggregate)
+        : fsCreate(collectionName, aggregateId, aggregate);
+      await fsCommit([write]);
+    }
+    return res.json({ period, companiesProcessed: companyIds.size, published, suppressed });
+  } catch (error) {
+    console.error("[HR Aggregation] refresh failed:", error);
+    return res.status(500).json({ error: "No se pudieron actualizar los agregados corporativos." });
+  }
+});
+
+app.get("/api/student/homework", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    if (!profile || !["alumno", "company_member"].includes(String(profile.role || ""))) {
+      return res.status(403).json({ error: "Este espacio está disponible únicamente para alumnos." });
+    }
+    const [enrollments, courses, assignments, submissions] = await Promise.all([
+      fsListAllDocuments("enrollments", 10000),
+      fsListAllDocuments("courses", 5000),
+      fsListAllDocuments("homework_assignments", 10000),
+      fsListAllDocuments("homework_submissions", 10000)
+    ]);
+    const enrolledCourseIds = new Set(enrollments.filter((item: any) =>
+      item.userId === user.uid && (!item.status || ["active", "approved", "completed"].includes(String(item.status)))
+    ).map((item: any) => String(item.courseId)));
+    const courseById = new Map(courses.map((item: any) => [String(item.id), item]));
+    const submissionByAssignment = new Map(submissions.filter((item: any) =>
+      (item.studentId || item.userId) === user.uid
+    ).map((item: any) => [String(item.assignmentId), item]));
+    const items = assignments.filter((item: any) =>
+      item.status === "published" && enrolledCourseIds.has(String(item.courseId))
+    ).map((item: any) => {
+      const course = courseById.get(String(item.courseId));
+      const submission: any = submissionByAssignment.get(String(item.id));
+      return {
+        ...item,
+        courseTitle: item.courseTitle || course?.title || "Curso",
+        submission: submission ? {
+          id: submission.id,
+          status: submission.status,
+          submittedAt: submission.submittedAt,
+          score: submission.score,
+          feedback: submission.feedback,
+          submissionText: submission.submissionText,
+          submissionUrl: submission.submissionUrl
+        } : null
+      };
+    }).sort((a: any, b: any) => String(a.dueAt || "9999").localeCompare(String(b.dueAt || "9999")));
+    return res.json({ items, total: items.length, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error("[Student Homework] list failed:", error);
+    return res.status(500).json({ error: "No se pudieron cargar las actividades." });
+  }
+});
+
+app.post("/api/student/homework/:assignmentId/submit", async (req, res) => {
+  let transaction = "";
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    if (!profile || !["alumno", "company_member"].includes(String(profile.role || ""))) {
+      return res.status(403).json({ error: "Solo los alumnos pueden enviar actividades." });
+    }
+    const assignmentId = idSafe(String(req.params.assignmentId || ""));
+    const submissionText = String(req.body?.submissionText || "").trim();
+    const submissionUrl = String(req.body?.submissionUrl || "").trim();
+    if (!assignmentId || submissionText.length > 10000 || submissionUrl.length > 2048 ||
+      (!submissionText && !submissionUrl) ||
+      (submissionUrl && (!/^https:\/\//i.test(submissionUrl) || !URL.canParse(submissionUrl)))) {
+      return res.status(400).json({ error: "Incluye una respuesta o un enlace HTTPS válido." });
+    }
+    const assignment = await fsGet("homework_assignments", assignmentId);
+    if (!assignment || assignment.status !== "published") return res.status(404).json({ error: "Actividad no encontrada." });
+    const enrollment = (await fsListAllDocuments("enrollments", 10000)).find((item: any) =>
+      item.userId === user.uid && String(item.courseId) === String(assignment.courseId) &&
+      (!item.status || ["active", "approved", "completed"].includes(String(item.status)))
+    );
+    if (!enrollment) return res.status(403).json({ error: "Necesitas una matrícula activa para enviar esta actividad." });
+
+    const submissionId = idSafe(assignmentId + "_" + user.uid);
+    transaction = await beginFirestoreTransaction();
+    const existing = await fsGetInTransaction("homework_submissions", submissionId, transaction);
+    if (existing && existing.status !== "needs_correction") {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(409).json({ error: existing.status === "approved" ? "Esta actividad ya fue aprobada." : "Ya existe una entrega pendiente de revisión." });
+    }
+    const course = await fsGet("courses", String(assignment.courseId));
+    const now = new Date();
+    const priorHistory = Array.isArray(existing?.revisionHistory) ? existing.revisionHistory : [];
+    const revisionHistory = existing ? [...priorHistory, {
+      submissionText: existing.submissionText || "",
+      submissionUrl: existing.submissionUrl || "",
+      submittedAt: existing.submittedAt || existing.createdAt || null,
+      feedback: existing.feedback || ""
+    }].slice(-10) : [];
+    const item = {
+      ...(existing || {}),
+      assignmentId,
+      assignmentTitle: assignment.title,
+      assignmentDescription: assignment.description || "",
+      courseId: String(assignment.courseId),
+      courseTitle: assignment.courseTitle || course?.title || "Curso",
+      coachId: String(assignment.coachId || course?.coachId || ""),
+      studentId: user.uid,
+      studentName: profile.displayName || profile.name || "Alumno",
+      submissionText,
+      submissionUrl,
+      attachments: [],
+      status: "pending",
+      submittedAt: now,
+      revisionHistory
+    };
+    const notificationId = randomBytes(16).toString("hex");
+    const writes: any[] = [
+      existing
+        ? fsUpdate("homework_submissions", submissionId, item)
+        : fsCreate("homework_submissions", submissionId, item),
+      fsCreate("notifications", notificationId, {
+        userId: item.coachId,
+        title: "Nueva entrega de actividad",
+        message: (item.studentName + " entregó: " + String(assignment.title || "Actividad")).slice(0, 220),
+        type: "course", read: false, createdAt: now
+      })
+    ];
+    await fsCommitTransaction(writes, transaction);
+    transaction = "";
+    return res.status(201).json({ id: submissionId, status: "pending", submittedAt: now.toISOString() });
+  } catch (error: any) {
+    if (transaction) await rollbackFirestoreTransaction(transaction);
+    console.error("[Student Homework] submission failed:", error);
+    return res.status(error?.status === 409 || error?.status === 412 ? 409 : 500).json({ error: "No se pudo enviar la actividad." });
+  }
+});
+
+app.get("/api/coach/homework", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    const isAdmin = user.emailVerified === true && (profile?.role === "admin" || user.email?.toLowerCase() === "safeness.c.a@gmail.com");
+    const isCoach = profile?.role === "coach" && profile?.approvalStatus === "approved";
+    if (!isAdmin && !isCoach) return res.status(403).json({ error: "Solo coaches aprobados y administradores pueden consultar entregas." });
+
+    const [all, courses, students, assignments] = await Promise.all([
+      fsListAllDocuments("homework_submissions", 5000),
+      fsListAllDocuments("courses", 5000),
+      fsListAllDocuments("users", 10000),
+      fsListAllDocuments("homework_assignments", 5000)
+    ]);
+    const courseById = new Map(courses.map((course: any) => [String(course.id), course]));
+    const studentById = new Map(students.map((student: any) => [String(student.id), student]));
+    const scoped = all.filter((item: any) => {
+      if (isAdmin) return true;
+      const course = courseById.get(String(item.courseId || ""));
+      return item.coachId === user.uid || course?.coachId === user.uid;
+    });
+    const items = scoped.map((item: any) => {
+      const studentId = String(item.studentId || item.userId || "");
+      const student = studentById.get(studentId);
+      const course = courseById.get(String(item.courseId || ""));
+      return {
+        ...item,
+        studentId,
+        coachId: item.coachId || course?.coachId || "",
+        studentName: item.studentName || student?.displayName || student?.name || "Alumno",
+        courseTitle: item.courseTitle || course?.title || "Curso",
+        assignmentTitle: item.assignmentTitle || item.taskTitle || item.title || "Actividad",
+        attachments: Array.isArray(item.attachments) ? item.attachments : Array.isArray(item.files) ? item.files : []
+      };
+    }).sort((a: any, b: any) => String(b.submittedAt || b.createdAt || "").localeCompare(String(a.submittedAt || a.createdAt || "")));
+    const coachAssignments = assignments.filter((item: any) => {
+      const course = courseById.get(String(item.courseId || ""));
+      return isAdmin || item.coachId === user.uid || course?.coachId === user.uid;
+    }).map((item: any) => ({
+      ...item,
+      courseTitle: item.courseTitle || courseById.get(String(item.courseId || ""))?.title || "Curso"
+    })).sort((a: any, b: any) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+    const coachCourses = courses.filter((course: any) => isAdmin || course.coachId === user.uid)
+      .map((course: any) => ({ id: course.id, title: course.title, status: course.status || "draft" }));
+    return res.json({ items, assignments: coachAssignments, courses: coachCourses, total: items.length, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error("[Coach Homework] list failed:", error);
+    return res.status(500).json({ error: "No se pudieron cargar las entregas." });
+  }
+});
+
+app.post("/api/coach/homework/assignments", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    const isAdmin = user.emailVerified === true && (profile?.role === "admin" || user.email?.toLowerCase() === "safeness.c.a@gmail.com");
+    const isCoach = profile?.role === "coach" && profile?.approvalStatus === "approved";
+    if (!isAdmin && !isCoach) return res.status(403).json({ error: "Solo coaches aprobados pueden crear actividades." });
+    const courseId = idSafe(String(req.body?.courseId || ""));
+    const title = String(req.body?.title || "").trim();
+    const description = String(req.body?.description || "").trim();
+    const dueAtRaw = String(req.body?.dueAt || "").trim();
+    if (!courseId || title.length < 3 || title.length > 160 || description.length > 5000) {
+      return res.status(400).json({ error: "Indica un curso, un título de 3–160 caracteres y una descripción de hasta 5000 caracteres." });
+    }
+    const course = await fsGet("courses", courseId);
+    if (!course || (!isAdmin && course.coachId !== user.uid)) return res.status(404).json({ error: "Curso no encontrado." });
+    const dueAt = dueAtRaw ? new Date(dueAtRaw) : null;
+    if (dueAtRaw && (!dueAt || Number.isNaN(dueAt.getTime()))) return res.status(400).json({ error: "La fecha límite no es válida." });
+    const id = randomBytes(16).toString("hex");
+    const now = new Date();
+    const assignment = {
+      coachId: String(course.coachId || user.uid),
+      courseId,
+      courseTitle: String(course.title || "Curso"),
+      title,
+      description,
+      dueAt,
+      status: "published",
+      createdBy: user.uid,
+      createdAt: now,
+      updatedAt: now
+    };
+    await fsCommit([fsCreate("homework_assignments", id, assignment)]);
+    return res.status(201).json({ item: { id, ...assignment } });
+  } catch (error) {
+    console.error("[Coach Homework] assignment create failed:", error);
+    return res.status(500).json({ error: "No se pudo publicar la actividad." });
+  }
+});
+
+app.post("/api/coach/homework/:id/review", async (req, res) => {
+  let transaction = "";
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    const isAdmin = user.emailVerified === true && (profile?.role === "admin" || user.email?.toLowerCase() === "safeness.c.a@gmail.com");
+    const isCoach = profile?.role === "coach" && profile?.approvalStatus === "approved";
+    if (!isAdmin && !isCoach) return res.status(403).json({ error: "Solo coaches aprobados y administradores pueden revisar entregas." });
+
+    const id = idSafe(String(req.params.id || ""));
+    if (!id) return res.status(400).json({ error: "Identificador de entrega inválido." });
+    transaction = await beginFirestoreTransaction();
+    const submission = await fsGetInTransaction("homework_submissions", id, transaction);
+    if (!submission) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(404).json({ error: "Entrega no encontrada." });
+    }
+    const course = submission.courseId ? await fsGet("courses", String(submission.courseId)) : null;
+    const assignedCoachId = String(submission.coachId || course?.coachId || "");
+    if (!isAdmin && assignedCoachId !== user.uid) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(404).json({ error: "Entrega no encontrada." });
+    }
+
+    const body = req.body || {};
+    const status = String(body.status || "");
+    const score = Number(body.score);
+    const feedback = String(body.feedback || "").trim();
+    const requestedPoints = Number(body.energyPoints || 0);
+    if (!validateHomeworkReview({ status, score, feedback, energyPoints: requestedPoints })) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(400).json({ error: "Revisa el estado, la calificación (0–100), el feedback y los puntos (0–100)." });
+    }
+
+    const studentId = String(submission.studentId || submission.userId || "");
+    if (!studentId) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(409).json({ error: "La entrega no contiene un identificador de alumno válido." });
+    }
+    const student = await fsGetInTransaction("users", studentId, transaction);
+    if (!student) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(409).json({ error: "El alumno asociado a la entrega ya no existe." });
+    }
+
+    const now = new Date().toISOString();
+    const awardPoints = homeworkPointsAward(status, submission.pointsAwardedAt, requestedPoints);
+    const updated = {
+      ...submission,
+      coachId: assignedCoachId,
+      studentId,
+      score,
+      feedback,
+      status,
+      reviewedAt: now,
+      reviewedBy: user.uid,
+      energyPointsAwarded: Number(submission.energyPointsAwarded || 0) + awardPoints,
+      ...(awardPoints > 0 ? { pointsAwardedAt: now } : {})
+    };
+    const notificationId = randomBytes(16).toString("hex");
+    const writes: any[] = [
+      fsUpdate("homework_submissions", id, updated),
+      fsCreate("notifications", notificationId, {
+        userId: studentId,
+        title: status === "approved" ? "Tarea aprobada" : "Tu tarea necesita una revisión",
+        message: status === "approved"
+          ? "Tu tarea \"" + String(submission.assignmentTitle || submission.taskTitle || "Actividad").slice(0, 160) + "\" fue aprobada. " + (awardPoints ? "Recibiste " + awardPoints + " puntos de energía." : "")
+          : "Tu tarea \"" + String(submission.assignmentTitle || submission.taskTitle || "Actividad").slice(0, 160) + "\" recibió comentarios del coach.",
+        type: "course", read: false, createdAt: now
+      })
+    ];
+    if (awardPoints > 0) writes.push({
+      transform: {
+        document: fsDocumentPath("users", studentId),
+        fieldTransforms: [{ fieldPath: "points", increment: { integerValue: String(awardPoints) } }]
+      }
+    });
+    await fsCommitTransaction(writes, transaction);
+    transaction = "";
+    return res.json({
+      item: { id, status, score, feedback, reviewedAt: now, energyPointsAwarded: updated.energyPointsAwarded },
+      pointsAwarded: awardPoints
+    });
+  } catch (error: any) {
+    if (transaction) await rollbackFirestoreTransaction(transaction);
+    console.error("[Coach Homework] review failed:", error);
+    return res.status(error?.status === 409 || error?.status === 412 ? 409 : 500).json({
+      error: error?.status === 409 || error?.status === 412
+        ? "La entrega cambió durante la revisión. Actualiza la lista e inténtalo otra vez."
+        : "No se pudo guardar la revisión."
+    });
+  }
+});
+
+app.get("/api/coach/analytics", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    const isAdmin = user.emailVerified === true && (profile?.role === "admin" || user.email?.toLowerCase() === "safeness.c.a@gmail.com");
+    const isCoach = profile?.role === "coach" && profile?.approvalStatus === "approved";
+    if (!isAdmin && !isCoach) return res.status(403).json({ error: "Solo coaches aprobados y administradores pueden consultar estas métricas." });
+
+    const [courses, sessions, leads, enrollments, reviews, interactions] = await Promise.all([
+      fsListAllDocuments("courses", 5000),
+      fsListAllDocuments("sessions", 10000),
+      fsListAllDocuments("crmLeads", 10000),
+      fsListAllDocuments("enrollments", 10000),
+      fsListAllDocuments("reviews", 10000),
+      fsListAllDocuments("crmInteractions", 10000)
+    ]);
+    const ownCourses = courses.filter((item: any) => isAdmin || item.coachId === user.uid);
+    const courseIds = new Set(ownCourses.map((item: any) => String(item.id)));
+    const ownSessions = sessions.filter((item: any) => isAdmin || item.coachId === user.uid);
+    const ownLeads = leads.filter((item: any) => isAdmin || item.assignedTo === user.uid || item.coachId === user.uid);
+    const ownLeadIds = new Set(ownLeads.map((item: any) => String(item.id)));
+    const ownInteractions = interactions.filter((item: any) => ownLeadIds.has(String(item.leadId)));
+    const interactionCounts = new Map<string, number>();
+    const lastContactByLead = new Map<string, string>();
+    for (const interaction of ownInteractions) {
+      const leadId = String(interaction.leadId);
+      interactionCounts.set(leadId, (interactionCounts.get(leadId) || 0) + 1);
+      const createdAt = String(interaction.createdAt || "");
+      if (createdAt > (lastContactByLead.get(leadId) || "")) lastContactByLead.set(leadId, createdAt);
+    }
+    const recentLeads = [...ownLeads]
+      .sort((a: any, b: any) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")))
+      .slice(0, 12)
+      .map((lead: any) => ({
+        id: String(lead.id),
+        reference: "Lead " + String(lead.id).slice(0, 8),
+        stage: String(lead.stage || "new"),
+        source: String(lead.source || "unknown"),
+        createdAt: lead.createdAt || null,
+        updatedAt: lead.updatedAt || null,
+        nextActionAt: lead.nextActionAt || null,
+        lastContactAt: lastContactByLead.get(String(lead.id)) || null,
+        interactionsCount: interactionCounts.get(String(lead.id)) || 0
+      }));
+    const recentInteractions = [...ownInteractions]
+      .sort((a: any, b: any) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+      .slice(0, 20)
+      .map((item: any) => ({
+        id: String(item.id),
+        leadId: String(item.leadId),
+        reference: "Lead " + String(item.leadId).slice(0, 8),
+        channel: String(item.channel || "unknown"),
+        outcome: String(item.outcome || "unknown"),
+        createdAt: item.createdAt || null,
+        nextActionAt: item.nextActionAt || null
+      }));
+    const ownEnrollments = enrollments.filter((item: any) => courseIds.has(String(item.courseId)) || (!item.courseId && (isAdmin || item.coachId === user.uid)));
+    const ownReviews = reviews.filter((item: any) =>
+      (courseIds.has(String(item.courseId)) || (item.coachId && (isAdmin || item.coachId === user.uid))) &&
+      Number(item.rating) >= 1 && Number(item.rating) <= 5
+    );
+
+    // SessionIntelligence stores userId as the coach for history lookup.
+    // Client recurrence must therefore use an explicit client identity, never userId.
+    const retention = calculateCoachClientRetention(ownSessions);
+    const stageCounts = { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 };
+    for (const item of ownLeads) {
+      const normalized = normalizeCoachLeadStage(item.stage || item.status);
+      if (normalized) stageCounts[normalized]++;
+    }
+
+    const weekly = new Map<string, { sessions: number; minutes: number }>();
+    const monthlyMinutes = new Map<string, number>();
+    const now = Date.now();
+    const sessionMinutes = (item: any): number => {
+      const explicit = Number(item.durationMinutes ?? item.sessionDurationMinutes ?? item.duration ?? 0);
+      if (Number.isFinite(explicit) && explicit > 0 && explicit <= 1440) return explicit;
+      const start = Date.parse(String(item.startedAt || item.startTime || ""));
+      const end = Date.parse(String(item.endedAt || item.endTime || ""));
+      const derived = (end - start) / 60000;
+      return Number.isFinite(derived) && derived > 0 && derived <= 1440 ? derived : 0;
+    };
+    const sessionDate = (item: any): Date | null => {
+      const raw = item.createdAt || item.startedAt || item.startTime || item.sessionDate;
+      const date = new Date(raw || "");
+      return Number.isFinite(date.getTime()) ? date : null;
+    };
+    for (const item of ownSessions) {
+      const date = sessionDate(item);
+      if (!date) continue;
+      const duration = sessionMinutes(item);
+      if (now - date.getTime() <= 366 * 86400000 && duration) {
+        const month = date.toISOString().slice(0, 7);
+        monthlyMinutes.set(month, (monthlyMinutes.get(month) || 0) + duration);
+      }
+      if (now - date.getTime() > 42 * 86400000 || date.getTime() > now + 86400000) continue;
+      const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+      monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+      const key = monday.toISOString().slice(0, 10);
+      const current = weekly.get(key) || { sessions: 0, minutes: 0 };
+      weekly.set(key, { sessions: current.sessions + 1, minutes: current.minutes + duration });
+    }
+
+    const weeklySessions = [...weekly.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([week, value]) => ({
+      week, sessions: value.sessions, hours: Math.round(value.minutes / 60 * 10) / 10
+    }));
+    const monthlyHours = [...monthlyMinutes.entries()].sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, minutes]) => ({ month, hours: Math.round(minutes / 60 * 10) / 10 }));
+    const durationMinutes = ownSessions.reduce((total: number, item: any) => total + sessionMinutes(item), 0);
+    const durationTrackedSessions = ownSessions.filter((item: any) => sessionMinutes(item) > 0).length;
+    const averageSatisfaction = ownReviews.length
+      ? Math.round((ownReviews.reduce((total: number, item: any) => total + Number(item.rating), 0) / ownReviews.length) * 100) / 100
+      : null;
+
+    return res.json({
+      generatedAt: new Date().toISOString(),
+      source: "Firestore: sessions, crmLeads, crmInteractions, courses, enrollments y reviews",
+      scope: isAdmin ? "all" : "own",
+      retention: { uniqueClients: retention.uniqueClients, returningClients: retention.returningClients, rate: retention.rate },
+      sessions: { total: ownSessions.length, weekly: weeklySessions },
+      monthlyHours,
+      hours: durationMinutes ? Math.round(durationMinutes / 60 * 10) / 10 : null,
+      satisfaction: { average: averageSatisfaction, responses: ownReviews.length },
+      funnel: stageCounts,
+      leads: ownLeads.length,
+      enrollments: ownEnrollments.length,
+      recentLeads,
+      recentInteractions,
+      coverage: {
+        durationTrackedSessions,
+        totalSessions: ownSessions.length,
+        sessionsWithClientIdentity: retention.identifiedSessions,
+        sessionsWithoutClientIdentity: Math.max(0, ownSessions.length - retention.identifiedSessions)
+      }
+    });
+  } catch (error) {
+    console.error("[Coach Analytics] metrics failed:", error);
+    return res.status(500).json({ error: "No se pudieron calcular las métricas del coach." });
+  }
+});
 
 app.get("/api/admin/dashboard", async (req, res) => {
   try {
@@ -785,7 +1452,7 @@ app.get("/api/admin/dashboard", async (req, res) => {
     const active = await fsGet("role_permissions", roleKey);
     const map = active?.permissions && typeof active.permissions === "object" ? active.permissions as Record<string, boolean> : null;
     const legacy = Array.isArray(profile?.staffPermissions) ? profile.staffPermissions : [];
-    const can = (...keys: string[]) => isSuperAdmin || (map ? keys.some(key => map["*"] === true || map[key] === true) : role === "admin" && (legacy.includes("system") || keys.some(key => legacy.includes(key.split(".")[0]))));
+    const can = (...keys: string[]) => isSuperAdmin || (map ? keys.some(key => hasDelegatedPermission(map, key, "all")) : role === "admin" && (legacy.includes("system") || keys.some(key => legacy.includes(key.split(".")[0]))));
     const from = typeof req.query.from === "string" ? Date.parse(req.query.from + "T00:00:00.000Z") : Date.now() - 30 * 86400000;
     const to = typeof req.query.to === "string" ? Date.parse(req.query.to + "T23:59:59.999Z") : Date.now();
     if (!Number.isFinite(from) || !Number.isFinite(to) || from > to || to - from > 366 * 86400000) return res.status(400).json({ error: "Rango de fechas inválido (máximo 366 días)." });
@@ -834,6 +1501,92 @@ app.get("/api/admin/dashboard", async (req, res) => {
   } catch (error: any) {
     console.error("[Backoffice] Dashboard failed:", error);
     return res.status(500).json({ error: "No se pudieron consultar los agregados del backoffice." });
+  }
+});
+
+app.get("/api/admin/activity", async (req, res) => {
+  try {
+    const owner = await requireSuperAdmin(req, res);
+    if (!owner) return;
+
+    const collections = [
+      "auditLogs", "paymentAudit", "config_audit", "logs",
+      "outbox_dead_letters", "users", "companies", "courses",
+      "enrollments", "sessions", "transactions", "invoices",
+      "certificates", "orders", "journals"
+    ];
+    const snapshots = await Promise.all(collections.map(name => fsListAllDocuments(name, 2000)));
+    const byCollection = Object.fromEntries(collections.map((name, index) => [name, snapshots[index]]));
+    const eventRows: any[] = [];
+
+    for (const name of ["auditLogs", "paymentAudit", "config_audit", "logs", "outbox_dead_letters"]) {
+      for (const item of byCollection[name] || []) {
+        eventRows.push({
+          id: name + ":" + String(item.id || ""),
+          source: name,
+          action: String(item.action || item.eventType || item.type || item.scope || "system.event").slice(0, 120),
+          actorId: String(item.actorId || item.createdBy || item.updatedBy || "system").slice(0, 180),
+          target: String(item.targetId || item.entityId || item.key || item.entity || item.aggregateId || "").slice(0, 180),
+          provider: String(item.provider || item.source || "KIRA").slice(0, 80),
+          status: String(item.status || item.outcome || "").slice(0, 80),
+          timestamp: item.createdAt || item.failedAt || item.updatedAt || item.receivedAt || null,
+          error: name === "outbox_dead_letters" ? String(item.error || item.lastError || "").slice(0, 500) : ""
+        });
+      }
+    }
+
+    for (const user of byCollection.users || []) {
+      if (user.lastLoginAt) eventRows.push({
+        id: "login:" + String(user.id || user.uid || ""),
+        source: "users",
+        action: "user.login",
+        actorId: String(user.email || user.id || "user").slice(0, 180),
+        target: String(user.role || "unknown"),
+        provider: "Firebase Authentication",
+        status: String(user.status || user.approvalStatus || "active").slice(0, 80),
+        timestamp: user.lastLoginAt,
+        error: ""
+      });
+    }
+
+    const timestamp = (value: any) => {
+      if (value && typeof value.toDate === "function") return value.toDate().getTime();
+      const parsed = typeof value === "number" ? value : Date.parse(String(value || ""));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    eventRows.sort((a, b) => timestamp(b.timestamp) - timestamp(a.timestamp));
+
+    const recentUsers = (byCollection.users || [])
+      .slice()
+      .sort((a: any, b: any) => timestamp(b.lastActivityAt || b.lastLoginAt) - timestamp(a.lastActivityAt || a.lastLoginAt))
+      .slice(0, 100)
+      .map((user: any) => ({
+        uid: String(user.uid || user.id || ""),
+        email: String(user.email || ""),
+        displayName: String(user.displayName || user.name || ""),
+        role: String(user.role || "unknown"),
+        approvalStatus: String(user.approvalStatus || ""),
+        status: String(user.status || ""),
+        companyName: String(user.companyName || ""),
+        lastLoginAt: user.lastLoginAt || null,
+        lastActivityAt: user.lastActivityAt || null
+      }));
+
+    const counts = Object.fromEntries(collections.filter(name => !["auditLogs", "paymentAudit", "config_audit", "logs", "outbox_dead_letters"].includes(name))
+      .map(name => [name, (byCollection[name] || []).length]));
+    return res.json({
+      owner: { email: owner.email, verified: owner.emailVerified === true },
+      generatedAt: new Date().toISOString(),
+      counts,
+      eventCount: eventRows.length,
+      events: eventRows.slice(0, 250),
+      recentUsers,
+      limits: { perCollection: 2000, events: 250, recentUsers: 100 },
+      privacy: "Se muestran metadatos operativos y de auditoría. No se exponen contraseñas, secretos, tokens, diarios privados ni transcripciones personales."
+    });
+  } catch (error: any) {
+    console.error("[Owner Activity] global activity failed:", error);
+    return res.status(500).json({ error: "No se pudo cargar la actividad global de KIRA." });
   }
 });
 
@@ -1346,7 +2099,7 @@ app.get("/api/verify/:kiraNumber",async(req,res)=>{
   try {
     const kiraNumber=String(req.params.kiraNumber||"");
     const signature=String(req.query.sig||"");
-    if(!/^KIRA-\\d{4}-[A-F0-9]{12}$/.test(kiraNumber)||!/^([a-f0-9]{64})$/.test(signature)) return res.status(404).json({valid:false,status:"not_found"});
+    if(!/^KIRA-\d{4}-[A-F0-9]{12}$/.test(kiraNumber)||!/^([a-f0-9]{64})$/.test(signature)) return res.status(404).json({valid:false,status:"not_found"});
     const record=await fsGet("certificates",kiraNumber);
     if(!record) return res.status(404).json({valid:false,status:"not_found"});
     const payload={kiraNumber:record.kiraNumber,studentId:record.studentId,studentName:record.studentName,courseId:record.courseId,courseName:record.courseName,coachId:record.coachId,coachName:record.coachName,academicHours:record.academicHours,adminId:record.adminId,adminName:record.adminName,watermarkHash:record.watermarkHash,issueDate:record.issueDate,status:"issued"};
@@ -1460,13 +2213,13 @@ async function refreshStudentPerformance(studentId: string, groupId: string, sou
   const sessionIds = new Set(groupSessions.map(x => x.id));
   const marks = attendance.filter(x => x.studentId === studentId && x.groupId === groupId && sessionIds.has(x.sessionId) && !x.deletedAt);
   const grades = assessments.filter(x => x.studentId === studentId && x.groupId === groupId && Number(x.maxScore) > 0);
-  const { attendancePct, avgScorePct } = calculateAcademicPerformance(groupSessions, marks, grades);
+  const { attendancePct, avgScorePct, lessonsCompleted } = calculateAcademicPerformance(groupSessions, marks, grades);
   const id = academicId(studentId + "_" + groupId);
   const previous = await fsGet("student_performance", id);
   const sourceEventIds = Array.from(new Set([...(Array.isArray(previous?.sourceEventIds) ? previous.sourceEventIds : []), sourceEventId])).slice(-100);
   await fsCommit([fsUpdate("student_performance", id, {
     studentId, groupId, courseId: group?.courseId || "", attendancePct, avgScorePct,
-    lessonsCompleted: Number(previous?.lessonsCompleted || 0), lastCalculatedAt: new Date(), sourceEventIds
+    lessonsCompleted, lastCalculatedAt: new Date(), sourceEventIds
   })]);
   return { attendancePct, avgScorePct };
 }
@@ -1611,34 +2364,43 @@ app.post("/api/admin/outbox/dead-letters/:id/requeue", async (req, res) => {
 
 app.get("/api/admin/groups", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "courses.groups.read", "own"); if (!user) return;
+    const profile = await fsGet("users", user.uid);
     const courseId = String(req.query.courseId || ""), status = String(req.query.status || "");
     const groups = await fsListAllDocuments("course_groups");
-    return res.json({ items: groups.filter(g => (!courseId || g.courseId === courseId) && (!status || g.status === status)).sort((a,b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))) });
+    const visibleGroups = profile?.role === "coach" ? groups.filter(g => g.coachId === user.uid) : groups;
+    return res.json({ items: visibleGroups.filter(g => (!courseId || g.courseId === courseId) && (!status || g.status === status)).sort((a,b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))) });
   } catch (error: any) { console.error("[Groups] list failed:", error); return res.status(500).json({ error: "No se pudieron consultar los grupos." }); }
 });
 app.get("/api/admin/groups/:id/sessions", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "courses.sessions.read", "own"); if (!user) return;
     const groupId = academicId(String(req.params.id)), group = await fsGet("course_groups", groupId);
     if (!group) return res.status(404).json({ error: "Grupo no encontrado." });
+    const profile = await fsGet("users", user.uid);
+    if (profile?.role === "coach" && group.coachId !== user.uid) return res.status(404).json({ error: "Grupo no encontrado." });
     const sessions = await fsListAllDocuments("group_sessions");
     return res.json({ items: sessions.filter(x => x.groupId === groupId).sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt))) });
   } catch (error: any) { console.error("[Groups] sessions list failed:", error); return res.status(500).json({ error: "No se pudieron consultar las sesiones." }); }
 });
 app.get("/api/admin/groups/:id/enrollments", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.enrollments.read", "own"); if (!user) return;
     const groupId = academicId(String(req.params.id)), group = await fsGet("course_groups", groupId);
     if (!group) return res.status(404).json({ error: "Grupo no encontrado." });
+    const profile = await fsGet("users", user.uid);
+    if (profile?.role === "coach" && group.coachId !== user.uid) return res.status(404).json({ error: "Grupo no encontrado." });
     const enrollments = await fsListAllDocuments("enrollments");
     return res.json({ items: enrollments.filter(x => x.groupId === groupId && !["cancelled", "suspended"].includes(x.status)) });
   } catch (error: any) { console.error("[Groups] enrollments list failed:", error); return res.status(500).json({ error: "No se pudieron consultar las matrículas del grupo." }); }
 });
 app.get("/api/admin/groups/:id/performance", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.performance.read", "own"); if (!user) return;
     const groupId = academicId(String(req.params.id));
+    const group = await fsGet("course_groups", groupId);
+    const profile = await fsGet("users", user.uid);
+    if (!group || (profile?.role === "coach" && group.coachId !== user.uid)) return res.status(404).json({ error: "Grupo no encontrado." });
     const projections = await fsListAllDocuments("student_performance");
     return res.json({ items: projections.filter(x => x.groupId === groupId) });
   } catch (error: any) { console.error("[Academic] performance list failed:", error); return res.status(500).json({ error: "No se pudo consultar el rendimiento." }); }
@@ -1646,7 +2408,7 @@ app.get("/api/admin/groups/:id/performance", async (req, res) => {
 
 app.post("/api/admin/groups", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "courses.groups.create"); if (!user) return;
     const body = req.body || {};
     const courseId = String(body.courseId || ""), name = String(body.name || "").trim(), coachId = String(body.coachId || "");
     const capacity = Number(body.capacity);
@@ -1662,7 +2424,7 @@ app.post("/api/admin/groups", async (req, res) => {
 
 app.patch("/api/admin/groups/:id", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "courses.groups.update"); if (!user) return;
     const id = academicId(String(req.params.id)), before = await fsGet("course_groups", id);
     if (!before) return res.status(404).json({ error: "Grupo no encontrado." });
     const body = req.body || {}, next = { ...before };
@@ -1678,7 +2440,7 @@ app.patch("/api/admin/groups/:id", async (req, res) => {
 app.post("/api/admin/groups/:id/sessions", async (req, res) => {
   let transaction = "";
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "courses.sessions.create"); if (!user) return;
     const groupId = academicId(String(req.params.id)), group = await fsGet("course_groups", groupId);
     if (!group || !["planned", "active"].includes(group.status)) return res.status(404).json({ error: "Grupo no disponible." });
     const startsAt = academicDate(req.body?.startsAt), endsAt = academicDate(req.body?.endsAt);
@@ -1720,7 +2482,7 @@ app.post("/api/admin/groups/:id/sessions", async (req, res) => {
 app.post("/api/admin/groups/:id/enroll", async (req, res) => {
   let transaction = "";
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.enrollments.create"); if (!user) return;
     const groupId = academicId(String(req.params.id)), studentId = String(req.body?.studentId || "");
     if (!studentId) return res.status(400).json({ error: "studentId es obligatorio." });
     transaction = await beginFirestoreTransaction();
@@ -1746,7 +2508,7 @@ app.post("/api/admin/groups/:id/enroll", async (req, res) => {
 app.patch("/api/admin/sessions/:sessionId", async (req, res) => {
   let transaction = "";
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "courses.sessions.update"); if (!user) return;
     const id = academicId(String(req.params.sessionId)), before = await fsGet("group_sessions", id);
     if (!before) return res.status(404).json({ error: "Sesión no encontrada." });
     const status = String(req.body?.status || before.status);
@@ -1778,12 +2540,15 @@ app.patch("/api/admin/sessions/:sessionId", async (req, res) => {
 
 app.post("/api/admin/sessions/:sessionId/attendance", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.attendance.mark", "own"); if (!user) return;
     const sessionId = academicId(String(req.params.sessionId)), studentId = String(req.body?.studentId || ""), status = String(req.body?.status || "");
     if (!studentId || !academicStatuses.attendance.includes(status)) return res.status(400).json({ error: "Alumno o estado de asistencia inválido." });
     const session = await fsGet("group_sessions", sessionId);
     if (!session || session.status === "cancelled" || (session.status !== "held" && academicDate(session.startsAt) && academicDate(session.startsAt)!.getTime() > Date.now())) return res.status(404).json({ error: "La sesión aún no se realizó o no está disponible para asistencia." });
-    const enrollmentId = academicId(studentId + "_" + String((await fsGet("course_groups", session.groupId))?.courseId || ""));
+    const group = await fsGet("course_groups", session.groupId);
+    const profile = await fsGet("users", user.uid);
+    if (profile?.role === "coach" && group?.coachId !== user.uid) return res.status(404).json({ error: "Sesión no encontrada." });
+    const enrollmentId = academicId(studentId + "_" + String(group?.courseId || ""));
     const enrollment = await fsGet("enrollments", enrollmentId);
     if (!enrollment || enrollment.groupId !== session.groupId || ["cancelled", "suspended"].includes(enrollment.status)) return res.status(409).json({ error: "El alumno no está matriculado en este grupo." });
     const id = academicId(sessionId + "_" + studentId), now = new Date().toISOString();
@@ -1798,13 +2563,15 @@ app.post("/api/admin/sessions/:sessionId/attendance", async (req, res) => {
 
 app.post("/api/admin/assessments", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.assessments.grade", "own"); if (!user) return;
     const body = req.body || {}, studentId = String(body.studentId || ""), groupId = academicId(String(body.groupId || "")), type = String(body.type || "");
     const score = Number(body.score), maxScore = Number(body.maxScore || 100), weight = Number(body.weight || 1);
     if (!studentId || !groupId || !academicStatuses.assessment.includes(type) || !Number.isFinite(score) || !Number.isFinite(maxScore) || maxScore <= 0 || score < 0 || score > maxScore || !Number.isFinite(weight) || weight <= 0 || weight > 100) return res.status(400).json({ error: "Evaluación inválida." });
     const group = await fsGet("course_groups", groupId);
     const enrollment = group ? await fsGet("enrollments", academicId(studentId + "_" + group.courseId)) : null;
     if (!group || !enrollment || enrollment.groupId !== groupId) return res.status(409).json({ error: "El alumno no está matriculado en el grupo." });
+    const profile = await fsGet("users", user.uid);
+    if (profile?.role === "coach" && group.coachId !== user.uid) return res.status(404).json({ error: "Grupo no encontrado." });
     const id = randomBytes(16).toString("hex"), now = new Date().toISOString();
     const assessment = { courseId: group.courseId, studentId, groupId, type, score, maxScore, weight, gradedBy: user.uid, gradedAt: now };
     await fsCommit([fsCreate("assessments", id, assessment), auditWrite(user.uid, "assessment.graded", "alumnos.rendimiento-asistencia", id, null, assessment), fsCreate("outbox", "assessment_graded_" + id, { eventId: "assessment.graded." + id, type: "assessment.graded.v1", aggregate: "assessment", aggregateId: id, schemaVersion: 1, payload: { assessmentId: id, studentId, groupId }, status: "pending", attempts: 0, createdAt: now })]);
@@ -1817,19 +2584,25 @@ app.post("/api/admin/assessments", async (req, res) => {
 
 app.get("/api/admin/enrollments", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.enrollments.read", "own"); if (!user) return;
     const status = String(req.query.status || ""), groupId = String(req.query.groupId || "");
     const enrollments = await fsListAllDocuments("enrollments");
-    const items = enrollments.filter(x => (!status || x.status === status) && (!groupId || x.groupId === groupId)).map(x => ({ id: x.id, ...x }));
+    const profile = await fsGet("users", user.uid);
+    const groups = profile?.role === "coach" ? await fsListAllDocuments("course_groups") : [];
+    const ownGroupIds = new Set(groups.filter(g => g.coachId === user.uid).map(g => g.id));
+    const items = enrollments.filter(x => (!status || x.status === status) && (!groupId || x.groupId === groupId) && (profile?.role !== "coach" || ownGroupIds.has(x.groupId))).map(x => ({ id: x.id, ...x }));
     return res.json({ items, total: items.length });
   } catch (error: any) { console.error("[Contracts] enrollment list failed:", error); return res.status(500).json({ error: "No se pudieron consultar las matrículas." }); }
 });
 
 app.get("/api/admin/enrollments/:id", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.enrollments.read", "own"); if (!user) return;
     const id = academicId(String(req.params.id)), enrollment = await fsGet("enrollments", id);
     if (!enrollment) return res.status(404).json({ error: "Matrícula no encontrada." });
+    const profile = await fsGet("users", user.uid);
+    const accessGroup = enrollment.groupId ? await fsGet("course_groups", enrollment.groupId) : null;
+    if (profile?.role === "coach" && accessGroup?.coachId !== user.uid) return res.status(404).json({ error: "Matrícula no encontrada." });
     const [course, group] = await Promise.all([fsGet("courses", enrollment.courseId), enrollment.groupId ? fsGet("course_groups", enrollment.groupId) : Promise.resolve(null)]);
     return res.json({ id, ...enrollment, courseTitle: course?.title || course?.name || enrollment.courseId, coachId: course?.coachId || "", groupName: group?.name || null });
   } catch (error: any) { console.error("[Contracts] enrollment read failed:", error); return res.status(500).json({ error: "No se pudo consultar la matrícula." }); }
@@ -1949,7 +2722,7 @@ function cronAuthorized(req: express.Request, res: express.Response): boolean {
   if (a.length !== b.length || !timingSafeEqual(a, b)) { res.status(401).json({ error: "Credencial de cron inválida." }); return false; }
   return true;
 }
-function validPeriodLabel(value: string): boolean { return /^\d{4}-(0[1-9]|1[0-2])$/.test(value); }
+function validPeriodLabel(value: string): boolean { return isValidPeriodLabel(value); }
 async function createMonthlyInvoice(enrollment: any, enrollmentId: string, periodLabel: string): Promise<boolean> {
   const invoiceId = invoiceDocumentId(enrollmentId, periodLabel);
   if (await fsGet("invoices", invoiceId)) return false;
@@ -2067,7 +2840,7 @@ async function runPaymentReconciliation() {
 
 app.get("/api/admin/invoices", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "finance"); if (!user) return;
+    const user = await backofficePermission(req, res, "finance.invoices.read", "all"); if (!user) return;
     const status = String(req.query.status || ""), enrollmentId = String(req.query.enrollmentId || "");
     const invoices = await fsListAllDocuments("invoices");
     const items = invoices.filter(x => (!status || x.status === status) && (!enrollmentId || x.enrollmentId === enrollmentId)).sort((a,b) => String(a.dueDate).localeCompare(String(b.dueDate)));
@@ -2107,7 +2880,10 @@ registerBackofficeExtensions(app, {
 });
 
 async function startLocalServer() {
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
+  if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+    throw new Error(`Invalid PORT value: ${process.env.PORT}`);
+  }
   
   // Vite integration
   if (process.env.NODE_ENV !== "production") {

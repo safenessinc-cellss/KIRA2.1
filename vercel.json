@@ -26,5 +26,11 @@
       "dest": "/index.html"
     }
   ],
-  "$schema": "https://openapi.vercel.sh/vercel.json"
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/hr/aggregate",
+      "schedule": "0 3 * * *"
+    }
+  ]
 }

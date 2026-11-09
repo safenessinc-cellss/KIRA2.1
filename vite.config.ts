@@ -12,33 +12,49 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+        includeAssets: ['assets/kira-logo.png', 'firebase-messaging-sw.js', 'icons/kira.svg'],
         manifest: {
-          name: 'Kira Coach',
+          name: 'KIRA Coach',
           short_name: 'KiraCoach',
-          description: 'Ecosistema de Bienestar',
+          description: 'Ecosistema de Bienestar y Coaching Integral - SAFENESS.INC',
+          start_url: '/',
+          scope: '/',
+          display: 'standalone',
+          background_color: '#ffffff',
           theme_color: '#1B4D5D',
+          lang: 'es',
           icons: [
             {
-              src: '/assets/kira-logo.png',
-              sizes: '192x192',
-              type: 'image/png'
-            },
-            {
-              src: '/assets/kira-logo.png',
-              sizes: '512x512',
-              type: 'image/png'
+              src: '/icons/kira.svg',
+              sizes: 'any',
+              type: 'image/svg+xml',
+              purpose: 'any maskable'
             }
+          ],
+          shortcuts: [
+            { name: 'Abrir KIRA', short_name: 'KIRA', url: '/', icons: [{ src: '/icons/kira.svg', sizes: 'any', type: 'image/svg+xml' }] }
           ]
         },
         workbox: {
-          maximumFileSizeToCacheInBytes: 5000000
+          maximumFileSizeToCacheInBytes: 5000000,
+          navigateFallback: '/index.html',
+          navigateFallbackDenylist: [/^\/api\//, /^\/firebase-messaging-sw\.js$/],
+          cleanupOutdatedCaches: true,
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\//,
+              handler: 'StaleWhileRevalidate',
+              options: { cacheName: 'kira-fonts', expiration: { maxEntries: 20, maxAgeSeconds: 2592000 } }
+            },
+            {
+              urlPattern: /\/(?:assets|icons)\//,
+              handler: 'CacheFirst',
+              options: { cacheName: 'kira-images', expiration: { maxEntries: 100, maxAgeSeconds: 604800 } }
+            }
+          ]
         }
       })
     ],
-    define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(process.env.GEMINI_API_KEY || ""),
-    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

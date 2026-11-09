@@ -29,7 +29,8 @@ try {
     await setDoc(doc(db, "companies", "company-a"), { name: "Company A" });
     await setDoc(doc(db, "companies", "company-b"), { name: "Company B" });
     await setDoc(doc(db, "companies", "company-a", "members", "company-admin"), { uid: "company-admin", role: "company_admin" });
-    await setDoc(doc(db, "companies", "company-a", "wellbeingAggregates", "2026-11"), { period: "2026-11", highRiskCount: 2 });
+    await setDoc(doc(db, "companies", "company-a", "wellbeingAggregates", "2026-11"), { period: "2026-11", sampleSize: 12, highRiskCount: 2 });
+    await setDoc(doc(db, "companies", "company-a", "wellbeingAggregates", "2026-10"), { period: "2026-10", sampleSize: 4, highRiskCount: 1 });
     await setDoc(doc(db, "companies", "company-b", "members", "other-admin"), { uid: "other-admin", role: "company_admin" });
   });
 
@@ -92,10 +93,12 @@ try {
   await assertFails(setDoc(doc(studentDb, "notifications", "other-notification"), { userId: "student-b", title: "Notice", message: "For other", type: "system", read: false, createdAt: serverTimestamp() }));
 
   const coachDb = env.authenticatedContext("coach-a", { email: "coach@example.test" }).firestore();
+  await assertFails(getDoc(doc(coachDb, "journals", "journal-b")));
   await assertSucceeds(setDoc(doc(coachDb, "courses", "coach-pending-course"), { title: "Coach course", description: "Real course", price: 10, coachId: "coach-a", status: "pending", hours: 4, createdAt: serverTimestamp() }));
   await assertFails(setDoc(doc(coachDb, "courses", "coach-published-course"), { title: "Coach course", description: "Cannot publish directly", price: 10, coachId: "coach-a", status: "published", hours: 4, createdAt: serverTimestamp() }));
   await assertFails(setDoc(doc(coachDb, "enrollments", "coach-paid-fake"), { userId: "student-a", courseId: "paid-course", progress: 0, createdAt: serverTimestamp() }));
-  await assertSucceeds(updateDoc(doc(coachDb, "enrollments", "coach-enrollment"), { progress: 100, completed: true, courseCompleted: true, completedAt: serverTimestamp(), completionConfirmedBy: "coach-a" }));
+  await assertSucceeds(updateDoc(doc(coachDb, "enrollments", "coach-enrollment"), { progress: 100 }));
+  await assertFails(updateDoc(doc(coachDb, "enrollments", "coach-enrollment"), { completed: true, courseCompleted: true, completedAt: serverTimestamp(), completionConfirmedBy: "coach-a" }));
   const expiredCoachDb = env.authenticatedContext("coach-expired", { email: "expired@example.test" }).firestore();
   await assertFails(updateDoc(doc(expiredCoachDb, "enrollments", "expired-coach-enrollment"), { progress: 100, completed: true, courseCompleted: true, completedAt: serverTimestamp(), completionConfirmedBy: "coach-expired" }));
 
@@ -106,7 +109,7 @@ try {
 
   // Gateway credentials, payment configuration and financial ledgers are server-only,
   // including for the owner browser session; the Express API is the sole access path.
-  for (const collectionName of ["paymentSettings","paymentGateways","paymentPlans","paymentCoupons","paymentAudit","config_audit","course_groups","group_sessions","student_performance","role_permissions","webhook_inbox","payment_reminders","dashboard_aggregates","invoice_payment_claims","paymentReconciliationReports","counters","schedule_locks"]) {
+  for (const collectionName of ["paymentSettings","paymentGateways","paymentPlans","paymentCoupons","paymentAudit","config_audit","payments","invoices","attendance","assessments","course_groups","group_sessions","student_performance","role_permissions","webhook_inbox","payment_reminders","dashboard_aggregates","invoice_payment_claims","paymentReconciliationReports","counters","schedule_locks","homework_assignments","homework_submissions","wellbeing_checkins"]) {
     await assertFails(getDoc(doc(ownerDb, collectionName, "global")));
     await assertFails(setDoc(doc(ownerDb, collectionName, "browser-write"), { enabled: true, apiKeyEncrypted: "must-not-be-client-written" }));
     await assertFails(getDoc(doc(studentDb, collectionName, "global")));
@@ -114,6 +117,7 @@ try {
 
   const companyDb = env.authenticatedContext("company-admin", { email: "hr@example.test" }).firestore();
   await assertSucceeds(getDoc(doc(companyDb, "companies", "company-a", "wellbeingAggregates", "2026-11")));
+  await assertFails(getDoc(doc(companyDb, "companies", "company-a", "wellbeingAggregates", "2026-10")));
   await assertSucceeds(getDoc(doc(companyDb, "companies", "company-a", "members", "company-admin")));
   await assertFails(getDoc(doc(companyDb, "companies", "company-b", "members", "other-admin")));
   await assertFails(getDoc(doc(companyDb, "journals", "journal-b")));

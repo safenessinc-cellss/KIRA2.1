@@ -95,7 +95,8 @@ export default function SessionIntelligence() {
   const [showHistory, setShowHistory] = useState(false);
   
   const [sessionMode, setSessionMode] = useState<'live' | 'form'>('form');
-  const [clientName, setClientName] = useState('Sofía Ramírez');
+  const [consentConfirmed, setConsentConfirmed] = useState(false);
+  const [clientName, setClientName] = useState('');
   const [sessionTopic, setSessionTopic] = useState('Gestión de Estrés Laboral');
   const [manualTranscript, setManualTranscript] = useState('');
   const [selectedSentiment, setSelectedSentiment] = useState<'positivo' | 'neutral' | 'estrés' | 'motivación' | 'duda'>('estrés');
@@ -104,6 +105,7 @@ export default function SessionIntelligence() {
   const [manualEnergy, setManualEnergy] = useState(5);
   
   const recognitionRef = useRef<any>(null);
+  const sessionStartedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     fetchLastSession();
@@ -152,7 +154,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
@@ -195,7 +197,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt
@@ -228,6 +230,10 @@ export default function SessionIntelligence() {
   };
 
   const startSession = async () => {
+    if (!consentConfirmed) {
+      alert("Antes de iniciar, confirma que el cliente autorizó la transcripción y el análisis de esta sesión.");
+      return;
+    }
     try {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SpeechRecognition) {
@@ -241,6 +247,7 @@ export default function SessionIntelligence() {
       recognition.lang = 'es-ES';
 
       recognition.onstart = () => {
+        sessionStartedAtRef.current = Date.now();
         setIsRecording(true);
         setStatus('running');
         setInterimTranscript('');
@@ -307,10 +314,13 @@ export default function SessionIntelligence() {
         console.error("Error stopping recognition:", err);
       }
     }
-    generateSummary(messages);
+    const startedAt = sessionStartedAtRef.current;
+    const durationMinutes = startedAt ? Math.max(1, Math.round((Date.now() - startedAt) / 60000)) : 0;
+    sessionStartedAtRef.current = null;
+    generateSummary(messages, durationMinutes);
   };
 
-  const generateSummary = async (customMessages?: Message[]) => {
+  const generateSummary = async (customMessages?: Message[], durationMinutes = 0) => {
     const listToUse = customMessages || messages;
     if (!user) return;
     if (listToUse.length === 0) {
@@ -362,7 +372,7 @@ export default function SessionIntelligence() {
     try {
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
@@ -379,10 +389,19 @@ export default function SessionIntelligence() {
       await addDoc(collection(db, 'sessions'), {
         userId: user.uid,
         coachId: user.uid,
+        clientName: clientName.trim(),
+        sessionTopic: sessionTopic.trim(),
         transcript: listToUse,
         analysis: sanitizedData,
+        consentConfirmed: true,
+        consentAt: serverTimestamp(),
+        consentMethod: "live_transcription",
+        audioStored: false,
+        durationMinutes: durationMinutes > 0 ? durationMinutes : null,
         createdAt: serverTimestamp()
       });
+      setConsentConfirmed(false);
+      setConsentConfirmed(false);
 
       setStatus('idle');
     } catch (e) {
@@ -394,6 +413,10 @@ export default function SessionIntelligence() {
   const handleAnalyzeManualSession = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    if (!consentConfirmed) {
+      alert("Confirma que el cliente autorizó el uso de la transcripción para el análisis de esta sesión.");
+      return;
+    }
     if (!manualTranscript.trim()) {
       alert("Por favor escribe o genera un diálogo de ejemplo.");
       return;
@@ -448,7 +471,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
@@ -464,11 +487,15 @@ export default function SessionIntelligence() {
       
       await addDoc(collection(db, 'sessions'), {
         userId: user.uid,
-        clientName,
-        sessionTopic,
+        clientName: clientName.trim(),
+        sessionTopic: sessionTopic.trim(),
         coachId: user.uid,
         transcript: manualTranscript,
         analysis: sanitizedData,
+        consentConfirmed: true,
+        consentAt: serverTimestamp(),
+        consentMethod: "manual_transcript",
+        audioStored: false,
         createdAt: serverTimestamp()
       });
 
@@ -547,6 +574,13 @@ export default function SessionIntelligence() {
           >
             <Mic size={16} /> En Vivo (Micrófono)
           </button>
+        </div>
+
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input type="checkbox" checked={consentConfirmed} onChange={event => setConsentConfirmed(event.target.checked)} className="mt-0.5 h-4 w-4 accent-indigo-600" />
+            <span><strong>Consentimiento del cliente requerido.</strong> Confirmo que el cliente autorizó expresamente la transcripción y el análisis de esta sesión. KIRA procesa texto transcrito; esta pantalla no guarda el audio original. No incluyas datos sensibles que no sean necesarios.</span>
+          </label>
         </div>
 
         {/* GRID PRINCIPAL */}

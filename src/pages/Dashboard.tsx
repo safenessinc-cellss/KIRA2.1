@@ -1324,7 +1324,8 @@ export function Journal() {
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + await user.getIdToken()
         },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
@@ -1346,22 +1347,17 @@ export function Journal() {
   const handleSave = async () => {
     if(!content.trim() || !user) return;
     try {
-      const currentPoints = user.points || 0;
-      const userRef = doc(db, 'users', user.uid);
-      
-      await addDoc(collection(db, 'journals'), {
-        userId: user.uid,
-        content: content.trim(),
-        sentiment,
-        createdAt: new Date()
+      const response = await fetch('/api/journals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await user.getIdToken() },
+        body: JSON.stringify({ content: content.trim(), sentiment, idempotencyKey: crypto.randomUUID() })
       });
-
-      await updateDoc(userRef, {
-        points: currentPoints + 20
-      });
-
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'No se pudo guardar tu entrada.');
       setContent('');
-      alert("¡Entrada sincronizada! Has generado +20 Energy Pts.");
+      alert(payload.pointsAwarded > 0
+        ? '¡Entrada sincronizada! Has generado +' + payload.pointsAwarded + ' Energy Pts.'
+        : 'Esta entrada ya estaba sincronizada.');
     } catch(e) {
       handleFirestoreError(e, OperationType.WRITE, 'journals');
     }

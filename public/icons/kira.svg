@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="KIRA Coach">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#123C4A"/><stop offset="1" stop-color="#247C80"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F4D99A"/><stop offset="1" stop-color="#C5A059"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="174" fill="none" stroke="#FFFFFF" stroke-opacity=".18" stroke-width="3"/>
+  <path d="M156 125h48v116l113-116h61L262 252l123 135h-63L204 276v111h-48z" fill="url(#gold)"/>
+  <path d="M130 408h252" stroke="#FFFFFF" stroke-opacity=".65" stroke-width="8" stroke-linecap="round"/>
+</svg>
