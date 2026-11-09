@@ -10,6 +10,7 @@ import { verify as verifySignature, createSign, createHmac, createHash, timingSa
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import { calculateAcademicPerformance, hasScheduleConflict, meetsCompletionThresholds } from "./server/academic-domain";
+import { canSettleInvoice, installmentAmountCents, invoiceDocumentId } from "./server/finance-domain";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -319,7 +320,7 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
   if (order.status === "paid") return;
   if (order.provider !== provider || (expectedUserId && order.userId !== expectedUserId) || Math.abs(Math.round(Number(order.amount) * 100) - paidMinor) > 1 || String(order.currency).toLowerCase() !== currency.toLowerCase()) throw new Error("El importe, la moneda, el usuario o el proveedor no coincide con la orden.");
   const invoice = order.invoiceId ? await fsGet("invoices", String(order.invoiceId)) : null;
-  if (order.invoiceId && (!invoice || invoice.studentId !== order.userId || Number(invoice.amountCents) !== paidMinor || String(invoice.currency).toLowerCase() !== currency.toLowerCase() || invoice.status === "void" || (invoice.status === "paid" && invoice.paymentId !== paymentId))) throw new Error("La factura no coincide con el pago o ya fue liquidada.");
+  if (order.invoiceId && !canSettleInvoice(invoice, paidMinor, currency, order.userId)) throw new Error("La factura no coincide con el pago o ya fue liquidada.");
   const now = new Date().toISOString();
   const writes: any[] = [
     fsCreate("paymentEvents", idSafe(provider + "_" + eventId), { provider, eventId, orderId, status: "processed", processedAt: now }),
@@ -1637,15 +1638,13 @@ function cronAuthorized(req: express.Request, res: express.Response): boolean {
 }
 function validPeriodLabel(value: string): boolean { return /^\d{4}-(0[1-9]|1[0-2])$/.test(value); }
 async function createMonthlyInvoice(enrollment: any, enrollmentId: string, periodLabel: string): Promise<boolean> {
-  const invoiceId = academicId(enrollmentId + "_" + periodLabel);
+  const invoiceId = invoiceDocumentId(enrollmentId, periodLabel);
   if (await fsGet("invoices", invoiceId)) return false;
   const course = await fsGet("courses", String(enrollment.courseId || ""));
   if (!course) return false;
   const plan = String(enrollment.paymentPlan || "upfront");
   if (!["monthly", "custom"].includes(plan)) return false;
-  const totalCourseCents = Math.round(Number(course.priceCents || (Number(course.price || 0) * 100)));
-  const installmentCount = Math.max(0, Number(enrollment.installmentsCount || course.installmentsCount || 0));
-  const amountCents = Math.round(Number(enrollment.installmentAmountCents || course.monthlyAmountCents || (installmentCount > 0 ? totalCourseCents / installmentCount : Number(course.monthlyPrice || 0) * 100)));
+  const amountCents = installmentAmountCents(enrollment, course);
   if (!Number.isSafeInteger(amountCents) || amountCents <= 0) return false;
   const currency = String(enrollment.currency || course.currency || "BRL").toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) return false;
