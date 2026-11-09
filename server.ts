@@ -532,13 +532,15 @@ app.post("/api/certificates/issue", async (req, res) => {
       coachName: String(coach.displayName || coach.name || "Coach"), hours: Number(course.hours || course.durationHours || 0),
       issuerName: "KIRA COACH · SAFENESS.INC", issuedBy: user.uid, status: "issued", issuedAt: new Date().toISOString()
     };
+    const requiresManualApproval = course.certificateTemplate?.requiresManualApproval === true;
+    if (requiresManualApproval) payload.status = "pending_admin";
     if (!Number.isFinite(payload.hours) || payload.hours <= 0 || payload.hours > 10000) return res.status(409).json({ error: "El curso no tiene horas válidas configuradas." });
     const signature = certSignature(payload);
-    const publicRecord = { certificateNumber: number, validationToken: token, studentName: payload.studentName, courseTitle: payload.courseTitle, coachName: payload.coachName, hours: payload.hours, issuerName: payload.issuerName, issuedBy: user.uid, issuedAt: payload.issuedAt, status: "issued", signature };
-    const certificateWrites: any[] = [fsCreate("certificates", number, { ...payload, signature, signatureAlgorithm: "HMAC-SHA256" }), fsCreate("certificatePublic", token, { ...publicRecord, signatureAlgorithm: "HMAC-SHA256" })];
+    const publicRecord = { certificateNumber: number, validationToken: token, studentName: payload.studentName, courseTitle: payload.courseTitle, coachName: payload.coachName, hours: payload.hours, issuerName: payload.issuerName, issuedBy: user.uid, issuedAt: payload.issuedAt, status: requiresManualApproval ? "pending_admin" : "issued", signature };
+    const certificateWrites: any[] = [fsCreate("certificates", number, { ...payload, signature, signatureAlgorithm: "HMAC-SHA256", adminStatus: requiresManualApproval ? "pending_admin" : "active", requiresManualApproval }), fsCreate("certificatePublic", token, { ...publicRecord, signatureAlgorithm: "HMAC-SHA256" })];
     if (requestId && certificateRequest) certificateWrites.push(fsUpdate("certificateRequests", requestId, { ...certificateRequest, status: "issued", certificateNumber: number, certificateId: token, issuedBy: user.uid, issuedAt: payload.issuedAt }));
     certificateWrites.push(fsCreate("auditLogs", idSafe("certificate_" + number), { actorId: user.uid, action: "certificate.issued", targetId: number, studentId: enrollment.userId, courseId: enrollment.courseId, createdAt: payload.issuedAt }));
-    certificateWrites.push(fsCreate("notifications", idSafe("certificate_" + token), { userId: enrollment.userId, title: "Certificado emitido", message: "Tu certificado KIRA " + number + " ya está disponible para validar.", type: "course", read: false, createdAt: payload.issuedAt }));
+    certificateWrites.push(fsCreate("notifications", idSafe("certificate_" + token), { userId: enrollment.userId, title: requiresManualApproval ? "Certificado en revisión" : "Certificado emitido", message: requiresManualApproval ? "Tu certificado está pendiente de revisión administrativa." : "Tu certificado KIRA " + number + " ya está disponible para validar.", type: "course", read: false, createdAt: payload.issuedAt }));
     await fsCommit(certificateWrites);
     return res.status(201).json({ certificateNumber: number, validationUrl: (process.env.KIRA_APP_URL || "https://kira.coach") + "/validar-certificado/" + token });
   } catch (error: any) {
