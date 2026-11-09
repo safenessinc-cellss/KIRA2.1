@@ -517,6 +517,278 @@ app.get("/api/admin/payments/audit",async(req,res)=>{
   catch(e:any){console.error("[Payments] Audit read failed:",e);return res.status(500).json({error:"No se pudo consultar la auditoría."});}
 });
 
+
+/* Backoffice CRM and Dashboard APIs. All PII is encrypted server-side and never read from client Firestore. */
+function crmEncryptionKey(): Buffer {
+  const raw = process.env.KIRA_CRM_PII_ENCRYPTION_KEY || "";
+  const key = /^[a-f0-9]{64}$/i.test(raw) ? Buffer.from(raw, "hex") : Buffer.from(raw, "base64");
+  if (key.length !== 32) throw new Error("Configura KIRA_CRM_PII_ENCRYPTION_KEY con 32 bytes (base64 o 64 caracteres hex).");
+  return key;
+}
+function crmEncrypt(value: string): string {
+  const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", crmEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return [iv.toString("base64"), cipher.getAuthTag().toString("base64"), encrypted.toString("base64")].join(".");
+}
+function crmDecrypt(value: string): string {
+  const [iv, tag, data] = String(value || "").split(".");
+  if (!iv || !tag || !data) return "";
+  const decipher = createDecipheriv("aes-256-gcm", crmEncryptionKey(), Buffer.from(iv, "base64"));
+  decipher.setAuthTag(Buffer.from(tag, "base64"));
+  return Buffer.concat([decipher.update(Buffer.from(data, "base64")), decipher.final()]).toString("utf8");
+}
+function crmLeadView(id: string, lead: any): any {
+  return {
+    id, fullName: crmDecrypt(lead.fullNameEncrypted), email: lead.emailEncrypted ? crmDecrypt(lead.emailEncrypted) : "",
+    phone: lead.phoneEncrypted ? crmDecrypt(lead.phoneEncrypted) : "", notes: lead.notesEncrypted ? crmDecrypt(lead.notesEncrypted) : "",
+    source: lead.source, campaign: lead.campaign || "", courseInterest: lead.courseInterest || "",
+    stage: lead.stage || "new", assignedTo: lead.assignedTo || "", score: Number(lead.score || 0),
+    consentGdpr: lead.consentGdpr === true, createdAt: lead.createdAt || "", updatedAt: lead.updatedAt || ""
+  };
+}
+async function beginFirestoreTransaction(): Promise<string> {
+  const response = await fetch("https://firestore.googleapis.com/v1/projects/" + serviceAccount().project_id + "/databases/(default)/documents:beginTransaction", {
+    method: "POST", headers: { Authorization: "Bearer " + await firestoreToken(), "Content-Type": "application/json" },
+    body: JSON.stringify({ options: { readWrite: {} } })
+  });
+  if (!response.ok) throw new Error("No se pudo iniciar la transacción Firestore.");
+  const data = await response.json() as any;
+  if (!data.transaction) throw new Error("Firestore no devolvió el identificador de transacción.");
+  return data.transaction;
+}
+async function fsGetInTransaction(collectionName: string, id: string, transaction: string): Promise<any | null> {
+  const url = "https://firestore.googleapis.com/v1/" + fsDocumentPath(collectionName, id) + "?transaction=" + encodeURIComponent(transaction);
+  const response = await fetch(url, { headers: { Authorization: "Bearer " + await firestoreToken() } });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error("No se pudo leer un documento dentro de la transacción.");
+  const document = await response.json() as any;
+  return Object.fromEntries(Object.entries(document.fields || {}).map(([k, v]) => [k, fsDecode(v)]));
+}
+async function fsCommitTransaction(writes: any[], transaction: string): Promise<void> {
+  const response = await fetch("https://firestore.googleapis.com/v1/projects/" + serviceAccount().project_id + "/databases/(default)/documents:commit", {
+    method: "POST", headers: { Authorization: "Bearer " + await firestoreToken(), "Content-Type": "application/json" },
+    body: JSON.stringify({ writes, transaction })
+  });
+  if (!response.ok) {
+    const error: any = new Error("La operación perdió una condición de concurrencia o no pudo confirmarse.");
+    error.status = response.status;
+    throw error;
+  }
+}
+async function backofficeAdmin(req: express.Request, res: express.Response): Promise<VerifiedFirebaseUser | null> {
+  const user = await verifiedUser(req, res);
+  if (!user) return null;
+  const profile = await fsGet("users", user.uid);
+  if (user.emailVerified !== true || profile?.role !== "admin") {
+    res.status(403).json({ error: "Este módulo está habilitado únicamente para administradores verificados." });
+    return null;
+  }
+  return user;
+}
+function auditWrite(userId: string, action: string, nodePath: string, entityId: string, before: any, after: any): any {
+  const now = new Date().toISOString();
+  return fsCreate("auditLogs", randomBytes(16).toString("hex"), {
+    actorId: userId, action, nodePath, targetId: entityId, before: before || null, after: after || null,
+    createdAt: now, source: "backoffice-api"
+  });
+}
+
+app.get("/api/admin/dashboard", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res); if (!user) return;
+    const from = typeof req.query.from === "string" ? Date.parse(req.query.from + "T00:00:00.000Z") : Date.now() - 30 * 86400000;
+    const to = typeof req.query.to === "string" ? Date.parse(req.query.to + "T23:59:59.999Z") : Date.now();
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from > to || to - from > 366 * 86400000) return res.status(400).json({ error: "Rango de fechas inválido (máximo 366 días)." });
+    const [transactions, enrollments, leads, invoices, certificates, courses] = await Promise.all([
+      fsListDocuments("transactions", 200), fsListDocuments("enrollments", 200), fsListDocuments("crmLeads", 200),
+      fsListDocuments("invoices", 200), fsListDocuments("certificates", 200), fsListDocuments("courses", 200)
+    ]);
+    const timestamp = (value: any) => {
+      if (!value) return 0;
+      const parsed = typeof value === "string" ? Date.parse(value) : (value.toDate ? value.toDate().getTime() : Number(value));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const inRange = (value: any) => { const t = timestamp(value); return t >= from && t <= to; };
+    const grossByCurrency: Record<string, number> = {};
+    const revenueByCourse: Record<string, Record<string, number>> = {};
+    const paidTransactions = transactions.filter(t => ["paid", "succeeded"].includes(String(t.status || "").toLowerCase()) && inRange(t.paidAt || t.createdAt));
+    for (const payment of paidTransactions) {
+      const currency = String(payment.currency || "BRL").toUpperCase();
+      const amountMinor = Math.round(Number(payment.amountMinor ?? (Number(payment.amount || 0) * 100)));
+      if (!Number.isFinite(amountMinor) || amountMinor < 0) continue;
+      grossByCurrency[currency] = (grossByCurrency[currency] || 0) + amountMinor;
+      const courseIds = Array.isArray(payment.courseIds) ? payment.courseIds : (payment.courseId ? [payment.courseId] : []);
+      const share = courseIds.length ? Math.round(amountMinor / courseIds.length) : 0;
+      for (const courseId of courseIds) {
+        revenueByCourse[courseId] ||= {};
+        revenueByCourse[courseId][currency] = (revenueByCourse[courseId][currency] || 0) + share;
+      }
+    }
+    const periodEnrollments = enrollments.filter(e => inRange(e.createdAt));
+    const periodLeads = leads.filter(l => inRange(l.createdAt));
+    const byStage: Record<string, number> = { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 };
+    for (const lead of periodLeads) byStage[String(lead.stage || "new")] = (byStage[String(lead.stage || "new")] || 0) + 1;
+    const converted = byStage.enrolled || 0;
+    const overdueInvoices = invoices.filter(i => ["open", "overdue"].includes(String(i.status || "").toLowerCase()) && Date.parse(String(i.dueDate || "9999-12-31")) < Date.now()).length;
+    const activeEnrollments = enrollments.filter(e => ["active", "in_progress"].includes(String(e.status || "").toLowerCase()));
+    const courseById = new Map(courses.map(c => [c.id, String(c.title || c.name || c.id)]));
+    const topCourses = Object.entries(revenueByCourse).map(([courseId, revenue]) => ({ courseId, title: courseById.get(courseId) || courseId, revenueByCurrency: revenue }))
+      .sort((a, b) => Object.values(b.revenueByCurrency).reduce((x, y) => x + y, 0) - Object.values(a.revenueByCurrency).reduce((x, y) => x + y, 0)).slice(0, 5);
+    const issuedCertificates = certificates.filter(c => c.status === "issued" && inRange(c.issueDate || c.createdAt)).length;
+    return res.json({
+      sales: { grossByCurrency, netByCurrency: {} }, enrollments: { newCount: periodEnrollments.length },
+      leads: { byStage, total: periodLeads.length }, conversion: { rate: periodLeads.length ? converted / periodLeads.length * 100 : 0, converted, qualified: byStage.qualified || 0 },
+      topCourses, overdueInvoices, students: { active: activeEnrollments.length, atRisk: 0 }, certificates: { issued: issuedCertificates },
+      generatedAt: new Date().toISOString(), source: "Firestore · lectura actual limitada a 200 documentos por colección; sin materialización ni conciliación de reembolsos"
+    });
+  } catch (error: any) {
+    console.error("[Backoffice] Dashboard failed:", error);
+    return res.status(500).json({ error: "No se pudieron calcular los indicadores del backoffice." });
+  }
+});
+
+app.get("/api/admin/crm/leads", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res); if (!user) return;
+    const stage = String(req.query.stage || ""), source = String(req.query.source || ""), assignedTo = String(req.query.assigned_to || "");
+    const leads = await fsListDocuments("crmLeads", 200);
+    const items = leads.filter(lead => (!stage || lead.stage === stage) && (!source || lead.source === source) && (!assignedTo || lead.assignedTo === assignedTo))
+      .map(({ id, ...lead }) => crmLeadView(id, lead))
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    return res.json({ items, total: items.length, limit: 200 });
+  } catch (error: any) {
+    console.error("[CRM] Lead list failed:", error);
+    return res.status(500).json({ error: error.message || "No se pudieron consultar los leads." });
+  }
+});
+
+app.post("/api/admin/crm/leads", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res); if (!user) return;
+    const body = req.body || {};
+    const fullName = String(body.fullName || "").trim(), email = String(body.email || "").trim().toLowerCase(), phone = String(body.phone || "").trim();
+    const source = String(body.source || "manual");
+    if (!fullName || fullName.length > 180 || (!email && !phone) || email.length > 180 || phone.length > 40 ||
+      (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ||
+      !["landing", "whatsapp", "instagram", "referido", "manual"].includes(source)) return res.status(400).json({ error: "Nombre, email o teléfono y origen válido son obligatorios." });
+    const key = crmEncryptionKey();
+    const dedupeMaterial = [email, phone.replace(/\D/g, ""), source].join("|");
+    const id = createHmac("sha256", key).update(dedupeMaterial).digest("hex");
+    const now = new Date().toISOString();
+    const lead = {
+      fullNameEncrypted: crmEncrypt(fullName), emailEncrypted: email ? crmEncrypt(email) : "", phoneEncrypted: phone ? crmEncrypt(phone) : "",
+      source, campaign: String(body.campaign || "").slice(0, 120), courseInterest: String(body.courseInterest || "").slice(0, 180),
+      stage: "new", assignedTo: String(body.assignedTo || "").slice(0, 180), score: 0,
+      consentGdpr: body.consentGdpr === true, createdAt: now, updatedAt: now, piiVersion: 1
+    };
+    try {
+      await fsCommit([
+        fsCreate("crmLeads", id, lead),
+        auditWrite(user.uid, "crm.lead.created", "embudo.leads", id, null, { source, stage: "new", assignedTo: lead.assignedTo }),
+        fsCreate("outbox", "crm_lead_created_" + id, { eventId: "crm.lead.created." + id, type: "crm.lead.created.v1", aggregate: "crmLead", aggregateId: id, schemaVersion: 1, payload: { leadId: id, source, stage: "new" }, status: "pending", attempts: 0, createdAt: now })
+      ]);
+    } catch (error: any) {
+      if (error.status === 409 || error.status === 400) return res.status(409).json({ error: "Ya existe un lead con la misma combinación de email, teléfono y origen." });
+      throw error;
+    }
+    return res.status(201).json({ item: crmLeadView(id, lead) });
+  } catch (error: any) {
+    console.error("[CRM] Lead create failed:", error);
+    return res.status(500).json({ error: error.message || "No se pudo crear el lead. Verifica la clave de cifrado CRM." });
+  }
+});
+
+app.patch("/api/admin/crm/leads/:id", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res); if (!user) return;
+    const id = idSafe(String(req.params.id || "")), before = await fsGet("crmLeads", id);
+    if (!before) return res.status(404).json({ error: "Lead no encontrado." });
+    const body = req.body || {}, allowedStages = ["new", "contacted", "qualified", "enrolled", "lost"];
+    if (body.stage === "enrolled") return res.status(409).json({ error: "La etapa enrolled solo se asigna mediante conversión transaccional." });
+    const next: any = { ...before, updatedAt: new Date().toISOString(), updatedBy: user.uid };
+    if (typeof body.stage === "string") {
+      if (!allowedStages.includes(body.stage)) return res.status(400).json({ error: "Etapa CRM inválida." });
+      next.stage = body.stage;
+    }
+    if (typeof body.assignedTo === "string") next.assignedTo = body.assignedTo.slice(0, 180);
+    if (body.score !== undefined) {
+      const score = Number(body.score); if (!Number.isInteger(score) || score < 0 || score > 100) return res.status(400).json({ error: "Score debe estar entre 0 y 100." });
+      next.score = score;
+    }
+    if (typeof body.notes === "string") next.notesEncrypted = body.notes ? crmEncrypt(body.notes.slice(0, 4000)) : "";
+    await fsCommit([
+      fsUpdate("crmLeads", id, next),
+      auditWrite(user.uid, "crm.lead.updated", "embudo.leads", id, { stage: before.stage, assignedTo: before.assignedTo }, { stage: next.stage, assignedTo: next.assignedTo, score: next.score }),
+      fsCreate("outbox", "crm_lead_updated_" + id + "_" + Date.now(), { eventId: "crm.lead.updated." + id + "." + Date.now(), type: "crm.lead.updated.v1", aggregate: "crmLead", aggregateId: id, schemaVersion: 1, payload: { leadId: id, stage: next.stage }, status: "pending", attempts: 0, createdAt: next.updatedAt })
+    ]);
+    return res.json({ item: crmLeadView(id, next) });
+  } catch (error: any) {
+    console.error("[CRM] Lead update failed:", error);
+    return res.status(500).json({ error: "No se pudo actualizar el lead." });
+  }
+});
+
+app.post("/api/admin/crm/leads/:id/interactions", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res); if (!user) return;
+    const leadId = idSafe(String(req.params.id || "")), lead = await fsGet("crmLeads", leadId);
+    if (!lead) return res.status(404).json({ error: "Lead no encontrado." });
+    const body = req.body || {}, channel = String(body.channel || ""), outcome = String(body.outcome || "");
+    if (!["call", "whatsapp", "email", "meeting", "sms"].includes(channel) || !["no_answer", "left_message", "interested", "not_interested", "scheduled"].includes(outcome)) return res.status(400).json({ error: "Canal u resultado de contacto inválido." });
+    const id = randomBytes(16).toString("hex"), now = new Date().toISOString();
+    const record = { leadId, channel, outcome, notesEncrypted: body.notes ? crmEncrypt(String(body.notes).slice(0, 2000)) : "", nextActionAt: body.nextActionAt ? new Date(body.nextActionAt).toISOString() : null, actorId: user.uid, createdAt: now };
+    await fsCommit([
+      fsCreate("crmInteractions", id, record),
+      auditWrite(user.uid, "crm.interaction.created", "embudo.intentos-contacto", id, null, { leadId, channel, outcome, nextActionAt: record.nextActionAt })
+    ]);
+    return res.status(201).json({ id, leadId, channel, outcome, nextActionAt: record.nextActionAt, createdAt: now });
+  } catch (error: any) {
+    console.error("[CRM] Interaction create failed:", error);
+    return res.status(500).json({ error: "No se pudo registrar el intento de contacto." });
+  }
+});
+
+app.post("/api/admin/crm/leads/:id/convert-to-enrollment", async (req, res) => {
+  let transaction = "";
+  try {
+    const user = await backofficeAdmin(req, res); if (!user) return;
+    const leadId = idSafe(String(req.params.id || "")), studentUid = String(req.body?.studentUid || ""), courseId = String(req.body?.courseId || "");
+    if (!studentUid || !courseId || studentUid.length > 180 || courseId.length > 180) return res.status(400).json({ error: "Se requiere UID del alumno y curso." });
+    transaction = await beginFirestoreTransaction();
+    const [lead, student, course] = await Promise.all([
+      fsGetInTransaction("crmLeads", leadId, transaction),
+      fsGetInTransaction("users", studentUid, transaction),
+      fsGetInTransaction("courses", courseId, transaction)
+    ]);
+    if (!lead || !student || student.role !== "alumno") return res.status(404).json({ error: "Lead o cuenta de alumno no encontrados." });
+    if (!["qualified", "contacted"].includes(String(lead.stage)) || lead.consentGdpr !== true) return res.status(409).json({ error: "Solo se convierte un lead contactado/calificado con consentimiento LGPD registrado." });
+    if (!course || !["published", "active"].includes(String(course.status || ""))) return res.status(409).json({ error: "El curso no está publicado o disponible." });
+    if (lead.courseInterest && lead.courseInterest !== courseId) return res.status(409).json({ error: "El curso seleccionado no coincide con el interés registrado." });
+    const enrollmentId = idSafe(studentUid + "_" + courseId);
+    const existingEnrollment = await fsGetInTransaction("enrollments", enrollmentId, transaction);
+    if (existingEnrollment) return res.status(409).json({ error: "El alumno ya tiene una matrícula para este curso." });
+    const now = new Date().toISOString(), isFree = Number(course.price || 0) <= 0;
+    const enrollment = {
+      userId: studentUid, studentName: student.displayName || student.name || crmDecrypt(lead.fullNameEncrypted),
+      studentEmail: student.email || "", studentAvatar: student.photoURL || "", courseId, leadId,
+      progress: 0, completed: false, courseCompleted: false, status: isFree ? "active" : "pending_payment",
+      paymentStatus: isFree ? "not_required" : "pending_verification", paymentOrderId: "", createdAt: now, updatedAt: now
+    };
+    const nextLead = { ...lead, stage: "enrolled", enrolledAt: now, enrollmentId, updatedAt: now, updatedBy: user.uid };
+    await fsCommitTransaction([
+      fsCreate("enrollments", enrollmentId, enrollment),
+      fsUpdate("crmLeads", leadId, nextLead),
+      auditWrite(user.uid, "crm.lead.converted", "embudo.inscripciones-confirmadas", leadId, { stage: lead.stage }, { stage: "enrolled", enrollmentId, studentUid, courseId }),
+      fsCreate("outbox", "crm_lead_converted_" + leadId, { eventId: "crm.lead.converted." + leadId, type: "crm.lead.converted.v1", aggregate: "crmLead", aggregateId: leadId, schemaVersion: 1, payload: { leadId, enrollmentId, studentUid, courseId }, status: "pending", attempts: 0, createdAt: now })
+    ], transaction);
+    transaction = "";
+    return res.status(201).json({ leadId, enrollmentId, status: enrollment.status, paymentStatus: enrollment.paymentStatus });
+  } catch (error: any) {
+    console.error("[CRM] Lead conversion failed:", error);
+    return res.status(error.status === 409 ? 409 : 500).json({ error: error.message || "No se pudo convertir el lead." });
+  }
+});
+
 // Server-priced checkout and signed provider webhooks. No browser amount is trusted.
 app.post("/api/create-checkout-session", async (req, res) => {
   try {
