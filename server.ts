@@ -10,7 +10,7 @@ import { verify as verifySignature, createSign, createHmac, createHash, timingSa
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import { calculateAcademicPerformance, hasScheduleConflict, meetsCompletionThresholds, sessionDayKeysUTC } from "./server/academic-domain.js";
-import { canSettleInvoice, installmentAmountCents, invoiceDocumentId } from "./server/finance-domain.js";
+import { canSettleInvoice, installmentAmountCents, invoiceDocumentId, isValidPeriodLabel } from "./server/finance-domain.js";
 import { isOutboxEventEligible, outboxFailureTransition } from "./server/outbox-domain.js";
 import { registerBackofficeExtensions } from "./server/backoffice-extensions.js";
 import { hasRecentMfaAuthentication } from "./server/security-domain.js";
@@ -1924,7 +1924,7 @@ function cronAuthorized(req: express.Request, res: express.Response): boolean {
   if (a.length !== b.length || !timingSafeEqual(a, b)) { res.status(401).json({ error: "Credencial de cron inválida." }); return false; }
   return true;
 }
-function validPeriodLabel(value: string): boolean { return /^\d{4}-(0[1-9]|1[0-2])$/.test(value); }
+function validPeriodLabel(value: string): boolean { return isValidPeriodLabel(value); }
 async function createMonthlyInvoice(enrollment: any, enrollmentId: string, periodLabel: string): Promise<boolean> {
   const invoiceId = invoiceDocumentId(enrollmentId, periodLabel);
   if (await fsGet("invoices", invoiceId)) return false;
