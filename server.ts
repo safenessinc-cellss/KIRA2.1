@@ -1362,7 +1362,7 @@ async function refreshStudentPerformance(studentId: string, groupId: string, sou
   const sourceEventIds = Array.from(new Set([...(Array.isArray(previous?.sourceEventIds) ? previous.sourceEventIds : []), sourceEventId])).slice(-100);
   await fsCommit([fsUpdate("student_performance", id, {
     studentId, groupId, courseId: group?.courseId || "", attendancePct, avgScorePct,
-    lessonsCompleted: Number(previous?.lessonsCompleted || 0), lastCalculatedAt: new Date().toISOString(), sourceEventIds
+    lessonsCompleted: Number(previous?.lessonsCompleted || 0), lastCalculatedAt: new Date(), sourceEventIds
   })]);
   return { attendancePct, avgScorePct };
 }
@@ -1545,7 +1545,7 @@ app.post("/api/admin/sessions/:sessionId/attendance", async (req, res) => {
     const enrollment = await fsGet("enrollments", enrollmentId);
     if (!enrollment || enrollment.groupId !== session.groupId || ["cancelled", "suspended"].includes(enrollment.status)) return res.status(409).json({ error: "El alumno no está matriculado en este grupo." });
     const id = academicId(sessionId + "_" + studentId), now = new Date().toISOString();
-    const mark = { sessionId, groupId: session.groupId, studentId, status, markedBy: user.uid, markedAt: now, deletedAt: null };
+    const mark = { sessionId, groupId: session.groupId, studentId, status, markedBy: user.uid, markedAt: new Date(now), deletedAt: null };
     await fsCommit([fsCreate("attendance", id, mark), auditWrite(user.uid, "session.attendance_marked", "alumnos.rendimiento-asistencia", id, null, mark), fsCreate("outbox", "attendance_marked_" + id, { eventId: "session.attendance_marked." + id, type: "session.attendance_marked.v1", aggregate: "attendance", aggregateId: id, schemaVersion: 1, payload: { sessionId, groupId: session.groupId, studentId }, status: "pending", attempts: 0, createdAt: now })]);
     await refreshStudentPerformance(studentId, session.groupId, "session.attendance_marked." + id);
     return res.status(201).json({ id, ...mark });
@@ -1727,7 +1727,7 @@ async function createMonthlyInvoice(enrollment: any, enrollmentId: string, perio
   const invoice = {
     number: "INV-" + year + "-" + String(nextNumber).padStart(6, "0"),
     enrollmentId, studentId: enrollment.userId, courseId: enrollment.courseId,
-    dueDate: dueDate.toISOString(), amountCents, currency, status: "open",
+    dueDate, amountCents, currency, status: "open",
     periodLabel, couponSnapshot: enrollment.couponSnapshot || null,
     paymentPlan: plan, createdAt: now, updatedAt: now
   };
