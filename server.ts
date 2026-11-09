@@ -541,22 +541,24 @@ function crmEncryptionKey(): Buffer {
   if (key.length !== 32) throw new Error("Configura KIRA_CRM_PII_ENCRYPTION_KEY con 32 bytes (base64 o 64 caracteres hex).");
   return key;
 }
-function crmEncrypt(value: string): string {
+function crmEncrypt(value: string, context: string): string {
   const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", crmEncryptionKey(), iv);
+  cipher.setAAD(Buffer.from(context, "utf8"));
   const encrypted = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   return [iv.toString("base64"), cipher.getAuthTag().toString("base64"), encrypted.toString("base64")].join(".");
 }
-function crmDecrypt(value: string): string {
+function crmDecrypt(value: string, context: string): string {
   const [iv, tag, data] = String(value || "").split(".");
   if (!iv || !tag || !data) return "";
   const decipher = createDecipheriv("aes-256-gcm", crmEncryptionKey(), Buffer.from(iv, "base64"));
+  decipher.setAAD(Buffer.from(context, "utf8"));
   decipher.setAuthTag(Buffer.from(tag, "base64"));
   return Buffer.concat([decipher.update(Buffer.from(data, "base64")), decipher.final()]).toString("utf8");
 }
 function crmLeadView(id: string, lead: any): any {
   return {
-    id, fullName: crmDecrypt(lead.fullNameEncrypted), email: lead.emailEncrypted ? crmDecrypt(lead.emailEncrypted) : "",
-    phone: lead.phoneEncrypted ? crmDecrypt(lead.phoneEncrypted) : "", notes: lead.notesEncrypted ? crmDecrypt(lead.notesEncrypted) : "",
+    id, fullName: crmDecrypt(lead.fullNameEncrypted, "crmLead:" + id + ":fullName"), email: lead.emailEncrypted ? crmDecrypt(lead.emailEncrypted, "crmLead:" + id + ":email") : "",
+    phone: lead.phoneEncrypted ? crmDecrypt(lead.phoneEncrypted, "crmLead:" + id + ":phone") : "", notes: lead.notesEncrypted ? crmDecrypt(lead.notesEncrypted, "crmLead:" + id + ":notes") : "",
     source: lead.source, campaign: lead.campaign || "", courseInterest: lead.courseInterest || "",
     stage: lead.stage || "new", assignedTo: lead.assignedTo || "", score: Number(lead.score || 0),
     consentGdpr: lead.consentGdpr === true, createdAt: lead.createdAt || "", updatedAt: lead.updatedAt || ""
@@ -712,7 +714,7 @@ app.post("/api/admin/crm/leads", async (req, res) => {
     const id = createHmac("sha256", key).update(dedupeMaterial).digest("hex");
     const now = new Date().toISOString();
     const lead = {
-      fullNameEncrypted: crmEncrypt(fullName), emailEncrypted: email ? crmEncrypt(email) : "", phoneEncrypted: phone ? crmEncrypt(phone) : "",
+      fullNameEncrypted: crmEncrypt(fullName, "crmLead:" + id + ":fullName"), emailEncrypted: email ? crmEncrypt(email, "crmLead:" + id + ":email") : "", phoneEncrypted: phone ? crmEncrypt(phone, "crmLead:" + id + ":phone") : "",
       source, campaign: String(body.campaign || "").slice(0, 120), courseInterest: String(body.courseInterest || "").slice(0, 180),
       stage: "new", assignedTo: (user.email?.toLowerCase() === "safeness.c.a@gmail.com" ? String(body.assignedTo || "") : user.uid).slice(0, 180), score: 0,
       consentGdpr: body.consentGdpr === true, createdAt: now, updatedAt: now, piiVersion: 1
@@ -755,7 +757,7 @@ app.patch("/api/admin/crm/leads/:id", async (req, res) => {
       const score = Number(body.score); if (!Number.isInteger(score) || score < 0 || score > 100) return res.status(400).json({ error: "Score debe estar entre 0 y 100." });
       next.score = score;
     }
-    if (typeof body.notes === "string") next.notesEncrypted = body.notes ? crmEncrypt(body.notes.slice(0, 4000)) : "";
+    if (typeof body.notes === "string") next.notesEncrypted = body.notes ? crmEncrypt(body.notes.slice(0, 4000), "crmLead:" + id + ":notes") : "";
     await fsCommit([
       fsUpdate("crmLeads", id, next),
       auditWrite(user.uid, "crm.lead.updated", "embudo.leads", id, { stage: before.stage, assignedTo: before.assignedTo }, { stage: next.stage, assignedTo: next.assignedTo, score: next.score }),
@@ -776,7 +778,7 @@ app.get("/api/admin/crm/interactions", async (req, res) => {
     const allowedLeadIds = new Set(leads.filter(lead => isSuperAdmin || lead.assignedTo === user.uid).map(lead => lead.id));
     const leadId = String(req.query.leadId || "");
     const items = interactions.filter(item => allowedLeadIds.has(item.leadId) && (!leadId || item.leadId === leadId))
-      .map(({ id, ...item }) => ({ id, ...item, leadName: crmDecrypt(leads.find(lead => lead.id === item.leadId)?.fullNameEncrypted || ""), notes: item.notesEncrypted ? crmDecrypt(item.notesEncrypted) : "" }))
+      .map(({ id, ...item }) => ({ id, ...item, leadName: crmDecrypt(leads.find(lead => lead.id === item.leadId)?.fullNameEncrypted || "", "crmLead:" + item.leadId + ":fullName"), notes: item.notesEncrypted ? crmDecrypt(item.notesEncrypted, "crmInteraction:" + id + ":notes") : "" }))
       .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
     return res.json({ items, total: items.length, limit: 200 });
   } catch (error: any) {
@@ -793,7 +795,7 @@ app.post("/api/admin/crm/leads/:id/interactions", async (req, res) => {
     const body = req.body || {}, channel = String(body.channel || ""), outcome = String(body.outcome || "");
     if (!["call", "whatsapp", "email", "meeting", "sms"].includes(channel) || !["no_answer", "left_message", "interested", "not_interested", "scheduled"].includes(outcome)) return res.status(400).json({ error: "Canal u resultado de contacto inválido." });
     const id = randomBytes(16).toString("hex"), now = new Date().toISOString();
-    const record = { leadId, channel, outcome, notesEncrypted: body.notes ? crmEncrypt(String(body.notes).slice(0, 2000)) : "", nextActionAt: body.nextActionAt ? new Date(body.nextActionAt).toISOString() : null, actorId: user.uid, createdAt: now };
+    const record = { leadId, channel, outcome, notesEncrypted: body.notes ? crmEncrypt(String(body.notes).slice(0, 2000), "crmInteraction:" + id + ":notes") : "", nextActionAt: body.nextActionAt ? new Date(body.nextActionAt).toISOString() : null, actorId: user.uid, createdAt: now };
     await fsCommit([
       fsCreate("crmInteractions", id, record),
       auditWrite(user.uid, "crm.interaction.created", "embudo.intentos-contacto", id, null, { leadId, channel, outcome, nextActionAt: record.nextActionAt })
@@ -826,7 +828,7 @@ app.post("/api/admin/crm/leads/:id/convert-to-enrollment", async (req, res) => {
     if (existingEnrollment) return res.status(409).json({ error: "El alumno ya tiene una matrícula para este curso." });
     const now = new Date().toISOString(), isFree = Number(course.price || 0) <= 0;
     const enrollment = {
-      userId: studentUid, studentName: student.displayName || student.name || crmDecrypt(lead.fullNameEncrypted),
+      userId: studentUid, studentName: student.displayName || student.name || crmDecrypt(lead.fullNameEncrypted, "crmLead:" + leadId + ":fullName"),
       studentEmail: student.email || "", studentAvatar: student.photoURL || "", courseId, leadId,
       progress: 0, completed: false, courseCompleted: false, status: isFree ? "active" : "pending_payment",
       paymentStatus: isFree ? "not_required" : "pending_verification", paymentOrderId: "", createdAt: now, updatedAt: now
