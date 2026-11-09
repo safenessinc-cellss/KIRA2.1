@@ -225,7 +225,7 @@ export function EliteLibrary() {
                       ) : (
                         <>
                           <Lock size={14} />
-                          Compra premium no disponible
+                          Desbloquear · {item.pointCost || 0} pts
                         </>
                       )}
                     </button>
