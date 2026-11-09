@@ -51,5 +51,10 @@ La emisión verifica identidad/rol, curso, coach responsable, matrícula finaliz
 - [ADR-0001: Firestore como base primaria](docs/adr/0001-firestore-primary-database.md)
 - [ADR-0002: configuración de pagos Superadmin](docs/adr/0002-superadmin-payment-configuration.md)
 - [ADR-0003: transacciones de dominio y outbox](docs/adr/0003-domain-transactions-and-outbox.md)
+- [Árbol oficial del backoffice y estado de integración](docs/architecture/KIRA-BACKOFFICE-NAVIGATION.md)
+- [OpenAPI 3.1 de Dashboard y CRM](docs/api/kira-backoffice-crm-dashboard-v1.openapi.yaml)
+- [ADR-0004: navegación oficial y vertical CRM](docs/adr/0004-official-backoffice-navigation.md)
+
+El backoffice ahora integra una primera vertical funcional de Dashboard y CRM en la rama de auditoría. Los nodos todavía sin backend (grupos, asistencia, cuotas e integraciones) se muestran bloqueados, no simulados. El CRM requiere `KIRA_CRM_PII_ENCRYPTION_KEY` como variable sensible server-only (32 bytes base64 o 64 caracteres hex).
 
 Estos documentos distinguen funcionalidades existentes, parciales y planificadas; una especificación no implica que una ruta esté implementada ni desplegada.
