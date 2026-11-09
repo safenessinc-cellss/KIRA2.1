@@ -834,6 +834,92 @@ app.get("/api/admin/dashboard", async (req, res) => {
   }
 });
 
+app.get("/api/admin/activity", async (req, res) => {
+  try {
+    const owner = await requireSuperAdmin(req, res);
+    if (!owner) return;
+
+    const collections = [
+      "auditLogs", "paymentAudit", "config_audit", "logs",
+      "outbox_dead_letters", "users", "companies", "courses",
+      "enrollments", "sessions", "transactions", "invoices",
+      "certificates", "orders", "journals"
+    ];
+    const snapshots = await Promise.all(collections.map(name => fsListAllDocuments(name, 2000)));
+    const byCollection = Object.fromEntries(collections.map((name, index) => [name, snapshots[index]]));
+    const eventRows: any[] = [];
+
+    for (const name of ["auditLogs", "paymentAudit", "config_audit", "logs", "outbox_dead_letters"]) {
+      for (const item of byCollection[name] || []) {
+        eventRows.push({
+          id: name + ":" + String(item.id || ""),
+          source: name,
+          action: String(item.action || item.eventType || item.type || item.scope || "system.event").slice(0, 120),
+          actorId: String(item.actorId || item.createdBy || item.updatedBy || "system").slice(0, 180),
+          target: String(item.targetId || item.entityId || item.key || item.entity || item.aggregateId || "").slice(0, 180),
+          provider: String(item.provider || item.source || "KIRA").slice(0, 80),
+          status: String(item.status || item.outcome || "").slice(0, 80),
+          timestamp: item.createdAt || item.failedAt || item.updatedAt || item.receivedAt || null,
+          error: name === "outbox_dead_letters" ? String(item.error || item.lastError || "").slice(0, 500) : ""
+        });
+      }
+    }
+
+    for (const user of byCollection.users || []) {
+      if (user.lastLoginAt) eventRows.push({
+        id: "login:" + String(user.id || user.uid || ""),
+        source: "users",
+        action: "user.login",
+        actorId: String(user.email || user.id || "user").slice(0, 180),
+        target: String(user.role || "unknown"),
+        provider: "Firebase Authentication",
+        status: String(user.status || user.approvalStatus || "active").slice(0, 80),
+        timestamp: user.lastLoginAt,
+        error: ""
+      });
+    }
+
+    const timestamp = (value: any) => {
+      if (value && typeof value.toDate === "function") return value.toDate().getTime();
+      const parsed = typeof value === "number" ? value : Date.parse(String(value || ""));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    eventRows.sort((a, b) => timestamp(b.timestamp) - timestamp(a.timestamp));
+
+    const recentUsers = (byCollection.users || [])
+      .slice()
+      .sort((a: any, b: any) => timestamp(b.lastActivityAt || b.lastLoginAt) - timestamp(a.lastActivityAt || a.lastLoginAt))
+      .slice(0, 100)
+      .map((user: any) => ({
+        uid: String(user.uid || user.id || ""),
+        email: String(user.email || ""),
+        displayName: String(user.displayName || user.name || ""),
+        role: String(user.role || "unknown"),
+        approvalStatus: String(user.approvalStatus || ""),
+        status: String(user.status || ""),
+        companyName: String(user.companyName || ""),
+        lastLoginAt: user.lastLoginAt || null,
+        lastActivityAt: user.lastActivityAt || null
+      }));
+
+    const counts = Object.fromEntries(collections.filter(name => !["auditLogs", "paymentAudit", "config_audit", "logs", "outbox_dead_letters"].includes(name))
+      .map(name => [name, (byCollection[name] || []).length]));
+    return res.json({
+      owner: { email: owner.email, verified: owner.emailVerified === true },
+      generatedAt: new Date().toISOString(),
+      counts,
+      eventCount: eventRows.length,
+      events: eventRows.slice(0, 250),
+      recentUsers,
+      limits: { perCollection: 2000, events: 250, recentUsers: 100 },
+      privacy: "Se muestran metadatos operativos y de auditoría. No se exponen contraseñas, secretos, tokens, diarios privados ni transcripciones personales."
+    });
+  } catch (error: any) {
+    console.error("[Owner Activity] global activity failed:", error);
+    return res.status(500).json({ error: "No se pudo cargar la actividad global de KIRA." });
+  }
+});
+
 app.get("/api/admin/crm/leads", async (req, res) => {
   try {
     const user = await backofficeAdmin(req, res, "crm"); if (!user) return;

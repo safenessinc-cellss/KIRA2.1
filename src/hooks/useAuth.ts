@@ -103,12 +103,16 @@ export function useAuth() {
 
                 // Update activity with a throttle (e.g. only if lastActivityAt is older than 1 minute)
                 const lastActivity = firestoreData.lastActivityAt?.toDate ? firestoreData.lastActivityAt.toDate() : null;
+                const lastLogin = firestoreData.lastLoginAt?.toDate ? firestoreData.lastLoginAt.toDate() : null;
                 const now = new Date();
-                if (!lastActivity || (now.getTime() - lastActivity.getTime()) > 60000) {
+                const authLoginAt = u.metadata.lastSignInTime ? new Date(u.metadata.lastSignInTime) : now;
+                const loginNeedsUpdate = !lastLogin || Math.abs(lastLogin.getTime() - authLoginAt.getTime()) > 1000;
+                const activityNeedsUpdate = !lastActivity || (now.getTime() - lastActivity.getTime()) > 60000;
+                if (loginNeedsUpdate || activityNeedsUpdate || firestoreData.isEmailVerified !== u.emailVerified) {
                   try {
-                    await updateDoc(docRef, { 
-                      lastLoginAt: now,
-                      lastActivityAt: now,
+                    await updateDoc(docRef, {
+                      ...(loginNeedsUpdate ? { lastLoginAt: authLoginAt } : {}),
+                      ...(activityNeedsUpdate ? { lastActivityAt: now } : {}),
                       isEmailVerified: u.emailVerified
                     });
                   } catch (e) {
