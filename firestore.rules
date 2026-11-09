@@ -448,6 +448,23 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Backoffice CRM, academic operations and financial documents are server-only.
+    // Express enforces role/assignment checks and writes immutable audit records.
+    match /crmLeads/{id} { allow read, write: if false; }
+    match /crmInteractions/{id} { allow read, write: if false; }
+    match /courseGroups/{id} { allow read, write: if false; }
+    match /groupSessions/{id} { allow read, write: if false; }
+    match /attendance/{id} { allow read, write: if false; }
+    match /assessments/{id} { allow read, write: if false; }
+    match /invoices/{id} { allow read, write: if false; }
+    match /paymentReminders/{id} { allow read, write: if false; }
+    match /integrations/{id} { allow read, write: if false; }
+    match /landingForms/{id} { allow read, write: if false; }
+    match /webhookInbox/{id} { allow read, write: if false; }
+    match /rolePermissions/{id} { allow read, write: if false; }
+    match /dashboardKpis/{id} { allow read, write: if false; }
+    match /outbox/{id} { allow read, write: if false; }
+
     // Payment configuration and ledger are managed only through trusted server APIs.
     // Secret ciphertext is never exposed to client-side Firestore listeners.
     match /paymentSettings/{id} { allow read, write: if false; }
