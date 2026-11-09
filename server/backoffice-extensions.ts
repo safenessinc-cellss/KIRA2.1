@@ -22,7 +22,7 @@ export function registerBackofficeExtensions(app: any, d: any): void {
   const { fsGet, fsListAllDocuments, fsCommit, fsCreate, fsUpdate, auditWrite, verifiedUser, requireSuperAdmin, crmEncryptionKey, crmEncrypt, cronAuthorized } = d;
 
   async function rebuildDashboardAggregate(periodId: string) {
-    if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(periodId)) throw new Error("periodId inválido.");
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodId)) throw new Error("periodId inválido.");
     const [transactions, enrollments, leads, invoices, certificates, courses, performances, refunds, settings, groups] = await Promise.all([
       fsListAllDocuments("transactions"), fsListAllDocuments("enrollments"), fsListAllDocuments("crmLeads"),
       fsListAllDocuments("invoices"), fsListAllDocuments("certificates"), fsListAllDocuments("courses"),
