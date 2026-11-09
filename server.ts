@@ -14,7 +14,7 @@ import { canSettleInvoice, installmentAmountCents, invoiceDocumentId, isValidPer
 import { isOutboxEventEligible, outboxFailureTransition } from "./server/outbox-domain.js";
 import { registerBackofficeExtensions } from "./server/backoffice-extensions.js";
 import { hasRecentMfaAuthentication } from "./server/security-domain.js";
-import { hasScopedPermission } from "./server/permissions-domain.js";
+import { hasDelegatedPermission, hasScopedPermission } from "./server/permissions-domain.js";
 import { calculateCoachClientRetention, homeworkPointsAward, normalizeCoachLeadStage, validateHomeworkReview } from "./server/coach-domain.js";
 import { aggregateCompanyWellbeing, isValidWellbeingCheckin } from "./server/wellbeing-domain.js";
 
@@ -778,7 +778,7 @@ async function backofficeAdmin(req: express.Request, res: express.Response, perm
   if (activeMatrix?.permissions && typeof activeMatrix.permissions === "object") {
     const map = activeMatrix.permissions as Record<string, boolean>;
     const prefix = permission === "system" ? "dashboard." : permission === "users" ? "students." : permission + ".";
-    const allowed = Object.entries(map).some(([key, enabled]) => enabled === true && (key === "*" || key === permission || key.startsWith(prefix)));
+    const allowed = Object.entries(map).some(([key, enabled]) => enabled === true && key !== "*" && (key === permission || key.startsWith(prefix)));
     if (!allowed) { res.status(403).json({ error: "No tienes permiso activo para esta operación del backoffice." }); return null; }
   } else {
     const legacy = Array.isArray(profile.staffPermissions) ? profile.staffPermissions : [];
@@ -803,7 +803,7 @@ async function backofficePermission(
   const role = String(profile?.role === "alumno" ? "student" : profile?.role || "");
   if (!["admin", "coach", "sales", "finance"].includes(role)) { res.status(403).json({ error: "Rol sin acceso al backoffice." }); return null; }
   const matrix = await fsGet("role_permissions", role);
-  if (!matrix?.permissions || !hasScopedPermission(matrix.permissions, permission, scope)) {
+  if (!matrix?.permissions || !hasDelegatedPermission(matrix.permissions, permission, scope)) {
     res.status(403).json({ error: "No tienes el permiso requerido: " + permission + " (" + scope + ")." });
     return null;
   }
@@ -1452,7 +1452,7 @@ app.get("/api/admin/dashboard", async (req, res) => {
     const active = await fsGet("role_permissions", roleKey);
     const map = active?.permissions && typeof active.permissions === "object" ? active.permissions as Record<string, boolean> : null;
     const legacy = Array.isArray(profile?.staffPermissions) ? profile.staffPermissions : [];
-    const can = (...keys: string[]) => isSuperAdmin || (map ? keys.some(key => map["*"] === true || map[key] === true) : role === "admin" && (legacy.includes("system") || keys.some(key => legacy.includes(key.split(".")[0]))));
+    const can = (...keys: string[]) => isSuperAdmin || (map ? keys.some(key => hasDelegatedPermission(map, key, "all")) : role === "admin" && (legacy.includes("system") || keys.some(key => legacy.includes(key.split(".")[0]))));
     const from = typeof req.query.from === "string" ? Date.parse(req.query.from + "T00:00:00.000Z") : Date.now() - 30 * 86400000;
     const to = typeof req.query.to === "string" ? Date.parse(req.query.to + "T23:59:59.999Z") : Date.now();
     if (!Number.isFinite(from) || !Number.isFinite(to) || from > to || to - from > 366 * 86400000) return res.status(400).json({ error: "Rango de fechas inválido (máximo 366 días)." });
