@@ -670,6 +670,49 @@ app.post("/api/ai/nudges", async (req, res) => {
   }
 });
 
+app.post("/api/library/unlock", async (req, res) => {
+  let transaction: any = null;
+  try {
+    const user = await requireFirebaseUser(req, res);
+    if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    if (!profile || profile.role !== "alumno") return res.status(403).json({ error: "Solo los alumnos pueden desbloquear recursos." });
+    const coachId = typeof req.body?.coachId === "string" ? req.body.coachId.slice(0, 128) : "";
+    const title = typeof req.body?.title === "string" ? req.body.title.trim().slice(0, 180) : "";
+    const cost = Number(req.body?.pointCost);
+    if (!coachId || !title || !Number.isSafeInteger(cost) || cost < 0 || cost > 100000) return res.status(400).json({ error: "Los datos del recurso no son válidos." });
+    const key = coachId + ":" + title;
+    const unlockId = idSafe(user.uid + "_" + key);
+    transaction = await beginFirestoreTransaction();
+    const current = await fsGetInTransaction("users", user.uid, transaction);
+    if (!current) throw new Error("No se encontró el perfil del alumno.");
+    const unlocked = Array.isArray(current.unlockedTools) ? current.unlockedTools : [];
+    if (unlocked.includes(key)) {
+      await rollbackFirestoreTransaction(transaction);
+      transaction = null;
+      return res.json({ unlocked: true, alreadyUnlocked: true, points: Number(current.energyPoints ?? current.points ?? 0) });
+    }
+    const points = Math.max(0, Number(current.energyPoints ?? current.points ?? 0));
+    if (points < cost) {
+      await rollbackFirestoreTransaction(transaction);
+      transaction = null;
+      return res.status(409).json({ error: "No tienes suficientes Energy Points para desbloquear este recurso.", points });
+    }
+    const remaining = points - cost;
+    const nextProfile = { ...current, points: remaining, ...(current.energyPoints !== undefined ? { energyPoints: remaining } : {}), unlockedTools: [...unlocked, key] };
+    await fsCommitTransaction([
+      fsUpdate("users", user.uid, nextProfile),
+      fsCreate("userUnlocks", unlockId, { userId: user.uid, coachId, title, pointsSpent: cost, createdAt: new Date().toISOString() })
+    ], transaction);
+    transaction = null;
+    return res.json({ unlocked: true, points: remaining, resource: key });
+  } catch (error: any) {
+    if (transaction) await rollbackFirestoreTransaction(transaction).catch(() => undefined);
+    console.error("[Library] Unlock failed:", error);
+    return res.status(500).json({ error: "No fue posible desbloquear el recurso." });
+  }
+});
+
 app.post("/api/ai/analyze-session", async (req, res) => {
   try {
     const user = await requireFirebaseUser(req, res);
