@@ -1,5 +1,5 @@
-import { createHmac, createHash, randomBytes } from "node:crypto";
-import { hasPermission, hasScopedPermission, permissionMapFromList } from "./permissions-domain";
+import { createHmac, randomBytes } from "node:crypto";
+import { hasScopedPermission, permissionMapFromList } from "./permissions-domain";
 import { verifyWebhookHmac, webhookDedupeKey } from "./integrations-domain";
 
 const ROLE_SEED: Record<string, string[]> = {
@@ -17,7 +17,6 @@ function allowRate(key: string, limit = 12, windowMs = 60_000): boolean {
   if (current.count >= limit) return false; current.count += 1; return true;
 }
 function clientIp(req: any): string { return String(req.ip || req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",")[0].trim().slice(0, 80); }
-function safeId(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 
 export function registerBackofficeExtensions(app: any, d: any): void {
   const { fsGet, fsListAllDocuments, fsCommit, fsCreate, fsUpdate, auditWrite, verifiedUser, requireSuperAdmin, crmEncryptionKey, crmEncrypt, cronAuthorized } = d;
@@ -183,7 +182,7 @@ export function registerBackofficeExtensions(app: any, d: any): void {
     const event = req.body || {}; const eventId = String(event.event_id || event.eventId || event.id || event.entry?.[0]?.id || "");
     const ip = clientIp(req); if (!allowRate("whatsapp:" + ip, 30)) return res.status(429).json({ error: "Límite de eventos excedido." });
     const secret = String(process.env.WHATSAPP_WEBHOOK_SECRET || ""); const signatureOk = verifyWebhookHmac(secret, timestamp, raw, signature);
-    const inboxId = eventId ? "whatsapp_" + webhookDedupeKey("whatsapp", eventId) : "whatsapp_invalid_" + randomBytes(16).toString("hex");
+    const inboxId = signatureOk && eventId ? "whatsapp_" + webhookDedupeKey("whatsapp", eventId) : "whatsapp_invalid_" + randomBytes(16).toString("hex");
     if (!signatureOk) {
       try { await fsCommit([fsCreate("webhook_inbox", inboxId, { provider: "whatsapp", payload: raw.toString("utf8").slice(0, 100000), signatureOk: false, dedupeKey: inboxId, receivedAt: new Date().toISOString(), error: "invalid_signature_or_timestamp" })]); } catch { /* preserve the 401 response; never process invalid data */ }
       return res.status(401).json({ error: "Firma HMAC inválida o timestamp fuera de la ventana permitida." });
