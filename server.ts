@@ -902,7 +902,7 @@ app.get("/api/admin/activity", async (req, res) => {
         lastActivityAt: user.lastActivityAt || null
       }));
 
-    const counts = Object.fromEntries(collections.filter(name => !["auditLogs", "paymentAudit", "config_audit", "logs", "outbox_dead_letters", "users"].includes(name))
+    const counts = Object.fromEntries(collections.filter(name => !["auditLogs", "paymentAudit", "config_audit", "logs", "outbox_dead_letters"].includes(name))
       .map(name => [name, (byCollection[name] || []).length]));
     return res.json({
       owner: { email: owner.email, verified: owner.emailVerified === true },
