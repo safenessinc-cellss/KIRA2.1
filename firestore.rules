@@ -459,6 +459,33 @@ service cloud.firestore {
       }
     }
 
+    match /reports/{reportId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.reporterId == request.auth.uid);
+      allow create: if isAuthenticated()
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+
+    match /aiCache/{cacheId} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/{subcollection}/{documentId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated() && request.auth.uid == userId
+        && subcollection in ['nudges','calm_events','notifications'];
+      allow update: if isAuthenticated() && request.auth.uid == userId
+        && subcollection in ['nudges','calm_events','notifications'];
+      allow delete: if isAuthenticated() && request.auth.uid == userId
+        && subcollection in ['nudges','calm_events','notifications'];
+    }
+
+    match /users/{userId}/tutor_sessions/{courseId}/messages/{messageId} {
+      allow read, create: if isAuthenticated() && request.auth.uid == userId;
+      allow update, delete: if false;
+    }
+
     match /activity_logs/{logId} {
       allow read: if isAdmin();
       allow create: if isAuthenticated()
@@ -466,7 +493,8 @@ service cloud.firestore {
         && request.resource.data.action is string
         && request.resource.data.entityType is string
         && request.resource.data.createdAt is timestamp
-        && !request.resource.data.keys().hasAny(['content','text','journalText','messageText','body']);
+        && request.resource.data.keys().hasOnly(['userId','action','entityType','entityId','metadata','userAgent','createdAt'])
+        && (!('metadata' in request.resource.data) || request.resource.data.metadata.keys().hasOnly(['courseId','lessonId','reviewId','certificateId','coachId','paymentId','provider','currency','amount','mood','durationSeconds','reportId','channel']));
       allow update, delete: if false;
     }
 
