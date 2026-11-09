@@ -751,68 +751,50 @@ function auditWrite(userId: string, action: string, nodePath: string, entityId: 
 
 app.get("/api/admin/dashboard", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "system"); if (!user) return;
+    const user = await verifiedUser(req, res); if (!user) return;
     const profile = await fsGet("users", user.uid);
+    const role = String(profile?.role || "");
     const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
-    const permissions = Array.isArray(profile?.staffPermissions) ? profile.staffPermissions : [];
-    const can = (permission: string) => canAccessBackofficePermission(isSuperAdmin, permissions, permission);
+    if (user.emailVerified !== true || !["admin", "coach", "sales", "finance"].includes(role) && !isSuperAdmin) return res.status(403).json({ error: "No tienes acceso al dashboard." });
+    const roleKey = role === "alumno" ? "student" : role;
+    const active = await fsGet("role_permissions", roleKey);
+    const map = active?.permissions && typeof active.permissions === "object" ? active.permissions as Record<string, boolean> : null;
+    const legacy = Array.isArray(profile?.staffPermissions) ? profile.staffPermissions : [];
+    const can = (...keys: string[]) => isSuperAdmin || (map ? keys.some(key => map["*"] === true || map[key] === true) : role === "admin" && (legacy.includes("system") || keys.some(key => legacy.includes(key.split(".")[0]))));
     const from = typeof req.query.from === "string" ? Date.parse(req.query.from + "T00:00:00.000Z") : Date.now() - 30 * 86400000;
     const to = typeof req.query.to === "string" ? Date.parse(req.query.to + "T23:59:59.999Z") : Date.now();
     if (!Number.isFinite(from) || !Number.isFinite(to) || from > to || to - from > 366 * 86400000) return res.status(400).json({ error: "Rango de fechas inválido (máximo 366 días)." });
-    const [transactions, enrollments, leads, invoices, certificates, courses] = await Promise.all([
-      fsListDocuments("transactions", 200), fsListDocuments("enrollments", 200), fsListDocuments("crmLeads", 200),
-      fsListDocuments("invoices", 200), fsListDocuments("certificates", 200), fsListDocuments("courses", 200)
-    ]);
-    const timestamp = (value: any) => {
-      if (!value) return 0;
-      const parsed = typeof value === "string" ? Date.parse(value) : (value.toDate ? value.toDate().getTime() : Number(value));
-      return Number.isFinite(parsed) ? parsed : 0;
+    const months: string[] = [];
+    const cursor = new Date(Date.UTC(new Date(from).getUTCFullYear(), new Date(from).getUTCMonth(), 1));
+    const last = new Date(Date.UTC(new Date(to).getUTCFullYear(), new Date(to).getUTCMonth(), 1));
+    while (cursor <= last) { months.push(cursor.toISOString().slice(0, 7)); cursor.setUTCMonth(cursor.getUTCMonth() + 1); }
+    const all = await fsListAllDocuments("dashboard_aggregates");
+    const selected = all.filter((x: any) => months.includes(String(x.periodId || x.id)));
+    if (!selected.length) return res.status(503).json({ error: "Todavía no existen agregados persistidos para el período solicitado. Ejecuta el refresh programado.", aggregatesMissing: months });
+    const sum = (key: string) => selected.reduce((total: number, x: any) => total + Number(x[key] || 0), 0);
+    const latest = selected.slice().sort((a: any, b: any) => String(b.periodId || b.id).localeCompare(String(a.periodId || a.id)))[0];
+    const result: any = { generatedAt: new Date().toISOString(), source: "Firestore dashboard_aggregates", periods: selected.map((x: any) => x.periodId || x.id), updatedAt: latest.updatedAt };
+    if (can("finance.invoices.read", "finance.payments.read", "dashboard.finance.read")) result.finance = {
+      salesGrossCents: sum("salesGrossCents"), salesNetCents: sum("salesNetCents"), refundsCents: sum("refundsCents"),
+      overdueInvoices: Number(latest.overdueInvoices || 0), salesByCurrency: selected.reduce((out: any, x: any) => { for (const [currency, amount] of Object.entries(x.salesByCurrency || {})) out[currency] = (out[currency] || 0) + Number(amount || 0); return out; }, {})
     };
-    const inRange = (value: any) => { const t = timestamp(value); return t >= from && t <= to; };
-    const grossByCurrency: Record<string, number> = {};
-    const revenueByCourse: Record<string, Record<string, number>> = {};
-    const paidTransactions = transactions.filter(t => ["paid", "succeeded"].includes(String(t.status || "").toLowerCase()) && inRange(t.paidAt || t.createdAt));
-    for (const payment of paidTransactions) {
-      const currency = String(payment.currency || "BRL").toUpperCase();
-      const amountMinor = Math.round(Number(payment.amountMinor ?? (Number(payment.amount || 0) * 100)));
-      if (!Number.isFinite(amountMinor) || amountMinor < 0) continue;
-      grossByCurrency[currency] = (grossByCurrency[currency] || 0) + amountMinor;
-      const courseIds = Array.isArray(payment.courseIds) ? payment.courseIds : (payment.courseId ? [payment.courseId] : []);
-      const share = courseIds.length ? Math.round(amountMinor / courseIds.length) : 0;
-      for (const courseId of courseIds) {
-        revenueByCourse[courseId] ||= {};
-        revenueByCourse[courseId][currency] = (revenueByCourse[courseId][currency] || 0) + share;
-      }
-    }
-    const periodEnrollments = enrollments.filter(e => inRange(e.createdAt));
-    const periodLeads = leads.filter(l => inRange(l.createdAt) && (isSuperAdmin || l.assignedTo === user.uid));
-    const byStage: Record<string, number> = { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 };
-    for (const lead of periodLeads) byStage[String(lead.stage || "new")] = (byStage[String(lead.stage || "new")] || 0) + 1;
-    const converted = byStage.enrolled || 0;
-    const overdueInvoices = invoices.filter(i => ["open", "overdue"].includes(String(i.status || "").toLowerCase()) && Date.parse(String(i.dueDate || "9999-12-31")) < Date.now()).length;
-    const activeEnrollments = enrollments.filter(e => ["active", "in_progress"].includes(String(e.status || "").toLowerCase()));
-    const courseById = new Map(courses.map(c => [c.id, String(c.title || c.name || c.id)]));
-    const topCourses = Object.entries(revenueByCourse).map(([courseId, revenue]) => ({ courseId, title: courseById.get(courseId) || courseId, revenueByCurrency: revenue }))
-      .sort((a, b) => Object.values(b.revenueByCurrency).reduce((x, y) => x + y, 0) - Object.values(a.revenueByCurrency).reduce((x, y) => x + y, 0)).slice(0, 5);
-    const issuedCertificates = certificates.filter(c => c.status === "issued" && inRange(c.issueDate || c.createdAt)).length;
-    const result: any = {
-      generatedAt: new Date().toISOString(),
-      source: "Firestore · lectura actual limitada a 200 documentos por colección; sin materialización ni conciliación de reembolsos"
+    if (can("students.enrollments.read", "courses.groups.read", "dashboard.academic.read")) result.academic = {
+      newEnrollments: sum("newEnrollments"), activeEnrollments: Number(latest.activeEnrollments || 0), atRiskStudents: Number(latest.atRiskStudents || 0),
+      certificatesIssued: can("students.enrollments.read") ? sum("certificatesIssued") : undefined
     };
-    if (can("billing") || can("finance")) result.sales = { grossByCurrency, netByCurrency: {} };
-    if (can("users") || can("courses")) result.enrollments = { newCount: periodEnrollments.length };
-    if (can("crm")) {
-      result.leads = { byStage, total: periodLeads.length };
-      result.conversion = { rate: periodLeads.length ? converted / periodLeads.length * 100 : 0, converted, qualified: byStage.qualified || 0 };
+    if (can("crm.leads.read", "crm.leads.own.read")) {
+      const leadsByStage = selected.reduce((out: any, x: any) => { for (const [stage, count] of Object.entries(x.leadsByStage || {})) out[stage] = (out[stage] || 0) + Number(count || 0); return out; }, {});
+      const total = Object.values(leadsByStage).reduce((a: number, b: any) => a + Number(b || 0), 0);
+      result.crm = { leadsByStage, conversionRate: total ? Number(leadsByStage.enrolled || 0) / total * 100 : 0 };
     }
-    if (can("billing") || can("finance")) result.topCourses = topCourses;
-    if (can("billing") || can("finance")) result.overdueInvoices = overdueInvoices;
-    if (can("users") || can("courses")) result.students = { active: activeEnrollments.length, atRisk: null };
-    if (can("users")) result.certificates = { issued: issuedCertificates };
+    if (can("courses.read", "finance.payments.read", "dashboard.finance.read")) result.topCourses = Object.values(selected.reduce((out: any, x: any) => {
+      for (const item of Array.isArray(x.topCourses) ? x.topCourses : []) { const id = String(item.courseId); out[id] ||= { courseId: id, title: item.title || id, revenueCents: 0 }; out[id].revenueCents += Number(item.revenueCents || 0); }
+      return out;
+    }, {})).sort((a: any, b: any) => b.revenueCents - a.revenueCents).slice(0, 10);
     return res.json(result);
   } catch (error: any) {
     console.error("[Backoffice] Dashboard failed:", error);
-    return res.status(500).json({ error: "No se pudieron calcular los indicadores del backoffice." });
+    return res.status(500).json({ error: "No se pudieron consultar los agregados del backoffice." });
   }
 });
 
