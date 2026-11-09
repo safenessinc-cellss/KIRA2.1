@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { collection, query, where, getDocs, updateDoc, doc, arrayUnion, onSnapshot, addDoc } from 'firebase/firestore';
 import { Zap, Lock, Unlock, FileText, Video, Image as ImageIcon, Search, Filter, Loader2, Sparkles, X, PlayCircle, GripHorizontal } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Reorder } from 'motion/react';
+import { useEnergyTier } from '../hooks/useEnergyTier';
 
 const getEmbedUrl = (url: string) => {
   if (!url) return null;
@@ -42,6 +43,7 @@ const getEmbedUrl = (url: string) => {
 
 export function EliteLibrary() {
   const { user } = useAuth();
+  const { tier } = useEnergyTier();
   const [coaches, setCoaches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -70,15 +72,28 @@ export function EliteLibrary() {
         coachName: coach.displayName,
         coachPhoto: coach.photoURL
       }))
-    ).filter((item: any) => 
-      (searchTerm === '' || item.title.toLowerCase().includes(searchTerm.toLowerCase())) &&
-      (filterType === 'all' || item.type === filterType)
-    );
+    ).filter((item: any) => {
+      const rank: Record<string, number> = { Bronce: 0, Plata: 1, Oro: 2, Platino: 3 };
+      const allowedTier = !item.requiredTier || (rank[String(tier)] ?? 0) >= (rank[String(item.requiredTier)] ?? 0);
+      return allowedTier && (searchTerm === '' || String(item.title || '').toLowerCase().includes(searchTerm.toLowerCase())) && (filterType === 'all' || item.type === filterType);
+    });
     setDisplayItems(items);
   }, [coaches, searchTerm, filterType]);
 
-  const handleUnlock = async (_item: any) => {
-    alert("La compra de recursos premium todavía no está habilitada. No se descontarán puntos ni se simulará una compra.");
+  const handleUnlock = async (item: any) => {
+    if (!user?.uid || unlocking) return;
+    setUnlocking(item.uniqueId);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Inicia sesión nuevamente.');
+      const response = await fetch('/api/library/unlock', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ coachId: item.coachId, title: item.title, pointCost: Number(item.pointCost || 0) }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'No se pudo desbloquear el recurso.');
+    } catch (error: any) {
+      alert(error?.message || 'No se pudo desbloquear el recurso.');
+    } finally {
+      setUnlocking(null);
+    }
   };
 
   if (loading) {
@@ -130,7 +145,7 @@ export function EliteLibrary() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {displayItems.map((item) => {
           const isUnlocked = user?.unlockedTools?.includes(`${item.coachId}:${item.title}`) || (item.pointCost || 0) === 0;
-          const isCurrentlyUnlocking = false;
+          const isCurrentlyUnlocking = unlocking === item.uniqueId;
 
           return (
             <article
@@ -199,10 +214,10 @@ export function EliteLibrary() {
                   ) : (
                     <button 
                       onClick={() => handleUnlock(item)}
-                      disabled
+                      disabled={isCurrentlyUnlocking}
                       className={cn(
                         "w-full py-2.5 rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 transition-all",
-                        "bg-slate-100 text-slate-500 cursor-not-allowed"
+                        "bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50"
                       )}
                     >
                       {isCurrentlyUnlocking ? (
