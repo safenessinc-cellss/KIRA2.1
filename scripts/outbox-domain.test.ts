@@ -26,8 +26,8 @@ test("outbox failures use capped exponential retry and clear the lease", () => {
 
 test("outbox retry delay is capped at one hour", () => {
   const result = outboxFailureTransition({ ...event, attempts: 20 }, "temporary", 0, 30, 30_000, 3_600_000);
-  assert.equal(result.nextAttemptAt, null);
-  assert.equal(result.status, "failed");
+  assert.equal(result.nextAttemptAt, new Date(3_600_000).toISOString());
+  assert.equal(result.status, "pending");
 });
 
 test("max-attempt failure creates a reviewable dead-letter record with original payload", () => {
