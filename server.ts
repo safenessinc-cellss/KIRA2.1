@@ -15,6 +15,7 @@ import { isOutboxEventEligible, outboxFailureTransition } from "./server/outbox-
 import { registerBackofficeExtensions } from "./server/backoffice-extensions.js";
 import { hasRecentMfaAuthentication } from "./server/security-domain.js";
 import { hasScopedPermission } from "./server/permissions-domain.js";
+import { calculateCoachClientRetention, homeworkPointsAward, normalizeCoachLeadStage, validateHomeworkReview } from "./server/coach-domain.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -860,8 +861,7 @@ app.post("/api/coach/homework/:id/review", async (req, res) => {
     const score = Number(body.score);
     const feedback = String(body.feedback || "").trim();
     const requestedPoints = Number(body.energyPoints || 0);
-    if (!["approved", "needs_correction"].includes(status) || !Number.isInteger(score) || score < 0 || score > 100 ||
-      feedback.length < 2 || feedback.length > 5000 || !Number.isInteger(requestedPoints) || requestedPoints < 0 || requestedPoints > 100) {
+    if (!validateHomeworkReview({ status, score, feedback, energyPoints: requestedPoints })) {
       await rollbackFirestoreTransaction(transaction); transaction = "";
       return res.status(400).json({ error: "Revisa el estado, la calificación (0–100), el feedback y los puntos (0–100)." });
     }
@@ -878,7 +878,7 @@ app.post("/api/coach/homework/:id/review", async (req, res) => {
     }
 
     const now = new Date().toISOString();
-    const awardPoints = status === "approved" && !submission.pointsAwardedAt ? requestedPoints : 0;
+    const awardPoints = homeworkPointsAward(status, submission.pointsAwardedAt, requestedPoints);
     const updated = {
       ...submission,
       coachId: assignedCoachId,
@@ -953,29 +953,10 @@ app.get("/api/coach/analytics", async (req, res) => {
 
     // SessionIntelligence stores userId as the coach for history lookup.
     // Client recurrence must therefore use an explicit client identity, never userId.
-    const clientsById = new Map<string, number>();
-    let sessionsWithClientIdentity = 0;
-    for (const item of ownSessions) {
-      const identity = item.clientId || item.clientUid || item.studentId || item.clientName || item.customerName;
-      if (typeof identity !== "string" || !identity.trim()) continue;
-      const key = identity.trim().toLocaleLowerCase();
-      sessionsWithClientIdentity++;
-      clientsById.set(key, (clientsById.get(key) || 0) + 1);
-    }
-    const returningClients = [...clientsById.values()].filter(count => count > 1).length;
-    const uniqueClients = clientsById.size;
-
+    const retention = calculateCoachClientRetention(ownSessions);
     const stageCounts = { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 };
-    const stageAliases: Record<string, keyof typeof stageCounts> = {
-      new: "new", lead: "new", new_lead: "new",
-      contacted: "contacted", contactado: "contacted", in_contact: "contacted",
-      qualified: "qualified", calificado: "qualified",
-      enrolled: "enrolled", converted: "enrolled", won: "enrolled", matriculado: "enrolled",
-      lost: "lost", closed_lost: "lost", perdido: "lost"
-    };
     for (const item of ownLeads) {
-      const stage = String(item.stage || item.status || "").trim().toLowerCase();
-      const normalized = stageAliases[stage];
+      const normalized = normalizeCoachLeadStage(item.stage || item.status);
       if (normalized) stageCounts[normalized]++;
     }
 
@@ -1026,7 +1007,7 @@ app.get("/api/coach/analytics", async (req, res) => {
       generatedAt: new Date().toISOString(),
       source: "Firestore: sessions, crmLeads, courses, enrollments y reviews",
       scope: isAdmin ? "all" : "own",
-      retention: { uniqueClients, returningClients, rate: uniqueClients ? Math.round(returningClients / uniqueClients * 1000) / 10 : 0 },
+      retention: { uniqueClients: retention.uniqueClients, returningClients: retention.returningClients, rate: retention.rate },
       sessions: { total: ownSessions.length, weekly: weeklySessions },
       monthlyHours,
       hours: durationMinutes ? Math.round(durationMinutes / 60 * 10) / 10 : null,
@@ -1037,8 +1018,8 @@ app.get("/api/coach/analytics", async (req, res) => {
       coverage: {
         durationTrackedSessions,
         totalSessions: ownSessions.length,
-        sessionsWithClientIdentity,
-        sessionsWithoutClientIdentity: Math.max(0, ownSessions.length - sessionsWithClientIdentity)
+        sessionsWithClientIdentity: retention.identifiedSessions,
+        sessionsWithoutClientIdentity: Math.max(0, ownSessions.length - retention.identifiedSessions)
       }
     });
   } catch (error) {
