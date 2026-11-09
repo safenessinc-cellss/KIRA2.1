@@ -356,73 +356,16 @@ function GlobalDashboardView() {
 
     const unsubEnroll = onSnapshot(collection(db, 'enrollments'), (snap) => {
       const enrolls = snap.docs.map(d => d.data());
-      
-      // Calculate trends when either journals or enrollments change
-      const journalsRef = collection(db, 'journals');
-      getDocs(journalsRef).then(jSnap => {
-        const journals = jSnap.docs.map(d => d.data());
-        const processedTrends = generateTrendData(journals, enrolls, stats.users || 100, daysRange);
-        setTrends(processedTrends);
-      });
+      setTrends(generateTrendData([], enrolls, stats.users || 100, daysRange));
     });
 
-    const unsubJournals = onSnapshot(query(collection(db, 'journals'), orderBy('createdAt', 'desc'), limit(5)),
-      (snap) => {
-        const newActivities: any[] = [];
-        
-        snap.forEach(d => {
-          const data = d.data();
-          newActivities.push({
-            id: d.id,
-            user: "Estudiante",
-            action: `escribió en su diario (${data.sentiment || 'neutral'})`,
-            time: "Reciente"
-          });
-        });
-        setActivities(newActivities);
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'journals')
-    );
-
-    const unsubSentimentAll = onSnapshot(collection(db, 'journals'), (snap) => {
-      const counts = { positive: 0, neutral: 0, negative: 0 };
-      snap.forEach(d => {
-        const s = d.data().sentiment;
-        if (s === 'positive') counts.positive++;
-        else if (s === 'neutral') counts.neutral++;
-        else if (s === 'negative') counts.negative++;
-      });
-      setStats(prev => ({ ...prev, sentiment: counts }));
-    });
-
-    const unsubBurnout = onSnapshot(query(collection(db, 'journals'), orderBy('createdAt', 'desc'), limit(500)),
-      (snap) => {
-        const userJournals: Record<string, string[]> = {};
-        snap.forEach(d => {
-          const data = d.data();
-          if (data.userId) {
-            if (!userJournals[data.userId]) userJournals[data.userId] = [];
-            if (userJournals[data.userId].length < 3) {
-               userJournals[data.userId].push(data.sentiment || 'neutral');
-            }
-          }
-        });
-
-        let riskCount = 0;
-        let totalUsers = 0;
-        for (const userId in userJournals) {
-          totalUsers++;
-          const sentiments = userJournals[userId];
-          const negativeCount = sentiments.filter(s => s === 'negative').length;
-          if ((sentiments.length === 3 && negativeCount >= 2) || (sentiments.length < 3 && negativeCount === sentiments.length && negativeCount > 0)) {
-             riskCount++;
-          }
-        }
-
-        const riskIndex = totalUsers > 0 ? (riskCount / totalUsers) * 100 : 0;
-        setStats(prev => ({ ...prev, burnoutRisk: { riskIndex, usersAtRisk: riskCount, totalUsersEvaluated: totalUsers }}));
-      },
-      (err) => handleFirestoreError(err, OperationType.LIST, 'journals_burnout')
+    // Recent administrative activity contains metadata only; no journal or message bodies.
+    const unsubActivity = onSnapshot(query(collection(db, 'activity_logs'), orderBy('createdAt', 'desc'), limit(5)),
+      (snap) => setActivities(snap.docs.map(d => {
+        const data = d.data();
+        return { id: d.id, user: data.userId || 'Usuario', action: String(data.action || 'actividad'), time: data.createdAt?.toDate?.()?.toLocaleString?.() || 'Reciente' };
+      })),
+      (err) => handleFirestoreError(err, OperationType.LIST, 'activity_logs')
     );
 
     return () => {
@@ -430,9 +373,7 @@ function GlobalDashboardView() {
       unsubTransactions();
       unsubCourses();
       unsubEnroll();
-      unsubJournals();
-      unsubSentimentAll();
-      unsubBurnout();
+      unsubActivity();
     };
   }, [daysRange, stats.users]);
 
@@ -853,7 +794,6 @@ function StudentManagementView() {
 
 function StudentActivityDashboard({ student, enrollments, onClose }: any) {
   const [activity, setActivity] = useState<any[]>([]);
-  const [journals, setJournals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -872,17 +812,6 @@ function StudentActivityDashboard({ student, enrollments, onClose }: any) {
           .slice(0, 10);
         setActivity(sortedAct);
 
-        const journalQ = query(collection(db, 'journals'), where('userId', '==', student.id));
-        const journalSnap = await getDocs(journalQ);
-        const sortedJournal = journalSnap.docs
-          .map(d => ({id: d.id, ...d.data()}))
-          .sort((a: any, b: any) => {
-             const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
-             const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
-             return dateB.getTime() - dateA.getTime();
-          })
-          .slice(0, 5);
-        setJournals(sortedJournal);
       } catch (e) {
         console.error(e);
       } finally {
@@ -969,33 +898,8 @@ function StudentActivityDashboard({ student, enrollments, onClose }: any) {
                 </section>
               </div>
 
-              {/* Sidebar: Journals & Trends */}
-              <div className="flex flex-col gap-8 border-l border-slate-100 pl-8">
-                <section>
-                  <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4">Insight Emocional (Reciente)</h3>
-                  <div className="flex flex-col gap-3">
-                    {journals.map((j, i) => (
-                      <div key={i} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                        <p className="text-[12px] text-slate-700 line-clamp-3 leading-relaxed">"{j.content}"</p>
-                        <p className="text-[9px] text-slate-400 mt-2 font-bold uppercase">{j.createdAt?.toDate?.().toLocaleDateString()}</p>
-                      </div>
-                    ))}
-                    {journals.length === 0 && <p className="text-[11px] italic text-slate-400">Sin entradas en el diario.</p>}
-                  </div>
-                </section>
-
-                <section className="mt-auto pt-6 border-t border-slate-100">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[11px] font-bold text-slate-400">PROGRESO GLOBAL</span>
-                    <span className="text-xl font-black text-primary">
-                       {Math.round(enrollments.reduce((acc, c) => acc + (c.progress || 0), 0) / (enrollments.length || 1))}%
-                    </span>
-                  </div>
-                  <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-primary" style={{ width: `${Math.round(enrollments.reduce((acc, c) => acc + (c.progress || 0), 0) / (enrollments.length || 1))}%` }} />
-                  </div>
-                </section>
-              </div>
+              {/* Private journals are intentionally not visible to administrators. */}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5"><h3 className="text-sm font-bold text-slate-700">Privacidad del diario</h3><p className="mt-2 text-xs leading-5 text-slate-500">El contenido de los diarios personales es privado. Esta vista muestra únicamente actividad académica y metadatos permitidos.</p></div>
             </div>
           )}
         </div>
@@ -3009,39 +2913,26 @@ function BIView() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     const fetchData = async () => {
       setLoading(true);
       try {
-        const journalsSnap = await getDocs(collection(db, 'journals'));
-        const counts = { positive: 0, neutral: 0, negative: 0 };
-        journalsSnap.forEach(d => {
-          const s = d.data().sentiment;
-          if (s === 'positive') counts.positive++;
-          else if (s === 'neutral') counts.neutral++;
-          else if (s === 'negative') counts.negative++;
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) throw new Error('Sesión administrativa requerida.');
+        const response = await fetch('/api/admin/analytics/aggregate', { headers: { Authorization: 'Bearer ' + token } });
+        if (!response.ok) throw new Error('No fue posible cargar los agregados.');
+        const data = await response.json();
+        if (!active) return;
+        const moods = data.moodCounts || {};
+        setStats({
+          sentiment: { positive: Number(moods.positive || 0), neutral: Number(moods.neutral || 0), negative: Number(moods.negative || 0) },
+          courseDist: []
         });
-
-        const enrollSnap = await getDocs(collection(db, 'enrollments'));
-        const courseMap: Record<string, number> = {};
-        enrollSnap.forEach(d => {
-          const cid = d.data().courseId;
-          courseMap[cid] = (courseMap[cid] || 0) + 1;
-        });
-
-        const courseSnap = await getDocs(collection(db, 'courses'));
-        const dist = courseSnap.docs.map(d => ({
-          name: (d.data().title || 'Curso Sin Nombre').substring(0, 15) + '...',
-          value: courseMap[d.id] || 0
-        })).filter(d => d.value > 0);
-
-        setStats({ sentiment: counts, courseDist: dist });
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
+      } catch (e) { console.error('Admin aggregate analytics:', e); }
+      finally { if (active) setLoading(false); }
     };
-    fetchData();
+    void fetchData();
+    return () => { active = false; };
   }, []);
 
   const pieData = [
