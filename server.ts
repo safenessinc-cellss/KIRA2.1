@@ -618,6 +618,7 @@ app.post("/api/ai/chat", async (req, res) => {
     if (!user || !allowPurposeAi(user.uid, res)) return;
     const messages = Array.isArray(req.body?.messages) ? req.body.messages.slice(-12) : [];
     const route = typeof req.body?.route === "string" ? req.body.route.slice(0, 120) : "/";
+    const contextualContext = typeof req.body?.context === "string" ? req.body.context.slice(0, 1000) : "";
     if (!messages.length || messages.some((item: any) => !item || !["user", "assistant"].includes(item.role) || typeof item.content !== "string" || item.content.length > 6000)) {
       return res.status(400).json({ error: "El mensaje de KIRA AI no es válido." });
     }
