@@ -265,7 +265,7 @@ async function requireSuperAdmin(req:express.Request,res:express.Response):Promi
   if(user.email?.toLowerCase()!=="safeness.c.a@gmail.com"||user.emailVerified!==true||profile?.role!=="admin"){
     res.status(403).json({error:"Solo el superadministrador KIRA verificado puede administrar pagos y configuración."});return null;
   }
-  if (!hasRecentMfaAuthentication(user)) {
+  if (!hasRecentMfaAuthentication(user, Date.now(), 5 * 60 * 1000)) {
     res.status(403).json({ error: "Se requiere MFA reciente para esta acción. Cierra sesión e inicia sesión nuevamente con el segundo factor habilitado en Firebase." });
     return null;
   }
