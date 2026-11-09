@@ -1861,29 +1861,40 @@ async function createMonthlyInvoice(enrollment: any, enrollmentId: string, perio
   const currency = String(enrollment.currency || course.currency || "BRL").toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) return false;
   const transaction = await beginFirestoreTransaction();
-  const [existing, counter] = await Promise.all([
-    fsGetInTransaction("invoices", invoiceId, transaction),
-    fsGetInTransaction("counters", "invoiceNumber", transaction)
-  ]);
-  if (existing) return false;
-  const nextNumber = Number(counter?.value || 0) + 1;
-  const [year, month] = periodLabel.split("-").map(Number);
-  const dueDate = new Date(Date.UTC(year, month - 1, Math.min(28, Math.max(1, Number(enrollment.dueDay || course.dueDay || 5))), 12, 0, 0));
-  const now = new Date().toISOString();
-  const invoice = {
-    number: "INV-" + year + "-" + String(nextNumber).padStart(6, "0"),
-    enrollmentId, studentId: enrollment.userId, courseId: enrollment.courseId,
-    dueDate, amountCents, currency, status: "open",
-    periodLabel, couponSnapshot: enrollment.couponSnapshot || null,
-    paymentPlan: plan, createdAt: now, updatedAt: now
-  };
-  await fsCommitTransaction([
-    fsCreate("invoices", invoiceId, invoice),
-    counter ? fsUpdate("counters", "invoiceNumber", { ...counter, value: nextNumber, updatedAt: now }) : fsCreate("counters", "invoiceNumber", { value: nextNumber, updatedAt: now }),
-    auditWrite("cron:invoice-generator", "invoice.created", "finanzas.cuotas", invoiceId, null, { number: invoice.number, enrollmentId, periodLabel, amountCents, currency }),
-    fsCreate("outbox", "invoice_created_" + invoiceId, { eventId: "invoice.created." + invoiceId, type: "invoice.created.v1", aggregate: "invoice", aggregateId: invoiceId, schemaVersion: 1, payload: { invoiceId, enrollmentId, studentId: enrollment.userId, periodLabel }, status: "pending", attempts: 0, createdAt: now })
-  ], transaction);
-  return true;
+  let openTransaction = transaction;
+  try {
+    const [existing, counter] = await Promise.all([
+      fsGetInTransaction("invoices", invoiceId, transaction),
+      fsGetInTransaction("counters", "invoiceNumber", transaction)
+    ]);
+    if (existing) {
+      await rollbackFirestoreTransaction(transaction); openTransaction = "";
+      return false;
+    }
+    const nextNumber = Number(counter?.value || 0) + 1;
+    const [year, month] = periodLabel.split("-").map(Number);
+    const dueDay = Math.min(28, Math.max(1, Number(enrollment.dueDay || course.dueDay || 5)));
+    const dueDate = new Date(Date.UTC(year, month - 1, dueDay, 12, 0, 0));
+    const now = new Date().toISOString();
+    const invoice = {
+      number: "INV-" + year + "-" + String(nextNumber).padStart(6, "0"),
+      enrollmentId, studentId: enrollment.userId, courseId: enrollment.courseId,
+      dueDate, amountCents, currency, status: "open",
+      periodLabel, couponSnapshot: enrollment.couponSnapshot || null,
+      paymentPlan: plan, createdAt: now, updatedAt: now
+    };
+    await fsCommitTransaction([
+      fsCreate("invoices", invoiceId, invoice),
+      counter ? fsUpdate("counters", "invoiceNumber", { ...counter, value: nextNumber, updatedAt: now }) : fsCreate("counters", "invoiceNumber", { value: nextNumber, updatedAt: now }),
+      auditWrite("cron:invoice-generator", "invoice.created", "finanzas.cuotas", invoiceId, null, { number: invoice.number, enrollmentId, periodLabel, amountCents, currency }),
+      fsCreate("outbox", "invoice_created_" + invoiceId, { eventId: "invoice.created." + invoiceId, type: "invoice.created.v1", aggregate: "invoice", aggregateId: invoiceId, schemaVersion: 1, payload: { invoiceId, enrollmentId, studentId: enrollment.userId, periodLabel }, status: "pending", attempts: 0, createdAt: now })
+    ], transaction);
+    openTransaction = "";
+    return true;
+  } catch (error) {
+    if (openTransaction) await rollbackFirestoreTransaction(openTransaction);
+    throw error;
+  }
 }
 async function runInvoiceGeneration(periodLabel: string) {
   if (!validPeriodLabel(periodLabel)) throw new Error("periodLabel debe tener formato YYYY-MM.");
