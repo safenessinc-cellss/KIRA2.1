@@ -15,7 +15,8 @@ interface CoachAnalytics {
   satisfaction: { average: number | null; responses: number };
   funnel: { new: number; contacted: number; qualified: number; enrolled: number; lost: number };
   enrollments: number;
-  coverage: { durationTrackedSessions: number; totalSessions: number };
+  leads: number;
+  coverage: { durationTrackedSessions: number; totalSessions: number; sessionsWithClientIdentity: number; sessionsWithoutClientIdentity: number };
 }
 
 const emptyMetrics: CoachAnalytics = {
@@ -24,7 +25,7 @@ const emptyMetrics: CoachAnalytics = {
   sessions: { total: 0, weekly: [] }, hours: null, monthlyHours: [],
   satisfaction: { average: null, responses: 0 },
   funnel: { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 },
-  enrollments: 0, coverage: { durationTrackedSessions: 0, totalSessions: 0 }
+  enrollments: 0, leads: 0, coverage: { durationTrackedSessions: 0, totalSessions: 0, sessionsWithClientIdentity: 0, sessionsWithoutClientIdentity: 0 }
 };
 
 export function CoachCrmAudit() {
@@ -61,10 +62,11 @@ export function CoachCrmAudit() {
     { stage: 'Perdido', value: metrics.funnel.lost }
   ];
   const cards = [
-    { label: 'Clientes con sesiones', value: metrics.retention.uniqueClients, detail: 'Personas únicas registradas', icon: Users },
-    { label: 'Retención / recurrencia', value: `${metrics.retention.rate}%`, detail: `${metrics.retention.returningClients} clientes con más de una sesión`, icon: Activity },
+    { label: 'Clientes identificados', value: metrics.retention.uniqueClients, detail: 'Identificados por ID o nombre en sesión', icon: Users },
+    { label: 'Recurrencia de clientes', value: `${metrics.retention.rate}%`, detail: `${metrics.retention.returningClients} con más de una sesión identificada`, icon: Activity },
     { label: 'Sesiones impartidas', value: metrics.sessions.total, detail: 'Sesiones registradas en KIRA', icon: Target },
-    { label: 'Satisfacción promedio', value: metrics.satisfaction.average === null ? '—' : `${metrics.satisfaction.average.toFixed(1)}/5`, detail: `${metrics.satisfaction.responses} evaluaciones recibidas`, icon: Star }
+    { label: 'Leads asignados', value: metrics.leads || 0, detail: 'Prospectos bajo responsabilidad del coach', icon: Users },
+    { label: 'Valoración de cursos', value: metrics.satisfaction.average === null ? '—' : `${metrics.satisfaction.average.toFixed(1)}/5`, detail: `${metrics.satisfaction.responses} reseñas de cursos asociados`, icon: Star }
   ];
 
   if (loading) return <div className="flex min-h-64 items-center justify-center"><Loader2 className="animate-spin text-teal-700" size={32}/></div>;
@@ -75,14 +77,14 @@ export function CoachCrmAudit() {
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[.18em] text-teal-700">Espacio de trabajo · Coach</p>
           <h1 className="mt-1 text-2xl font-black text-slate-900">CRM y auditoría de clientes</h1>
-          <p className="mt-1 text-sm text-slate-500">Indicadores calculados a partir de registros reales de KIRA.</p>
+          <p className="mt-1 text-sm text-slate-500">Indicadores calculados a partir de sesiones, leads, matrículas y valoraciones reales de KIRA.</p>
         </div>
         <button onClick={() => void load()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><RefreshCw size={15}/>Actualizar</button>
       </header>
 
       {error && <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><AlertCircle size={18}/>{error}</div>}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {cards.map(card => {
           const Icon = card.icon;
           return <article key={card.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -158,7 +160,7 @@ export function CoachCrmAudit() {
 
       <footer className="rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-500">
         Fuente: {metrics.source || 'API de analítica KIRA'}. {metrics.generatedAt ? `Actualizado: ${new Date(metrics.generatedAt).toLocaleString('es-ES')}.` : ''}
-        Los indicadores sin datos de origen se muestran como no disponibles, nunca como cifras estimadas.
+        Identidad del cliente disponible en {metrics.coverage.sessionsWithClientIdentity || 0} de {metrics.coverage.totalSessions} sesiones; la recurrencia solo cuenta sesiones con cliente identificado. La duración solo se suma cuando está registrada explícitamente o existen horas de inicio y fin. Los indicadores sin datos de origen se muestran como no disponibles, nunca como cifras estimadas.
       </footer>
     </section>
   );
