@@ -17,7 +17,7 @@ import { Funnel, PhoneCall, BadgeCheck, GraduationCap, CalendarDays, Layers3, Us
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'activity' | 'analytics' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions';
+type AdminTab = 'dashboard' | 'activity' | 'analytics' | 'website' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions';
 
 type BackofficeItem = { id: AdminTab; label: string; icon: React.ReactNode; permission: string; ready: boolean; countKey?: 'leads' | 'overdue' };
 
@@ -332,6 +332,7 @@ export function AdminMonitor() {
       { id: 'coupons', label: 'Cupones de Descuento', icon: <BadgePercent size={18}/>, permission: 'billing', ready: true }
     ] },
     { label: 'Configuración', items: [
+      { id: 'website', label: 'White Label / Identidad Web', icon: <Layout size={18}/>, permission: 'superadmin', ready: true },
       { id: 'integrations', label: 'Integraciones (Landing Pages / WhatsApp)', icon: <PlugZap size={18}/>, permission: 'superadmin', ready: false },
       { id: 'permissions', label: 'Usuarios y Permisos', icon: <ShieldCheck size={18}/>, permission: 'superadmin', ready: true }
     ] }
@@ -342,6 +343,7 @@ export function AdminMonitor() {
     switch (activeTab) {
       case 'activity': return isSuperAdmin ? <OwnerActivityView /> : null;
       case 'analytics': return isSuperAdmin ? <BusinessInsightsView /> : null;
+      case 'website': return isSuperAdmin ? <WebsiteConfigView /> : null;
       case 'dashboard': return <BackofficeDashboard />;
       case 'crm_leads': return <BackofficeCRM view="leads" />;
       case 'crm_interactions': return <BackofficeCRM view="interactions" />;
