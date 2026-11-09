@@ -92,7 +92,7 @@ export default function App() {
                     <Route path="/verify/:code" element={<CertificateValidation />} />
                     
                     {/* Alumnos */}
-                    <Route element={<ProtectedRoute allowedRoles={['alumno']} />}>
+                    <Route element={<ProtectedRoute allowedRoles={['alumno', 'company_member']} />}>
                       <Route element={<DashboardLayout title="Mi Aprendizaje" />}>
                         <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/dashboard/journal" element={<Journal />} />
