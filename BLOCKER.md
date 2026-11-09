@@ -5,7 +5,7 @@ Rama: `release/admin-expanded-v1`
 
 ## Bloqueadores de release
 
-1. **Vercel deployment API quota:** Vercel rechazó la creación de Preview con HTTP 402 `api-deployments-free-per-day` y `retryAfter=86400` (límite diario superado). No fue posible crear ni verificar Preview ni desplegar producción. No se cambió el plan ni la facturación.
+1. **Vercel deployment API quota:** Vercel confirmó HTTP 402 `payment_required`, recurso `api-deployments-free-per-day`, límite superado en más de 100 deployments y `retryAfter=86400`. Un intento anterior creó un deployment desde un commit documental que quedó `CANCELED` por el Ignored Build Step. El intento forzado con la rama actual fue rechazado por cuota; no hay Preview listo ni producción desplegada. El CLI no está instalado y no hay checkout local para usar el fallback. No se cambió el plan ni la facturación.
 2. **Build / lint / tests sin resultado:** no hubo checkout ejecutable en esta sesión. Se añadió workflow GitHub Actions para npm ci, lint, build y pruebas Firestore Emulator, pero no se dispone de resultado confirmado.
 3. **Rate limiting distribuido:** límites refund/payout usan memoria de instancia; en Vercel serverless no garantizan límite global. Migrar a contador atómico persistente antes de producción.
 4. **Reprocesamiento de webhooks:** el endpoint registra una solicitud, pero no reejecuta la validación/finalización del proveedor. Requiere cola durable/handler idempotente.
