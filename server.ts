@@ -731,6 +731,23 @@ app.patch("/api/admin/crm/leads/:id", async (req, res) => {
   }
 });
 
+app.get("/api/admin/crm/interactions", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res); if (!user) return;
+    const [interactions, leads] = await Promise.all([fsListDocuments("crmInteractions", 200), fsListDocuments("crmLeads", 200)]);
+    const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
+    const allowedLeadIds = new Set(leads.filter(lead => isSuperAdmin || lead.assignedTo === user.uid).map(lead => lead.id));
+    const leadId = String(req.query.leadId || "");
+    const items = interactions.filter(item => allowedLeadIds.has(item.leadId) && (!leadId || item.leadId === leadId))
+      .map(({ id, ...item }) => ({ id, ...item, notes: item.notesEncrypted ? crmDecrypt(item.notesEncrypted) : "" }))
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+    return res.json({ items, total: items.length, limit: 200 });
+  } catch (error: any) {
+    console.error("[CRM] Interaction list failed:", error);
+    return res.status(500).json({ error: "No se pudieron consultar los intentos de contacto." });
+  }
+});
+
 app.post("/api/admin/crm/leads/:id/interactions", async (req, res) => {
   try {
     const user = await backofficeAdmin(req, res); if (!user) return;
