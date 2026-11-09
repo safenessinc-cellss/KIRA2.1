@@ -326,7 +326,12 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
       fsGetInTransaction("paymentEvents", eventDocId, transaction),
       fsGetInTransaction("transactions", paymentDocId, transaction)
     ]);
-    if (existingEvent?.status === "processed" || order.status === "paid") {
+    if (existingEvent?.status === "processed") {
+      await rollbackFirestoreTransaction(transaction); openTransaction = "";
+      return;
+    }
+    if (order.status === "paid") {
+      if (String(order.providerPaymentId || "") !== paymentId) throw new Error("La orden ya fue pagada con otro identificador; requiere conciliación por posible doble cobro.");
       await rollbackFirestoreTransaction(transaction); openTransaction = "";
       return;
     }
@@ -356,8 +361,8 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
     }
 
     const items = Array.isArray(order.items) ? order.items : [];
-    const courseItems = items.filter((item: any) => item.type === "course" || item.collectionName === "courses");
-    const bookItems = items.filter((item: any) => item.collectionName === "books" || item.type === "book");
+    const courseItems = Array.from(new Map(items.filter((item: any) => item.type === "course" || item.collectionName === "courses").map((item: any) => [String(item.id), item])).values());
+    const bookItems = Array.from(new Map(items.filter((item: any) => item.collectionName === "books" || item.type === "book").map((item: any) => [String(item.id), item])).values());
     const membershipItems = items.filter((item: any) => item.type === "membership");
     if (membershipItems.length > 1) throw new Error("Una orden no puede incluir más de una membresía.");
     const buyerProfile = await fsGetInTransaction("users", order.userId, transaction);
