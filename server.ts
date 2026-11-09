@@ -837,12 +837,18 @@ app.post("/api/coach/homework/:id/review", async (req, res) => {
         type: "course", read: false, createdAt: now
       })
     ];
-    if (awardPoints > 0) writes.push({
-      transform: {
-        document: fsDocumentPath("users", submission.studentId),
-        fieldTransforms: [{ fieldPath: "points", increment: { integerValue: String(awardPoints) } }]
-      }
-    });
+    if (awardPoints > 0) {
+      writes.push(fsCreate("homework_point_awards", id, {
+        submissionId: id, studentId: submission.studentId, coachId: user.uid,
+        points: awardPoints, createdAt: now
+      }));
+      writes.push({
+        transform: {
+          document: fsDocumentPath("users", submission.studentId),
+          fieldTransforms: [{ fieldPath: "points", increment: { integerValue: String(awardPoints) } }]
+        }
+      });
+    }
     await fsCommit(writes);
     return res.json({ item: { id, status, score, feedback, reviewedAt: nowIso, energyPointsAwarded: updated.energyPointsAwarded }, pointsAwarded: awardPoints });
   } catch (error) {
