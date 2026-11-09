@@ -305,6 +305,26 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+// Public Firebase Web configuration for the messaging service worker.
+// Firebase Web API keys are client identifiers, not server credentials; no private
+// service-account or payment secrets are returned by this endpoint.
+app.get("/api/firebase-config", (_req, res) => {
+  const config = {
+    apiKey: process.env.VITE_FIREBASE_API_KEY || "",
+    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || "kira2-a6a20.firebaseapp.com",
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "kira2-a6a20",
+    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || "kira2-a6a20.firebasestorage.app",
+    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+    appId: process.env.VITE_FIREBASE_APP_ID || "",
+    measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || "",
+  };
+  res.setHeader("Cache-Control", "no-store");
+  if (!config.apiKey || !config.appId || !config.messagingSenderId) {
+    return res.status(503).json({ error: "Firebase web messaging is not configured." });
+  }
+  return res.json(config);
+});
+
 // Report configuration truthfully; never claim the AI is ready when no key is configured.
 app.get("/api/gemini/config", (req, res) => {
   const configured = isValidGeminiKey(process.env.GEMINI_API_KEY);
