@@ -338,11 +338,13 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
     if (!order) throw new Error("La orden no existe.");
     const eventDocId = idSafe(provider + "_" + eventId);
     const paymentDocId = idSafe(provider + "_" + paymentId);
-    const [existingEvent, existingPayment] = await Promise.all([
+    const processedEventId = idSafe(provider + "_" + eventId);
+    const [existingEvent, existingPayment, processedEvent] = await Promise.all([
       fsGetInTransaction("paymentEvents", eventDocId, transaction),
-      fsGetInTransaction("transactions", paymentDocId, transaction)
+      fsGetInTransaction("transactions", paymentDocId, transaction),
+      fsGetInTransaction("transactions_processed", processedEventId, transaction)
     ]);
-    if (existingEvent?.status === "processed") {
+    if (existingEvent?.status === "processed" || processedEvent?.eventId === eventId) {
       await rollbackFirestoreTransaction(transaction); openTransaction = "";
       return;
     }
@@ -399,6 +401,7 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
     const now = new Date().toISOString();
     const writes: any[] = [
       fsCreate("paymentEvents", eventDocId, { provider, eventId, orderId, status: "processed", processedAt: now }),
+      fsCreate("transactions_processed", processedEventId, { provider, eventId, orderId, paymentId, status: "processed", processedAt: now }),
       fsCreate("transactions", paymentDocId, { userId: order.userId, orderId, courseId: courseItems[0]?.id || "", courseIds: courseItems.map((item: any) => item.id), provider, providerPaymentId: paymentId, amount: order.amount, currency: order.currency, status: "paid", createdAt: now }),
       fsUpdate("orders", orderId, { ...order, status: "paid", providerPaymentId: paymentId, paidAt: now, updatedAt: now }),
       fsCreate("auditLogs", idSafe("payment_" + provider + "_" + paymentId), { actorId: "payment_webhook", action: "payment.confirmed", targetId: orderId, provider, paymentId, amount: order.amount, currency: order.currency, createdAt: now }),
