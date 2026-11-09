@@ -1,4 +1,4 @@
-import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, runTransaction } from "firebase/firestore";
 import { db } from "../firebase";
 
 /** Updates an existing enrollment atomically; Firestore rules remain the authority for who may write. */
@@ -11,10 +11,6 @@ export async function updateProgress(enrollmentId: string, progress: number): Pr
     if (!snapshot.exists()) throw new Error("La matrícula ya no existe.");
     const current = Number(snapshot.data().progress || 0);
     if (progress < current) throw new Error("El progreso no puede retroceder.");
-    transaction.update(reference, {
-      progress,
-      completed: progress >= 100,
-      updatedAt: serverTimestamp(),
-    });
+    transaction.update(reference, { progress });
   });
 }
