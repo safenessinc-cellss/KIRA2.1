@@ -783,7 +783,10 @@ app.get("/api/coach/homework", async (req, res) => {
     if (!isAdmin && !isCoach) return res.status(403).json({ error: "Solo coaches aprobados y administradores pueden consultar entregas." });
     const all = await fsListAllDocuments("homework_submissions", 5000);
     const items = all.filter((item: any) => isAdmin || item.coachId === user.uid)
-      .map(({ id, ...item }: any) => ({ id, ...item }))
+      .map(({ id, ...item }: any) => ({
+        id, ...item,
+        status: item.status === "reviewed" ? "approved" : (item.status || "pending")
+      }))
       .sort((a: any, b: any) => String(b.submittedAt || "").localeCompare(String(a.submittedAt || "")));
     return res.json({ items, total: items.length, generatedAt: new Date().toISOString() });
   } catch (error) {
