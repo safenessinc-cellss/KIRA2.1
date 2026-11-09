@@ -59,3 +59,24 @@ La emisión verifica identidad/rol, curso, coach responsable, matrícula finaliz
 El backoffice ahora integra una primera vertical funcional de Dashboard y CRM en la rama de auditoría. Los nodos todavía sin backend (grupos, asistencia, cuotas e integraciones) se muestran bloqueados, no simulados. El CRM requiere `KIRA_CRM_PII_ENCRYPTION_KEY` como variable sensible server-only (32 bytes base64 o 64 caracteres hex).
 
 Estos documentos distinguen funcionalidades existentes, parciales y planificadas; una especificación no implica que una ruta esté implementada ni desplegada.
+
+
+## Entorno independiente de pruebas (Render)
+
+La rama `test/render-independent-environment-v2` incluye una configuración para desplegar KIRA como servicio Node.js completo en Render. Render aloja la aplicación React/Vite, la API Express y el WebSocket de Gemini Live en el mismo servicio.
+
+### Seguridad obligatoria antes del primer despliegue
+
+El entorno de pruebas **no debe conectarse al Firebase de producción**. Crea un proyecto Firebase separado para QA y registra allí los dominios de autenticación de Render. En Render configura las variables `VITE_FIREBASE_*` y `FIREBASE_PROJECT_ID` con ese proyecto QA, además de `FIREBASE_SERVICE_ACCOUNT_JSON` de la cuenta de servicio QA. El comando `npm run build:test` falla deliberadamente si detecta el proyecto de producción o faltan los parámetros Firebase.
+
+El servicio arranca con `KIRA_DEMO_MODE=true`: la API queda en solo lectura. Las escrituras directas del SDK Firebase del navegador también quedan aisladas porque se exige un proyecto Firebase QA separado y reglas QA propias.
+
+### Despliegue
+
+1. En Render, crea un **Blueprint** desde el repositorio y selecciona la rama `test/render-independent-environment-v2`.
+2. Completa las variables marcadas como secretas/no sincronizadas.
+3. Añade el hostname `*.onrender.com` a Firebase Authentication > Authorized domains del proyecto QA.
+4. Comprueba `/api/health`, login, portales y navegación. Las operaciones de escritura API deben responder `423 KIRA_DEMO_READ_ONLY`.
+5. No conectes el dominio de producción, no cambies DNS y no fusiones esta rama a producción.
+
+El plan gratuito de Render puede suspender el servicio tras inactividad; la primera petición posterior puede tardar mientras vuelve a arrancar.
