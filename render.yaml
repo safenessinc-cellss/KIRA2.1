@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: kira-qa
+    runtime: node
+    plan: free
+    branch: test/render-independent-environment
+    buildCommand: npm install --no-audit --no-fund && npm run build:test
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: KIRA_DEMO_MODE
+        value: "true"
+      - key: VITE_FIREBASE_API_KEY
+        sync: false
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        sync: false
+      - key: VITE_FIREBASE_PROJECT_ID
+        sync: false
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        sync: false
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        sync: false
+      - key: VITE_FIREBASE_APP_ID
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: KIRA_APP_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: KIRA_CERTIFICATE_SIGNING_SECRET
+        sync: false
+      - key: KIRA_CONFIG_ENCRYPTION_KEY
+        sync: false
+      - key: KIRA_CRM_PII_ENCRYPTION_KEY
+        sync: false
+      - key: KIRA_OUTBOX_CRON_SECRET
+        sync: false
