@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { auth } from '@/src/firebase';
 import { useAuth } from '@/src/hooks/useAuth';
-import { Activity, AlertCircle, Clock3, Loader2, RefreshCw, Star, Target, Users } from 'lucide-react';
+import { Activity, AlertCircle, Brain, Clock3, Loader2, RefreshCw, Sparkles, Star, Target, Users } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 interface CoachAnalytics {
@@ -32,6 +32,9 @@ export function CoachCrmAudit() {
   const [metrics, setMetrics] = useState<CoachAnalytics>(emptyMetrics);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [auditResult, setAuditResult] = useState('');
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState('');
 
   const load = async () => {
     const currentUser = auth.currentUser;
@@ -52,6 +55,47 @@ export function CoachCrmAudit() {
   };
 
   useEffect(() => { if (user?.uid) void load(); }, [user?.uid]);
+
+  const runAudit = async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) { setAuditError('Tu sesión expiró. Vuelve a iniciar sesión.'); return; }
+    setAuditLoading(true);
+    setAuditError('');
+    setAuditResult('');
+    try {
+      const token = await currentUser.getIdToken();
+      const prompt = [
+        'Actúa como auditor senior de operaciones de coaching y CRM.',
+        'Analiza exclusivamente las métricas reales siguientes. No inventes datos, ingresos, causas ni proyecciones.',
+        'Distingue claramente hechos observados, hipótesis y recomendaciones.',
+        'Entrega: 1) diagnóstico de recurrencia y retención; 2) lectura del embudo; 3) calidad de experiencia según reseñas; 4) brechas de medición; 5) tres acciones priorizadas para los próximos siete días.',
+        'Si una métrica está ausente, indícalo y no la estimes.',
+        JSON.stringify({
+          retention: metrics.retention,
+          sessions: metrics.sessions,
+          totalHours: metrics.hours,
+          monthlyHours: metrics.monthlyHours,
+          satisfaction: metrics.satisfaction,
+          funnel: metrics.funnel,
+          enrollments: metrics.enrollments,
+          coverage: metrics.coverage
+        })
+      ].join('\\n\\n');
+      const response = await fetch('/api/gemini/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ model: 'gemini-3.5-flash', contents: prompt })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'La auditoría IA no está disponible.');
+      if (!payload.text) throw new Error('La IA no devolvió un análisis.');
+      setAuditResult(String(payload.text));
+    } catch (err: any) {
+      setAuditError(err.message || 'No se pudo ejecutar la auditoría IA.');
+    } finally {
+      setAuditLoading(false);
+    }
+  };
 
   const funnelRows = [
     { stage: 'Nuevo', value: metrics.funnel.new },
@@ -77,10 +121,18 @@ export function CoachCrmAudit() {
           <h1 className="mt-1 text-2xl font-black text-slate-900">CRM y auditoría de clientes</h1>
           <p className="mt-1 text-sm text-slate-500">Indicadores calculados a partir de registros reales de KIRA.</p>
         </div>
-        <button onClick={() => void load()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><RefreshCw size={15}/>Actualizar</button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => void runAudit()} disabled={auditLoading || loading || !!error} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-50">{auditLoading ? <Loader2 size={15} className="animate-spin"/> : <Sparkles size={15}/>}Auditoría IA</button>
+          <button onClick={() => void load()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"><RefreshCw size={15}/>Actualizar</button>
+        </div>
       </header>
 
       {error && <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800"><AlertCircle size={18}/>{error}</div>}
+      {auditError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{auditError}</div>}
+      {auditResult && <article className="rounded-2xl border border-teal-100 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-2 text-teal-800"><Brain size={18}/><h2 className="font-bold">Diagnóstico KIRA AI</h2></div>
+        <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{auditResult}</div>
+      </article>}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map(card => {
