@@ -73,7 +73,7 @@ export function AdminMonitor() {
 
   const canOpen = (item: any) => item.superOnly ? isSuperAdmin : hasPerm(item);
 
-  const categories = ['Inicio y métricas', 'Personas y acceso', 'Academia y certificados', 'Finanzas'].filter(cat => filteredNav.some(n => n.category === cat));
+  const categories = ['Inicio y métricas', 'Personas y acceso', 'Academia y certificados', 'Finanzas', 'Gobernanza'].filter(cat => filteredNav.some(n => n.category === cat));
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
