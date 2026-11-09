@@ -44,6 +44,8 @@ try {
   await assertSucceeds(setDoc(doc(studentDb, "enrollments", "free-valid"), { userId: "student-a", courseId: "free-course", progress: 0, createdAt: serverTimestamp() }));
   await assertFails(updateDoc(doc(studentDb, "users", "student-a"), { companyId: "company-b" }));
   await assertFails(updateDoc(doc(studentDb, "users", "student-a"), { staffPermissions: ["system"] }));
+  await assertFails(updateDoc(doc(studentDb, "users", "student-a"), { isBanned: true }));
+  await assertFails(updateDoc(doc(studentDb, "users", "student-a"), { coachId: "coach-b" }));
 
   const applicantDb = env.authenticatedContext("student-b", { email: "b@example.test" }).firestore();
   await assertSucceeds(getDoc(doc(applicantDb, "coach_applications", "application-b")));
