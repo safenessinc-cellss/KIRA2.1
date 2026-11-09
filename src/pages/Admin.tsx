@@ -88,7 +88,7 @@ export function AdminMonitor() {
       case 'lessons': return <CMSView />;
       case 'students': return <StudentManagementView />;
       case 'gateways': return <AdminPaymentsConfig />;
-      case 'coupons': return <PromotionsManagerView />;
+      case 'coupons': return <AdminPaymentsConfig />;
       case 'permissions': return <SecurityView />;
       default: return null;
     }
