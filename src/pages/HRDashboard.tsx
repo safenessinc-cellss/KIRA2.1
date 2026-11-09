@@ -44,9 +44,12 @@ export function HRDashboard() {
 
   const activeEmployees = employees.filter(employee => employee.status === "active" || employee.status === "approved");
   const latestAggregate = aggregates.slice().sort((a, b) => String(b.periodEnd || b.createdAt || "").localeCompare(String(a.periodEnd || a.createdAt || "")))[0];
+  const sampleSize = Number(latestAggregate?.sampleSize ?? latestAggregate?.cohortSize ?? latestAggregate?.participantCount ?? 0);
+  const minimumCohortSize = Math.max(5, Number(latestAggregate?.minimumCohortSize ?? latestAggregate?.minCohortSize ?? 5));
+  const privacyThresholdMet = Boolean(latestAggregate && sampleSize >= minimumCohortSize && latestAggregate.suppressed !== true);
   const highRiskCount = Number(latestAggregate?.highRiskCount ?? latestAggregate?.riskHigh ?? 0);
   const averageEngagement = Number(latestAggregate?.averageEngagement ?? latestAggregate?.engagementScore ?? 0);
-  const hasWellbeingAggregate = Boolean(latestAggregate && (latestAggregate.highRiskCount !== undefined || latestAggregate.riskHigh !== undefined || latestAggregate.averageEngagement !== undefined || latestAggregate.engagementScore !== undefined));
+  const hasWellbeingAggregate = Boolean(privacyThresholdMet && (latestAggregate.highRiskCount !== undefined || latestAggregate.riskHigh !== undefined || latestAggregate.averageEngagement !== undefined || latestAggregate.engagementScore !== undefined));
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-7">
@@ -83,8 +86,8 @@ export function HRDashboard() {
         </article>
         <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:col-span-2 xl:col-span-1">
           <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Engagement promedio</span><BarChart3 className="text-teal-700" size={20} /></div>
-          <p className="mt-4 text-4xl font-black tabular-nums text-slate-900">{loading || !latestAggregate || !averageEngagement ? "—" : averageEngagement.toFixed(1)}</p>
-          <p className="mt-2 text-xs text-slate-500">Solo se muestra si existe una medición agregada real</p>
+          <p className="mt-4 text-4xl font-black tabular-nums text-slate-900">{loading || !hasWellbeingAggregate ? "—" : averageEngagement.toFixed(1)}</p>
+          <p className="mt-2 text-xs text-slate-500">{hasWellbeingAggregate ? `Muestra agregada de ${sampleSize} personas; mínimo ${minimumCohortSize}.` : `Oculto hasta alcanzar una muestra mínima de ${minimumCohortSize} personas.`}</p>
         </article>
       </section>
 
