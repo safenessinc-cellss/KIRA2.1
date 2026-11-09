@@ -372,16 +372,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
       }
     } catch (e) {
       console.error(e);
-      setCrmAuditResult(`### Reporte de Optimización de Embudo de Coaching
-      
-**1. Diagnóstico**: Con una conversión de reserva de llamadas de **${bookingRate}%**, estás logrando capturar cierto interés. Sin embargo, tu conversión de llamadas a clientes cerrados (**${closingRate}%**) tiene una oportunidad de crecimiento gigante para elevar tu ROI.
-
-**2. Análisis de Fuga**: Si optimizamos tu tasa de cierre al 25% y mantienes las llamadas, tus ingresos mensuales pasarían de $${totalCrmRevenue} USD a **$${(calls * 0.25 * crmTicketPrice).toLocaleString()} USD**. Estás experimentando una fuga de ingresos de aproximadamente **$${((calls * 0.25 * crmTicketPrice) - totalCrmRevenue).toLocaleString()} USD** cada mes.
-
-**3. Plan de Acción**:
-* **Optimización de Calificación**: Agrega preguntas clave en Calendly para descartar curiosos.
-* **Nutrición Automatizada**: Envía 2 correos con testimonios grabados antes del encuentro.
-* **Script de Alta Conversión**: Centra la llamada en hacer consciente al cliente de su dolor principal antes de ofrecer tu programa.`);
+      setCrmAuditResult('No se pudo ejecutar la auditoría con IA. Verifica que Gemini esté configurado y vuelve a intentarlo. No se generó un informe simulado.');
     } finally {
       setIsAuditingCrm(false);
     }
@@ -406,7 +397,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
       const prompt = `Actúa como el Director de Soporte de Integraciones de Kira Corp. Responde a un coach afiliado que tiene el siguiente problema técnico/comercial en la categoría "${supportCategory}":
       "${textToSend}"
       
-      Escribe una respuesta corta, empática y de soporte directo en español de 2 párrafos. Brinda recomendaciones técnicas específicas, asegúrale que ya abrimos un ticket interno en Kira Corp y que su cuenta está segura.`;
+      Escribe una respuesta corta, empática y de soporte directo en español de 2 párrafos. Brinda recomendaciones técnicas específicas, No afirmes que se creó un ticket ni prometas tiempos de respuesta que no estén confirmados.`;
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
@@ -428,7 +419,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
       console.error(err);
       setSupportChat(prev => [...prev, {
         role: 'ai',
-        text: "¡Hola! He recibido tu consulta técnica. Ya he creado una escalación directa en nuestra pasarela de soporte Kira Corp Direct. Un ingeniero especializado te contactará en los próximos 15 minutos.",
+        text: "No fue posible procesar tu consulta con KIRA AI. No se creó un ticket ni se envió una solicitud. Inténtalo de nuevo cuando el servicio esté disponible.",
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }]);
     } finally {
@@ -1845,28 +1836,10 @@ function CoachProfileSettings({ profile }: any) {
       }
     }
 
-    // Detect if storage is empty, mock, or custom placeholder to simulate download immediately
     const storageBucket = storage.app.options.storageBucket || '';
-    const isMock = !storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value';
-
-    if (isMock) {
-      setTimeout(() => {
-        let mockUrl = '';
-        if (file.type.startsWith('image/')) {
-          mockUrl = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=600';
-        } else if (file.type.startsWith('video/')) {
-          mockUrl = 'https://www.w3schools.com/html/mov_bbb.mp4';
-        } else {
-          mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-        }
-
-        if (type === 'photo') setFormData(prev => ({ ...prev, photoURL: mockUrl }));
-        else if (type === 'welcome') setFormData(prev => ({ ...prev, welcomeVideoUrl: mockUrl }));
-        else if (type === 'resource') setNewMedia(prev => ({ ...prev, url: mockUrl, type: file.type.includes('pdf') ? 'pdf' : file.type.includes('video') ? 'video' : 'imagen' }));
-
-        setUploading(null);
-        alert(`[Simulador] Archivo "${file.name}" cargado con éxito en modo de desarrollo.`);
-      }, 1000);
+    if (!storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value') {
+      setUploading(null);
+      toastError("Firebase Storage no está configurado. No se simulará una carga ni se asignará un archivo ficticio.");
       return;
     }
 
