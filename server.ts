@@ -674,6 +674,68 @@ app.post("/api/ai/nudges", async (req, res) => {
   }
 });
 
+app.post("/api/reviews", async (req, res) => {
+  let transaction: any = null;
+  try {
+    const user = await requireFirebaseUser(req, res);
+    if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    if (!profile || profile.role !== "alumno") return res.status(403).json({ error: "Solo alumnos autenticados pueden publicar reseñas." });
+    const itemType = req.body?.itemType === "book" ? "book" : req.body?.itemType === "course" ? "course" : "";
+    const itemId = typeof req.body?.itemId === "string" ? idSafe(req.body.itemId) : "";
+    const rating = Number(req.body?.rating);
+    const comment = typeof req.body?.comment === "string" ? req.body.comment.trim().slice(0, 2000) : "";
+    if (!itemType || !itemId || !Number.isInteger(rating) || rating < 1 || rating > 5) return res.status(400).json({ error: "La calificación debe ser de 1 a 5 estrellas." });
+
+    transaction = await beginFirestoreTransaction();
+    const reviewId = idSafe(user.uid + "_" + itemType + "_" + itemId);
+    const existing = await fsGetInTransaction("reviews", reviewId, transaction);
+    const item = await fsGetInTransaction(itemType === "course" ? "courses" : "books", itemId, transaction);
+    if (!item) throw new Error("El curso o libro no existe.");
+    if (itemType === "course") {
+      const enrollment = await fsGetInTransaction("enrollments", idSafe(user.uid + "_" + itemId), transaction);
+      if (!enrollment || enrollment.userId !== user.uid || enrollment.courseId !== itemId) {
+        await rollbackFirestoreTransaction(transaction); transaction = null;
+        return res.status(403).json({ error: "Debes estar matriculado para calificar este curso." });
+      }
+    } else {
+      const entitlement = await fsGetInTransaction("bookEntitlements", idSafe(user.uid + "_" + itemId), transaction);
+      const purchase = await fsGetInTransaction("purchases", idSafe(user.uid + "_" + itemId), transaction);
+      if ((!entitlement || entitlement.status !== "active") && (!purchase || purchase.paymentStatus !== "paid")) {
+        await rollbackFirestoreTransaction(transaction); transaction = null;
+        return res.status(403).json({ error: "Debes tener acceso comprado a este libro para calificarlo." });
+      }
+    }
+
+    const now = new Date().toISOString();
+    const previousRating = existing ? Number(existing.rating || 0) : 0;
+    const reviewCount = Math.max(0, Number(item.reviewCount || 0) + (existing ? 0 : 1));
+    const ratingSum = Math.max(0, Number(item.ratingSum || (Number(item.rating || 0) * Number(item.reviewCount || 0))) + rating - previousRating);
+    const average = reviewCount ? Number((ratingSum / reviewCount).toFixed(2)) : rating;
+    const review = { ...(existing || {}), userId: user.uid, itemId, itemType, courseId: itemType === "course" ? itemId : null, bookId: itemType === "book" ? itemId : null, coachId: String(item.coachId || ""), rating, comment, status: "published", createdAt: existing?.createdAt || now, updatedAt: now };
+    const writes: any[] = [
+      existing ? fsUpdate("reviews", reviewId, review) : fsCreate("reviews", reviewId, review),
+      fsUpdate(itemType === "course" ? "courses" : "books", itemId, { ...item, rating, ratingSum, reviewCount, updatedAt: now })
+    ];
+    const coachId = String(item.coachId || "");
+    if (coachId) {
+      const coachProfile = await fsGetInTransaction("coachPublicProfiles", coachId, transaction);
+      if (coachProfile) {
+        const coachCount = Math.max(0, Number(coachProfile.reviewCount || 0) + (existing ? 0 : 1));
+        const coachSum = Math.max(0, Number(coachProfile.ratingSum || (Number(coachProfile.rating || 0) * Number(coachProfile.reviewCount || 0))) + rating - previousRating);
+        writes.push(fsUpdate("coachPublicProfiles", coachId, { ...coachProfile, rating: coachCount ? Number((coachSum / coachCount).toFixed(2)) : rating, ratingSum: coachSum, reviewCount: coachCount, updatedAt: now }));
+      }
+    }
+    await fsCommitTransaction(writes, transaction);
+    transaction = null;
+    return res.status(existing ? 200 : 201).json({ ok: true, reviewId, rating, averageRating: average, reviewCount });
+  } catch (error: any) {
+    if (transaction) await rollbackFirestoreTransaction(transaction).catch(() => undefined);
+    console.error("[Reviews] Transaction failed:", error);
+    return res.status(500).json({ error: "No fue posible guardar la reseña." });
+  }
+});
+
 app.post("/api/library/unlock", async (req, res) => {
   let transaction: any = null;
   try {
