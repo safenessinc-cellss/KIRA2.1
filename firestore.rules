@@ -463,6 +463,14 @@ service cloud.firestore {
     match /webhookInbox/{id} { allow read, write: if false; }
     match /rolePermissions/{id} { allow read, write: if false; }
     match /dashboardKpis/{id} { allow read, write: if false; }
+    // Snake_case aliases used by the academic aggregate model are server-only too.
+    match /course_groups/{id} { allow read, write: if false; }
+    match /group_sessions/{id} { allow read, write: if false; }
+    match /student_performance/{id} { allow read, write: if false; }
+    match /role_permissions/{id} { allow read, write: if false; }
+    match /webhook_inbox/{id} { allow read, write: if false; }
+    match /payment_reminders/{id} { allow read, write: if false; }
+    match /dashboard_aggregates/{id} { allow read, write: if false; }
     match /outbox/{id} { allow read, write: if false; }
 
     // Payment configuration and ledger are managed only through trusted server APIs.
