@@ -471,6 +471,7 @@ service cloud.firestore {
     match /webhook_inbox/{id} { allow read, write: if false; }
     match /payment_reminders/{id} { allow read, write: if false; }
     match /invoice_payment_claims/{id} { allow read, write: if false; }
+    match /schedule_locks/{id} { allow read, write: if false; }
     match /paymentReconciliationReports/{id} { allow read, write: if false; }
     match /counters/{id} { allow read, write: if false; }
     match /dashboard_aggregates/{id} { allow read, write: if false; }
