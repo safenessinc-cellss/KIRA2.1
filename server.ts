@@ -817,6 +817,54 @@ function auditWrite(userId: string, action: string, nodePath: string, entityId: 
 }
 
 
+app.post("/api/journals", async (req, res) => {
+  let transaction = "";
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const content = String(req.body?.content || "").trim();
+    const sentiment = String(req.body?.sentiment || "unknown");
+    const idempotencyKey = String(req.body?.idempotencyKey || "");
+    if (!content || content.length > 10000 || !["positive", "neutral", "negative", "unknown"].includes(sentiment) ||
+      !/^[a-zA-Z0-9_-]{16,80}$/.test(idempotencyKey)) {
+      return res.status(400).json({ error: "La entrada, el estado y la clave de idempotencia no son válidos." });
+    }
+    transaction = await beginFirestoreTransaction();
+    const journalId = idSafe(user.uid + "_" + idempotencyKey);
+    const existing = await fsGetInTransaction("journals", journalId, transaction);
+    if (existing) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.json({ id: journalId, created: false, pointsAwarded: 0, message: "Esta entrada ya fue guardada." });
+    }
+    const profile = await fsGetInTransaction("users", user.uid, transaction);
+    if (!profile) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(404).json({ error: "No se encontró el perfil del alumno." });
+    }
+    const createdAt = new Date();
+    await fsCommitTransaction([
+      fsCreate("journals", journalId, {
+        userId: user.uid,
+        content,
+        sentiment,
+        createdAt,
+        pointsAwarded: 20
+      }),
+      {
+        transform: {
+          document: fsDocumentPath("users", user.uid),
+          fieldTransforms: [{ fieldPath: "points", increment: { integerValue: "20" } }]
+        }
+      }
+    ], transaction);
+    transaction = "";
+    return res.status(201).json({ id: journalId, created: true, pointsAwarded: 20, createdAt: createdAt.toISOString() });
+  } catch (error: any) {
+    if (transaction) await rollbackFirestoreTransaction(transaction);
+    console.error("[Journal] save failed:", error);
+    return res.status(error?.status === 409 || error?.status === 412 ? 409 : 500).json({ error: "No se pudo guardar el diario de forma segura." });
+  }
+});
+
 app.get("/api/coach/homework", async (req, res) => {
   try {
     const user = await verifiedUser(req, res); if (!user) return;
