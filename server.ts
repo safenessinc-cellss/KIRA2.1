@@ -12,6 +12,7 @@ import QRCode from "qrcode";
 import { calculateAcademicPerformance, hasScheduleConflict, meetsCompletionThresholds, sessionDayKeysUTC } from "./server/academic-domain";
 import { canSettleInvoice, installmentAmountCents, invoiceDocumentId } from "./server/finance-domain";
 import { outboxFailureTransition } from "./server/outbox-domain";
+import { hasRecentMfaAuthentication } from "./server/security-domain";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -81,7 +82,7 @@ function getGeminiAI() {
 }
 
 
-interface VerifiedFirebaseUser { uid: string; email?: string; emailVerified: boolean; }
+interface VerifiedFirebaseUser { uid: string; email?: string; emailVerified: boolean; mfaSecondFactor?: string; authTime?: number; }
 let firebasePublicKeys: Record<string, string> = {};
 let firebaseKeysExpiresAt = 0;
 
@@ -111,7 +112,7 @@ async function verifyFirebaseIdToken(token: string): Promise<VerifiedFirebaseUse
     if (!certificate) return null;
     const signedData = Buffer.from(parts[0] + "." + parts[1]);
     if (!verifySignature("RSA-SHA256", signedData, certificate, Buffer.from(parts[2], "base64url"))) return null;
-    return { uid: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined, emailVerified: claims.email_verified === true };
+    return { uid: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined, emailVerified: claims.email_verified === true, mfaSecondFactor: typeof claims.firebase?.sign_in_second_factor === "string" ? claims.firebase.sign_in_second_factor : undefined, authTime: Number.isFinite(claims.auth_time) ? Number(claims.auth_time) : undefined };
   } catch {
     return null;
   }
@@ -262,6 +263,10 @@ async function requireSuperAdmin(req:express.Request,res:express.Response):Promi
   const profile=await fsGet("users",user.uid);
   if(user.email?.toLowerCase()!=="safeness.c.a@gmail.com"||user.emailVerified!==true||profile?.role!=="admin"){
     res.status(403).json({error:"Solo el superadministrador KIRA verificado puede administrar pagos y configuración."});return null;
+  }
+  if (!hasRecentMfaAuthentication(user)) {
+    res.status(403).json({ error: "Se requiere MFA reciente para esta acción. Cierra sesión e inicia sesión nuevamente con el segundo factor habilitado en Firebase." });
+    return null;
   }
   return user;
 }
