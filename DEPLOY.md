@@ -95,7 +95,7 @@ Resultado requerido: código de salida 0 y dependencias instaladas desde `packag
 npx tsc --noEmit
 npm run build
 du -sh dist
-find dist -type f -maxdepth 3 -print0 | xargs -0 du -h | sort -h | tail -20
+du -ah dist | sort -h | tail -20
 npm run lint
 ```
 
