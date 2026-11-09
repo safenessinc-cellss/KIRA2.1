@@ -22,3 +22,5 @@
 - Implementar reprocess durable real, email transaccional y signed URLs.
 - Completar todos los eventos de actividad, paginación y filtros.
 - Desplegar reglas/índices y probar Preview antes de producción.
+
+- Se documentó el bloqueo real de deployment: Vercel API quota `api-deployments-free-per-day` (HTTP 402, retryAfter 86400); el intento anterior de commit documental quedó cancelado por Ignored Build Step.
