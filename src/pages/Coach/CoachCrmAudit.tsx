@@ -9,11 +9,11 @@ interface CoachAnalytics {
   source: string;
   scope: 'own' | 'all';
   retention: { uniqueClients: number; returningClients: number; rate: number };
-  sessions: { total: number; weekly: Array<{ week: string; sessions: number }> };
+  sessions: { total: number; weekly: Array<{ week: string; sessions: number; hours: number }> };
   hours: number | null;
   monthlyHours: Array<{ month: string; hours: number }>;
   satisfaction: { average: number | null; responses: number };
-  funnel: { new: number; contacted: number; qualified: number; enrolled: number; lost: number };
+  funnel: { new: number; contacted: number; qualified: number; enrolled: number; lost: number; total: number; conversionRate: number };
   enrollments: number;
   coverage: { durationTrackedSessions: number; totalSessions: number };
 }
@@ -23,7 +23,7 @@ const emptyMetrics: CoachAnalytics = {
   retention: { uniqueClients: 0, returningClients: 0, rate: 0 },
   sessions: { total: 0, weekly: [] }, hours: null, monthlyHours: [],
   satisfaction: { average: null, responses: 0 },
-  funnel: { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 },
+  funnel: { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0, total: 0, conversionRate: 0 },
   enrollments: 0, coverage: { durationTrackedSessions: 0, totalSessions: 0 }
 };
 
@@ -108,7 +108,8 @@ export function CoachCrmAudit() {
     { label: 'Clientes con sesiones', value: metrics.retention.uniqueClients, detail: 'Personas únicas registradas', icon: Users },
     { label: 'Retención / recurrencia', value: `${metrics.retention.rate}%`, detail: `${metrics.retention.returningClients} clientes con más de una sesión`, icon: Activity },
     { label: 'Sesiones impartidas', value: metrics.sessions.total, detail: 'Sesiones registradas en KIRA', icon: Target },
-    { label: 'Satisfacción promedio', value: metrics.satisfaction.average === null ? '—' : `${metrics.satisfaction.average.toFixed(1)}/5`, detail: `${metrics.satisfaction.responses} evaluaciones recibidas`, icon: Star }
+    { label: 'Satisfacción promedio', value: metrics.satisfaction.average === null ? '—' : `${metrics.satisfaction.average.toFixed(1)}/5`, detail: `${metrics.satisfaction.responses} evaluaciones recibidas`, icon: Star },
+    { label: 'Conversión a inscripción', value: `${metrics.funnel.conversionRate.toFixed(1)}%`, detail: `${metrics.funnel.enrolled} de ${metrics.funnel.total} prospectos en etapa inscrita`, icon: Target }
   ];
 
   if (loading) return <div className="flex min-h-64 items-center justify-center"><Loader2 className="animate-spin text-teal-700" size={32}/></div>;
@@ -134,7 +135,7 @@ export function CoachCrmAudit() {
         <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{auditResult}</div>
       </article>}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {cards.map(card => {
           const Icon = card.icon;
           return <article key={card.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -178,6 +179,22 @@ export function CoachCrmAudit() {
           </div>
         </article>
       </div>
+
+      <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="font-bold text-slate-900">Horas de coaching por semana</h2>
+        <p className="mt-1 text-xs text-slate-500">Duración medida en las sesiones recientes.</p>
+        <div className="mt-4 h-56">
+          {metrics.sessions.weekly.some(item => item.hours > 0) ? <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={metrics.sessions.weekly}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false}/>
+              <XAxis dataKey="week" tick={{ fontSize: 10 }} tickFormatter={value => String(value).slice(5)}/>
+              <YAxis allowDecimals tick={{ fontSize: 10 }}/>
+              <Tooltip/>
+              <Bar dataKey="hours" name="Horas" fill="#C5A059" radius={[6,6,0,0]}/>
+            </BarChart>
+          </ResponsiveContainer> : <div className="flex h-full items-center justify-center text-sm text-slate-400">Aún no hay duraciones semanales registradas.</div>}
+        </div>
+      </article>
 
       <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="font-bold text-slate-900">Horas de coaching por mes</h2>
