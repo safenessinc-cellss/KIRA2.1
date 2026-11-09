@@ -23,6 +23,7 @@ export function Dashboard() {
   const [myEnrollmentRecords, setMyEnrollmentRecords] = useState<any[]>([]);
   const [myCertificateRequests, setMyCertificateRequests] = useState<any[]>([]);
   const [certificateRequestBusy, setCertificateRequestBusy] = useState<string | null>(null);
+  const [contractActionBusy, setContractActionBusy] = useState<string | null>(null);
   const [favoriteCoaches, setFavoriteCoaches] = useState<any[]>([]);
   const [unlockedHistory, setUnlockedHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,6 +161,34 @@ export function Dashboard() {
       setSearchParams({});
       fetchData();
     }
+  };
+
+  const downloadEnrollmentContract = async (enrollment: any) => {
+    if (!user || !enrollment.contractUrl) return;
+    setContractActionBusy(enrollment.id);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/enrollments/' + encodeURIComponent(enrollment.id) + '/contract/download', { headers: { Authorization: 'Bearer ' + token } });
+      if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.error || 'No se pudo descargar el contrato.'); }
+      const blob = await response.blob(), url = URL.createObjectURL(blob), anchor = document.createElement('a');
+      anchor.href = url; anchor.download = 'KIRA-contrato-' + enrollment.id + '.pdf'; anchor.click(); URL.revokeObjectURL(url);
+    } catch (error: any) { alert(error.message || 'No se pudo descargar el contrato.'); }
+    finally { setContractActionBusy(null); }
+  };
+
+  const signEnrollmentContract = async (enrollment: any) => {
+    if (!user || !enrollment.contractUrl || contractActionBusy) return;
+    if (!window.confirm('Confirmo que leí el contrato de matrícula y acepto firmarlo electrónicamente.')) return;
+    setContractActionBusy(enrollment.id);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/enrollments/' + encodeURIComponent(enrollment.id) + '/contract/sign', { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ accepted: true }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'No se pudo firmar el contrato.');
+      await fetchData();
+      alert('Contrato firmado electrónicamente y registrado.');
+    } catch (error: any) { alert(error.message || 'No se pudo firmar el contrato.'); }
+    finally { setContractActionBusy(null); }
   };
 
   const requestCourseCertificate = async (enrollment: any) => {
@@ -567,6 +596,7 @@ export function Dashboard() {
                 return <div key={enrollment.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-slate-100 p-4">
                   <div className="min-w-0"><div className="font-bold text-slate-800">{course?.title || enrollment.courseTitle || 'Curso inscrito'}</div><div className="text-xs text-slate-500 mt-1">Progreso: {Math.round(Number(enrollment.progress || 0))}% · {completed ? 'Concluido' : 'En curso'}</div>
                     {request && <div className="text-xs text-teal-700 mt-1">Solicitud: {request.status === 'issued' ? 'Certificado emitido' : request.status === 'approved' ? 'Aprobada · pendiente de emisión' : 'En revisión'}</div>}
+                    {enrollment.contractUrl && <div className="mt-2 rounded-xl bg-slate-50 p-3"><div className="text-xs font-bold text-slate-700">Contrato de matrícula · {enrollment.contractSignedAt ? 'Firmado' : 'Pendiente de firma'}</div><div className="mt-2 flex flex-wrap gap-2"><button disabled={contractActionBusy === enrollment.id} onClick={() => void downloadEnrollmentContract(enrollment)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold disabled:opacity-50">Descargar y revisar PDF</button>{!enrollment.contractSignedAt && <button disabled={contractActionBusy === enrollment.id} onClick={() => void signEnrollmentContract(enrollment)} className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">He leído y acepto · Firmar</button>}</div></div>}
                   </div>
                   {request?.status === 'issued' && request.certificateId ? <a href={'/validar-certificado/' + request.certificateId} className="text-xs font-bold text-teal-700 underline">Validar certificado</a> : <button disabled={!completed || !!request || certificateRequestBusy === enrollment.id} onClick={() => requestCourseCertificate(enrollment)} className="px-4 py-2 rounded-xl bg-teal-700 text-white text-xs font-bold disabled:bg-slate-200 disabled:text-slate-400">{certificateRequestBusy === enrollment.id ? 'Enviando…' : request ? 'Solicitud registrada' : completed ? 'Solicitar certificado' : 'Completar curso primero'}</button>}
                 </div>;
