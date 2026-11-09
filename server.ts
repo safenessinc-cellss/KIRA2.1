@@ -242,9 +242,9 @@ async function verifiedUser(req: express.Request, res: express.Response): Promis
 function idSafe(value: string): string { return value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120); }
 
 function paymentEncryptionKey(): Buffer {
-  const raw=process.env.KIRA_CONFIG_ENCRYPTION_KEY||"";
+  const raw=process.env.KIRA_PAYMENTS_ENCRYPTION_KEY||process.env.KIRA_CONFIG_ENCRYPTION_KEY||"";
   const key=/^[a-f0-9]{64}$/i.test(raw)?Buffer.from(raw,"hex"):Buffer.from(raw,"base64");
-  if(key.length!==32)throw new Error("Configura KIRA_CONFIG_ENCRYPTION_KEY como 32 bytes (base64 o 64 caracteres hex).");
+  if(key.length!==32)throw new Error("Configura KIRA_PAYMENTS_ENCRYPTION_KEY (o legacy KIRA_CONFIG_ENCRYPTION_KEY) como 32 bytes (base64 o 64 caracteres hex).");
   return key;
 }
 function encryptPaymentSecret(value:string):string {
