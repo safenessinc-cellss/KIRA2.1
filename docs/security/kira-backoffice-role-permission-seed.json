@@ -40,7 +40,13 @@
       "configuration.integrations.read",
       "configuration.users.read",
       "configuration.users.update",
-      "audit.read"
+      "audit.read",
+      "courses.sessions.read",
+      "courses.sessions.create",
+      "courses.sessions.update",
+      "students.enrollments.create",
+      "students.enrollments.complete",
+      "students.performance.read"
     ],
     "coach": [
       "dashboard.academic.read",
@@ -53,7 +59,8 @@
       "students.attendance.own.mark",
       "students.assessments.own.read",
       "students.assessments.own.grade",
-      "students.enrollments.own.read"
+      "students.enrollments.own.read",
+      "students.performance.own.read"
     ],
     "sales": [
       "dashboard.sales.read",
