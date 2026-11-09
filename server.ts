@@ -12,6 +12,7 @@ import QRCode from "qrcode";
 import { calculateAcademicPerformance, hasScheduleConflict, meetsCompletionThresholds, sessionDayKeysUTC } from "./server/academic-domain";
 import { canSettleInvoice, installmentAmountCents, invoiceDocumentId } from "./server/finance-domain";
 import { outboxFailureTransition } from "./server/outbox-domain";
+import { registerBackofficeExtensions } from "./server/backoffice-extensions";
 import { hasRecentMfaAuthentication } from "./server/security-domain";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -725,10 +726,18 @@ async function backofficeAdmin(req: express.Request, res: express.Response, perm
     return null;
   }
   const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
-  const permissions = Array.isArray(profile.staffPermissions) ? profile.staffPermissions : [];
-  if (!canAccessBackofficePermission(isSuperAdmin, permissions, permission)) {
-    res.status(403).json({ error: "No tienes permiso para esta operación del backoffice." });
-    return null;
+  if (isSuperAdmin || !permission) return user;
+  const activeMatrix = await fsGet("role_permissions", String(profile.role || "admin"));
+  if (activeMatrix?.permissions && typeof activeMatrix.permissions === "object") {
+    const map = activeMatrix.permissions as Record<string, boolean>;
+    const prefix = permission === "system" ? "dashboard." : permission === "users" ? "students." : permission + ".";
+    const allowed = Object.entries(map).some(([key, enabled]) => enabled === true && (key === "*" || key === permission || key.startsWith(prefix)));
+    if (!allowed) { res.status(403).json({ error: "No tienes permiso activo para esta operación del backoffice." }); return null; }
+  } else {
+    const legacy = Array.isArray(profile.staffPermissions) ? profile.staffPermissions : [];
+    if (!canAccessBackofficePermission(false, legacy, permission)) {
+      res.status(403).json({ error: "No tienes permiso para esta operación del backoffice." }); return null;
+    }
   }
   return user;
 }
@@ -2069,6 +2078,11 @@ app.post("/api/cron/invoices/:job", async (req, res) => {
     else return res.status(404).json({ error: "Job desconocido." });
     return res.json({ job, result });
   } catch (error: any) { console.error("[Invoices] cron job failed:", error); return res.status(500).json({ error: "No se pudo ejecutar el proceso financiero." }); }
+});
+
+registerBackofficeExtensions(app, {
+  fsGet, fsListAllDocuments, fsCommit, fsCreate, fsUpdate, auditWrite,
+  verifiedUser, requireSuperAdmin, crmEncryptionKey, crmEncrypt, cronAuthorized
 });
 
 async function startLocalServer() {
