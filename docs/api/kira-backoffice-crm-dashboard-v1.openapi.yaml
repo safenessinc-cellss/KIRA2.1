@@ -366,6 +366,230 @@ paths:
         '200': { description: Enrollment completed transactionally }
         '409': { description: Payment or academic thresholds not satisfied }
 
+
+  /api/admin/enrollments:
+    get:
+      tags: [Enrollment Contracts]
+      summary: List enrollment records
+      x-kira-status: implemented-branch-unverified
+      responses:
+        '200': { description: Enrollment records and their contract metadata }
+        '403': { description: Missing users permission }
+  /api/admin/enrollments/{id}:
+    get:
+      tags: [Enrollment Contracts]
+      summary: Read an enrollment with course and group metadata
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Enrollment details }
+        '404': { description: Enrollment not found }
+  /api/admin/enrollments/{id}/contract:
+    post:
+      tags: [Enrollment Contracts]
+      summary: Generate a private PDF contract and store its SHA-256 hash
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '201': { description: Private Storage path and contract hash }
+        '409': { description: Enrollment is cancelled }
+        '503': { description: Firebase Storage is not configured }
+  /api/admin/enrollments/{id}/contract/download:
+    get:
+      tags: [Enrollment Contracts]
+      summary: Download and integrity-check a private contract as admin
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: PDF bytes }
+        '409': { description: Contract hash mismatch }
+  /api/enrollments/{id}/contract/sign:
+    post:
+      tags: [Enrollment Contracts]
+      summary: Student acceptance and HMAC-SHA256 electronic signature
+      x-kira-status: implemented-branch-unverified
+      description: Only the authenticated student owning the enrollment may accept and sign. An administrator cannot sign on behalf of a student.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accepted]
+              properties:
+                accepted: { type: boolean, const: true }
+      responses:
+        '200': { description: Signature metadata stored and audited }
+        '403': { description: Caller does not own the enrollment }
+        '409': { description: Contract missing or already signed }
+  /api/enrollments/{id}/contract/download:
+    get:
+      tags: [Enrollment Contracts]
+      summary: Download own private contract
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: PDF bytes after SHA-256 verification }
+        '404': { description: Contract not found or enrollment not owned by caller }
+  /api/admin/invoices:
+    get:
+      tags: [Invoices]
+      summary: List invoices by status or enrollment
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, paid, overdue, void] }
+        - in: query
+          name: enrollmentId
+          schema: { type: string }
+      responses:
+        '200': { description: Invoice ledger }
+        '403': { description: Missing finance permission }
+  /api/admin/invoices/jobs/{job}:
+    post:
+      tags: [Invoices]
+      summary: Run a finance job manually as superadmin
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: job
+          required: true
+          schema: { type: string, enum: [generate, overdue, dunning, reconcile] }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                periodLabel: { type: string, pattern: '^\\d{4}-(0[1-9]|1[0-2])  securitySchemes:
+    FirebaseBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID token
+  schemas:
+    Lead:
+      type: object
+      properties:
+        id: { type: string }
+        fullName: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        source: { type: string }
+        stage: { type: string, enum: [new, contacted, qualified, enrolled, lost] }
+        courseInterest: { type: string }
+        assignedTo: { type: string }
+        score: { type: integer }
+        consentGdpr: { type: boolean }
+        createdAt: { type: string }
+    Interaction:
+      type: object
+      properties:
+        id: { type: string }
+        leadId: { type: string }
+        leadName: { type: string }
+        channel: { type: string }
+        outcome: { type: string }
+        notes: { type: string }
+        nextActionAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+    Dashboard:
+      type: object
+      properties:
+        sales:
+          type: object
+          properties:
+            grossByCurrency: { type: object, additionalProperties: { type: integer } }
+            netByCurrency: { type: object, additionalProperties: { type: integer } }
+        enrollments:
+          type: object
+          properties: { newCount: { type: integer } }
+        leads:
+          type: object
+          properties:
+            total: { type: integer }
+            byStage: { type: object, additionalProperties: { type: integer } }
+        conversion:
+          type: object
+          properties:
+            rate: { type: number }
+            converted: { type: integer }
+            qualified: { type: integer }
+        topCourses: { type: array, items: { type: object } }
+        overdueInvoices: { type: integer }
+        students:
+          type: object
+          properties:
+            active: { type: integer }
+            atRisk: { type: integer }
+        certificates:
+          type: object
+          properties: { issued: { type: integer } }
+        generatedAt: { type: string, format: date-time }
+        source: { type: string }
+ }
+      responses:
+        '200': { description: Job result }
+        '403': { description: Superadmin required }
+  /api/cron/invoices/{job}:
+    post:
+      tags: [Invoices]
+      summary: Cloud Scheduler entrypoint protected by CRON_SECRET
+      x-kira-status: implemented-branch-unverified
+      security:
+        - CronBearer: []
+      parameters:
+        - in: path
+          name: job
+          required: true
+          schema: { type: string, enum: [generate, overdue, dunning, reconcile] }
+      responses:
+        '200': { description: Job result }
+        '401': { description: Invalid cron secret }
+        '503': { description: CRON_SECRET missing }
+  /api/invoices/{id}/checkout:
+    post:
+      tags: [Invoices]
+      summary: Create hosted payment checkout for the authenticated student's invoice
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider: { type: string, enum: [stripe, mercadopago] }
+      responses:
+        '200': { description: Hosted payment URL }
+        '404': { description: Invoice not owned by caller }
+        '409': { description: Invoice already paid or unavailable }
+
 components:
   securitySchemes:
     FirebaseBearer:
