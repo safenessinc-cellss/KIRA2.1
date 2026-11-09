@@ -29,7 +29,8 @@ try {
     await setDoc(doc(db, "companies", "company-a"), { name: "Company A" });
     await setDoc(doc(db, "companies", "company-b"), { name: "Company B" });
     await setDoc(doc(db, "companies", "company-a", "members", "company-admin"), { uid: "company-admin", role: "company_admin" });
-    await setDoc(doc(db, "companies", "company-a", "wellbeingAggregates", "2026-11"), { period: "2026-11", highRiskCount: 2 });
+    await setDoc(doc(db, "companies", "company-a", "wellbeingAggregates", "2026-11"), { period: "2026-11", sampleSize: 12, highRiskCount: 2 });
+    await setDoc(doc(db, "companies", "company-a", "wellbeingAggregates", "2026-10"), { period: "2026-10", sampleSize: 4, highRiskCount: 1 });
     await setDoc(doc(db, "companies", "company-b", "members", "other-admin"), { uid: "other-admin", role: "company_admin" });
   });
 
@@ -67,6 +68,7 @@ try {
   const studentDb = env.authenticatedContext("student-a", { email: "a@example.test" }).firestore();
   await assertSucceeds(setDoc(doc(studentDb, "journals", "journal-a"), { userId: "student-a", content: "my private journal", createdAt: serverTimestamp() }));
   await assertFails(getDoc(doc(studentDb, "journals", "journal-b")));
+  await assertFails(getDoc(doc(coachDb, "journals", "journal-b")));
   await assertFails(setDoc(doc(studentDb, "transactions", "fake"), { userId: "student-a", amount: 999, status: "paid" }));
   await assertFails(setDoc(doc(studentDb, "orders", "fake"), { userId: "student-a", amount: 1, status: "paid" }));
   await assertFails(setDoc(doc(studentDb, "enrollments", "paid-fake"), { userId: "student-a", courseId: "paid-course", progress: 0, createdAt: serverTimestamp() }));
@@ -115,6 +117,7 @@ try {
 
   const companyDb = env.authenticatedContext("company-admin", { email: "hr@example.test" }).firestore();
   await assertSucceeds(getDoc(doc(companyDb, "companies", "company-a", "wellbeingAggregates", "2026-11")));
+  await assertFails(getDoc(doc(companyDb, "companies", "company-a", "wellbeingAggregates", "2026-10")));
   await assertSucceeds(getDoc(doc(companyDb, "companies", "company-a", "members", "company-admin")));
   await assertFails(getDoc(doc(companyDb, "companies", "company-b", "members", "other-admin")));
   await assertFails(getDoc(doc(companyDb, "journals", "journal-b")));
