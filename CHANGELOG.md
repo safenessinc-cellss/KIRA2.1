@@ -1,16 +1,24 @@
 # CHANGELOG — Admin Expanded v1
 
-## Implementación
-- Se añade una capa server-side común de autorización para `/api/admin/*`, basada en Firebase ID token y rol Firestore `admin`.
-- Se añaden endpoints iniciales de agregados Analytics, usuarios/actividad, acciones de usuario, solicitudes de coach, aprobación/revocación de certificados, pagos, reembolsos por proveedor, payouts manuales y estado Stripe.
-- Se conserva el modelo anterior de certificados y su firma; se agregan `adminStatus`, `requiresManualApproval`, revisión y revocación como campos adicionales.
-- Se agregan reglas de aislamiento para logs, solicitudes, refunds, payouts y webhooks; se restringe el acceso general admin al texto de mensajes.
-- Se añaden índices compuestos iniciales solicitados.
-- Se documenta la política de privacidad y el procedimiento de deploy/rollback.
+## Implementación en release/admin-expanded-v1
+- Se añadieron rutas /admin/users, /admin/users/:uid, /admin/coach-approvals, /admin/certificate-approvals y /admin/payments.
+- Se conectaron Analytics, Branding, Insights IA y Moderación al menú actual sin borrar sus componentes.
+- Se añadió drawer móvil “Más” exclusivo para admin.
+- Se añadió middleware común de autenticación/rol para /api/admin/*.
+- Se añadieron endpoints de usuarios, actividad, coaches, certificados, pagos, refunds, payouts, Stripe y webhooks.
+- Analytics dejó de leer journals desde el navegador y usa agregados server-side.
+- Se añadió useActivityLogger y se conectó a login/logout, journals (metadata only), reviews y enrollments.
+- Se añadieron eventos server-side para pagos, enrollments, coach approvals y certificados.
+- Se añadieron reglas Firestore para logs inmutables, coach applications, refunds, payouts, webhooks, reports, chats y subcolecciones de usuario.
+- Se restringió la lectura administrativa general de mensajes.
+- Se añadieron índices compuestos y migración idempotente de metadata de certificados en modo dry-run.
+- Se añadió refund Stripe/Mercado Pago con moneda original y cascada de revocación de enrollment/certificado.
+- Se añadieron payouts manuales y resúmenes agrupados por moneda.
+- Se amplió la suite de reglas y se añadió workflow GitHub Actions.
 
-## Limitaciones pendientes de validar
-- Build TypeScript/Vite, reglas Firestore y smoke tests no ejecutados en esta sesión.
-- La cola de webhooks y su reproceso requieren integración con una tarea durable; el endpoint actual registra la solicitud, no reejecuta automáticamente el proveedor.
-- Email transaccional no se ha conectado en estas rutas; se generan notificaciones in-app donde procede.
-- El cálculo de payouts requiere una asignación fiable de coach a cada transacción; el ledger actual inspeccionado no garantiza ese campo.
-- El logger debe integrarse con cada acción de dominio adicional a login/logout.
+## Pendiente
+- Ejecutar y verificar CI, lint, build y tests.
+- Persistir rate limiting distribuido.
+- Implementar reprocess durable real, email transaccional y signed URLs.
+- Completar todos los eventos de actividad, paginación y filtros.
+- Desplegar reglas/índices y probar Preview antes de producción.
