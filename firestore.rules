@@ -532,8 +532,8 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
-    // Tenant boundary: company admins can manage their own roster, while
-    // employee wellbeing is exposed only through server-generated aggregates.
+    // Tenant boundary: HR/company admins can read organization aggregates only;
+    // individual roster and personal wellbeing records remain private.
     match /companies/{companyId} {
       allow read: if isAdmin() || isCompanyMember(companyId);
       allow create, update, delete: if isAdmin();
