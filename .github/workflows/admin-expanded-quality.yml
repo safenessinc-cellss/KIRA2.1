@@ -24,7 +24,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
       - name: TypeScript and server checks
         run: npm run lint
       - name: Production build
