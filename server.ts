@@ -575,12 +575,18 @@ async function fsCommitTransaction(writes: any[], transaction: string): Promise<
     throw error;
   }
 }
-async function backofficeAdmin(req: express.Request, res: express.Response): Promise<VerifiedFirebaseUser | null> {
+async function backofficeAdmin(req: express.Request, res: express.Response, permission?: string): Promise<VerifiedFirebaseUser | null> {
   const user = await verifiedUser(req, res);
   if (!user) return null;
   const profile = await fsGet("users", user.uid);
   if (user.emailVerified !== true || profile?.role !== "admin") {
     res.status(403).json({ error: "Este módulo está habilitado únicamente para administradores verificados." });
+    return null;
+  }
+  const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
+  const permissions = Array.isArray(profile.staffPermissions) ? profile.staffPermissions : [];
+  if (!isSuperAdmin && permission && !permissions.includes("system") && !permissions.includes(permission)) {
+    res.status(403).json({ error: "No tienes permiso para esta operación del backoffice." });
     return null;
   }
   return user;
@@ -595,7 +601,7 @@ function auditWrite(userId: string, action: string, nodePath: string, entityId: 
 
 app.get("/api/admin/dashboard", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res); if (!user) return;
+    const user = await backofficeAdmin(req, res, "system"); if (!user) return;
     const from = typeof req.query.from === "string" ? Date.parse(req.query.from + "T00:00:00.000Z") : Date.now() - 30 * 86400000;
     const to = typeof req.query.to === "string" ? Date.parse(req.query.to + "T23:59:59.999Z") : Date.now();
     if (!Number.isFinite(from) || !Number.isFinite(to) || from > to || to - from > 366 * 86400000) return res.status(400).json({ error: "Rango de fechas inválido (máximo 366 días)." });
@@ -650,7 +656,7 @@ app.get("/api/admin/dashboard", async (req, res) => {
 
 app.get("/api/admin/crm/leads", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res); if (!user) return;
+    const user = await backofficeAdmin(req, res, "crm"); if (!user) return;
     const stage = String(req.query.stage || ""), source = String(req.query.source || ""), assignedTo = String(req.query.assigned_to || "");
     const leads = await fsListDocuments("crmLeads", 200);
     const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
@@ -666,7 +672,7 @@ app.get("/api/admin/crm/leads", async (req, res) => {
 
 app.post("/api/admin/crm/leads", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res); if (!user) return;
+    const user = await backofficeAdmin(req, res, "crm"); if (!user) return;
     const body = req.body || {};
     const fullName = String(body.fullName || "").trim(), email = String(body.email || "").trim().toLowerCase(), phone = String(body.phone || "").trim();
     const source = String(body.source || "manual");
@@ -702,7 +708,7 @@ app.post("/api/admin/crm/leads", async (req, res) => {
 
 app.patch("/api/admin/crm/leads/:id", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res); if (!user) return;
+    const user = await backofficeAdmin(req, res, "crm"); if (!user) return;
     const id = idSafe(String(req.params.id || "")), before = await fsGet("crmLeads", id);
     if (!before) return res.status(404).json({ error: "Lead no encontrado." });
     if (user.email?.toLowerCase() !== "safeness.c.a@gmail.com" && before.assignedTo !== user.uid) return res.status(404).json({ error: "Lead no encontrado." });
@@ -733,7 +739,7 @@ app.patch("/api/admin/crm/leads/:id", async (req, res) => {
 
 app.get("/api/admin/crm/interactions", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res); if (!user) return;
+    const user = await backofficeAdmin(req, res, "crm"); if (!user) return;
     const [interactions, leads] = await Promise.all([fsListDocuments("crmInteractions", 200), fsListDocuments("crmLeads", 200)]);
     const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
     const allowedLeadIds = new Set(leads.filter(lead => isSuperAdmin || lead.assignedTo === user.uid).map(lead => lead.id));
@@ -750,7 +756,7 @@ app.get("/api/admin/crm/interactions", async (req, res) => {
 
 app.post("/api/admin/crm/leads/:id/interactions", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res); if (!user) return;
+    const user = await backofficeAdmin(req, res, "crm"); if (!user) return;
     const leadId = idSafe(String(req.params.id || "")), lead = await fsGet("crmLeads", leadId);
     if (!lead || (user.email?.toLowerCase() !== "safeness.c.a@gmail.com" && lead.assignedTo !== user.uid)) return res.status(404).json({ error: "Lead no encontrado." });
     const body = req.body || {}, channel = String(body.channel || ""), outcome = String(body.outcome || "");
@@ -771,7 +777,7 @@ app.post("/api/admin/crm/leads/:id/interactions", async (req, res) => {
 app.post("/api/admin/crm/leads/:id/convert-to-enrollment", async (req, res) => {
   let transaction = "";
   try {
-    const user = await backofficeAdmin(req, res); if (!user) return;
+    const user = await backofficeAdmin(req, res, "crm"); if (!user) return;
     const leadId = idSafe(String(req.params.id || "")), studentUid = String(req.body?.studentUid || ""), courseId = String(req.body?.courseId || "");
     if (!studentUid || !courseId || studentUid.length > 180 || courseId.length > 180) return res.status(400).json({ error: "Se requiere UID del alumno y curso." });
     transaction = await beginFirestoreTransaction();
