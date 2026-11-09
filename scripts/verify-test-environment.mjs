@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-
 const required = [
   "VITE_FIREBASE_API_KEY",
   "VITE_FIREBASE_AUTH_DOMAIN",
