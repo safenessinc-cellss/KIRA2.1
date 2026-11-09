@@ -7,6 +7,29 @@ servers:
 security:
   - FirebaseBearer: []
 paths:
+  /api/admin/permissions:
+    get:
+      summary: Read the active permission matrix
+      responses:
+        '200': { description: Active role permission maps }
+        '403': { description: Superadmin with recent MFA required }
+  /api/admin/integrations:
+    get:
+      summary: Read integration status and public configuration
+      responses:
+        '200': { description: No secrets returned }
+        '403': { description: configuration.integrations.read required }
+  /api/admin/integrations/{provider}:
+    patch:
+      summary: Enable or disable an integration and update public configuration
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema: { type: string, enum: [landing, whatsapp, zoom, google_calendar] }
+      responses:
+        '200': { description: Updated and audited }
+        '403': { description: Superadmin with recent MFA required }
   /api/admin/permissions/seed:
     post:
       summary: Apply the reviewed role permission seed to Firestore
