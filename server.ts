@@ -719,7 +719,7 @@ async function backofficeAdmin(req: express.Request, res: express.Response, perm
   }
   const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
   const permissions = Array.isArray(profile.staffPermissions) ? profile.staffPermissions : [];
-  if (!isSuperAdmin && permission && !permissions.includes("system") && !permissions.includes(permission)) {
+  if (!canAccessBackofficePermission(isSuperAdmin, permissions, permission)) {
     res.status(403).json({ error: "No tienes permiso para esta operación del backoffice." });
     return null;
   }
@@ -739,7 +739,7 @@ app.get("/api/admin/dashboard", async (req, res) => {
     const profile = await fsGet("users", user.uid);
     const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
     const permissions = Array.isArray(profile?.staffPermissions) ? profile.staffPermissions : [];
-    const can = (permission: string) => isSuperAdmin || permissions.includes("system") || permissions.includes(permission);
+    const can = (permission: string) => canAccessBackofficePermission(isSuperAdmin, permissions, permission);
     const from = typeof req.query.from === "string" ? Date.parse(req.query.from + "T00:00:00.000Z") : Date.now() - 30 * 86400000;
     const to = typeof req.query.to === "string" ? Date.parse(req.query.to + "T23:59:59.999Z") : Date.now();
     if (!Number.isFinite(from) || !Number.isFinite(to) || from > to || to - from > 366 * 86400000) return res.status(400).json({ error: "Rango de fechas inválido (máximo 366 días)." });
