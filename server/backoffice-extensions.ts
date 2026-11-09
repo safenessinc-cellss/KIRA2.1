@@ -22,6 +22,78 @@ function safeId(value: string): string { return createHash("sha256").update(valu
 export function registerBackofficeExtensions(app: any, d: any): void {
   const { fsGet, fsListAllDocuments, fsCommit, fsCreate, fsUpdate, auditWrite, verifiedUser, requireSuperAdmin, crmEncryptionKey, crmEncrypt, cronAuthorized } = d;
 
+  async function rebuildDashboardAggregate(periodId: string) {
+    if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(periodId)) throw new Error("periodId inválido.");
+    const [transactions, enrollments, leads, invoices, certificates, courses, performances, refunds, settings] = await Promise.all([
+      fsListAllDocuments("transactions"), fsListAllDocuments("enrollments"), fsListAllDocuments("crmLeads"),
+      fsListAllDocuments("invoices"), fsListAllDocuments("certificates"), fsListAllDocuments("courses"),
+      fsListAllDocuments("student_performance"), fsListAllDocuments("refunds"), fsGet("settings", "enrollment")
+    ]);
+    const [year, month] = periodId.split("-").map(Number);
+    const from = Date.UTC(year, month - 1, 1), to = Date.UTC(year, month, 1);
+    const stamp = (v: any) => { const n = typeof v === "number" ? v : Date.parse(String(v || "")); return Number.isFinite(n) ? n : 0; };
+    const inPeriod = (v: any) => { const n = stamp(v); return n >= from && n < to; };
+    const paid = transactions.filter((t: any) => ["paid", "succeeded"].includes(String(t.status || "").toLowerCase()) && inPeriod(t.paidAt || t.createdAt));
+    const salesByCurrency: Record<string, number> = {};
+    const courseRevenue: Record<string, number> = {};
+    for (const tx of paid) {
+      const currency = String(tx.currency || "BRL").toUpperCase();
+      const amount = Math.max(0, Math.round(Number(tx.amountMinor ?? Number(tx.amount || 0) * 100)));
+      if (!Number.isFinite(amount)) continue;
+      salesByCurrency[currency] = (salesByCurrency[currency] || 0) + amount;
+      const ids = Array.isArray(tx.courseIds) ? tx.courseIds : tx.courseId ? [tx.courseId] : [];
+      for (const id of ids) courseRevenue[String(id)] = (courseRevenue[String(id)] || 0) + Math.round(amount / Math.max(1, ids.length));
+    }
+    const refundCents = refunds.filter((r: any) => ["paid", "succeeded", "completed"].includes(String(r.status || "").toLowerCase()) && inPeriod(r.refundedAt || r.createdAt))
+      .reduce((sum: number, r: any) => sum + Math.max(0, Math.round(Number(r.amountCents ?? Number(r.amount || 0) * 100))), 0)
+      + transactions.filter((t: any) => String(t.status || "").toLowerCase() === "refunded" && inPeriod(t.refundedAt || t.updatedAt))
+      .reduce((sum: number, t: any) => sum + Math.max(0, Math.round(Number(t.refundedAmountCents ?? t.amountMinor ?? Number(t.amount || 0) * 100))), 0);
+    const leadsByStage: Record<string, number> = { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 };
+    for (const lead of leads.filter((x: any) => inPeriod(x.createdAt))) { const stage = String(lead.stage || "new"); if (stage in leadsByStage) leadsByStage[stage]++; }
+    const periodEnrollments = enrollments.filter((e: any) => inPeriod(e.createdAt));
+    const activeEnrollments = enrollments.filter((e: any) => ["active", "in_progress"].includes(String(e.status || "").toLowerCase())).length;
+    const minAttendance = Number(settings?.min_attendance ?? settings?.minAttendance ?? 75);
+    const minScore = Number(settings?.min_score ?? settings?.minScore ?? 60);
+    const atRiskStudents = performances.filter((p: any) => Number(p.attendancePct || 0) < minAttendance || Number(p.avgScorePct || 0) < minScore).length;
+    const now = Date.now();
+    const overdueInvoices = invoices.filter((i: any) => ["open", "overdue"].includes(String(i.status || "")) && stamp(i.dueDate) < now).length;
+    const certificatesIssued = certificates.filter((c: any) => c.status === "issued" && inPeriod(c.issueDate || c.createdAt)).length;
+    const courseNames = new Map(courses.map((c: any) => [c.id, String(c.title || c.name || c.id)]));
+    const topCourses = Object.entries(courseRevenue).map(([courseId, revenueCents]) => ({ courseId, title: courseNames.get(courseId) || courseId, revenueCents })).sort((a, b) => b.revenueCents - a.revenueCents).slice(0, 10);
+    const enrolledLeads = leadsByStage.enrolled || 0, totalLeads = Object.values(leadsByStage).reduce((a, b) => a + b, 0);
+    const previous = await fsGet("dashboard_aggregates", periodId);
+    const aggregate = {
+      periodId, salesGrossCents: salesByCurrency.BRL || 0, salesNetCents: (salesByCurrency.BRL || 0) - refundCents,
+      refundsCents: refundCents, salesByCurrency, newEnrollments: periodEnrollments.length, activeEnrollments,
+      atRiskStudents, leadsByStage, conversionRate: totalLeads ? enrolledLeads / totalLeads * 100 : 0,
+      topCourses, overdueInvoices, certificatesIssued, updatedAt: new Date().toISOString(),
+      sourceEventId: "reconcile_" + periodId + "_" + randomBytes(6).toString("hex")
+    };
+    const writes = [previous ? fsUpdate("dashboard_aggregates", periodId, aggregate) : fsCreate("dashboard_aggregates", periodId, aggregate),
+      auditWrite("cron:dashboard", "dashboard.aggregate.refreshed", "dashboard.aggregates", periodId, previous ? { updatedAt: previous.updatedAt } : null, { updatedAt: aggregate.updatedAt, sourceEventId: aggregate.sourceEventId })];
+    await fsCommit(writes);
+    return aggregate;
+  }
+
+  app.post("/api/cron/dashboard/refresh", async (req: any, res: any) => {
+    try {
+      if (!cronAuthorized(req, res)) return;
+      const requested = String(req.body?.periodId || new Date().toISOString().slice(0, 7));
+      const result = await rebuildDashboardAggregate(requested);
+      return res.json({ ok: true, aggregate: result });
+    } catch (error: any) { console.error("[Dashboard] aggregate refresh failed:", error); return res.status(500).json({ error: "No se pudieron actualizar los agregados del dashboard." }); }
+  });
+
+  app.get("/api/admin/integrations", async (req: any, res: any) => {
+    try {
+      const actor = await verifiedUser(req, res); if (!actor) return;
+      const profile = await fsGet("users", actor.uid);
+      if (actor.emailVerified !== true || profile?.role !== "admin" || (actor.email?.toLowerCase() !== "safeness.c.a@gmail.com" && !(Array.isArray(profile.staffPermissions) && (profile.staffPermissions.includes("configuration") || profile.staffPermissions.includes("system"))))) return res.status(403).json({ error: "No tienes permiso para consultar integraciones." });
+      const items = await fsListAllDocuments("integrations");
+      return res.json({ items: items.map(({ id, enabled, publicConfig, updatedAt, updatedBy }: any) => ({ provider: id, enabled: enabled === true, publicConfig: publicConfig || {}, updatedAt: updatedAt || null, updatedBy: updatedBy || null })) });
+    } catch (error: any) { console.error("[Integrations] read failed:", error); return res.status(500).json({ error: "No se pudieron consultar las integraciones." }); }
+  });
+
   app.post("/api/admin/permissions/seed", async (req: any, res: any) => {
     try { const actor = await requireSuperAdmin(req, res); if (!actor) return;
       const writes: any[] = []; let created = 0;
