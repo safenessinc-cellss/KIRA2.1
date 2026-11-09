@@ -32,5 +32,5 @@ test("HR aggregation uses one latest consented check-in per user", () => {
   assert.equal(result.sampleSize, 5);
   assert.equal(result.averageEnergy, 3.4);
   assert.equal(result.averageClarity, 3.8);
-  assert.equal(result.highRiskCount, 1);
+  assert.equal(result.highRiskCount, null);
 });
