@@ -872,6 +872,8 @@ app.get("/api/coach/analytics", async (req, res) => {
     const uniqueClients = clientsById.size;
     const stageCounts = { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 };
     for (const item of ownLeads) if (item.stage in stageCounts) stageCounts[item.stage as keyof typeof stageCounts]++;
+    const leadTotal = Object.values(stageCounts).reduce((total, count) => total + count, 0);
+    const leadConversionRate = leadTotal ? Math.round(stageCounts.enrolled / leadTotal * 1000) / 10 : 0;
     const weekly = new Map<string, { sessions: number; minutes: number }>();
     const monthlyMinutes = new Map<string, number>();
     const now = Date.now();
@@ -913,7 +915,7 @@ app.get("/api/coach/analytics", async (req, res) => {
       monthlyHours,
       hours: durationMinutes ? Math.round(durationMinutes / 60 * 10) / 10 : null,
       satisfaction: { average: averageSatisfaction, responses: ownReviews.length },
-      funnel: stageCounts,
+      funnel: { ...stageCounts, total: leadTotal, conversionRate: leadConversionRate },
       enrollments: ownEnrollments.length,
       coverage: { durationTrackedSessions: ownSessions.filter((item: any) => Number(item.durationMinutes ?? item.sessionDurationMinutes ?? item.duration ?? 0) > 0).length, totalSessions: ownSessions.length }
     });
