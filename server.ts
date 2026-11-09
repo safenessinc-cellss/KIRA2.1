@@ -472,7 +472,7 @@ app.get("/api/health", (req, res) => {
 
 // Report configuration truthfully; never claim the AI is ready when no key is configured.
 app.get("/api/gemini/config", (req, res) => {
-  const configured = isValidGeminiKey(process.env.GEMINI_API_KEY);
+  const configured = isValidGeminiKey(process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY);
   res.status(configured ? 200 : 503).json({ configured, isRealKey: configured });
 });
 
@@ -499,7 +499,7 @@ app.post("/api/gemini/generate", async (req, res) => {
   try {
     const authenticatedUser = await requireFirebaseUser(req, res);
     if (!authenticatedUser) return;
-    const key = process.env.GEMINI_API_KEY;
+    const key = process.env.GOOGLE_GENAI_API_KEY || process.env.GEMINI_API_KEY;
     const { model, contents, config } = req.body || {};
     const promptText = extractPromptText(contents);
     if (!promptText || promptText.length > 50000 || (model && (typeof model !== "string" || !/^gemini-[a-zA-Z0-9.-]{1,70}$/.test(model)))) {
@@ -1176,7 +1176,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
     const orderId = randomBytes(18).toString("hex");
     const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     await fsCommit([fsCreate("orders", orderId, { userId: user.uid, provider, status: "pending", currency: items[0].currency, amount: total, items, createdAt: new Date().toISOString() })]);
-    const appUrl = (process.env.KIRA_APP_URL || "https://kira.coach").replace(/\/$/, "");
+    const appUrl = (process.env.APP_URL || process.env.KIRA_APP_URL || "https://kira.coach").replace(/\/$/, "");
     if (provider === "stripe") {
       const session = await stripe!.checkout.sessions.create({
         mode: hasRecurring ? "subscription" : "payment",
@@ -1389,7 +1389,7 @@ app.post("/api/certificates", async (req,res) => {
     if (!studentName || !courseName || !coachName) return res.status(409).json({error:"Los datos de identidad del alumno, curso o coach están incompletos."});
     const signedPayload={kiraNumber,studentId,studentName,courseId,courseName,coachId,coachName,academicHours,adminId:user.uid,adminName,watermarkHash:logoHash,issueDate:issuedAt,status:"issued"};
     const qrSignature=certificateHmac(signedPayload);
-    const appUrl=(process.env.KIRA_APP_URL||"https://kira.coach").replace(/\/$/,"");
+    const appUrl=(process.env.APP_URL || process.env.KIRA_APP_URL || "https://kira.coach").replace(/\/$/,"");
     const qrPayload=appUrl+"/verify/"+encodeURIComponent(kiraNumber)+"?sig="+qrSignature;
     const qrPng=await QRCode.toDataURL(qrPayload,{errorCorrectionLevel:"H",margin:1,width:360});
     const pdf=new jsPDF({orientation:"landscape",unit:"mm",format:"a4",compress:true});
