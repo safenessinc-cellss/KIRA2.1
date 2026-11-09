@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  collection,
   doc,
   onSnapshot,
   type DocumentData,
@@ -13,9 +12,9 @@ import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth";
 import type { Role, User } from "../../types";
 
-type SnapshotState<T> = { data: T | null; loading: boolean; error: Error | null };
+type SnapshotState<T extends DocumentData> = { data: T | null; loading: boolean; error: Error | null };
 
-export function useDocument<T = DocumentData>(reference: DocumentReference<T> | null): SnapshotState<T> {
+export function useDocument<T extends DocumentData = DocumentData>(reference: DocumentReference<T> | null): SnapshotState<T> {
   const [state, setState] = useState<SnapshotState<T>>({ data: null, loading: Boolean(reference), error: null });
   useEffect(() => {
     if (!reference) {
@@ -30,7 +29,7 @@ export function useDocument<T = DocumentData>(reference: DocumentReference<T> | 
   return state;
 }
 
-export function useCollection<T = DocumentData>(source: Query<T> | CollectionReference<T> | null): {
+export function useCollection<T extends DocumentData = DocumentData>(source: Query<T> | CollectionReference<T> | null): {
   data: Array<T & { id: string }>;
   loading: boolean;
   error: Error | null;
@@ -57,7 +56,7 @@ export function useCollection<T = DocumentData>(source: Query<T> | CollectionRef
 
 export function useUser() {
   const { user, loading } = useAuth();
-  const ref = user?.uid ? doc(db, "users", user.uid) : null;
+  const ref = useMemo(() => user?.uid ? doc(db, "users", user.uid) : null, [user?.uid]);
   const profile = useDocument<User>(ref);
   return { user: profile.data, loading: loading || profile.loading, error: profile.error };
 }
