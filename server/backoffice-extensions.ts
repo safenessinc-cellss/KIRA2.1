@@ -158,7 +158,7 @@ export function registerBackofficeExtensions(app: any, d: any): void {
       const ip = clientIp(req); if (!allowRate("landing:" + ip, 8)) return res.status(429).json({ error: "Demasiados envíos. Inténtalo más tarde." });
       const slug = String(req.params.slug || "").toLowerCase(); if (!/^[a-z0-9][a-z0-9-]{1,79}$/.test(slug)) return res.status(404).json({ error: "Formulario no encontrado." });
       const [form, integration] = await Promise.all([fsGet("landing_forms", slug), fsGet("integrations", "landing")]);
-      if (!form?.active || integration?.enabled === false) return res.status(410).json({ error: "Este formulario no está disponible." });
+      if (!form?.active || integration?.enabled !== true) return res.status(410).json({ error: "Este formulario no está disponible." });
       const body = req.body || {}; if (String(body.website || body.company_website || "").trim()) return res.status(202).json({ success: true, redirect: form.successUrl || null });
       if (form.captchaEnabled) {
         const secret = String(process.env.LANDING_CAPTCHA_SECRET || ""); const token = String(body.captchaToken || "");
@@ -179,7 +179,7 @@ export function registerBackofficeExtensions(app: any, d: any): void {
   app.post("/api/webhooks/whatsapp", async (req: any, res: any) => {
     const raw = Buffer.isBuffer(req.rawBody) ? req.rawBody : Buffer.from(JSON.stringify(req.body || {}));
     const timestamp = String(req.headers["x-kira-timestamp"] || ""); const signature = String(req.headers["x-kira-signature"] || "");
-    const event = req.body || {}; const eventId = String(event.event_id || event.eventId || event.id || event.entry?.[0]?.id || "");
+    const event = req.body || {}; const providerValue = event.entry?.[0]?.changes?.[0]?.value || event; const eventId = String(event.event_id || event.eventId || event.id || providerValue.messages?.[0]?.id || event.entry?.[0]?.id || "");
     const ip = clientIp(req); if (!allowRate("whatsapp:" + ip, 30)) return res.status(429).json({ error: "Límite de eventos excedido." });
     const secret = String(process.env.WHATSAPP_WEBHOOK_SECRET || ""); const signatureOk = verifyWebhookHmac(secret, timestamp, raw, signature);
     const inboxId = signatureOk && eventId ? "whatsapp_" + webhookDedupeKey("whatsapp", eventId) : "whatsapp_invalid_" + randomBytes(16).toString("hex");
@@ -194,7 +194,7 @@ export function registerBackofficeExtensions(app: any, d: any): void {
       const existing = await fsGet("webhook_inbox", inboxId); if (existing) return res.status(200).json({ ok: true, duplicate: true });
       const now = new Date().toISOString();
       await fsCommit([fsCreate("webhook_inbox", inboxId, { provider: "whatsapp", payload: raw.toString("utf8").slice(0, 100000), signatureOk: true, dedupeKey: webhookDedupeKey("whatsapp", eventId), receivedAt: now, processedAt: null, error: null })]);
-      const message = event.messages?.[0] || event.message || {}; const contact = event.contacts?.[0] || event.contact || {};
+      const message = providerValue.messages?.[0] || event.messages?.[0] || event.message || {}; const contact = providerValue.contacts?.[0] || event.contacts?.[0] || event.contact || {};
       const fullName = String(contact.profile?.name || contact.name || event.name || "Contacto WhatsApp").slice(0, 180);
       const phone = String(message.from || contact.wa_id || event.from || event.phone || "").replace(/[^+0-9]/g, "").slice(0, 40);
       const textBody = String(message.text?.body || message.body || event.text || "").slice(0, 2000);
@@ -207,6 +207,6 @@ export function registerBackofficeExtensions(app: any, d: any): void {
         await fsCommit([fsCreate("crmInteractions", interactionId, { leadId, channel: "whatsapp", outcome: "received", notesEncrypted: textBody ? crmEncrypt(textBody, "crmInteraction:" + interactionId + ":notes") : "", createdAt: leadNow, createdBy: "whatsapp", sourceEventId: eventId }), fsUpdate("webhook_inbox", inboxId, { provider: "whatsapp", payload: raw.toString("utf8").slice(0, 100000), signatureOk: true, dedupeKey: webhookDedupeKey("whatsapp", eventId), receivedAt: now, processedAt: leadNow, error: null, leadId, interactionId })]);
       } else { await fsCommit([fsUpdate("webhook_inbox", inboxId, { provider: "whatsapp", payload: raw.toString("utf8").slice(0, 100000), signatureOk: true, dedupeKey: webhookDedupeKey("whatsapp", eventId), receivedAt: now, processedAt: new Date().toISOString(), error: "no_phone_in_payload" })]); }
       return res.status(200).json({ ok: true, leadId });
-    } catch (error: any) { console.error("[WhatsApp] webhook processing failed:", error); return res.status(202).json({ ok: true, accepted: true, processingError: "retry_required" }); }
+    } catch (error: any) { try { const failed = await fsGet("webhook_inbox", inboxId); if (failed) await fsCommit([fsUpdate("webhook_inbox", inboxId, { ...failed, error: "processing_failed", failedAt: new Date().toISOString() })]); } catch { /* keep inbox retryable for operator review */ } console.error("[WhatsApp] webhook processing failed:", error); return res.status(202).json({ ok: true, accepted: true, processingError: "retry_required" }); }
   });
 }
