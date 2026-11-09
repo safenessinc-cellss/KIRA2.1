@@ -1198,7 +1198,7 @@ app.post("/api/coach/homework/assignments", async (req, res) => {
       createdAt: now,
       updatedAt: now
     };
-    await fsCreate("homework_assignments", id, assignment);
+    await fsCommit([fsCreate("homework_assignments", id, assignment)]);
     return res.status(201).json({ item: { id, ...assignment } });
   } catch (error) {
     console.error("[Coach Homework] assignment create failed:", error);
