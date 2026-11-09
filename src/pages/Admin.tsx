@@ -16,6 +16,7 @@ type AdminTab = 'usercenter' | 'coachapproval' | 'certapproval' | 'paymentsConso
 export function AdminMonitor() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<AdminTab>((searchParams.get('tab') as AdminTab) || 'dashboard');
   const [profile, setProfile] = useState<any>(null);
 
