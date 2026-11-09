@@ -717,7 +717,7 @@ app.post("/api/admin/crm/leads", async (req, res) => {
       fullNameEncrypted: crmEncrypt(fullName, "crmLead:" + id + ":fullName"), emailEncrypted: email ? crmEncrypt(email, "crmLead:" + id + ":email") : "", phoneEncrypted: phone ? crmEncrypt(phone, "crmLead:" + id + ":phone") : "",
       source, campaign: String(body.campaign || "").slice(0, 120), courseInterest: String(body.courseInterest || "").slice(0, 180),
       stage: "new", assignedTo: (user.email?.toLowerCase() === "safeness.c.a@gmail.com" ? String(body.assignedTo || "") : user.uid).slice(0, 180), score: 0,
-      consentGdpr: body.consentGdpr === true, createdAt: now, updatedAt: now, piiVersion: 1
+      consentGdpr: body.consentGdpr === true, createdAt: now, updatedAt: now, piiVersion: 2
     };
     try {
       await fsCommit([
