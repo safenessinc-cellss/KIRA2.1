@@ -817,7 +817,8 @@ app.post("/api/coach/homework/:id/review", async (req, res) => {
     if (!submission.studentId || typeof submission.studentId !== "string") return res.status(409).json({ error: "La entrega no contiene un alumno válido." });
     const student = await fsGet("users", submission.studentId);
     if (!student) return res.status(409).json({ error: "El perfil del alumno asociado a esta entrega ya no está disponible." });
-    const now = new Date().toISOString();
+    const now = new Date();
+    const nowIso = now.toISOString();
     const awardPoints = status === "approved" && !submission.pointsAwardedAt ? requestedPoints : 0;
     const updated = {
       ...submission, score, feedback, status, reviewedAt: now, reviewedBy: user.uid,
@@ -843,7 +844,7 @@ app.post("/api/coach/homework/:id/review", async (req, res) => {
       }
     });
     await fsCommit(writes);
-    return res.json({ item: { id, status, score, feedback, reviewedAt: now, energyPointsAwarded: updated.energyPointsAwarded }, pointsAwarded: awardPoints });
+    return res.json({ item: { id, status, score, feedback, reviewedAt: nowIso, energyPointsAwarded: updated.energyPointsAwarded }, pointsAwarded: awardPoints });
   } catch (error) {
     console.error("[Coach Homework] review failed:", error);
     return res.status(500).json({ error: "No se pudo guardar la revisión." });
