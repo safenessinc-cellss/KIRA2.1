@@ -778,14 +778,28 @@ app.get("/api/admin/dashboard", async (req, res) => {
       salesGrossCents: sum("salesGrossCents"), salesNetCents: sum("salesNetCents"), refundsCents: sum("refundsCents"),
       overdueInvoices: Number(latest.overdueInvoices || 0), salesByCurrency: selected.reduce((out: any, x: any) => { for (const [currency, amount] of Object.entries(x.salesByCurrency || {})) out[currency] = (out[currency] || 0) + Number(amount || 0); return out; }, {})
     };
-    if (can("students.enrollments.read", "courses.groups.read", "dashboard.academic.read")) result.academic = {
+    if (can("students.enrollments.read", "courses.groups.read")) result.academic = {
       newEnrollments: sum("newEnrollments"), activeEnrollments: Number(latest.activeEnrollments || 0), atRiskStudents: Number(latest.atRiskStudents || 0),
-      certificatesIssued: can("students.enrollments.read") ? sum("certificatesIssued") : undefined
+      certificatesIssued: sum("certificatesIssued")
     };
-    if (can("crm.leads.read", "crm.leads.own.read")) {
+    else if (can("dashboard.academic.read")) {
+      const own = selected.reduce((out: any, x: any) => {
+        const item = x.academicByCoach?.[user.uid] || {};
+        out.newEnrollments += Number(item.newEnrollments || 0);
+        out.activeEnrollments = Math.max(out.activeEnrollments, Number(item.activeEnrollments || 0));
+        out.atRiskStudents = Math.max(out.atRiskStudents, Number(item.atRiskStudents || 0));
+        return out;
+      }, { newEnrollments: 0, activeEnrollments: 0, atRiskStudents: 0 });
+      result.academic = own;
+    }
+    if (can("crm.leads.read")) {
       const leadsByStage = selected.reduce((out: any, x: any) => { for (const [stage, count] of Object.entries(x.leadsByStage || {})) out[stage] = (out[stage] || 0) + Number(count || 0); return out; }, {});
       const total = Object.values(leadsByStage).reduce<number>((a, b) => a + Number(b || 0), 0);
       result.crm = { leadsByStage, conversionRate: total ? Number(leadsByStage.enrolled || 0) / total * 100 : 0 };
+    } else if (can("crm.leads.own.read")) {
+      const leadsByStage = selected.reduce((out: any, x: any) => { for (const [stage, count] of Object.entries(x.leadsByAssignee?.[user.uid] || {})) out[stage] = (out[stage] || 0) + Number(count || 0); return out; }, {});
+      const total = Object.values(leadsByStage).reduce<number>((a, b) => a + Number(b || 0), 0);
+      result.crm = { leadsByStage, conversionRate: total ? Number(leadsByStage.enrolled || 0) / total * 100 : 0, scope: "own" };
     }
     if (can("courses.read", "finance.payments.read", "dashboard.finance.read")) result.topCourses = Object.values(selected.reduce((out: any, x: any) => {
       for (const item of Array.isArray(x.topCourses) ? x.topCourses : []) { const id = String(item.courseId); out[id] ||= { courseId: id, title: item.title || id, revenueCents: 0 }; out[id].revenueCents += Number(item.revenueCents || 0); }
