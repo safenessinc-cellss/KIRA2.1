@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, getDocs, getDoc, addDoc, onSnapshot, doc, updateDoc, setDoc, orderBy, limit } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
+import { logActivityEvent } from '../hooks/useActivityLogger';
 import { cn } from '../lib/utils';
 import { MentorWidget } from '../components/MentorWidget';
 import { Seal } from '../components/Brand';
@@ -323,7 +324,7 @@ export function Dashboard() {
   const submitReview = async () => {
     if (!user || !reviewingItem) return;
     try {
-      await addDoc(collection(db, 'reviews'), {
+      const reviewRef = await addDoc(collection(db, 'reviews'), {
         itemId: reviewingItem.id,
         itemType: reviewingItem.type,
         courseId: reviewingItem.type === 'course' ? reviewingItem.id : null,
@@ -334,6 +335,7 @@ export function Dashboard() {
         status: 'published',
         createdAt: new Date()
       });
+      await logActivityEvent(user.uid, 'review_created', 'review', reviewRef.id, { reviewId: reviewRef.id });
       setReviewingItem(null);
       setComment('');
       setRating(5);
@@ -659,12 +661,13 @@ export function Dashboard() {
                                       <button 
                                         onClick={async () => {
                                           try {
-                                            await addDoc(collection(db, 'enrollments'), {
+                                            const enrollmentRef = await addDoc(collection(db, 'enrollments'), {
                                               userId: user.uid,
                                               courseId: course.id,
                                               progress: 0,
                                               createdAt: new Date()
                                             });
+                                            await logActivityEvent(user.uid, 'course_enrolled', 'enrollment', enrollmentRef.id, { courseId: course.id });
                                             fetchData();
                                           } catch (err) {
                                             console.error(err);
@@ -869,12 +872,13 @@ export function Dashboard() {
                             <button
                               onClick={async () => {
                                 try {
-                                  await addDoc(collection(db, 'enrollments'), {
+                                  const enrollmentRef = await addDoc(collection(db, 'enrollments'), {
                                     userId: user.uid,
                                     courseId: purchase.itemId,
                                     progress: 0,
                                     createdAt: new Date()
                                   });
+                                  await logActivityEvent(user.uid, 'course_enrolled', 'enrollment', enrollmentRef.id, { courseId: purchase.itemId });
                                   fetchData();
                                 } catch (err) {
                                   console.error(err);
@@ -1351,12 +1355,13 @@ export function Journal() {
       const currentPoints = user.points || 0;
       const userRef = doc(db, 'users', user.uid);
       
-      await addDoc(collection(db, 'journals'), {
+      const journalRef = await addDoc(collection(db, 'journals'), {
         userId: user.uid,
         content: content.trim(),
         sentiment,
         createdAt: new Date()
       });
+      await logActivityEvent(user.uid, 'journal_created', 'journal', journalRef.id, { mood: sentiment });
 
       await updateDoc(userRef, {
         points: currentPoints + 20
