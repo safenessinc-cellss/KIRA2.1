@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import { 
   Mic, MicOff, Brain, Sparkles, AlertCircle, FileText, 
@@ -151,14 +151,12 @@ export default function SessionIntelligence() {
         "sentiment": "estrés" | "positivo" | "neutral" | "motivación" | "duda"
       }`;
 
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return;
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "gemini-2.0-flash-exp",
-          contents: prompt,
-          config: { responseMimeType: "application/json" }
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ model: 'gemini-3.5-flash', contents: prompt, config: { responseMimeType: 'application/json' } })
       });
       const dataJson = await response.json();
       if (dataJson.error) return;
@@ -365,19 +363,17 @@ export default function SessionIntelligence() {
     }`;
 
     try {
-      const response = await fetch('/api/gemini/generate', {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Inicia sesión nuevamente para analizar la sesión.');
+      const response = await fetch('/api/ai/analyze-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "gemini-2.0-flash-exp",
-          contents: prompt,
-          config: { responseMimeType: "application/json" }
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ transcript: listToUse.map(m => '[' + ((m as any).sentiment || 'neutral') + '] ' + m.speaker + ': ' + m.text).join('\\n'), consent: consentConfirmed })
       });
       const dataJson = await response.json();
-      if (dataJson.error) throw new Error(dataJson.error);
+      if (!response.ok) throw new Error(dataJson.error || 'No fue posible analizar la sesión.');
 
-      const data = JSON.parse(dataJson.text) as LongitudinalAnalysis;
+      const data = JSON.parse(dataJson.analysis) as LongitudinalAnalysis;
       const sanitizedData = sanitizeAnalysis(data);
       setAnalysis(sanitizedData);
       
@@ -461,19 +457,17 @@ export default function SessionIntelligence() {
         "sugerencia_proxima_sesion": "string"
       }`;
 
-      const response = await fetch('/api/gemini/generate', {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Inicia sesión nuevamente para analizar la sesión.');
+      const response = await fetch('/api/ai/analyze-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "gemini-2.0-flash-exp",
-          contents: prompt,
-          config: { responseMimeType: "application/json" }
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ transcript: manualTranscript, consent: consentConfirmed })
       });
       const dataJson = await response.json();
-      if (dataJson.error) throw new Error(dataJson.error);
+      if (!response.ok) throw new Error(dataJson.error || 'No fue posible analizar la sesión.');
 
-      const data = JSON.parse(dataJson.text) as LongitudinalAnalysis;
+      const data = JSON.parse(dataJson.analysis) as LongitudinalAnalysis;
       const sanitizedData = sanitizeAnalysis(data);
       setAnalysis(sanitizedData);
       
