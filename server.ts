@@ -1608,34 +1608,43 @@ app.post("/api/admin/outbox/dead-letters/:id/requeue", async (req, res) => {
 
 app.get("/api/admin/groups", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "courses.groups.read", "own"); if (!user) return;
+    const profile = await fsGet("users", user.uid);
     const courseId = String(req.query.courseId || ""), status = String(req.query.status || "");
     const groups = await fsListAllDocuments("course_groups");
-    return res.json({ items: groups.filter(g => (!courseId || g.courseId === courseId) && (!status || g.status === status)).sort((a,b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))) });
+    const visibleGroups = profile?.role === "coach" ? groups.filter(g => g.coachId === user.uid) : groups;
+    return res.json({ items: visibleGroups.filter(g => (!courseId || g.courseId === courseId) && (!status || g.status === status)).sort((a,b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))) });
   } catch (error: any) { console.error("[Groups] list failed:", error); return res.status(500).json({ error: "No se pudieron consultar los grupos." }); }
 });
 app.get("/api/admin/groups/:id/sessions", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "courses.sessions.read", "own"); if (!user) return;
     const groupId = academicId(String(req.params.id)), group = await fsGet("course_groups", groupId);
     if (!group) return res.status(404).json({ error: "Grupo no encontrado." });
+    const profile = await fsGet("users", user.uid);
+    if (profile?.role === "coach" && group.coachId !== user.uid) return res.status(404).json({ error: "Grupo no encontrado." });
     const sessions = await fsListAllDocuments("group_sessions");
     return res.json({ items: sessions.filter(x => x.groupId === groupId).sort((a,b) => String(a.startsAt).localeCompare(String(b.startsAt))) });
   } catch (error: any) { console.error("[Groups] sessions list failed:", error); return res.status(500).json({ error: "No se pudieron consultar las sesiones." }); }
 });
 app.get("/api/admin/groups/:id/enrollments", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.enrollments.read", "own"); if (!user) return;
     const groupId = academicId(String(req.params.id)), group = await fsGet("course_groups", groupId);
     if (!group) return res.status(404).json({ error: "Grupo no encontrado." });
+    const profile = await fsGet("users", user.uid);
+    if (profile?.role === "coach" && group.coachId !== user.uid) return res.status(404).json({ error: "Grupo no encontrado." });
     const enrollments = await fsListAllDocuments("enrollments");
     return res.json({ items: enrollments.filter(x => x.groupId === groupId && !["cancelled", "suspended"].includes(x.status)) });
   } catch (error: any) { console.error("[Groups] enrollments list failed:", error); return res.status(500).json({ error: "No se pudieron consultar las matrículas del grupo." }); }
 });
 app.get("/api/admin/groups/:id/performance", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.performance.read", "own"); if (!user) return;
     const groupId = academicId(String(req.params.id));
+    const group = await fsGet("course_groups", groupId);
+    const profile = await fsGet("users", user.uid);
+    if (!group || (profile?.role === "coach" && group.coachId !== user.uid)) return res.status(404).json({ error: "Grupo no encontrado." });
     const projections = await fsListAllDocuments("student_performance");
     return res.json({ items: projections.filter(x => x.groupId === groupId) });
   } catch (error: any) { console.error("[Academic] performance list failed:", error); return res.status(500).json({ error: "No se pudo consultar el rendimiento." }); }
@@ -1643,7 +1652,7 @@ app.get("/api/admin/groups/:id/performance", async (req, res) => {
 
 app.post("/api/admin/groups", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "courses.groups.create"); if (!user) return;
     const body = req.body || {};
     const courseId = String(body.courseId || ""), name = String(body.name || "").trim(), coachId = String(body.coachId || "");
     const capacity = Number(body.capacity);
@@ -1659,7 +1668,7 @@ app.post("/api/admin/groups", async (req, res) => {
 
 app.patch("/api/admin/groups/:id", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "courses.groups.update"); if (!user) return;
     const id = academicId(String(req.params.id)), before = await fsGet("course_groups", id);
     if (!before) return res.status(404).json({ error: "Grupo no encontrado." });
     const body = req.body || {}, next = { ...before };
@@ -1675,7 +1684,7 @@ app.patch("/api/admin/groups/:id", async (req, res) => {
 app.post("/api/admin/groups/:id/sessions", async (req, res) => {
   let transaction = "";
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "courses.sessions.create"); if (!user) return;
     const groupId = academicId(String(req.params.id)), group = await fsGet("course_groups", groupId);
     if (!group || !["planned", "active"].includes(group.status)) return res.status(404).json({ error: "Grupo no disponible." });
     const startsAt = academicDate(req.body?.startsAt), endsAt = academicDate(req.body?.endsAt);
@@ -1717,7 +1726,7 @@ app.post("/api/admin/groups/:id/sessions", async (req, res) => {
 app.post("/api/admin/groups/:id/enroll", async (req, res) => {
   let transaction = "";
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.enrollments.create"); if (!user) return;
     const groupId = academicId(String(req.params.id)), studentId = String(req.body?.studentId || "");
     if (!studentId) return res.status(400).json({ error: "studentId es obligatorio." });
     transaction = await beginFirestoreTransaction();
@@ -1743,7 +1752,7 @@ app.post("/api/admin/groups/:id/enroll", async (req, res) => {
 app.patch("/api/admin/sessions/:sessionId", async (req, res) => {
   let transaction = "";
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "courses.sessions.update"); if (!user) return;
     const id = academicId(String(req.params.sessionId)), before = await fsGet("group_sessions", id);
     if (!before) return res.status(404).json({ error: "Sesión no encontrada." });
     const status = String(req.body?.status || before.status);
@@ -1775,12 +1784,15 @@ app.patch("/api/admin/sessions/:sessionId", async (req, res) => {
 
 app.post("/api/admin/sessions/:sessionId/attendance", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.attendance.mark", "own"); if (!user) return;
     const sessionId = academicId(String(req.params.sessionId)), studentId = String(req.body?.studentId || ""), status = String(req.body?.status || "");
     if (!studentId || !academicStatuses.attendance.includes(status)) return res.status(400).json({ error: "Alumno o estado de asistencia inválido." });
     const session = await fsGet("group_sessions", sessionId);
     if (!session || session.status === "cancelled" || (session.status !== "held" && academicDate(session.startsAt) && academicDate(session.startsAt)!.getTime() > Date.now())) return res.status(404).json({ error: "La sesión aún no se realizó o no está disponible para asistencia." });
-    const enrollmentId = academicId(studentId + "_" + String((await fsGet("course_groups", session.groupId))?.courseId || ""));
+    const group = await fsGet("course_groups", session.groupId);
+    const profile = await fsGet("users", user.uid);
+    if (profile?.role === "coach" && group?.coachId !== user.uid) return res.status(404).json({ error: "Sesión no encontrada." });
+    const enrollmentId = academicId(studentId + "_" + String(group?.courseId || ""));
     const enrollment = await fsGet("enrollments", enrollmentId);
     if (!enrollment || enrollment.groupId !== session.groupId || ["cancelled", "suspended"].includes(enrollment.status)) return res.status(409).json({ error: "El alumno no está matriculado en este grupo." });
     const id = academicId(sessionId + "_" + studentId), now = new Date().toISOString();
@@ -1795,13 +1807,15 @@ app.post("/api/admin/sessions/:sessionId/attendance", async (req, res) => {
 
 app.post("/api/admin/assessments", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.assessments.grade", "own"); if (!user) return;
     const body = req.body || {}, studentId = String(body.studentId || ""), groupId = academicId(String(body.groupId || "")), type = String(body.type || "");
     const score = Number(body.score), maxScore = Number(body.maxScore || 100), weight = Number(body.weight || 1);
     if (!studentId || !groupId || !academicStatuses.assessment.includes(type) || !Number.isFinite(score) || !Number.isFinite(maxScore) || maxScore <= 0 || score < 0 || score > maxScore || !Number.isFinite(weight) || weight <= 0 || weight > 100) return res.status(400).json({ error: "Evaluación inválida." });
     const group = await fsGet("course_groups", groupId);
     const enrollment = group ? await fsGet("enrollments", academicId(studentId + "_" + group.courseId)) : null;
     if (!group || !enrollment || enrollment.groupId !== groupId) return res.status(409).json({ error: "El alumno no está matriculado en el grupo." });
+    const profile = await fsGet("users", user.uid);
+    if (profile?.role === "coach" && group.coachId !== user.uid) return res.status(404).json({ error: "Grupo no encontrado." });
     const id = randomBytes(16).toString("hex"), now = new Date().toISOString();
     const assessment = { courseId: group.courseId, studentId, groupId, type, score, maxScore, weight, gradedBy: user.uid, gradedAt: now };
     await fsCommit([fsCreate("assessments", id, assessment), auditWrite(user.uid, "assessment.graded", "alumnos.rendimiento-asistencia", id, null, assessment), fsCreate("outbox", "assessment_graded_" + id, { eventId: "assessment.graded." + id, type: "assessment.graded.v1", aggregate: "assessment", aggregateId: id, schemaVersion: 1, payload: { assessmentId: id, studentId, groupId }, status: "pending", attempts: 0, createdAt: now })]);
@@ -1814,19 +1828,25 @@ app.post("/api/admin/assessments", async (req, res) => {
 
 app.get("/api/admin/enrollments", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.enrollments.read", "own"); if (!user) return;
     const status = String(req.query.status || ""), groupId = String(req.query.groupId || "");
     const enrollments = await fsListAllDocuments("enrollments");
-    const items = enrollments.filter(x => (!status || x.status === status) && (!groupId || x.groupId === groupId)).map(x => ({ id: x.id, ...x }));
+    const profile = await fsGet("users", user.uid);
+    const groups = profile?.role === "coach" ? await fsListAllDocuments("course_groups") : [];
+    const ownGroupIds = new Set(groups.filter(g => g.coachId === user.uid).map(g => g.id));
+    const items = enrollments.filter(x => (!status || x.status === status) && (!groupId || x.groupId === groupId) && (profile?.role !== "coach" || ownGroupIds.has(x.groupId))).map(x => ({ id: x.id, ...x }));
     return res.json({ items, total: items.length });
   } catch (error: any) { console.error("[Contracts] enrollment list failed:", error); return res.status(500).json({ error: "No se pudieron consultar las matrículas." }); }
 });
 
 app.get("/api/admin/enrollments/:id", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const user = await backofficePermission(req, res, "students.enrollments.read", "own"); if (!user) return;
     const id = academicId(String(req.params.id)), enrollment = await fsGet("enrollments", id);
     if (!enrollment) return res.status(404).json({ error: "Matrícula no encontrada." });
+    const profile = await fsGet("users", user.uid);
+    const group = enrollment.groupId ? await fsGet("course_groups", enrollment.groupId) : null;
+    if (profile?.role === "coach" && group?.coachId !== user.uid) return res.status(404).json({ error: "Matrícula no encontrada." });
     const [course, group] = await Promise.all([fsGet("courses", enrollment.courseId), enrollment.groupId ? fsGet("course_groups", enrollment.groupId) : Promise.resolve(null)]);
     return res.json({ id, ...enrollment, courseTitle: course?.title || course?.name || enrollment.courseId, coachId: course?.coachId || "", groupName: group?.name || null });
   } catch (error: any) { console.error("[Contracts] enrollment read failed:", error); return res.status(500).json({ error: "No se pudo consultar la matrícula." }); }
