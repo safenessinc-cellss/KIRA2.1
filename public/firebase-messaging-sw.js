@@ -1,27 +1,31 @@
-importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging-compat.js');
-
-// Fetch the config via a workaround or just hardcode the necessary parts
-// In a real app we would load the config dynamically, but since we are compiling to static,
-// we can just put minimum required fields.
-const firebaseConfig = {
-  projectId: "gen-lang-client-0082259364",
-  appId: "1:929279176008:web:c58eaaa666db86b1e4577d",
-  apiKey: "AIzaSyCYmfCeHXfrpKdMn_3G-rrim3wu0FIopiE",
-  authDomain: "gen-lang-client-0082259364.firebaseapp.com",
-  messagingSenderId: "929279176008"
-};
-
-firebase.initializeApp(firebaseConfig);
-const messaging = firebase.messaging();
-
-messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Received background message ', payload);
-  const notificationTitle = payload.notification?.title || 'Nuevo mensaje';
-  const notificationOptions = {
-    body: payload.notification?.body || 'Tienes una nueva alerta en Kira.',
-    icon: '/assets/kira-logo.png'
+/* Firebase Cloud Messaging background handler.
+ * The main application initializes Firebase from VITE_* configuration.
+ * This worker handles the Web Push event directly and contains no project keys.
+ */
+self.addEventListener("push", event => {
+  if (!event.data) return;
+  let payload = {};
+  try { payload = event.data.json(); } catch { payload = { data: { body: event.data.text() } }; }
+  const notification = payload.notification || payload.data || {};
+  const title = String(notification.title || "KIRA · Nueva notificación").slice(0, 120);
+  const options = {
+    body: String(notification.body || notification.message || "Tienes una nueva alerta en KIRA.").slice(0, 300),
+    icon: "/assets/kira-logo.png",
+    badge: "/assets/kira-logo.png",
+    data: { url: String(notification.click_action || payload.fcmOptions?.link || "/dashboard") }
   };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || "/dashboard", self.location.origin).href;
+  event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then(windows => {
+    const existing = windows.find(client => client.url.startsWith(self.location.origin));
+    if (existing) {
+      existing.navigate(target);
+      return existing.focus();
+    }
+    return clients.openWindow(target);
+  }));
 });
