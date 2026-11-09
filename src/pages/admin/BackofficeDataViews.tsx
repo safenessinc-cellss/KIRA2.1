@@ -9,7 +9,7 @@ type DashboardData = {
   conversion?: { rate: number; converted: number; qualified: number };
   topCourses?: Array<{ courseId: string; title: string; revenueByCurrency: Record<string, number> }>;
   overdueInvoices?: number;
-  students?: { active: number; atRisk: number };
+  students?: { active: number; atRisk: number | null };
   certificates?: { issued: number };
   generatedAt: string;
   source: string;
@@ -63,7 +63,7 @@ export function BackofficeDashboard() {
     { show: !!data?.leads, title: 'Leads captados', value: number(data?.leads?.total || 0), detail: 'Leads registrados', icon: Funnel },
     { show: !!data?.conversion, title: 'Conversión lead → matrícula', value: (data?.conversion?.rate || 0).toFixed(1) + '%', detail: number(data?.conversion?.converted || 0) + ' convertidos', icon: Activity },
     { show: data?.overdueInvoices !== undefined, title: 'Cuotas vencidas', value: number(data?.overdueInvoices || 0), detail: 'Facturas vencidas o abiertas fuera de fecha', icon: AlertCircle },
-    { show: !!data?.students, title: 'Alumnos activos', value: number(data?.students?.active || 0), detail: number(data?.students?.atRisk || 0) + ' en riesgo', icon: Users },
+    { show: !!data?.students, title: 'Alumnos activos', value: number(data?.students?.active || 0), detail: data?.students?.atRisk === null ? 'Asistencia pendiente' : number(data?.students?.atRisk || 0) + ' en riesgo', icon: Users },
     { show: !!data?.certificates, title: 'Certificados emitidos', value: number(data?.certificates?.issued || 0), detail: 'Emitidos en el período', icon: FileBadge },
     { show: data?.topCourses !== undefined, title: 'Cursos con ventas', value: number(data?.topCourses?.length || 0), detail: 'Top 5 por ingresos', icon: BadgeCheck }
   ];
