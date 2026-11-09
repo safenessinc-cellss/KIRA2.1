@@ -74,7 +74,7 @@ try {
 
   // Gateway credentials, payment configuration and financial ledgers are server-only,
   // including for the owner browser session; the Express API is the sole access path.
-  for (const collectionName of ["paymentSettings","paymentGateways","paymentPlans","paymentCoupons","paymentAudit","config_audit","course_groups","group_sessions","student_performance","role_permissions","webhook_inbox","payment_reminders","dashboard_aggregates"]) {
+  for (const collectionName of ["paymentSettings","paymentGateways","paymentPlans","paymentCoupons","paymentAudit","config_audit","course_groups","group_sessions","student_performance","role_permissions","webhook_inbox","payment_reminders","dashboard_aggregates","invoice_payment_claims","paymentReconciliationReports","counters"]) {
     await assertFails(getDoc(doc(ownerDb, collectionName, "global")));
     await assertFails(setDoc(doc(ownerDb, collectionName, "browser-write"), { enabled: true, apiKeyEncrypted: "must-not-be-client-written" }));
     await assertFails(getDoc(doc(studentDb, collectionName, "global")));
