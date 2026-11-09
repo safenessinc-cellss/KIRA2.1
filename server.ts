@@ -1376,11 +1376,12 @@ app.post("/api/admin/groups/:id/enroll", async (req, res) => {
     if (!course || !["published", "active"].includes(String(course.status || ""))) return res.status(409).json({ error: "El curso no está disponible." });
     const enrollmentId = academicId(studentId + "_" + group.courseId);
     const existing = await fsGetInTransaction("enrollments", enrollmentId, transaction);
-    if (existing) return res.status(409).json({ error: "El alumno ya tiene matrícula en este curso." });
+    if (existing?.groupId) return res.status(409).json({ error: "El alumno ya está asignado a un grupo de este curso." });
+    if (existing && ["cancelled", "suspended", "completed"].includes(String(existing.status))) return res.status(409).json({ error: "La matrícula existente no admite reasignación a un grupo." });
     const now = new Date().toISOString(), paidUpfront = Number(course.price || 0) <= 0;
-    const enrollment = { userId: studentId, courseId: group.courseId, groupId, progress: 0, completed: false, courseCompleted: false, status: paidUpfront ? "active" : "pending_payment", paymentStatus: paidUpfront ? "not_required" : "pending_verification", paymentPlan: String(req.body?.paymentPlan || "upfront"), createdAt: now, updatedAt: now };
+    const enrollment = existing ? { ...existing, groupId, updatedAt: now, updatedBy: user.uid } : { userId: studentId, courseId: group.courseId, groupId, progress: 0, completed: false, courseCompleted: false, status: paidUpfront ? "active" : "pending_payment", paymentStatus: paidUpfront ? "not_required" : "pending_verification", paymentPlan: String(req.body?.paymentPlan || "upfront"), createdAt: now, updatedAt: now };
     const nextGroup = { ...group, enrolledCount: Number(group.enrolledCount || 0) + 1, updatedAt: now, updatedBy: user.uid };
-    await fsCommitTransaction([fsUpdate("course_groups", groupId, nextGroup), fsCreate("enrollments", enrollmentId, enrollment), auditWrite(user.uid, "enrollment.group.created", "alumnos.matriculas", enrollmentId, null, enrollment), fsCreate("outbox", "enrollment_activated_" + enrollmentId, { eventId: "enrollment.activated." + enrollmentId, type: "enrollment.activated.v1", aggregate: "enrollment", aggregateId: enrollmentId, schemaVersion: 1, payload: { enrollmentId, studentId, courseId: group.courseId, groupId }, status: "pending", attempts: 0, createdAt: now })], transaction);
+    await fsCommitTransaction([fsUpdate("course_groups", groupId, nextGroup), existing ? fsUpdate("enrollments", enrollmentId, enrollment) : fsCreate("enrollments", enrollmentId, enrollment), auditWrite(user.uid, existing ? "enrollment.group.assigned" : "enrollment.group.created", "alumnos.matriculas", enrollmentId, existing || null, enrollment), fsCreate("outbox", "enrollment_group_assigned_" + enrollmentId, { eventId: "enrollment.group.assigned." + enrollmentId, type: "enrollment.group.assigned.v1", aggregate: "enrollment", aggregateId: enrollmentId, schemaVersion: 1, payload: { enrollmentId, studentId, courseId: group.courseId, groupId }, status: "pending", attempts: 0, createdAt: now })], transaction);
     transaction = "";
     return res.status(201).json({ id: enrollmentId, ...enrollment });
   } catch (error: any) { console.error("[Groups] enrollment failed:", error); return res.status(error.status === 409 ? 409 : 500).json({ error: error.message || "No se pudo reservar el cupo." }); }
@@ -1442,7 +1443,8 @@ app.post("/api/admin/enrollments/:id/complete", async (req, res) => {
     transaction = await beginFirestoreTransaction();
     const enrollment = await fsGetInTransaction("enrollments", id, transaction);
     if (!enrollment) return res.status(404).json({ error: "Matrícula no encontrada." });
-    if (enrollment.status === "pending_payment" || (Number(enrollment.coursePrice || 0) > 0 && enrollment.paymentStatus !== "paid")) return res.status(409).json({ error: "La matrícula requiere pago verificado." });
+    const course = await fsGetInTransaction("courses", enrollment.courseId, transaction);
+    if (!course || (Number(course.price || 0) > 0 && enrollment.paymentStatus !== "paid") || enrollment.status === "pending_payment") return res.status(409).json({ error: "La matrícula requiere pago verificado." });
     const performance = enrollment.groupId ? await fsGetInTransaction("student_performance", academicId(enrollment.userId + "_" + enrollment.groupId), transaction) : null;
     const settings = await fsGetInTransaction("settings", "enrollment", transaction);
     const minAttendance = Math.max(0, Math.min(100, Number(settings?.min_attendance ?? settings?.minAttendance ?? 75)));
