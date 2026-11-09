@@ -1,52 +1,63 @@
-import { useState, useEffect } from "react";
-import { collection, getDocs } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../hooks/useAuth";
-import { Users, BarChart3, ShieldCheck, Building2, AlertCircle } from "lucide-react";
+import { BarChart3, Building2, HeartPulse, ShieldCheck, Users } from "lucide-react";
+
+type Aggregate = {
+  id: string;
+  periodEnd?: any;
+  headcount?: number;
+  highRiskCount?: number;
+  riskHigh?: number;
+  averageEngagement?: number;
+  engagementScore?: number;
+  burnoutPercent?: number;
+  leaveCount?: number;
+};
 
 export function HRDashboard() {
   const { user } = useAuth();
-  const [employees, setEmployees] = useState<any[]>([]);
-  const [aggregates, setAggregates] = useState<any[]>([]);
+  const [aggregates, setAggregates] = useState<Aggregate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const companyId = String(user?.companyId || "");
+  const companyId = String(user?.companyId || user?.organizationId || user?.orgId || "");
 
   useEffect(() => {
-    let active = true;
-    const loadCompanyData = async () => {
-      setLoading(true);
-      setError("");
-      if (!companyId) {
-        setEmployees([]);
-        setAggregates([]);
+    if (!companyId) {
+      setAggregates([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const unsubscribe = onSnapshot(
+      collection(db, "companies", companyId, "wellbeingAggregates"),
+      snapshot => {
+        setAggregates(snapshot.docs.map(item => ({ id: item.id, ...item.data() } as Aggregate)));
         setLoading(false);
-        return;
+      },
+      cause => {
+        console.error("Company aggregate subscription failed:", cause);
+        setError("No fue posible cargar los indicadores agregados autorizados de esta organización.");
+        setLoading(false);
       }
-      try {
-        const [membersSnapshot, aggregatesSnapshot] = await Promise.all([
-          getDocs(collection(db, "companies", companyId, "members")),
-          getDocs(collection(db, "companies", companyId, "wellbeingAggregates"))
-        ]);
-        if (!active) return;
-        setEmployees(membersSnapshot.docs.map(snapshot => ({ id: snapshot.id, ...snapshot.data() })));
-        setAggregates(aggregatesSnapshot.docs.map(snapshot => ({ id: snapshot.id, ...snapshot.data() })));
-      } catch (err) {
-        console.error("Company portal data load failed:", err);
-        if (active) setError("No fue posible cargar los datos autorizados de esta empresa. Verifica su asignación y permisos.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-    loadCompanyData();
-    return () => { active = false; };
+    );
+    return () => unsubscribe();
   }, [companyId]);
 
-  const activeEmployees = employees.filter(employee => employee.status === "active" || employee.status === "approved");
-  const latestAggregate = aggregates.slice().sort((a, b) => String(b.periodEnd || b.createdAt || "").localeCompare(String(a.periodEnd || a.createdAt || "")))[0];
-  const highRiskCount = Number(latestAggregate?.highRiskCount ?? latestAggregate?.riskHigh ?? 0);
-  const averageEngagement = Number(latestAggregate?.averageEngagement ?? latestAggregate?.engagementScore ?? 0);
-  const hasWellbeingAggregate = Boolean(latestAggregate && (latestAggregate.highRiskCount !== undefined || latestAggregate.riskHigh !== undefined || latestAggregate.averageEngagement !== undefined || latestAggregate.engagementScore !== undefined));
+  const latest = useMemo(() => aggregates.slice().sort((a, b) => {
+    const dateValue = (value: any) => value?.toMillis ? value.toMillis() : new Date(value || 0).getTime();
+    return dateValue(b.periodEnd) - dateValue(a.periodEnd);
+  })[0], [aggregates]);
+
+  const metrics = [
+    { label: "Colaboradores (agregado)", value: latest?.headcount, icon: Users, suffix: "" },
+    { label: "Riesgo elevado agregado", value: latest?.highRiskCount ?? latest?.riskHigh, icon: ShieldCheck, suffix: "" },
+    { label: "Engagement promedio", value: latest?.averageEngagement ?? latest?.engagementScore, icon: BarChart3, suffix: "" },
+    { label: "Burnout estimado", value: latest?.burnoutPercent, icon: HeartPulse, suffix: "%" },
+    { label: "Licencias (agregado)", value: latest?.leaveCount, icon: Users, suffix: "" },
+  ];
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-7">
@@ -56,57 +67,32 @@ export function HRDashboard() {
           <div className="min-w-0 flex-1">
             <p className="text-xs font-bold uppercase tracking-[.18em] text-teal-700">KIRA · Portal empresarial</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">{user?.companyName || "Panel de empresa"}</h1>
-            <p className="mt-1 text-sm text-slate-500">Gestión de licencias y análisis agregado de bienestar, respetando la privacidad individual.</p>
+            <p className="mt-1 text-sm text-slate-500">Indicadores agregados de bienestar, sin acceso a información personal.</p>
           </div>
           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600">Acceso por organización</span>
         </div>
       </header>
 
-      {!companyId && (
-        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
-          <AlertCircle size={20} className="mt-0.5 shrink-0" />
-          <div><p className="font-bold">Empresa todavía no asignada</p><p className="mt-1 text-sm">El administrador de KIRA debe asociar esta cuenta a una organización antes de habilitar los datos B2B.</p></div>
-        </div>
-      )}
+      {!companyId && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">Esta cuenta todavía no está asociada a una organización.</div>}
       {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Colaboradores registrados</span><Users className="text-teal-700" size={20} /></div>
-          <p className="mt-4 text-4xl font-black tabular-nums text-slate-900">{loading ? "—" : employees.length}</p>
-          <p className="mt-2 text-xs text-slate-500">{activeEmployees.length} con estado activo registrado</p>
-        </article>
-        <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Riesgo elevado agregado</span><ShieldCheck className="text-teal-700" size={20} /></div>
-          <p className="mt-4 text-4xl font-black tabular-nums text-slate-900">{loading || !hasWellbeingAggregate ? "—" : highRiskCount}</p>
-          <p className="mt-2 text-xs text-slate-500">{hasWellbeingAggregate ? "Conteo agregado; sin diarios individuales" : "Disponible cuando existan evaluaciones agregadas"}</p>
-        </article>
-        <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:col-span-2 xl:col-span-1">
-          <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Engagement promedio</span><BarChart3 className="text-teal-700" size={20} /></div>
-          <p className="mt-4 text-4xl font-black tabular-nums text-slate-900">{loading || !latestAggregate || !averageEngagement ? "—" : averageEngagement.toFixed(1)}</p>
-          <p className="mt-2 text-xs text-slate-500">Solo se muestra si existe una medición agregada real</p>
-        </article>
+        {metrics.map(metric => {
+          const Icon = metric.icon;
+          const hasValue = metric.value !== undefined && metric.value !== null;
+          return <article key={metric.label} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">{metric.label}</span><Icon className="text-teal-700" size={20} /></div>
+            <p className="mt-4 text-4xl font-black tabular-nums text-slate-900">{loading || !hasValue ? "—" : Number(metric.value).toLocaleString(undefined, { maximumFractionDigits: 1 }) + metric.suffix}</p>
+          </article>;
+        })}
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-100 p-5 sm:p-6">
-          <h2 className="text-lg font-bold text-slate-900">Equipo de la organización</h2>
-          <p className="mt-1 text-sm text-slate-500">La lista procede exclusivamente del espacio de esta empresa.</p>
-        </div>
-        {loading ? <div className="p-10 text-center text-sm text-slate-500">Cargando equipo…</div> :
-          employees.length === 0 ? <div className="p-10 text-center text-sm text-slate-500">No hay colaboradores asignados a esta organización.</div> :
-          <div className="divide-y divide-slate-100">
-            {employees.map(employee => (
-              <div key={employee.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-6">
-                <div className="min-w-0"><p className="truncate font-semibold text-slate-800">{employee.displayName || employee.name || "Colaborador"}</p><p className="mt-1 text-xs text-slate-500">{employee.department || "Área no definida"}{employee.jobTitle ? " · " + employee.jobTitle : ""}</p></div>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{employee.status || "Sin estado"}</span>
-              </div>
-            ))}
-          </div>
-        }
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-bold text-slate-900">Privacidad empresarial</h2>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">Este portal no consulta ni muestra registros de miembros, nombres, correos, departamentos, diarios personales, notas, transcripciones ni evaluaciones individuales. Solo consume documentos agregados publicados por un proceso autorizado. Las métricas de grupos pequeños deben suprimirse para evitar la reidentificación.</p>
+        {latest?.periodEnd && <p className="mt-3 text-xs text-slate-400">Último período informado: {String(latest.periodEnd)}</p>}
+        {!loading && aggregates.length === 0 && <p className="mt-3 text-sm text-slate-500">Aún no hay indicadores agregados publicados para esta organización.</p>}
       </section>
-
-      <p className="text-xs leading-relaxed text-slate-400">KIRA no expone diarios personales, conversaciones privadas ni predicciones individuales a la empresa. Los indicadores de bienestar solo se mostrarán cuando existan agregados autorizados y suficientes para proteger la privacidad.</p>
     </div>
   );
 }
