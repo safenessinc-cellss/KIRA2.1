@@ -488,6 +488,10 @@ paths:
               type: object
               properties:
                 periodLabel: { type: string, pattern: '^\\d{4}-(0[1-9]|1[0-2])  securitySchemes:
+    AcademicCronBearer:
+      type: http
+      scheme: bearer
+      description: KIRA_OUTBOX_CRON_SECRET (server-only)
     FirebaseBearer:
       type: http
       scheme: bearer
@@ -597,6 +601,27 @@ paths:
         '200': { description: Hosted payment URL }
         '404': { description: Invoice not owned by caller }
         '409': { description: Invoice already paid or unavailable }
+
+  /api/internal/academic-outbox/dispatch:
+    post:
+      tags: [Academic Performance]
+      summary: Dispatch pending attendance and assessment projection events
+      description: Internal Cloud Scheduler endpoint. Processes only academic event types with leases, idempotent projection updates and exponential retry.
+      x-kira-status: implemented-branch-unverified
+      security:
+        - AcademicCronBearer: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit: { type: integer, minimum: 1, maximum: 50, default: 25 }
+      responses:
+        '200': { description: Number of events processed and retried }
+        '401': { description: Invalid or missing KIRA_OUTBOX_CRON_SECRET }
+        '500': { description: Dispatch failed }
 
 components:
   securitySchemes:
