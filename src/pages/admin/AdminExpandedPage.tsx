@@ -6,7 +6,7 @@ import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/f
 
 type Row = Record<string, any>;
 const API = '/api/admin';
-const fmtDate = (value: any) => { if (!value) return '—'; const d = new Date(value); return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString(); };
+const fmtDate = (value: any) => { if (!value) return '—'; const d = value?.toDate ? value.toDate() : new Date(value); return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString(); };
 const fmtMoney = (value: any, currency = 'USD') => { if (value === null || value === undefined) return '—'; try { return new Intl.NumberFormat(undefined,{style:'currency',currency:/^[A-Z]{3}$/i.test(currency)?currency:'USD'}).format(Number(value||0)); } catch { return String(value||0); } };
 
 export default function AdminExpandedPage() {
