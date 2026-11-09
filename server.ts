@@ -815,6 +815,8 @@ app.post("/api/coach/homework/:id/review", async (req, res) => {
       return res.status(400).json({ error: "Revisa el estado, la calificación (0–100), el feedback y los puntos (0–100)." });
     }
     if (!submission.studentId || typeof submission.studentId !== "string") return res.status(409).json({ error: "La entrega no contiene un alumno válido." });
+    const student = await fsGet("users", submission.studentId);
+    if (!student) return res.status(409).json({ error: "El perfil del alumno asociado a esta entrega ya no está disponible." });
     const now = new Date().toISOString();
     const awardPoints = status === "approved" && !submission.pointsAwardedAt ? requestedPoints : 0;
     const updated = {
