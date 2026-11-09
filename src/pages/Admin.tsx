@@ -12,6 +12,7 @@ import { AdminMembershipPlansView } from './AdminMembershipPlansView';
 import { AdminPaymentsConfig } from './AdminPaymentsConfig';
 import { BackofficeDashboard, BackofficeCRM } from './admin/BackofficeDataViews';
 import { AcademicGroupsView, AcademicPerformanceView } from './admin/AcademicViews';
+import { EnrollmentContractsView, InvoicesView } from './admin/FinanceViews';
 import { Funnel, PhoneCall, BadgeCheck, GraduationCap, CalendarDays, Layers3, UsersRound, FileSignature, ClipboardCheck, Wallet, BadgePercent, PlugZap, LockKeyhole } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
@@ -64,11 +65,11 @@ export function AdminMonitor() {
     ] },
     { label: 'Alumnos y Matrículas', items: [
       { id: 'students', label: 'Base de Alumnos', icon: <UsersRound size={18}/>, permission: 'users', ready: true },
-      { id: 'contracts', label: 'Contratos y Matrículas', icon: <FileSignature size={18}/>, permission: 'users', ready: false },
+      { id: 'contracts', label: 'Contratos y Matrículas', icon: <FileSignature size={18}/>, permission: 'users', ready: true },
       { id: 'attendance', label: 'Rendimiento / Asistencia', icon: <ClipboardCheck size={18}/>, permission: 'courses', ready: true }
     ] },
     { label: 'Finanzas', items: [
-      { id: 'invoices', label: 'Mensualidades / Cuotas', icon: <Wallet size={18}/>, permission: 'finance', ready: false, countKey: 'overdue' },
+      { id: 'invoices', label: 'Mensualidades / Cuotas', icon: <Wallet size={18}/>, permission: 'finance', ready: true, countKey: 'overdue' },
       { id: 'gateways', label: 'Pasarela de Pago', icon: <CreditCard size={18}/>, permission: 'superadmin', ready: true },
       { id: 'coupons', label: 'Cupones de Descuento', icon: <BadgePercent size={18}/>, permission: 'billing', ready: true }
     ] },
@@ -88,6 +89,8 @@ export function AdminMonitor() {
       case 'courses': return <CMSView />;
       case 'groups': return <AcademicGroupsView />;
       case 'attendance': return <AcademicPerformanceView />;
+      case 'contracts': return <EnrollmentContractsView />;
+      case 'invoices': return <InvoicesView />;
       case 'lessons': return <CMSView />;
       case 'students': return <StudentManagementView />;
       case 'gateways': return <AdminPaymentsConfig />;
