@@ -38,16 +38,16 @@ export default defineConfig(({mode}) => {
         workbox: {
           maximumFileSizeToCacheInBytes: 5000000,
           navigateFallback: '/index.html',
-          navigateFallbackDenylist: [/^\\/api\\//, /^\\/firebase-messaging-sw\\.js$/],
+          navigateFallbackDenylist: [/^\/api\//, /^\/firebase-messaging-sw\.js$/],
           cleanupOutdatedCaches: true,
           runtimeCaching: [
             {
-              urlPattern: /^https:\\/\\/fonts\\.(?:googleapis|gstatic)\\.com\\//,
+              urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\//,
               handler: 'StaleWhileRevalidate',
               options: { cacheName: 'kira-fonts', expiration: { maxEntries: 20, maxAgeSeconds: 2592000 } }
             },
             {
-              urlPattern: /\\.(?:png|jpg|jpeg|webp|svg)$/i,
+              urlPattern: /\.(?:png|jpg|jpeg|webp|svg)$/i,
               handler: 'CacheFirst',
               options: { cacheName: 'kira-images', expiration: { maxEntries: 100, maxAgeSeconds: 604800 } }
             }
