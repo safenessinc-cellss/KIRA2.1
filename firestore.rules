@@ -604,13 +604,11 @@ service cloud.firestore {
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'pending'
         && request.resource.data.courseCompleted == true
-        && request.resource.data.progress >= 100
         && request.resource.data.enrollmentId is string
         && exists(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId))
         && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.userId == request.auth.uid
         && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.courseId == request.resource.data.courseId
-        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.progress >= 100
-        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.courseCompleted == true
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.status == 'completed'
         && exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId))
         && ((get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.price <= 0
              && request.resource.data.paymentRequired == false
