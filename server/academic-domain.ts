@@ -4,7 +4,7 @@ export interface AttendanceRecord { sessionId: string; status: AttendanceStatus;
 export interface GradeRecord { score: number; maxScore: number; weight?: number; }
 
 export function calculateAcademicPerformance(sessions: SessionRecord[], marks: AttendanceRecord[], grades: GradeRecord[]) {
-  const eligible = sessions.filter(session => session.status === "held" || (!!session.startsAt && new Date(session.startsAt).getTime() <= Date.now()));
+  const eligible = sessions.filter(session => session.status === "held" || (!!session.startsAt && new Date(session.startsAt instanceof Date ? session.startsAt.getTime() : session.startsAt).getTime() <= Date.now()));
   const eligibleIds = new Set(eligible.map(session => session.id));
   const validMarks = marks.filter(mark => !mark.deletedAt && eligibleIds.has(mark.sessionId));
   const attended = validMarks.filter(mark => mark.status === "present" || mark.status === "late").length;
