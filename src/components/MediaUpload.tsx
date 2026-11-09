@@ -68,6 +68,11 @@ export function MediaUpload({ onUploadComplete, folderPath, className, label = "
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toastError('El archivo supera el límite máximo de 5 MB.');
+      event.target.value = '';
+      return;
+    }
 
     setIsUploading(true);
     setProgress(0);
