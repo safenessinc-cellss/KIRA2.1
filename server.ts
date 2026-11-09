@@ -1204,6 +1204,194 @@ app.post("/api/certificates/:kiraNumber/revoke",async(req,res)=>{
   }catch(error:any){console.error("[Certificates] Revocation failed:",error);return res.status(500).json({error:"No fue posible revocar el certificado."});}
 });
 
+
+// -----------------------------------------------------------------------------
+// Academic vertical (Firestore-only): groups, sessions, attendance, assessments
+// -----------------------------------------------------------------------------
+const academicStatuses = {
+  group: ["planned", "active", "finished", "cancelled"],
+  session: ["scheduled", "held", "cancelled"],
+  attendance: ["present", "absent", "late", "excused"],
+  assessment: ["quiz", "exam", "project", "participation"]
+};
+function academicDate(value: any): Date | null {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+function academicId(value: string): string {
+  return idSafe(value);
+}
+async function writeAcademicEvent(userId: string, type: string, aggregate: string, aggregateId: string, payload: any, nodePath: string, before: any, after: any) {
+  const now = new Date().toISOString();
+  const eventId = type.replace(/\./g, "_") + "_" + aggregateId + "_" + randomBytes(5).toString("hex");
+  await fsCommit([
+    fsCreate("outbox", eventId, { eventId: type + "." + aggregateId + "." + eventId, type, aggregate, aggregateId, schemaVersion: 1, payload, status: "pending", attempts: 0, createdAt: now }),
+    auditWrite(userId, type, nodePath, aggregateId, before, after)
+  ]);
+}
+async function refreshStudentPerformance(studentId: string, groupId: string, sourceEventId: string) {
+  const [sessions, attendance, assessments, group] = await Promise.all([
+    fsListDocuments("group_sessions", 200), fsListDocuments("attendance", 200),
+    fsListDocuments("assessments", 200), fsGet("course_groups", groupId)
+  ]);
+  const groupSessions = sessions.filter(x => x.groupId === groupId && x.status !== "cancelled");
+  const sessionIds = new Set(groupSessions.map(x => x.id));
+  const marks = attendance.filter(x => x.studentId === studentId && x.groupId === groupId && sessionIds.has(x.sessionId) && !x.deletedAt);
+  const attended = marks.filter(x => x.status === "present" || x.status === "late").length;
+  const attendancePct = groupSessions.length ? Math.round(attended / groupSessions.length * 10000) / 100 : 0;
+  const grades = assessments.filter(x => x.studentId === studentId && x.groupId === groupId && Number(x.maxScore) > 0);
+  const totalWeight = grades.reduce((sum, x) => sum + Math.max(0, Number(x.weight || 1)), 0);
+  const avgScorePct = totalWeight ? Math.round(grades.reduce((sum, x) => sum + (Number(x.score) / Number(x.maxScore)) * 100 * Math.max(0, Number(x.weight || 1)), 0) / totalWeight * 100) / 100 : 0;
+  const id = academicId(studentId + "_" + groupId);
+  const previous = await fsGet("student_performance", id);
+  const sourceEventIds = Array.from(new Set([...(Array.isArray(previous?.sourceEventIds) ? previous.sourceEventIds : []), sourceEventId])).slice(-100);
+  await fsCommit([fsUpdate("student_performance", id, {
+    studentId, groupId, courseId: group?.courseId || "", attendancePct, avgScorePct,
+    lessonsCompleted: Number(previous?.lessonsCompleted || 0), lastCalculatedAt: new Date().toISOString(), sourceEventIds
+  })]);
+  return { attendancePct, avgScorePct };
+}
+
+app.post("/api/admin/groups", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const body = req.body || {};
+    const courseId = String(body.courseId || ""), name = String(body.name || "").trim(), coachId = String(body.coachId || "");
+    const capacity = Number(body.capacity);
+    if (!courseId || !name || name.length > 120 || !coachId || !Number.isInteger(capacity) || capacity < 1 || capacity > 10000) return res.status(400).json({ error: "Curso, nombre, coach y capacidad válida son obligatorios." });
+    const [course, coach] = await Promise.all([fsGet("courses", courseId), fsGet("users", coachId)]);
+    if (!course || !coach || coach.role !== "coach" || coach.approvalStatus !== "approved") return res.status(400).json({ error: "Curso o coach aprobado no encontrado." });
+    const id = randomBytes(16).toString("hex"), now = new Date().toISOString();
+    const group = { courseId, name, coachId, capacity, enrolledCount: 0, startDate: body.startDate || null, endDate: body.endDate || null, timezone: String(body.timezone || "America/Sao_Paulo"), status: "planned", createdAt: now, createdBy: user.uid, updatedAt: now, updatedBy: user.uid };
+    await fsCommit([fsCreate("course_groups", id, group), auditWrite(user.uid, "course.group.created", "cursos.grupos", id, null, group), fsCreate("outbox", "course_group_created_" + id, { eventId: "course.group.created." + id, type: "course.group.created.v1", aggregate: "courseGroup", aggregateId: id, schemaVersion: 1, payload: { groupId: id, courseId, coachId }, status: "pending", attempts: 0, createdAt: now })]);
+    return res.status(201).json({ id, ...group });
+  } catch (error: any) { console.error("[Groups] create failed:", error); return res.status(500).json({ error: "No se pudo crear el grupo." }); }
+});
+
+app.patch("/api/admin/groups/:id", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const id = academicId(String(req.params.id)), before = await fsGet("course_groups", id);
+    if (!before) return res.status(404).json({ error: "Grupo no encontrado." });
+    const body = req.body || {}, next = { ...before };
+    if (body.name !== undefined) { if (typeof body.name !== "string" || !body.name.trim() || body.name.length > 120) return res.status(400).json({ error: "Nombre inválido." }); next.name = body.name.trim(); }
+    if (body.capacity !== undefined) { const cap = Number(body.capacity); if (!Number.isInteger(cap) || cap < Number(before.enrolledCount || 0)) return res.status(409).json({ error: "La capacidad no puede ser inferior a las matrículas actuales." }); next.capacity = cap; }
+    if (body.status !== undefined) { if (!academicStatuses.group.includes(body.status)) return res.status(400).json({ error: "Estado de grupo inválido." }); next.status = body.status; }
+    next.updatedAt = new Date().toISOString(); next.updatedBy = user.uid;
+    await fsCommit([fsUpdate("course_groups", id, next), auditWrite(user.uid, "course.group.updated", "cursos.grupos", id, before, next)]);
+    return res.json({ id, ...next });
+  } catch (error: any) { console.error("[Groups] update failed:", error); return res.status(500).json({ error: "No se pudo actualizar el grupo." }); }
+});
+
+app.post("/api/admin/groups/:id/sessions", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const groupId = academicId(String(req.params.id)), group = await fsGet("course_groups", groupId);
+    if (!group || !["planned", "active"].includes(group.status)) return res.status(404).json({ error: "Grupo no disponible." });
+    const startsAt = academicDate(req.body?.startsAt), endsAt = academicDate(req.body?.endsAt);
+    if (!startsAt || !endsAt || endsAt <= startsAt) return res.status(400).json({ error: "El horario debe tener fechas válidas y finalizar después de comenzar." });
+    const existing = await fsListDocuments("group_sessions", 200);
+    const groups = await fsListDocuments("course_groups", 200);
+    const groupById = new Map(groups.map(x => [x.id, x]));
+    const room = String(req.body?.room || "").trim().toLowerCase();
+    const collision = existing.some(session => {
+      if (session.status === "cancelled") return false;
+      const start = academicDate(session.startsAt), end = academicDate(session.endsAt);
+      if (!start || !end || startsAt >= end || endsAt <= start) return false;
+      const otherGroup = groupById.get(session.groupId);
+      const coachConflict = otherGroup?.coachId === group.coachId;
+      const roomConflict = room && String(session.room || "").trim().toLowerCase() === room;
+      return coachConflict || roomConflict;
+    });
+    if (collision) return res.status(409).json({ error: "Existe un solapamiento del coach o de la sala en ese horario." });
+    const id = randomBytes(16).toString("hex"), now = new Date().toISOString();
+    const session = { groupId, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), meetingUrl: String(req.body?.meetingUrl || "").slice(0, 1000), room: String(req.body?.room || "").slice(0, 80), status: "scheduled", createdAt: now, createdBy: user.uid };
+    await fsCommit([fsCreate("group_sessions", id, session), auditWrite(user.uid, "course.session.created", "cursos.grupos.sesiones", id, null, session), fsCreate("outbox", "course_session_created_" + id, { eventId: "course.session.created." + id, type: "course.session.created.v1", aggregate: "groupSession", aggregateId: id, schemaVersion: 1, payload: { sessionId: id, groupId }, status: "pending", attempts: 0, createdAt: now })]);
+    return res.status(201).json({ id, ...session });
+  } catch (error: any) { console.error("[Groups] session create failed:", error); return res.status(500).json({ error: "No se pudo crear la sesión." }); }
+});
+
+app.post("/api/admin/groups/:id/enroll", async (req, res) => {
+  let transaction = "";
+  try {
+    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const groupId = academicId(String(req.params.id)), studentId = String(req.body?.studentId || "");
+    if (!studentId) return res.status(400).json({ error: "studentId es obligatorio." });
+    transaction = await beginFirestoreTransaction();
+    const [group, student] = await Promise.all([fsGetInTransaction("course_groups", groupId, transaction), fsGetInTransaction("users", studentId, transaction)]);
+    if (!group || !student || student.role !== "alumno") return res.status(404).json({ error: "Grupo o alumno no encontrado." });
+    if (!["planned", "active"].includes(group.status)) return res.status(409).json({ error: "El grupo no acepta matrículas." });
+    if (Number(group.enrolledCount || 0) >= Number(group.capacity || 0)) return res.status(409).json({ error: "El grupo alcanzó su capacidad máxima." });
+    const course = await fsGetInTransaction("courses", group.courseId, transaction);
+    if (!course || !["published", "active"].includes(String(course.status || ""))) return res.status(409).json({ error: "El curso no está disponible." });
+    const enrollmentId = academicId(studentId + "_" + group.courseId);
+    const existing = await fsGetInTransaction("enrollments", enrollmentId, transaction);
+    if (existing) return res.status(409).json({ error: "El alumno ya tiene matrícula en este curso." });
+    const now = new Date().toISOString(), paidUpfront = Number(course.price || 0) <= 0;
+    const enrollment = { userId: studentId, courseId: group.courseId, groupId, progress: 0, completed: false, courseCompleted: false, status: paidUpfront ? "active" : "pending_payment", paymentStatus: paidUpfront ? "not_required" : "pending_verification", paymentPlan: String(req.body?.paymentPlan || "upfront"), createdAt: now, updatedAt: now };
+    const nextGroup = { ...group, enrolledCount: Number(group.enrolledCount || 0) + 1, updatedAt: now, updatedBy: user.uid };
+    await fsCommitTransaction([fsUpdate("course_groups", groupId, nextGroup), fsCreate("enrollments", enrollmentId, enrollment), auditWrite(user.uid, "enrollment.group.created", "alumnos.matriculas", enrollmentId, null, enrollment), fsCreate("outbox", "enrollment_activated_" + enrollmentId, { eventId: "enrollment.activated." + enrollmentId, type: "enrollment.activated.v1", aggregate: "enrollment", aggregateId: enrollmentId, schemaVersion: 1, payload: { enrollmentId, studentId, courseId: group.courseId, groupId }, status: "pending", attempts: 0, createdAt: now })], transaction);
+    transaction = "";
+    return res.status(201).json({ id: enrollmentId, ...enrollment });
+  } catch (error: any) { console.error("[Groups] enrollment failed:", error); return res.status(error.status === 409 ? 409 : 500).json({ error: error.message || "No se pudo reservar el cupo." }); }
+});
+
+app.post("/api/admin/sessions/:sessionId/attendance", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const sessionId = academicId(String(req.params.sessionId)), studentId = String(req.body?.studentId || ""), status = String(req.body?.status || "");
+    if (!studentId || !academicStatuses.attendance.includes(status)) return res.status(400).json({ error: "Alumno o estado de asistencia inválido." });
+    const session = await fsGet("group_sessions", sessionId);
+    if (!session || session.status === "cancelled") return res.status(404).json({ error: "Sesión no disponible." });
+    const enrollmentId = academicId(studentId + "_" + String((await fsGet("course_groups", session.groupId))?.courseId || ""));
+    const enrollment = await fsGet("enrollments", enrollmentId);
+    if (!enrollment || enrollment.groupId !== session.groupId || ["cancelled", "suspended"].includes(enrollment.status)) return res.status(409).json({ error: "El alumno no está matriculado en este grupo." });
+    const id = academicId(sessionId + "_" + studentId), now = new Date().toISOString();
+    const mark = { sessionId, groupId: session.groupId, studentId, status, markedBy: user.uid, markedAt: now, deletedAt: null };
+    await fsCommit([fsCreate("attendance", id, mark), auditWrite(user.uid, "session.attendance_marked", "alumnos.rendimiento-asistencia", id, null, mark), fsCreate("outbox", "attendance_marked_" + id, { eventId: "session.attendance_marked." + id, type: "session.attendance_marked.v1", aggregate: "attendance", aggregateId: id, schemaVersion: 1, payload: { sessionId, groupId: session.groupId, studentId }, status: "pending", attempts: 0, createdAt: now })]);
+    await refreshStudentPerformance(studentId, session.groupId, "session.attendance_marked." + id);
+    return res.status(201).json({ id, ...mark });
+  } catch (error: any) { console.error("[Attendance] mark failed:", error); return res.status(409).json({ error: "La asistencia ya existe o no pudo registrarse." }); }
+});
+
+app.post("/api/admin/assessments", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const body = req.body || {}, studentId = String(body.studentId || ""), groupId = academicId(String(body.groupId || "")), type = String(body.type || "");
+    const score = Number(body.score), maxScore = Number(body.maxScore || 100), weight = Number(body.weight || 1);
+    if (!studentId || !groupId || !academicStatuses.assessment.includes(type) || !Number.isFinite(score) || !Number.isFinite(maxScore) || maxScore <= 0 || score < 0 || score > maxScore || !Number.isFinite(weight) || weight <= 0 || weight > 100) return res.status(400).json({ error: "Evaluación inválida." });
+    const group = await fsGet("course_groups", groupId);
+    const enrollment = group ? await fsGet("enrollments", academicId(studentId + "_" + group.courseId)) : null;
+    if (!group || !enrollment || enrollment.groupId !== groupId) return res.status(409).json({ error: "El alumno no está matriculado en el grupo." });
+    const id = randomBytes(16).toString("hex"), now = new Date().toISOString();
+    const assessment = { courseId: group.courseId, studentId, groupId, type, score, maxScore, weight, gradedBy: user.uid, gradedAt: now };
+    await fsCommit([fsCreate("assessments", id, assessment), auditWrite(user.uid, "assessment.graded", "alumnos.rendimiento-asistencia", id, null, assessment), fsCreate("outbox", "assessment_graded_" + id, { eventId: "assessment.graded." + id, type: "assessment.graded.v1", aggregate: "assessment", aggregateId: id, schemaVersion: 1, payload: { assessmentId: id, studentId, groupId }, status: "pending", attempts: 0, createdAt: now })]);
+    const performance = await refreshStudentPerformance(studentId, groupId, "assessment.graded." + id);
+    return res.status(201).json({ id, ...assessment, performance });
+  } catch (error: any) { console.error("[Assessments] grade failed:", error); return res.status(500).json({ error: "No se pudo guardar la evaluación." }); }
+});
+
+app.post("/api/admin/enrollments/:id/complete", async (req, res) => {
+  let transaction = "";
+  try {
+    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const id = academicId(String(req.params.id));
+    transaction = await beginFirestoreTransaction();
+    const enrollment = await fsGetInTransaction("enrollments", id, transaction);
+    if (!enrollment) return res.status(404).json({ error: "Matrícula no encontrada." });
+    if (enrollment.status === "pending_payment" || (Number(enrollment.coursePrice || 0) > 0 && enrollment.paymentStatus !== "paid")) return res.status(409).json({ error: "La matrícula requiere pago verificado." });
+    const performance = enrollment.groupId ? await fsGetInTransaction("student_performance", academicId(enrollment.userId + "_" + enrollment.groupId), transaction) : null;
+    const settings = await fsGetInTransaction("settings", "enrollment", transaction);
+    const minAttendance = Math.max(0, Math.min(100, Number(settings?.min_attendance ?? settings?.minAttendance ?? 75)));
+    const minScore = Math.max(0, Math.min(100, Number(settings?.min_score ?? settings?.minScore ?? 60)));
+    if (enrollment.groupId && (!performance || Number(performance.attendancePct) < minAttendance || Number(performance.avgScorePct) < minScore)) return res.status(409).json({ error: "No cumple los umbrales académicos para completar la matrícula.", required: { attendancePct: minAttendance, avgScorePct: minScore }, actual: performance || null });
+    const now = new Date().toISOString(), next = { ...enrollment, status: "completed", completed: true, courseCompleted: true, updatedAt: now, completedAt: now, completedBy: user.uid };
+    await fsCommitTransaction([fsUpdate("enrollments", id, next), auditWrite(user.uid, "enrollment.completed", "alumnos.matriculas", id, { status: enrollment.status }, { status: "completed", performance }), fsCreate("outbox", "enrollment_completed_" + id, { eventId: "enrollment.completed." + id, type: "enrollment.completed.v1", aggregate: "enrollment", aggregateId: id, schemaVersion: 1, payload: { enrollmentId: id, studentId: enrollment.userId, courseId: enrollment.courseId, groupId: enrollment.groupId || null }, status: "pending", attempts: 0, createdAt: now })], transaction);
+    transaction = "";
+    return res.json({ id, status: "completed", performance });
+  } catch (error: any) { console.error("[Enrollment] complete failed:", error); return res.status(409).json({ error: "No se pudo completar la matrícula; revisa los requisitos y vuelve a intentar." }); }
+});
+
 async function startLocalServer() {
   const PORT = 3000;
   
