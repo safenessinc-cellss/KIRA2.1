@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from '../components/Brand';
-import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart, Mic, ClipboardCheck, ShieldCheck, Headset } from 'lucide-react';
+import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart, Mic, ClipboardCheck, ShieldCheck, Headset, HeartPulse } from 'lucide-react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { NotificationCenter } from '../components/Notifications';
@@ -67,6 +67,7 @@ export function DashboardLayout({ title }: { title: string }) {
     alumno: [
       { to: '/dashboard', icon: BookOpen, label: 'Mi aprendizaje', detail: 'Plan de aprendizaje y progreso' },
       { to: '/dashboard/homework', icon: ClipboardCheck, label: 'Mis actividades', detail: 'Entregas y feedback del coach' },
+      { to: '/dashboard/check-in', icon: HeartPulse, label: 'Check-in diario', detail: 'Energía y claridad personal' },
       { to: '/dashboard/elite-library', icon: Sparkles, label: 'Biblioteca', detail: 'Recursos y contenidos exclusivos' },
       { to: '/dashboard/journal', icon: Activity, label: 'Diario inteligente', detail: 'Reflexión y seguimiento personal' },
       { to: '/dashboard/community', icon: Users, label: 'Comunidad', detail: 'Conexión y participación' },
