@@ -105,6 +105,7 @@ export default function SessionIntelligence() {
   const [manualEnergy, setManualEnergy] = useState(5);
   
   const recognitionRef = useRef<any>(null);
+  const sessionStartedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     fetchLastSession();
@@ -246,6 +247,7 @@ export default function SessionIntelligence() {
       recognition.lang = 'es-ES';
 
       recognition.onstart = () => {
+        sessionStartedAtRef.current = Date.now();
         setIsRecording(true);
         setStatus('running');
         setInterimTranscript('');
@@ -312,10 +314,13 @@ export default function SessionIntelligence() {
         console.error("Error stopping recognition:", err);
       }
     }
-    generateSummary(messages);
+    const startedAt = sessionStartedAtRef.current;
+    const durationMinutes = startedAt ? Math.max(1, Math.round((Date.now() - startedAt) / 60000)) : 0;
+    sessionStartedAtRef.current = null;
+    generateSummary(messages, durationMinutes);
   };
 
-  const generateSummary = async (customMessages?: Message[]) => {
+  const generateSummary = async (customMessages?: Message[], durationMinutes = 0) => {
     const listToUse = customMessages || messages;
     if (!user) return;
     if (listToUse.length === 0) {
@@ -390,6 +395,7 @@ export default function SessionIntelligence() {
         consentAt: serverTimestamp(),
         consentMethod: "live_transcription",
         audioStored: false,
+        durationMinutes: durationMinutes > 0 ? durationMinutes : null,
         createdAt: serverTimestamp()
       });
       setConsentConfirmed(false);
