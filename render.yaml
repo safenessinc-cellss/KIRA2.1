@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     branch: deploy/kira-render-staging
-    buildCommand: npm ci --no-audit --no-fund && npm run build && npm run verify:pwa
+    buildCommand: npm install --no-audit --no-fund && npm run build:test && npm run verify:pwa
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeployTrigger: commit
