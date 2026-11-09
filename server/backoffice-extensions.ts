@@ -23,10 +23,10 @@ export function registerBackofficeExtensions(app: any, d: any): void {
 
   async function rebuildDashboardAggregate(periodId: string) {
     if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(periodId)) throw new Error("periodId inválido.");
-    const [transactions, enrollments, leads, invoices, certificates, courses, performances, refunds, settings] = await Promise.all([
+    const [transactions, enrollments, leads, invoices, certificates, courses, performances, refunds, settings, groups] = await Promise.all([
       fsListAllDocuments("transactions"), fsListAllDocuments("enrollments"), fsListAllDocuments("crmLeads"),
       fsListAllDocuments("invoices"), fsListAllDocuments("certificates"), fsListAllDocuments("courses"),
-      fsListAllDocuments("student_performance"), fsListAllDocuments("refunds"), fsGet("settings", "enrollment")
+      fsListAllDocuments("student_performance"), fsListAllDocuments("refunds"), fsGet("settings", "enrollment"), fsListAllDocuments("course_groups")
     ]);
     const [year, month] = periodId.split("-").map(Number);
     const from = Date.UTC(year, month - 1, 1), to = Date.UTC(year, month, 1);
@@ -51,6 +51,25 @@ export function registerBackofficeExtensions(app: any, d: any): void {
     for (const lead of leads.filter((x: any) => inPeriod(x.createdAt))) { const stage = String(lead.stage || "new"); if (stage in leadsByStage) leadsByStage[stage]++; }
     const periodEnrollments = enrollments.filter((e: any) => inPeriod(e.createdAt));
     const activeEnrollments = enrollments.filter((e: any) => ["active", "in_progress"].includes(String(e.status || "").toLowerCase())).length;
+    const groupCoach = new Map(groups.map((g: any) => [String(g.id), String(g.coachId || "")]));
+    const academicByCoach: Record<string, any> = {};
+    for (const enrollment of enrollments) {
+      const coachId = groupCoach.get(String(enrollment.groupId || "")); if (!coachId) continue;
+      academicByCoach[coachId] ||= { newEnrollments: 0, activeEnrollments: 0, atRiskStudents: 0 };
+      if (inPeriod(enrollment.createdAt)) academicByCoach[coachId].newEnrollments++;
+      if (["active", "in_progress"].includes(String(enrollment.status || "").toLowerCase())) academicByCoach[coachId].activeEnrollments++;
+    }
+    for (const performance of performances) {
+      const coachId = groupCoach.get(String(performance.groupId || "")); if (!coachId) continue;
+      academicByCoach[coachId] ||= { newEnrollments: 0, activeEnrollments: 0, atRiskStudents: 0 };
+      if (Number(performance.attendancePct || 0) < minAttendance || Number(performance.avgScorePct || 0) < minScore) academicByCoach[coachId].atRiskStudents++;
+    }
+    const leadsByAssignee: Record<string, Record<string, number>> = {};
+    for (const lead of leads.filter((x: any) => inPeriod(x.createdAt) && String(x.assignedTo || ""))) {
+      const owner = String(lead.assignedTo); const stage = String(lead.stage || "new");
+      leadsByAssignee[owner] ||= { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 };
+      if (stage in leadsByAssignee[owner]) leadsByAssignee[owner][stage]++;
+    }
     const minAttendance = Number(settings?.min_attendance ?? settings?.minAttendance ?? 75);
     const minScore = Number(settings?.min_score ?? settings?.minScore ?? 60);
     const atRiskStudents = performances.filter((p: any) => Number(p.attendancePct || 0) < minAttendance || Number(p.avgScorePct || 0) < minScore).length;
@@ -64,7 +83,7 @@ export function registerBackofficeExtensions(app: any, d: any): void {
     const aggregate = {
       periodId, salesGrossCents: salesByCurrency.BRL || 0, salesNetCents: (salesByCurrency.BRL || 0) - refundCents,
       refundsCents: refundCents, salesByCurrency, newEnrollments: periodEnrollments.length, activeEnrollments,
-      atRiskStudents, leadsByStage, conversionRate: totalLeads ? enrolledLeads / totalLeads * 100 : 0,
+      atRiskStudents, academicByCoach, leadsByStage, leadsByAssignee, conversionRate: totalLeads ? enrolledLeads / totalLeads * 100 : 0,
       topCourses, overdueInvoices, certificatesIssued, updatedAt: new Date().toISOString(),
       sourceEventId: "reconcile_" + periodId + "_" + randomBytes(6).toString("hex")
     };
