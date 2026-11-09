@@ -54,6 +54,7 @@ La emisión verifica identidad/rol, curso, coach responsable, matrícula finaliz
 - [Árbol oficial del backoffice y estado de integración](docs/architecture/KIRA-BACKOFFICE-NAVIGATION.md)
 - [OpenAPI 3.1 de Dashboard y CRM](docs/api/kira-backoffice-crm-dashboard-v1.openapi.yaml)
 - [ADR-0004: navegación oficial y vertical CRM](docs/adr/0004-official-backoffice-navigation.md)
+- [Seed inicial de permisos por rol (propuesto, no aplicado)](docs/security/kira-backoffice-role-permission-seed.json)
 
 El backoffice ahora integra una primera vertical funcional de Dashboard y CRM en la rama de auditoría. Los nodos todavía sin backend (grupos, asistencia, cuotas e integraciones) se muestran bloqueados, no simulados. El CRM requiere `KIRA_CRM_PII_ENCRYPTION_KEY` como variable sensible server-only (32 bytes base64 o 64 caracteres hex).
 
