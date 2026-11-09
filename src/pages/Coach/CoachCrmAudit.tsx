@@ -16,6 +16,8 @@ interface CoachAnalytics {
   funnel: { new: number; contacted: number; qualified: number; enrolled: number; lost: number };
   enrollments: number;
   leads: number;
+  recentLeads: Array<{ id: string; reference: string; stage: string; source: string; createdAt?: string | null; updatedAt?: string | null; nextActionAt?: string | null; lastContactAt?: string | null; interactionsCount: number }>;
+  recentInteractions: Array<{ id: string; leadId: string; reference: string; channel: string; outcome: string; createdAt?: string | null; nextActionAt?: string | null }>;
   coverage: { durationTrackedSessions: number; totalSessions: number; sessionsWithClientIdentity: number; sessionsWithoutClientIdentity: number };
 }
 
@@ -25,7 +27,7 @@ const emptyMetrics: CoachAnalytics = {
   sessions: { total: 0, weekly: [] }, hours: null, monthlyHours: [],
   satisfaction: { average: null, responses: 0 },
   funnel: { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 },
-  enrollments: 0, leads: 0, coverage: { durationTrackedSessions: 0, totalSessions: 0, sessionsWithClientIdentity: 0, sessionsWithoutClientIdentity: 0 }
+  enrollments: 0, leads: 0, recentLeads: [], recentInteractions: [], coverage: { durationTrackedSessions: 0, totalSessions: 0, sessionsWithClientIdentity: 0, sessionsWithoutClientIdentity: 0 }
 };
 
 export function CoachCrmAudit() {
@@ -158,8 +160,19 @@ export function CoachCrmAudit() {
         </article>
       </div>
 
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="font-bold text-slate-900">Cartera y seguimiento</h2><p className="mt-1 text-xs text-slate-500">Leads asignados, etapa y próxima acción.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{metrics.recentLeads.length}</span></div>
+          {metrics.recentLeads.length === 0 ? <p className="rounded-xl border border-dashed border-slate-200 p-5 text-sm text-slate-400">No hay leads asignados.</p> : <div className="space-y-2">{metrics.recentLeads.map(lead => <div key={lead.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3"><div className="min-w-0"><p className="text-sm font-bold text-slate-800">{lead.reference}</p><p className="mt-1 text-[11px] text-slate-500">Origen: {lead.source} · {lead.interactionsCount} interacciones</p></div><div className="text-right"><span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-600">{lead.stage}</span><p className="mt-2 text-[10px] text-slate-400">Último contacto: {lead.lastContactAt ? new Date(lead.lastContactAt).toLocaleDateString('es-ES') : 'Sin contacto registrado'}</p></div></div>)}</div>}
+        </article>
+        <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4"><h2 className="font-bold text-slate-900">Registro de interacciones</h2><p className="mt-1 text-xs text-slate-500">Trazabilidad de llamadas, reuniones, WhatsApp y correo. No se exponen notas privadas.</p></div>
+          {metrics.recentInteractions.length === 0 ? <p className="rounded-xl border border-dashed border-slate-200 p-5 text-sm text-slate-400">Aún no hay interacciones registradas.</p> : <div className="space-y-3">{metrics.recentInteractions.map(item => <div key={item.id} className="flex items-start gap-3 border-b border-slate-100 pb-3 last:border-0"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-teal-600"/><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-bold text-slate-800">{item.reference} · {item.channel}</p><span className="text-[10px] text-slate-400">{item.createdAt ? new Date(item.createdAt).toLocaleString('es-ES') : 'Sin fecha'}</span></div><p className="mt-1 text-xs text-slate-500">Resultado: {item.outcome}{item.nextActionAt ? ' · Próxima acción: ' + new Date(item.nextActionAt).toLocaleDateString('es-ES') : ''}</p></div></div>)}</div>}
+        </article>
+      </div>
+
       <footer className="rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-500">
-        Fuente: {metrics.source || 'API de analítica KIRA'}. {metrics.generatedAt ? `Actualizado: ${new Date(metrics.generatedAt).toLocaleString('es-ES')}.` : ''}
+        Alcance: {metrics.scope === 'all' ? 'administración global' : 'cartera propia del coach'}. Fuente: {metrics.source || 'API de analítica KIRA'}. {metrics.generatedAt ? `Actualizado: ${new Date(metrics.generatedAt).toLocaleString('es-ES')}.` : ''}
         Identidad del cliente disponible en {metrics.coverage.sessionsWithClientIdentity || 0} de {metrics.coverage.totalSessions} sesiones; la recurrencia solo cuenta sesiones con cliente identificado. La duración solo se suma cuando está registrada explícitamente o existen horas de inicio y fin. Los indicadores sin datos de origen se muestran como no disponibles, nunca como cifras estimadas.
       </footer>
     </section>
