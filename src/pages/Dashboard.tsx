@@ -9,6 +9,7 @@ import { Seal } from '../components/Brand';
 import { CreditCard, Star, GraduationCap, Zap, CheckCircle2, ShoppingCart, ShieldCheck, Activity, Award, CalendarDays, Sparkles, ArrowRight, MessageCircleHeart, ChevronLeft, ChevronRight, HeartPulse, Loader2, BookOpen, LogOut, MessageCircle, Globe, Copy, Check } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { KiraNudge } from '../components/KiraNudge';
+import { EnergyTierBadge } from '../components/EnergyTierBadge';
 
 export function Dashboard() {
   const { user, logout } = useAuth();
