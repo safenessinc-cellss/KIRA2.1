@@ -59,3 +59,14 @@ La emisión verifica identidad/rol, curso, coach responsable, matrícula finaliz
 El backoffice ahora integra una primera vertical funcional de Dashboard y CRM en la rama de auditoría. Los nodos todavía sin backend (grupos, asistencia, cuotas e integraciones) se muestran bloqueados, no simulados. El CRM requiere `KIRA_CRM_PII_ENCRYPTION_KEY` como variable sensible server-only (32 bytes base64 o 64 caracteres hex).
 
 Estos documentos distinguen funcionalidades existentes, parciales y planificadas; una especificación no implica que una ruta esté implementada ni desplegada.
+
+
+## Entorno independiente de pruebas (Render)
+
+La rama `deploy/kira-render-staging` aloja KIRA completa como servicio Node.js/Express, incluyendo la interfaz React/Vite, la API y el WebSocket. Se conserva Vercel como producción.
+
+**Aislamiento obligatorio:** crea un proyecto Firebase QA distinto de `kira2-a6a20`. El build de staging comprueba que las variables públicas y la cuenta de servicio apuntan a ese mismo proyecto y bloquea explícitamente el Firebase de producción. Configura esas variables directamente en Render; no subas secretos a GitHub.
+
+El servicio usa `KIRA_DEMO_MODE=true`, que bloquea las escrituras de la API. El SDK web puede escribir directamente en Firestore, por lo que el proyecto Firebase QA y sus reglas propias son imprescindibles.
+
+En Render crea/importa el Blueprint desde `render.yaml`, completa las variables `VITE_FIREBASE_*`, `FIREBASE_PROJECT_ID` y `FIREBASE_SERVICE_ACCOUNT_JSON` con datos de QA, y añade el dominio `onrender.com` a Firebase Authentication > Authorized domains. No conectes `kira.coach`, no cambies DNS y no configures claves reales de pagos. El plan gratuito puede suspender el servicio tras inactividad.
