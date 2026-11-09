@@ -41,3 +41,15 @@ En el panel de administración, cargar el logo PNG institucional, la firma del s
 La emisión verifica identidad/rol, curso, coach responsable, matrícula finalizada y pago verificado cuando el curso es de pago. El servidor genera número único, fecha, firma HMAC, QR, PDF A4 horizontal y registro de auditoría. La ruta pública `/verify/:kiraNumber?sig=...` valida la firma y muestra revocaciones. La descarga PDF exige autenticación del alumno propietario o del administrador.
 
 **Importante:** la función no estará operativa hasta configurar las variables de servidor anteriores y cargar los tres activos oficiales. No se habilita emisión simulada ni se usan imágenes placeholder.
+
+
+## Arquitectura y seguridad (rama de auditoría)
+
+- [Blueprint integral de arquitectura, módulos, seguridad y coherencia](docs/architecture/KIRA-SECURITY-COHERENCE-BLUEPRINT.md)
+- [Inventario técnico y roadmap](docs/architecture/KIRA-MODULE-INVENTORY.md)
+- [OpenAPI de pagos y configuración](docs/api/kira-payments-config-v1.openapi.yaml)
+- [ADR-0001: Firestore como base primaria](docs/adr/0001-firestore-primary-database.md)
+- [ADR-0002: configuración de pagos Superadmin](docs/adr/0002-superadmin-payment-configuration.md)
+- [ADR-0003: transacciones de dominio y outbox](docs/adr/0003-domain-transactions-and-outbox.md)
+
+Estos documentos distinguen funcionalidades existentes, parciales y planificadas; una especificación no implica que una ruta esté implementada ni desplegada.
