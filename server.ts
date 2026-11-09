@@ -663,6 +663,7 @@ app.post("/api/admin/users/:uid/ban", async (req: AdminRequest, res) => {
   try {
     const uid = String(req.params.uid), profile = await fsGet("users", uid);
     if (!profile) return res.status(404).json({ error: "Usuario no encontrado." });
+    if (profile.role === "admin") return res.status(409).json({ error: "No se puede bloquear una cuenta administradora desde este endpoint." });
     const banned = req.body?.banned === true;
     await fsCommit([fsUpdate("users", uid, { ...profile, isBanned: banned, status: banned ? "banned" : "active", updatedAt: new Date().toISOString() })]);
     await adminAudit(req, banned ? "user.banned" : "user.unbanned", "user", uid);
@@ -755,11 +756,11 @@ app.post("/api/admin/certificates/:id/:action", async (req: AdminRequest, res) =
 });
 app.post("/api/admin/certificates/manual", async (req: AdminRequest, res) => {
   try {
-    const userId = String(req.body?.userId || ""), title = String(req.body?.title || "").trim(), description = String(req.body?.description || "").trim();
+    const userId = String(req.body?.userId || ""), courseId = String(req.body?.courseId || ""), title = String(req.body?.title || "").trim(), description = String(req.body?.description || "").trim();
     const student = await fsGet("users", userId);
     if (!student || !title) return res.status(400).json({ error: "Alumno y título son obligatorios." });
     const now = new Date().toISOString(), token = randomBytes(24).toString("hex"), number = "KIRA-MANUAL-"+new Date().getUTCFullYear()+"-"+randomBytes(4).toString("hex").toUpperCase();
-    const payload = { certificateNumber:number, validationToken:token, studentId:userId, studentName:String(student.displayName||student.name||"Alumno"), courseId:"manual", courseTitle:title, coachId:"", coachName:"KIRA COACH", hours:0, issuerName:"KIRA COACH · SAFENESS.INC", issuedBy:req.adminUser!.uid, issuedAt:now, status:"issued", description, template:"manual" };
+    const payload = { certificateNumber:number, validationToken:token, studentId:userId, studentName:String(student.displayName||student.name||"Alumno"), courseId:courseId||"manual", courseTitle:title, coachId:"", coachName:"KIRA COACH", hours:0, issuerName:"KIRA COACH · SAFENESS.INC", issuedBy:req.adminUser!.uid, issuedAt:now, status:"issued", description, template:"manual" };
     const signature=certSignature(payload);
     await fsCommit([fsCreate("certificates",number,{...payload,signature,signatureAlgorithm:"HMAC-SHA256",adminStatus:"active",requiresManualApproval:false}),fsCreate("certificatePublic",token,{certificateNumber:number,validationToken:token,studentName:payload.studentName,courseTitle:title,coachName:payload.coachName,hours:0,issuerName:payload.issuerName,issuedBy:payload.issuedBy,issuedAt:now,status:"issued",signature,signatureAlgorithm:"HMAC-SHA256"})]);
     await adminAudit(req,"certificate.manual_issued","certificate",number,{userId});
