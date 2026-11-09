@@ -11,7 +11,7 @@ import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import { calculateAcademicPerformance, hasScheduleConflict, meetsCompletionThresholds, sessionDayKeysUTC } from "./server/academic-domain.js";
 import { canSettleInvoice, installmentAmountCents, invoiceDocumentId } from "./server/finance-domain.js";
-import { outboxFailureTransition } from "./server/outbox-domain.js";
+import { isOutboxEventEligible, outboxFailureTransition } from "./server/outbox-domain.js";
 import { registerBackofficeExtensions } from "./server/backoffice-extensions.js";
 import { hasRecentMfaAuthentication } from "./server/security-domain.js";
 
@@ -1482,7 +1482,7 @@ async function claimAcademicOutboxEvent(eventId: string): Promise<any | null> {
 }
 async function dispatchAcademicOutboxBatch(limit = 10): Promise<{ processed: number; retried: number; performances: any[] }> {
   const pending = (await fsListAllDocuments("outbox", 10000))
-    .filter(event => ACADEMIC_OUTBOX_TYPES.has(String(event.type || "")) && event.status !== "processed" && event.status !== "failed")
+    .filter(event => ACADEMIC_OUTBOX_TYPES.has(String(event.type || "")) && isOutboxEventEligible(event))
     .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
     .slice(0, Math.max(1, Math.min(50, limit)));
   let processed = 0, retried = 0;
