@@ -4,6 +4,7 @@ Todos los valores sensibles son server-only. Nunca añadir valores a Git, PR, lo
 
 | Variable | Propósito | Requerida para |
 |---|---|---|
+| `KIRA_DEMO_MODE` | `true` para modo demo de solo lectura; bloquea POST/PUT/PATCH/DELETE en `/api/` | Demo sin credenciales |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Cuenta de servicio con acceso limitado a Firestore/Storage | API Express |
 | `FIREBASE_PROJECT_ID` | ID del proyecto Firebase esperado | Validación de identidad |
 | `FIREBASE_STORAGE_BUCKET` | Bucket privado para contratos PDF | Contratos |
@@ -35,3 +36,8 @@ Todos los valores sensibles son server-only. Nunca añadir valores a Git, PR, lo
 
 ## Configuración
 Configurar en Vercel Project Settings → Environment Variables para las funciones desplegadas en Vercel y en Secret Manager/Cloud Run para backend dedicado. No enviar secretos al bundle Vite.
+
+
+## Modo DEMO sin credenciales
+
+Configurar `KIRA_DEMO_MODE=true` en Preview/Development para explorar la interfaz sin habilitar operaciones reales. En este modo el backend rechaza con HTTP 423 todas las solicitudes mutables bajo `/api/`, incluidas matrículas, CRM, pagos, webhooks, certificados y revocaciones. El endpoint `/api/health` informa `mode=demo`, `readOnly=true` y la disponibilidad booleana de integraciones sin exponer secretos. No se crean datos ficticios ni se simulan pagos o certificados. Las lecturas que dependen de Firestore requieren todavía `FIREBASE_SERVICE_ACCOUNT_JSON`; por tanto, este modo permite inspección visual, no una demostración funcional de persistencia. Para producción, completar las credenciales, ejecutar pruebas E2E y establecer `KIRA_DEMO_MODE=false`.
