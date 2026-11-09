@@ -22,6 +22,7 @@ const CoachDashboard = React.lazy(() => import('./pages/Coach').then(m => ({ def
 const CoachCourses = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachCourses })));
 const CoachHomeworkReview = React.lazy(() => import('./pages/Coach/CoachHomeworkReview').then(m => ({ default: m.CoachHomeworkReview })));
 const CoachCrmAudit = React.lazy(() => import('./pages/Coach/CoachCrmAudit').then(m => ({ default: m.CoachCrmAudit })));
+const StudentHomework = React.lazy(() => import('./pages/StudentHomework').then(m => ({ default: m.StudentHomework })));
 
 const SessionIntelligence = React.lazy(() => import('./pages/SessionIntelligence'));
 const HRDashboard = React.lazy(() => import('./pages/HRDashboard').then(m => ({ default: m.HRDashboard })));
@@ -94,6 +95,7 @@ export default function App() {
                       <Route element={<DashboardLayout title="Mi Aprendizaje" />}>
                         <Route path="/dashboard" element={<Dashboard />} />
                         <Route path="/dashboard/journal" element={<Journal />} />
+                        <Route path="/dashboard/homework" element={<StudentHomework />} />
                         <Route path="/dashboard/elite-library" element={<EliteLibrary />} />
                         <Route path="/dashboard/community" element={<Community />} />
                         <Route path="/dashboard/profile" element={<UserProfile />} />
