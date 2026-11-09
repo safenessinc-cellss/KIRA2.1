@@ -94,3 +94,21 @@ La suite no equivale a pruebas E2E de los ocho flujos funcionales.
 **NO LISTO PARA PRODUCCIÓN.** TypeScript/lint, build y rules tests sí pasaron en una ejecución CI anterior; el escaneo de secretos falló por una configuración Firebase hardcodeada que ya se corrigió en la rama. La nueva ejecución aún debe finalizar. No se ejecutó validación local en el equipo del operador y faltan pruebas E2E para los escenarios 1–5 y 8, además del caso coach del escenario 7.
 
 Seguir el procedimiento de `DEPLOY.md`. No desplegar Vercel ni Firebase, no ejecutar migración, refund o payout real hasta que los gates estén completos y el operador confirme.
+
+### Gate de Admin Expanded tras la corrección
+
+Workflow run `42651052384` — **Admin Expanded Quality Gate: success** (HEAD `a3bc1e1976dc7193225cd6e6a27b1633d668a0bb`, posterior a la corrección del service worker):
+
+- TypeScript + server checks: success.
+- Production build: success.
+- Firestore rules tests: success.
+- Build: `vite v6.4.2`, completado en `7.62s`.
+- Tamaños observados en salida de Vite:
+  - CSS principal: `209.90 kB` (gzip `27.35 kB`).
+  - `AdminExpandedPage`: `20.58 kB` (gzip `6.21 kB`).
+  - `Admin`: `597.54 kB` (gzip `178.88 kB`).
+  - bundle `index`: `1,342.30 kB` (gzip `360.64 kB`).
+- Warnings observados: chunks grandes (Admin e index superan 500 kB); deprecación de `punycode`, `url.parse()` y aviso de runtime de actions Node 20. No causaron fallo del build.
+- Los mensajes `PERMISSION_DENIED` del Emulator corresponden a aserciones negativas esperadas; el proceso terminó con `Firestore rules smoke tests passed.`
+
+Esta ejecución del Admin Expanded Quality Gate **no incluye el secret scan**. El workflow CI que sí incluye el scan tuvo una ejecución anterior fallida por la clave hardcodeada ya retirada; la ejecución CI posterior en el HEAD más reciente está pendiente. Por tanto, el scan de la corrección aún no se declara aprobado.
