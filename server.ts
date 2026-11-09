@@ -538,7 +538,7 @@ app.post("/api/certificates/issue", async (req, res) => {
     const signature = certSignature(payload);
     const publicRecord = { certificateNumber: number, validationToken: token, studentName: payload.studentName, courseTitle: payload.courseTitle, coachName: payload.coachName, hours: payload.hours, issuerName: payload.issuerName, issuedBy: user.uid, issuedAt: payload.issuedAt, status: requiresManualApproval ? "pending_admin" : "issued", signature };
     const certificateWrites: any[] = [fsCreate("certificates", number, { ...payload, signature, signatureAlgorithm: "HMAC-SHA256", adminStatus: requiresManualApproval ? "pending_admin" : "active", requiresManualApproval }), fsCreate("certificatePublic", token, { ...publicRecord, signatureAlgorithm: "HMAC-SHA256" })];
-    if (requestId && certificateRequest) certificateWrites.push(fsUpdate("certificateRequests", requestId, { ...certificateRequest, status: "issued", certificateNumber: number, certificateId: token, issuedBy: user.uid, issuedAt: payload.issuedAt }));
+    if (requestId && certificateRequest) certificateWrites.push(fsUpdate("certificateRequests", requestId, { ...certificateRequest, status: requiresManualApproval ? "pending_admin" : "issued", certificateNumber: number, certificateId: token, issuedBy: user.uid, issuedAt: payload.issuedAt }));
     certificateWrites.push(fsCreate("auditLogs", idSafe("certificate_" + number), { actorId: user.uid, action: "certificate.issued", targetId: number, studentId: enrollment.userId, courseId: enrollment.courseId, createdAt: payload.issuedAt }));
     certificateWrites.push(fsCreate("notifications", idSafe("certificate_" + token), { userId: enrollment.userId, title: requiresManualApproval ? "Certificado en revisión" : "Certificado emitido", message: requiresManualApproval ? "Tu certificado está pendiente de revisión administrativa." : "Tu certificado KIRA " + number + " ya está disponible para validar.", type: "course", read: false, createdAt: payload.issuedAt }));
     await fsCommit(certificateWrites);
@@ -589,7 +589,7 @@ async function adminAudit(req: AdminRequest, action: string, entityType: string,
   const id = randomBytes(16).toString("hex");
   const safeMetadata = Object.fromEntries(Object.entries(metadata || {}).filter(([key]) => !/text|content|message|journal|body|secret|token|password/i.test(key)));
   await fsCommit([fsCreate("activity_logs", id, {
-    userId: String(req.body?.targetUserId || req.params?.uid || req.params?.id || ""),
+    userId: String(req.body?.targetUserId || req.params?.uid || req.params?.id || metadata?.userId || ""),
     actorId: req.adminUser?.uid || "",
     actorRole: "admin",
     action, entityType, entityId,
@@ -693,12 +693,16 @@ app.post("/api/admin/coach-applications/:id/:action", async (req: AdminRequest, 
       if (!user) return res.status(404).json({ error: "Perfil del solicitante no encontrado." });
       await fsCommit([
         fsUpdate("users", application.userId, { ...user, role: "coach", isPublicProfile: true, approvalStatus: "approved", membershipStatus: "trial", trialEndsAt: new Date(Date.now()+30*86400000).toISOString() }),
-        fsUpdate("coach_applications", id, { ...application, status: "approved", reviewedBy: reviewer, reviewedAt: now })
+        fsUpdate("coach_applications", id, { ...application, status: "approved", reviewedBy: reviewer, reviewedAt: now }),
+        fsCreate("notifications", idSafe("coach_approved_"+id), { userId: application.userId, title: "Solicitud de coach aprobada", message: "Tu perfil de coach ha sido aprobado y tienes 30 días de prueba.", type: "system", read: false, createdAt: now })
       ]);
     } else {
       const reason = String(req.body?.reason || "").trim();
       if (action === "reject" && reason.length < 5) return res.status(400).json({ error: "La razón del rechazo es obligatoria." });
-      await fsCommit([fsUpdate("coach_applications", id, { ...application, status: action === "reject" ? "rejected" : "info_requested", ...(action === "reject" ? { rejectionReason: reason } : {}), reviewedBy: reviewer, reviewedAt: now, adminNotes: action === "request-info" ? String(req.body?.message || "").slice(0,1000) : application.adminNotes })]);
+      await fsCommit([
+        fsUpdate("coach_applications", id, { ...application, status: action === "reject" ? "rejected" : "info_requested", ...(action === "reject" ? { rejectionReason: reason } : {}), reviewedBy: reviewer, reviewedAt: now, adminNotes: action === "request-info" ? String(req.body?.message || "").slice(0,1000) : application.adminNotes }),
+        fsCreate("notifications", idSafe("coach_application_"+id+"_"+action), { userId: application.userId, title: action === "reject" ? "Solicitud de coach rechazada" : "Información adicional solicitada", message: action === "reject" ? "Motivo: "+reason : "El equipo de KIRA solicita información adicional para revisar tu solicitud.", type: "system", read: false, createdAt: now })
+      ]);
     }
     await adminAudit(req, "coach_application." + action, "coach_application", id, { userId: application.userId });
     res.json({ success: true });
@@ -744,9 +748,10 @@ app.get("/api/admin/payments/transactions", async (_req,res) => { try { const it
 app.get("/api/admin/payments/refunds", async (_req,res) => { try { res.json({items:await fsList("refunds")}); } catch(e){console.error(e);res.status(500).json({error:"No fue posible cargar reembolsos."});} });
 app.get("/api/admin/payments/payouts", async (_req,res) => {
   try {
-    const [transactions,payouts]=await Promise.all([fsList("transactions"),fsList("payouts")]);
+    const [transactions,payouts,courses]=await Promise.all([fsList("transactions"),fsList("payouts"),fsList("courses")]);
     const paidIds=new Set(payouts.flatMap(p=>p.transactionIds||[]));
-    const pending=transactions.filter(t=>t.status==="paid"&&!paidIds.has(t.id||t.providerPaymentId)).map(t=>({...t,coachId:t.coachId||"",coachAmount:Number(t.amount||0)*0.3}));
+    const courseMap=new Map(courses.map(c=>[c.id,c]));
+    const pending=transactions.filter(t=>t.status==="paid"&&!paidIds.has(t.id)).map(t=>({...t,coachId:t.coachId||(courseMap.get(t.courseId)?.coachId)||"",coachAmount:Number(t.amount||0)*0.3}));
     res.json({items:pending,payouts});
   } catch(e){console.error(e);res.status(500).json({error:"No fue posible calcular liquidaciones."});}
 });
@@ -784,7 +789,18 @@ app.post("/api/admin/payments/refund", async (req: AdminRequest,res) => {
       const data=await response.json() as any; providerRefundId=String(data.id||"");
     } else return res.status(409).json({error:"Proveedor de pago no reconocido; no se ejecutó el reembolso."});
     const now=new Date().toISOString(),refundId=idSafe(provider+"_"+providerRefundId);
-    await fsCommit([fsUpdate("transactions",transactionId,{...transaction,status:"refunded",refundedAt:now}),fsCreate("refunds",refundId,{transactionId,userId:transaction.userId,provider,providerRefundId,amount,currency,reason,processedBy:req.adminUser!.uid,status:"succeeded",createdAt:now})]);
+    const writes:any[]=[fsUpdate("transactions",transactionId,{...transaction,status:"refunded",refundedAt:now}),fsCreate("refunds",refundId,{transactionId,userId:transaction.userId,provider,providerRefundId,amount,currency,reason,processedBy:req.adminUser!.uid,status:"succeeded",createdAt:now})];
+    if(transaction.courseId){
+      const enrollmentId=idSafe(String(transaction.userId)+"_"+String(transaction.courseId));
+      const enrollment=await fsGet("enrollments",enrollmentId);
+      if(enrollment)writes.push(fsUpdate("enrollments",enrollmentId,{...enrollment,status:"revoked",paymentStatus:"refunded",revokedAt:now}));
+      const certs=await fsList("certificates");
+      for(const cert of certs.filter(c=>c.studentId===transaction.userId&&c.courseId===transaction.courseId)){
+        writes.push(fsUpdate("certificates",cert.id,{...cert,adminStatus:"revoked",revokeReason:"Pago reembolsado",reviewedBy:req.adminUser!.uid,reviewedAt:now}));
+        if(cert.validationToken){const pub=await fsGet("certificatePublic",cert.validationToken);if(pub)writes.push(fsUpdate("certificatePublic",cert.validationToken,{...pub,status:"revoked"}));}
+      }
+    }
+    await fsCommit(writes);
     await adminAudit(req,"payment.refunded","transaction",transactionId,{provider,currency,amount,reason});
     res.json({success:true,refundId,provider,currency,amount});
   }catch(e:any){console.error("[Admin refund]",e);res.status(500).json({error:e.message||"No fue posible procesar el reembolso."});}
