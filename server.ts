@@ -458,6 +458,24 @@ app.use(compression({
 app.use(express.json({ limit: "5mb", verify: (req: any, _res, buffer) => { req.rawBody = Buffer.from(buffer); } })); // Preserve exact webhook bytes
 
 // API Routes
+app.get("/api/firebase/messaging-config", (_req, res) => {
+  const projectId = process.env.VITE_FIREBASE_PROJECT_ID || process.env.FIREBASE_PROJECT_ID || "kira2-a6a20";
+  const config = {
+    apiKey: process.env.VITE_FIREBASE_API_KEY || "",
+    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || projectId + ".firebaseapp.com",
+    projectId,
+    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.FIREBASE_STORAGE_BUCKET || projectId + ".firebasestorage.app",
+    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+    appId: process.env.VITE_FIREBASE_APP_ID || "",
+    measurementId: process.env.VITE_FIREBASE_MEASUREMENT_ID || ""
+  };
+  if (!config.apiKey || !config.messagingSenderId || !config.appId) {
+    return res.status(503).json({ error: "Firebase Messaging no está configurado." });
+  }
+  res.setHeader("Cache-Control", "public, max-age=3600");
+  return res.json(config);
+});
+
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
