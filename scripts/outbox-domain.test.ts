@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { outboxFailureTransition } from "../server/outbox-domain";
+import { isOutboxEventEligible, outboxFailureTransition } from "../server/outbox-domain";
 
 const event = {
   id: "attendance_marked_student_group",
@@ -55,4 +55,23 @@ test("max-attempt failure creates a reviewable dead-letter record with original 
 test("failure details are bounded before persistence", () => {
   const result = outboxFailureTransition(event, "x".repeat(1000), 0);
   assert.equal(result.lastError.length, 300);
+});
+
+
+test("outbox batch eligibility skips backoff and active leases before limiting a batch", () => {
+  const now = Date.parse("2026-11-09T00:00:00.000Z");
+  const delayed = Array.from({ length: 30 }, (_, index) => ({
+    id: `delayed-${index}`, status: "pending", nextAttemptAt: new Date(now + 60_000).toISOString()
+  }));
+  const leased = { id: "leased", status: "processing", leaseUntil: new Date(now + 60_000).toISOString() };
+  const ready = { id: "ready", status: "pending", nextAttemptAt: new Date(now - 1).toISOString() };
+  const batch = [...delayed, leased, ready].filter(event => isOutboxEventEligible(event, now)).slice(0, 25);
+  assert.deepEqual(batch.map(event => event.id), ["ready"]);
+});
+
+test("outbox eligibility allows expired leases and rejects terminal events", () => {
+  const now = Date.parse("2026-11-09T00:00:00.000Z");
+  assert.equal(isOutboxEventEligible({ status: "processing", leaseUntil: new Date(now - 1).toISOString() }, now), true);
+  assert.equal(isOutboxEventEligible({ status: "processed" }, now), false);
+  assert.equal(isOutboxEventEligible({ status: "failed" }, now), false);
 });
