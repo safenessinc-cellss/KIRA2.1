@@ -3,14 +3,14 @@ import { auth } from '../../firebase';
 import { Activity, AlertCircle, BadgeCheck, BookOpen, CalendarClock, CircleDollarSign, FileBadge, Loader2, Plus, RefreshCw, Users } from 'lucide-react';
 
 type DashboardData = {
-  sales: { grossByCurrency: Record<string, number>; netByCurrency: Record<string, number> };
-  enrollments: { newCount: number };
-  leads: { byStage: Record<string, number>; total: number };
-  conversion: { rate: number; converted: number; qualified: number };
-  topCourses: Array<{ courseId: string; title: string; revenueByCurrency: Record<string, number> }>;
-  overdueInvoices: number;
-  students: { active: number; atRisk: number };
-  certificates: { issued: number };
+  sales?: { grossByCurrency: Record<string, number>; netByCurrency: Record<string, number> };
+  enrollments?: { newCount: number };
+  leads?: { byStage: Record<string, number>; total: number };
+  conversion?: { rate: number; converted: number; qualified: number };
+  topCourses?: Array<{ courseId: string; title: string; revenueByCurrency: Record<string, number> }>;
+  overdueInvoices?: number;
+  students?: { active: number; atRisk: number };
+  certificates?: { issued: number };
   generatedAt: string;
   source: string;
 };
@@ -58,14 +58,14 @@ export function BackofficeDashboard() {
   useEffect(() => { void load(); }, [load]);
 
   const cards = [
-    { title: 'Ventas del período', value: data ? money(data.sales.grossByCurrency) : '—', detail: 'Ingresos brutos confirmados', icon: CircleDollarSign },
-    { title: 'Matrículas nuevas', value: number(data?.enrollments.newCount || 0), detail: 'Creadas en el período', icon: BookOpen },
-    { title: 'Leads captados', value: number(data?.leads.total || 0), detail: 'Leads registrados', icon: Funnel },
-    { title: 'Conversión lead → matrícula', value: (data?.conversion.rate || 0).toFixed(1) + '%', detail: number(data?.conversion.converted || 0) + ' convertidos', icon: Activity },
-    { title: 'Cuotas vencidas', value: number(data?.overdueInvoices || 0), detail: 'Facturas vencidas o abiertas fuera de fecha', icon: AlertCircle },
-    { title: 'Alumnos activos', value: number(data?.students.active || 0), detail: number(data?.students.atRisk || 0) + ' en riesgo', icon: Users },
-    { title: 'Certificados emitidos', value: number(data?.certificates.issued || 0), detail: 'Emitidos en el período', icon: FileBadge },
-    { title: 'Cursos con ventas', value: number(data?.topCourses.length || 0), detail: 'Top 5 por ingresos', icon: BadgeCheck }
+    { show: !!data?.sales, title: 'Ventas del período', value: data?.sales ? money(data.sales.grossByCurrency) : '—', detail: 'Ingresos brutos confirmados', icon: CircleDollarSign },
+    { show: !!data?.enrollments, title: 'Matrículas nuevas', value: number(data?.enrollments?.newCount || 0), detail: 'Creadas en el período', icon: BookOpen },
+    { show: !!data?.leads, title: 'Leads captados', value: number(data?.leads?.total || 0), detail: 'Leads registrados', icon: Funnel },
+    { show: !!data?.conversion, title: 'Conversión lead → matrícula', value: (data?.conversion?.rate || 0).toFixed(1) + '%', detail: number(data?.conversion?.converted || 0) + ' convertidos', icon: Activity },
+    { show: data?.overdueInvoices !== undefined, title: 'Cuotas vencidas', value: number(data?.overdueInvoices || 0), detail: 'Facturas vencidas o abiertas fuera de fecha', icon: AlertCircle },
+    { show: !!data?.students, title: 'Alumnos activos', value: number(data?.students?.active || 0), detail: number(data?.students?.atRisk || 0) + ' en riesgo', icon: Users },
+    { show: !!data?.certificates, title: 'Certificados emitidos', value: number(data?.certificates?.issued || 0), detail: 'Emitidos en el período', icon: FileBadge },
+    { show: data?.topCourses !== undefined, title: 'Cursos con ventas', value: number(data?.topCourses?.length || 0), detail: 'Top 5 por ingresos', icon: BadgeCheck }
   ];
 
   return <section className="space-y-5">
@@ -82,11 +82,11 @@ export function BackofficeDashboard() {
     {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{error}</div>}
     {busy && !data ? <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-white p-12 text-slate-500"><Loader2 className="mr-2 animate-spin"/> Cargando indicadores…</div> : <>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map(card => <article key={card.title} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-500">{card.title}</span><span className="rounded-xl bg-teal-50 p-2 text-teal-700"><card.icon size={18}/></span></div><p className="mt-4 text-2xl font-black tracking-tight text-slate-900">{card.value}</p><p className="mt-1 text-xs text-slate-500">{card.detail}</p></article>)}
+        {cards.filter(card => card.show).map(card => <article key={card.title} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-500">{card.title}</span><span className="rounded-xl bg-teal-50 p-2 text-teal-700"><card.icon size={18}/></span></div><p className="mt-4 text-2xl font-black tracking-tight text-slate-900">{card.value}</p><p className="mt-1 text-xs text-slate-500">{card.detail}</p></article>)}
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="font-bold text-slate-900">Leads por etapa</h3><div className="mt-4 space-y-3">{Object.entries(data?.leads.byStage || {}).map(([stage, count]) => <div key={stage}><div className="mb-1 flex justify-between text-xs"><span className="capitalize text-slate-600">{stage}</span><b>{number(count)}</b></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-teal-600" style={{ width: Math.min(100, (count / Math.max(1, data?.leads.total || 1)) * 100) + '%' }}/></div></div>)}</div></article>
-        <article className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="font-bold text-slate-900">Top 5 cursos por ingresos</h3>{!data?.topCourses.length ? <p className="mt-4 text-sm text-slate-500">Todavía no hay ventas de cursos en el período.</p> : <div className="mt-3 divide-y divide-slate-100">{data.topCourses.map(course => <div key={course.courseId} className="flex items-center justify-between gap-3 py-3"><span className="min-w-0 truncate text-sm font-semibold text-slate-700">{course.title}</span><b className="shrink-0 text-sm text-slate-900">{money(course.revenueByCurrency)}</b></div>)}</div>}</article>
+        {data?.leads && <article className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="font-bold text-slate-900">Leads por etapa</h3><div className="mt-4 space-y-3">{Object.entries(data.leads.byStage || {}).map(([stage, count]) => <div key={stage}><div className="mb-1 flex justify-between text-xs"><span className="capitalize text-slate-600">{stage}</span><b>{number(count)}</b></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-teal-600" style={{ width: Math.min(100, (count / Math.max(1, data?.leads.total || 1)) * 100) + '%' }}/></div></div>)}</div></article>}
+        {data?.topCourses !== undefined && <article className="rounded-2xl border border-slate-200 bg-white p-5"><h3 className="font-bold text-slate-900">Top 5 cursos por ingresos</h3>{!data.topCourses.length ? <p className="mt-4 text-sm text-slate-500">Todavía no hay ventas de cursos en el período.</p> : <div className="mt-3 divide-y divide-slate-100">{data.topCourses.map(course => <div key={course.courseId} className="flex items-center justify-between gap-3 py-3"><span className="min-w-0 truncate text-sm font-semibold text-slate-700">{course.title}</span><b className="shrink-0 text-sm text-slate-900">{money(course.revenueByCurrency)}</b></div>)}</div>}</article>
       </div>
       <p className="text-[11px] text-slate-400">Fuente: {data?.source || 'backend Firestore'}. Los ingresos netos solo se mostrarán cuando exista conciliación de reembolsos; no se estiman a partir de ventas brutas.</p>
     </>}
