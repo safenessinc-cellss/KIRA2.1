@@ -1364,6 +1364,91 @@ async function refreshStudentPerformance(studentId: string, groupId: string, sou
   return { attendancePct, avgScorePct };
 }
 
+
+const ACADEMIC_OUTBOX_TYPES = new Set(["session.attendance_marked.v1", "assessment.graded.v1"]);
+function outboxCronAuthorized(req: express.Request): boolean {
+  const secret = String(process.env.KIRA_OUTBOX_CRON_SECRET || "");
+  const supplied = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (!secret || !supplied) return false;
+  const a = Buffer.from(secret), b = Buffer.from(supplied);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+async function claimAcademicOutboxEvent(eventId: string): Promise<any | null> {
+  const transaction = await beginFirestoreTransaction();
+  try {
+    const current = await fsGetInTransaction("outbox", eventId, transaction);
+    const now = Date.now();
+    if (!current || !ACADEMIC_OUTBOX_TYPES.has(String(current.type || "")) || current.status === "processed" || current.status === "failed") {
+      await rollbackFirestoreTransaction(transaction);
+      return null;
+    }
+    const nextAttemptAt = current.nextAttemptAt ? new Date(current.nextAttemptAt).getTime() : 0;
+    const leaseUntil = current.leaseUntil ? new Date(current.leaseUntil).getTime() : 0;
+    if ((Number.isFinite(nextAttemptAt) && nextAttemptAt > now) || (current.status === "processing" && Number.isFinite(leaseUntil) && leaseUntil > now)) {
+      await rollbackFirestoreTransaction(transaction);
+      return null;
+    }
+    const attempts = Number(current.attempts || 0) + 1;
+    const claimToken = randomBytes(16).toString("hex");
+    const claimed = { ...current, status: "processing", attempts, claimToken, lastAttemptAt: new Date(now).toISOString(), leaseUntil: new Date(now + 60_000).toISOString(), updatedAt: new Date(now).toISOString() };
+    await fsCommitTransaction([fsUpdate("outbox", eventId, claimed)], transaction);
+    return { ...claimed, id: eventId, claimToken };
+  } catch (error) {
+    await rollbackFirestoreTransaction(transaction);
+    throw error;
+  }
+}
+async function dispatchAcademicOutboxBatch(limit = 10): Promise<{ processed: number; retried: number; performances: any[] }> {
+  const pending = (await fsListAllDocuments("outbox", 10000))
+    .filter(event => ACADEMIC_OUTBOX_TYPES.has(String(event.type || "")) && event.status !== "processed" && event.status !== "failed")
+    .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")))
+    .slice(0, Math.max(1, Math.min(50, limit)));
+  let processed = 0, retried = 0;
+  const performances: any[] = [];
+  for (const event of pending) {
+    const claimed = await claimAcademicOutboxEvent(event.id);
+    if (!claimed) continue;
+    try {
+      const payload = claimed.payload || {};
+      const studentId = String(payload.studentId || ""), groupId = String(payload.groupId || "");
+      if (!studentId || !groupId) throw new Error("Evento académico sin studentId/groupId.");
+      const performance = await refreshStudentPerformance(studentId, groupId, String(claimed.eventId || event.id));
+      const current = await fsGet("outbox", event.id);
+      if (current?.claimToken === claimed.claimToken) {
+        await fsCommit([fsUpdate("outbox", event.id, { ...current, status: "processed", processedAt: new Date().toISOString(), leaseUntil: null, claimToken: null, lastError: null })]);
+      }
+      performances.push({ studentId, groupId, ...performance });
+      processed++;
+    } catch (error: any) {
+      const current = await fsGet("outbox", event.id);
+      if (current?.claimToken === claimed.claimToken) {
+        const attempts = Number(claimed.attempts || 1);
+        const failed = attempts >= 8;
+        const delayMs = Math.min(60 * 60 * 1000, 30_000 * Math.pow(2, Math.max(0, attempts - 1)));
+        await fsCommit([fsUpdate("outbox", event.id, {
+          ...current, status: failed ? "failed" : "pending", leaseUntil: null, claimToken: null,
+          nextAttemptAt: failed ? null : new Date(Date.now() + delayMs).toISOString(),
+          lastError: String(error?.message || "academic_outbox_error").slice(0, 300),
+          failedAt: failed ? new Date().toISOString() : null
+        })]);
+      }
+      retried++;
+    }
+  }
+  return { processed, retried, performances };
+}
+
+app.post("/api/internal/academic-outbox/dispatch", async (req, res) => {
+  if (!outboxCronAuthorized(req)) return res.status(401).json({ error: "No autorizado." });
+  try {
+    const result = await dispatchAcademicOutboxBatch(Number(req.body?.limit || 25));
+    return res.json({ ok: true, ...result, dispatchedAt: new Date().toISOString() });
+  } catch (error: any) {
+    console.error("[AcademicOutbox] dispatch failed:", error);
+    return res.status(500).json({ error: "No se pudo procesar el outbox académico." });
+  }
+});
+
 app.get("/api/admin/groups", async (req, res) => {
   try {
     const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
@@ -1544,8 +1629,8 @@ app.post("/api/admin/sessions/:sessionId/attendance", async (req, res) => {
     const id = academicId(sessionId + "_" + studentId), now = new Date().toISOString();
     const mark = { sessionId, groupId: session.groupId, studentId, status, markedBy: user.uid, markedAt: new Date(now), deletedAt: null };
     await fsCommit([fsCreate("attendance", id, mark), auditWrite(user.uid, "session.attendance_marked", "alumnos.rendimiento-asistencia", id, null, mark), fsCreate("outbox", "attendance_marked_" + id, { eventId: "session.attendance_marked." + id, type: "session.attendance_marked.v1", aggregate: "attendance", aggregateId: id, schemaVersion: 1, payload: { sessionId, groupId: session.groupId, studentId }, status: "pending", attempts: 0, createdAt: now })]);
-    await refreshStudentPerformance(studentId, session.groupId, "session.attendance_marked." + id);
-    return res.status(201).json({ id, ...mark });
+    const dispatch = await dispatchAcademicOutboxBatch(5);
+    return res.status(201).json({ id, ...mark, performance: dispatch.performances.find(item => item.studentId === studentId && item.groupId === session.groupId) || null });
   } catch (error: any) { console.error("[Attendance] mark failed:", error); return res.status(409).json({ error: "La asistencia ya existe o no pudo registrarse." }); }
 });
 
@@ -1561,7 +1646,8 @@ app.post("/api/admin/assessments", async (req, res) => {
     const id = randomBytes(16).toString("hex"), now = new Date().toISOString();
     const assessment = { courseId: group.courseId, studentId, groupId, type, score, maxScore, weight, gradedBy: user.uid, gradedAt: now };
     await fsCommit([fsCreate("assessments", id, assessment), auditWrite(user.uid, "assessment.graded", "alumnos.rendimiento-asistencia", id, null, assessment), fsCreate("outbox", "assessment_graded_" + id, { eventId: "assessment.graded." + id, type: "assessment.graded.v1", aggregate: "assessment", aggregateId: id, schemaVersion: 1, payload: { assessmentId: id, studentId, groupId }, status: "pending", attempts: 0, createdAt: now })]);
-    const performance = await refreshStudentPerformance(studentId, groupId, "assessment.graded." + id);
+    const dispatch = await dispatchAcademicOutboxBatch(5);
+    const performance = dispatch.performances.find(item => item.studentId === studentId && item.groupId === groupId) || null;
     return res.status(201).json({ id, ...assessment, performance });
   } catch (error: any) { console.error("[Assessments] grade failed:", error); return res.status(500).json({ error: "No se pudo guardar la evaluación." }); }
 });
