@@ -396,6 +396,15 @@ service cloud.firestore {
     }
     
     // Journals are strictly private to their owner, including from coaches and administrators.
+    // Homework assignments and submissions are server-managed. Clients use scoped APIs only.
+    match /homework_assignments/{assignmentId} {
+      allow read, create, update, delete: if false;
+    }
+
+    match /homework_submissions/{submissionId} {
+      allow read, create, update, delete: if false;
+    }
+
     match /journals/{journalId} {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
       allow create: if isAuthenticated() && isValidJournal() && request.resource.data.userId == request.auth.uid;
