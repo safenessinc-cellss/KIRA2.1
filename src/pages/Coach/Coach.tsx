@@ -33,7 +33,6 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/src/lib/utils';
-import { StudentDetailedAnalytics } from '@/src/components/StudentDetailedAnalytics';
 
 const resizeAndConvertToBase64 = (file: File, maxWidth = 1000, maxHeight = 1000, quality = 0.75): Promise<string> => {
   console.log(`[Compresión] Iniciando compresión para: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
@@ -526,9 +525,6 @@ function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
           sesiones: sessionCountsByDate[date]
         }));
         
-        if (sData.every(d => d.sesiones === 0)) {
-          sData.forEach(d => d.sesiones = Math.floor(Math.random() * 4));
-        }
         setSessionsData(sData);
 
         const sortedTopics = Array.from(topicsMap.entries())
@@ -536,32 +532,14 @@ function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
           .slice(0, 5)
           .map(([topic, count]) => ({ topic, count }));
           
-        if (sortedTopics.length === 0) {
-          sortedTopics.push({ topic: 'Manejo de ansiedad', count: 8 });
-          sortedTopics.push({ topic: 'Liderazgo de equipo', count: 5 });
-          sortedTopics.push({ topic: 'Gestión del tiempo', count: 4 });
-        }
         setTopTopics(sortedTopics);
 
-        // Fetch Journals to mock team energy heatmap
-        const journalsSnap = await getDocs(collection(db, 'journals')); // In a real app we'd filter by the coach's students
-        let pos = 0, neu = 0, neg = 0;
-        journalsSnap.docs.forEach(doc => {
-          const s = doc.data().sentiment || 'neutral';
-          if (s === 'positive') pos++;
-          else if (s === 'negative') neg++;
-          else neu++;
-        });
-
-        if (pos === 0 && neu === 0 && neg === 0) {
-          pos = 10; neu = 5; neg = 2; // mock data if empty
-        }
-
+        // Journals are private to each learner. Coach dashboards use only academic activity.
         setStats({
           activeStudents,
           avgProgress: totalEnrollments > 0 ? Math.round(totalProgress / totalEnrollments) : 0,
           recentSessions: recentSessionsCount,
-          sentiment: { positive: pos, neutral: neu, negative: neg }
+          sentiment: { positive: 0, neutral: 0, negative: 0 }
         });
         setLoading(false);
       } catch (error) {
@@ -572,11 +550,6 @@ function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
     fetchDashboardStats();
     fetchPendingRequests();
   }, [user]);
-
-  const totalEmotions = stats.sentiment.positive + stats.sentiment.neutral + stats.sentiment.negative;
-  const posPct = totalEmotions > 0 ? (stats.sentiment.positive / totalEmotions) * 100 : 0;
-  const neuPct = totalEmotions > 0 ? (stats.sentiment.neutral / totalEmotions) * 100 : 0;
-  const negPct = totalEmotions > 0 ? (stats.sentiment.negative / totalEmotions) * 100 : 0;
 
   const displayActiveStudents = profile?.manualActiveStudents !== undefined ? profile.manualActiveStudents : stats.activeStudents;
   const displayAvgProgress = profile?.manualAvgProgress !== undefined ? profile.manualAvgProgress : stats.avgProgress;
@@ -742,46 +715,10 @@ function CoachDashboardView({ profile, isApproved, setActiveTab }: any) {
           </div>
         </div>
 
-        {/* Heatmap de Energía (Resumen del equipo) */}
         <div className={cn("bg-white rounded-[40px] border border-slate-200 p-10 shadow-sm flex flex-col justify-center", !isApproved && "opacity-50 pointer-events-none")}>
-           <h3 className="text-lg font-black text-slate-800 mb-6 text-center">Heatmap Energía de Equipo</h3>
-           {loading ? (
-              <div className="flex justify-center py-10"><Loader2 className="animate-spin text-teal-500" size={32} /></div>
-           ) : (
-              <div className="flex flex-col gap-5">
-                 <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Sinergia (Alta)</span>
-                       <span className="text-sm font-black text-emerald-600">{Math.round(posPct)}%</span>
-                    </div>
-                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                       <div className="h-full bg-emerald-500 transition-all duration-1000 shadow-sm" style={{ width: `${posPct}%` }}></div>
-                    </div>
-                 </div>
-
-                 <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Estable (Neutral)</span>
-                       <span className="text-sm font-black text-amber-500">{Math.round(neuPct)}%</span>
-                    </div>
-                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                       <div className="h-full bg-amber-400 transition-all duration-1000 shadow-sm" style={{ width: `${neuPct}%` }}></div>
-                    </div>
-                 </div>
-
-                 <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                       <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Agotamiento (Riesgo)</span>
-                       <span className="text-sm font-black text-rose-500">{Math.round(negPct)}%</span>
-                    </div>
-                    <div className="h-4 bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                       <div className="h-full bg-rose-500 transition-all duration-1000 shadow-sm" style={{ width: `${negPct}%` }}></div>
-                    </div>
-                 </div>
-              </div>
-           )}
+          <h3 className="text-lg font-black text-slate-800 mb-3">Privacidad y bienestar</h3>
+          <p className="text-sm leading-relaxed text-slate-500">Los diarios, emociones y reflexiones personales pertenecen al alumno y no son visibles para coaches. Este panel no estima estados emocionales ni presenta indicadores de bienestar sin una fuente agregada autorizada.</p>
         </div>
-      </div>
 
       {/* Analysis Row: Sessions Chart and Topics */}
       <div className={cn("grid grid-cols-1 lg:grid-cols-2 gap-6", !isApproved && "opacity-50 pointer-events-none")}>
@@ -878,7 +815,6 @@ function CoachStudentsActivity() {
 
   // Estados de Detalle Individual de Alumno
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
-  const [selectedStudentJournals, setSelectedStudentJournals] = useState<any[]>([]);
   const [aiDiagnosis, setAiDiagnosis] = useState<string>('');
   const [loadingDiagnosis, setLoadingDiagnosis] = useState(false);
 
@@ -887,24 +823,16 @@ function CoachStudentsActivity() {
     setLoadingDiagnosis(true);
     setAiDiagnosis('');
     try {
-      const statusLabel = getStatus(student.lastActivityAt).label;
-      const prompt = `Actúa como un psicólogo conductual de élite y tutor de alto rendimiento. 
-      Analiza el perfil conductual de este estudiante:
-      - Nombre: ${student.displayName}
+      const prompt = `Actúa como asistente académico del coach. Usa únicamente datos académicos explícitos:
       - Curso: ${student.courseTitle}
-      - Progreso en el curso: ${student.courseProgress}%
-      - Puntos de racha / Energía acumulada: ${student.points || 0} pts
-      - Estado del Semáforo de Actividad: ${statusLabel}
-      
-      Escribe un diagnóstico conductual corto, incisivo y altamente accionable para el coach en español (máximo 150 palabras). 
-      Debe contener:
-      1. El estado motivacional y de constancia estimado.
-      2. Un consejo directo y empático de 1-2 oraciones para que el Coach le envíe hoy mismo para acelerar su transformación.
-      Tono formal, profesional, empático y profundamente analítico.`;
+      - Progreso registrado: ${Number(student.courseProgress || 0)}%
+      - Puntos de aprendizaje registrados: ${Number(student.points || 0)}
+      - Última actividad registrada: ${student.lastActivityAt ? String(student.lastActivityAt) : 'Sin dato'}
+      Propón una siguiente acción de acompañamiento breve, concreta y respetuosa, basada solo en el progreso. No infieras emociones, salud mental, motivación ni diagnósticos. Máximo 100 palabras, en español.`;
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -923,25 +851,9 @@ function CoachStudentsActivity() {
     }
   };
 
-  // Efecto secundario al seleccionar un alumno para cargar su historial
+  // Solo se cargan métricas académicas autorizadas; nunca diarios ni reflexiones privadas.
   useEffect(() => {
-    if (!selectedStudent) {
-      setSelectedStudentJournals([]);
-      setAiDiagnosis('');
-      return;
-    }
-    // Fetch journals
-    const q = query(collection(db, 'journals'), where('userId', '==', selectedStudent.id));
-    getDocs(q).then(snap => {
-      const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
-      list.sort((a: any, b: any) => {
-        const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
-        const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
-        return tB - tA;
-      });
-      setSelectedStudentJournals(list);
-    }).catch(e => console.error("Error fetching student journals:", e));
-
+    if (!selectedStudent) { setAiDiagnosis(''); return; }
     generateDiagnosis(selectedStudent);
   }, [selectedStudent]);
 
@@ -995,67 +907,9 @@ function CoachStudentsActivity() {
       setStudents(approvedList);
       setPendingEnrollments(pendingList);
 
-      // Fetch Journals to analyze team sentiment
-      if (approvedList.length > 0) {
-        setAnalyzing(true);
-        const studentIds = approvedList.map(s => s.id);
-        
-        let allJournals: string[] = [];
-        
-        // Firestore 'in' query has a limit of 10, chunk if necessary
-        const fetchJournalsChunk = async (ids: string[]) => {
-          const q = query(
-            collection(db, 'journals'), 
-            where('userId', 'in', ids)
-          );
-          const snap = await getDocs(q);
-          const sorted = [...snap.docs].sort((a, b) => {
-            const tA = a.data().createdAt?.seconds || a.data().createdAt?.getTime?.() / 1000 || 0;
-            const tB = b.data().createdAt?.seconds || b.data().createdAt?.getTime?.() / 1000 || 0;
-            return tB - tA;
-          }).slice(0, 20);
-          return sorted.map(d => d.data().content);
-        };
-
-        // Simple chunking up to 10
-        if (studentIds.length <= 10) {
-            const j = await fetchJournalsChunk(studentIds);
-            allJournals = allJournals.concat(j);
-        } else {
-            const first10 = await fetchJournalsChunk(studentIds.slice(0, 10));
-            allJournals = allJournals.concat(first10);
-        }
-
-        if (allJournals.length > 0) {
-          try {
-            const prompt = `Actúa como un psicólogo experto y coach de desempeño. Analiza las siguientes entradas de diario de mis estudiantes:
-            [${allJournals.join(" | ")}]
-            Devuelve un objeto JSON con dos claves: 
-            "summary": un párrafo corto (máx 3 oraciones) resumiendo el estado emocional y actitud predominante del grupo.
-            "mood": una sola palabra que los defina ("Positivo", "Neutral", "Estresado", "Frustrado", "Motivado").`;
-            
-            const res = await fetch('/api/gemini/generate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model: 'gemini-3.5-flash',
-                contents: prompt,
-                config: { responseMimeType: "application/json" }
-              })
-            });
-            const data = await res.json();
-            if (data.error) throw new Error(data.error);
-
-            if (data.text) {
-               const parsed = JSON.parse(data.text);
-               setTeamSentiment(parsed);
-            }
-          } catch (error) {
-            console.error("AI Analysis error:", error);
-          }
-        }
-        setAnalyzing(false);
-      }
+      // No se leen diarios privados. El coach solo recibe progreso y actividad académica.
+      setTeamSentiment(null);
+      setAnalyzing(false);
 
     } catch (e) {
       console.error('Fetch Coach Students Error:', e);
@@ -1135,7 +989,7 @@ function CoachStudentsActivity() {
             </div>
             {analyzing ? (
                <div className="flex items-center gap-2 text-kirateal-light">
-                  <Loader2 size={16} className="animate-spin" /> Analizando diarios y actividad...
+                  <Loader2 size={16} className="animate-spin" /> Cargando indicadores académicos autorizados...
                </div>
             ) : teamSentiment ? (
                <div className="relative z-10 animate-in fade-in">
@@ -1147,7 +1001,7 @@ function CoachStudentsActivity() {
                   </div>
                </div>
             ) : (
-               <p className="text-indigo-200 text-sm">Aún no hay suficientes diarios de estudiantes para generar el análisis emocional.</p>
+               <p className="text-indigo-200 text-sm">Los diarios y estados emocionales son privados del alumno. Aquí solo se mostrarán métricas agregadas con consentimiento y umbral de privacidad.</p>
             )}
          </div>
 
@@ -1378,49 +1232,16 @@ function CoachStudentsActivity() {
               </button>
             </div>
 
-            {/* Dashboard Analítico con Gráficos Recharts */}
-            <StudentDetailedAnalytics 
-              student={selectedStudent}
-              journals={selectedStudentJournals}
-              aiDiagnosis={aiDiagnosis}
-              loadingDiagnosis={loadingDiagnosis}
-            />
-
-            {/* Historial Completo de Bitácoras de Texto */}
-            <div className="pt-6 border-t border-slate-150">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  Bitácoras Conductuales Recientes ({selectedStudentJournals.length})
-                </h4>
-                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
-                  Histórico de Entradas
-                </span>
+            <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
+              <h4 className="text-sm font-black text-slate-900">Seguimiento académico</h4>
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-bold uppercase text-slate-400">Curso</p><p className="mt-1 text-sm font-semibold text-slate-800">{selectedStudent.courseTitle || 'Sin curso'}</p></div>
+                <div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-bold uppercase text-slate-400">Progreso registrado</p><p className="mt-1 text-2xl font-black text-slate-900">{Number(selectedStudent.courseProgress || 0)}%</p></div>
+                <div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-bold uppercase text-slate-400">Puntos registrados</p><p className="mt-1 text-2xl font-black text-slate-900">{Number(selectedStudent.points || 0)}</p></div>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[200px] overflow-y-auto pr-2">
-                {selectedStudentJournals.map((j) => {
-                  const journalDate = j.createdAt?.toDate ? j.createdAt.toDate().toLocaleDateString('es-MX', { dateStyle: 'medium' }) : j.createdAt ? new Date(j.createdAt).toLocaleDateString('es-MX', { dateStyle: 'medium' }) : 'N/A';
-                  return (
-                    <div key={j.id} className="p-4 bg-slate-50 border border-slate-150 rounded-2xl flex flex-col justify-between hover:border-violet-200 transition-colors">
-                      <p className="text-xs text-slate-700 leading-relaxed italic mb-3">"{j.content}"</p>
-                      <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
-                        <span>{journalDate}</span>
-                        {j.score && (
-                          <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100">
-                            Score Emocional: {j.score}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                {selectedStudentJournals.length === 0 && (
-                  <div className="col-span-full text-center py-8 text-slate-400 text-xs italic bg-slate-50 rounded-2xl border border-slate-150">
-                    El estudiante no ha completado entradas de diario todavía.
-                  </div>
-                )}
-              </div>
-            </div>
+              <p className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">Privacidad: los diarios, notas personales y reflexiones no son accesibles para el coach. El seguimiento se limita a datos académicos y actividad autorizada.</p>
+              {loadingDiagnosis ? <p className="mt-3 text-xs text-slate-500">Preparando sugerencia académica…</p> : aiDiagnosis ? <p className="mt-3 rounded-xl bg-teal-50 p-3 text-sm text-teal-900">{aiDiagnosis}</p> : null}
+            </section>
 
           </div>
         </div>
@@ -1501,7 +1322,7 @@ function CoachContractManager() {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -1756,7 +1577,6 @@ function CoachAutomationView() {
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
-  const [selectedStudentJournals, setSelectedStudentJournals] = useState<any[]>([]);
   const [aiDiagnosis, setAiDiagnosis] = useState<string>('');
   const [loadingDiagnosis, setLoadingDiagnosis] = useState(false);
 
@@ -1806,24 +1626,16 @@ function CoachAutomationView() {
     setLoadingDiagnosis(true);
     setAiDiagnosis('');
     try {
-      const progress = student.progress || student.courseProgress || 0;
-      const prompt = `Actúa como un psicólogo conductual de élite y tutor de alto rendimiento. 
-      Analiza el progreso, involucramiento y funcionalidad de este alumno en el curso:
-      - Nombre: ${student.studentName || 'Alumno'}
-      - Curso: ${student.courseTitle}
-      - Progreso de contenido: ${progress}%
-      - Correo electrónico: ${student.studentEmail || 'N/A'}
-      - Estado: ${student.status || 'approved'}
-      
-      Escribe un diagnóstico conductual corto, incisivo y altamente accionable para el coach en español (máximo 150 palabras). 
-      Debe contener:
-      1. Su nivel de disciplina y funcionalidad dentro de la plataforma.
-      2. Un consejo directo de 1-2 oraciones para que el Coach interactúe hoy mismo para mantener su momentum o reactivarlo.
-      Tono formal, profesional, empático y profundamente analítico.`;
+      const progress = Number(student.progress || student.courseProgress || 0);
+      const prompt = `Actúa como asistente académico del coach. Usa únicamente datos académicos explícitos:
+      - Curso: ${student.courseTitle || 'Sin curso'}
+      - Progreso registrado: ${progress}%
+      - Estado de matrícula: ${student.status || 'Sin estado'}
+      Propón una siguiente acción académica breve y concreta. No infieras emociones, salud mental, motivación ni diagnósticos. No uses datos personales no necesarios. Máximo 100 palabras, en español.`;
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -1843,24 +1655,7 @@ function CoachAutomationView() {
   };
 
   useEffect(() => {
-    if (!selectedStudent) {
-      setSelectedStudentJournals([]);
-      setAiDiagnosis('');
-      return;
-    }
-    const sUserId = selectedStudent.userId || selectedStudent.id;
-    if (sUserId) {
-      const q = query(collection(db, 'journals'), where('userId', '==', sUserId));
-      getDocs(q).then(snap => {
-        const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
-        list.sort((a: any, b: any) => {
-          const tA = a.createdAt?.seconds || a.createdAt?.getTime?.() / 1000 || 0;
-          const tB = b.createdAt?.seconds || b.createdAt?.getTime?.() / 1000 || 0;
-          return tB - tA;
-        });
-        setSelectedStudentJournals(list);
-      }).catch(e => console.error("Error fetching journals:", e));
-    }
+    if (!selectedStudent) { setAiDiagnosis(''); return; }
     generateDiagnosis(selectedStudent);
   }, [selectedStudent]);
 
@@ -2335,49 +2130,16 @@ function CoachAutomationView() {
               </button>
             </div>
 
-            {/* Dashboard Analítico con Gráficos Recharts */}
-            <StudentDetailedAnalytics 
-              student={selectedStudent}
-              journals={selectedStudentJournals}
-              aiDiagnosis={aiDiagnosis}
-              loadingDiagnosis={loadingDiagnosis}
-            />
-
-            {/* Historial Completo de Bitácoras de Texto */}
-            <div className="pt-6 border-t border-slate-150">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  Bitácoras Conductuales Recientes ({selectedStudentJournals.length})
-                </h4>
-                <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">
-                  Histórico de Entradas
-                </span>
+            <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
+              <h4 className="text-sm font-black text-slate-900">Seguimiento académico</h4>
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-bold uppercase text-slate-400">Curso</p><p className="mt-1 text-sm font-semibold text-slate-800">{selectedStudent.courseTitle || 'Sin curso'}</p></div>
+                <div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-bold uppercase text-slate-400">Progreso registrado</p><p className="mt-1 text-2xl font-black text-slate-900">{Number(selectedStudent.courseProgress || 0)}%</p></div>
+                <div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-bold uppercase text-slate-400">Puntos registrados</p><p className="mt-1 text-2xl font-black text-slate-900">{Number(selectedStudent.points || 0)}</p></div>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[200px] overflow-y-auto pr-2">
-                {selectedStudentJournals.map((j) => {
-                  const journalDate = j.createdAt?.toDate ? j.createdAt.toDate().toLocaleDateString('es-MX', { dateStyle: 'medium' }) : j.createdAt ? new Date(j.createdAt).toLocaleDateString('es-MX', { dateStyle: 'medium' }) : 'N/A';
-                  return (
-                    <div key={j.id} className="p-4 bg-slate-50 border border-slate-150 rounded-2xl flex flex-col justify-between hover:border-violet-200 transition-colors">
-                      <p className="text-xs text-slate-700 leading-relaxed italic mb-3">"{j.content}"</p>
-                      <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
-                        <span>{journalDate}</span>
-                        {j.score && (
-                          <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100">
-                            Score Emocional: {j.score}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                {selectedStudentJournals.length === 0 && (
-                  <div className="col-span-full text-center py-8 text-slate-400 text-xs italic bg-slate-50 rounded-2xl border border-slate-150">
-                    El estudiante no ha completado entradas de diario todavía.
-                  </div>
-                )}
-              </div>
-            </div>
+              <p className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">Privacidad: los diarios, notas personales y reflexiones no son accesibles para el coach. El seguimiento se limita a datos académicos y actividad autorizada.</p>
+              {loadingDiagnosis ? <p className="mt-3 text-xs text-slate-500">Preparando sugerencia académica…</p> : aiDiagnosis ? <p className="mt-3 rounded-xl bg-teal-50 p-3 text-sm text-teal-900">{aiDiagnosis}</p> : null}
+            </section>
 
           </div>
         </div>
@@ -3030,7 +2792,7 @@ function CoachProfileSettings({ profile }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           model: "gemini-3.5-flash",
           contents: prompt,
@@ -3686,7 +3448,7 @@ export function CoachCourses() {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           model: "gemini-3.5-flash",
           contents: prompt,
