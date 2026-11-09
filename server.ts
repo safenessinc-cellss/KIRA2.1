@@ -618,6 +618,10 @@ function auditWrite(userId: string, action: string, nodePath: string, entityId: 
 app.get("/api/admin/dashboard", async (req, res) => {
   try {
     const user = await backofficeAdmin(req, res, "system"); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
+    const permissions = Array.isArray(profile?.staffPermissions) ? profile.staffPermissions : [];
+    const can = (permission: string) => isSuperAdmin || permissions.includes("system") || permissions.includes(permission);
     const from = typeof req.query.from === "string" ? Date.parse(req.query.from + "T00:00:00.000Z") : Date.now() - 30 * 86400000;
     const to = typeof req.query.to === "string" ? Date.parse(req.query.to + "T23:59:59.999Z") : Date.now();
     if (!Number.isFinite(from) || !Number.isFinite(to) || from > to || to - from > 366 * 86400000) return res.status(400).json({ error: "Rango de fechas inválido (máximo 366 días)." });
@@ -647,7 +651,6 @@ app.get("/api/admin/dashboard", async (req, res) => {
       }
     }
     const periodEnrollments = enrollments.filter(e => inRange(e.createdAt));
-    const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
     const periodLeads = leads.filter(l => inRange(l.createdAt) && (isSuperAdmin || l.assignedTo === user.uid));
     const byStage: Record<string, number> = { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 };
     for (const lead of periodLeads) byStage[String(lead.stage || "new")] = (byStage[String(lead.stage || "new")] || 0) + 1;
@@ -658,12 +661,21 @@ app.get("/api/admin/dashboard", async (req, res) => {
     const topCourses = Object.entries(revenueByCourse).map(([courseId, revenue]) => ({ courseId, title: courseById.get(courseId) || courseId, revenueByCurrency: revenue }))
       .sort((a, b) => Object.values(b.revenueByCurrency).reduce((x, y) => x + y, 0) - Object.values(a.revenueByCurrency).reduce((x, y) => x + y, 0)).slice(0, 5);
     const issuedCertificates = certificates.filter(c => c.status === "issued" && inRange(c.issueDate || c.createdAt)).length;
-    return res.json({
-      sales: { grossByCurrency, netByCurrency: {} }, enrollments: { newCount: periodEnrollments.length },
-      leads: { byStage, total: periodLeads.length }, conversion: { rate: periodLeads.length ? converted / periodLeads.length * 100 : 0, converted, qualified: byStage.qualified || 0 },
-      topCourses, overdueInvoices, students: { active: activeEnrollments.length, atRisk: 0 }, certificates: { issued: issuedCertificates },
-      generatedAt: new Date().toISOString(), source: "Firestore · lectura actual limitada a 200 documentos por colección; sin materialización ni conciliación de reembolsos"
-    });
+    const result: any = {
+      generatedAt: new Date().toISOString(),
+      source: "Firestore · lectura actual limitada a 200 documentos por colección; sin materialización ni conciliación de reembolsos"
+    };
+    if (can("billing") || can("finance")) result.sales = { grossByCurrency, netByCurrency: {} };
+    if (can("users") || can("courses")) result.enrollments = { newCount: periodEnrollments.length };
+    if (can("crm")) {
+      result.leads = { byStage, total: periodLeads.length };
+      result.conversion = { rate: periodLeads.length ? converted / periodLeads.length * 100 : 0, converted, qualified: byStage.qualified || 0 };
+    }
+    if (can("billing") || can("finance") || can("courses")) result.topCourses = topCourses;
+    if (can("billing") || can("finance")) result.overdueInvoices = overdueInvoices;
+    if (can("users") || can("courses")) result.students = { active: activeEnrollments.length, atRisk: 0 };
+    if (can("users")) result.certificates = { issued: issuedCertificates };
+    return res.json(result);
   } catch (error: any) {
     console.error("[Backoffice] Dashboard failed:", error);
     return res.status(500).json({ error: "No se pudieron calcular los indicadores del backoffice." });
