@@ -9,6 +9,7 @@ import compression from "compression";
 import { verify as verifySignature, createSign, createHmac, createHash, timingSafeEqual, randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
+import { calculateAcademicPerformance, hasScheduleConflict, meetsCompletionThresholds } from "./server/academic-domain";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1237,11 +1238,8 @@ async function refreshStudentPerformance(studentId: string, groupId: string, sou
   const groupSessions = sessions.filter(x => x.groupId === groupId && x.status !== "cancelled");
   const sessionIds = new Set(groupSessions.map(x => x.id));
   const marks = attendance.filter(x => x.studentId === studentId && x.groupId === groupId && sessionIds.has(x.sessionId) && !x.deletedAt);
-  const attended = marks.filter(x => x.status === "present" || x.status === "late").length;
-  const attendancePct = groupSessions.length ? Math.round(attended / groupSessions.length * 10000) / 100 : 0;
   const grades = assessments.filter(x => x.studentId === studentId && x.groupId === groupId && Number(x.maxScore) > 0);
-  const totalWeight = grades.reduce((sum, x) => sum + Math.max(0, Number(x.weight || 1)), 0);
-  const avgScorePct = totalWeight ? Math.round(grades.reduce((sum, x) => sum + (Number(x.score) / Number(x.maxScore)) * 100 * Math.max(0, Number(x.weight || 1)), 0) / totalWeight * 100) / 100 : 0;
+  const { attendancePct, avgScorePct } = calculateAcademicPerformance(groupSessions, marks, grades);
   const id = academicId(studentId + "_" + groupId);
   const previous = await fsGet("student_performance", id);
   const sourceEventIds = Array.from(new Set([...(Array.isArray(previous?.sourceEventIds) ? previous.sourceEventIds : []), sourceEventId])).slice(-100);
@@ -1297,7 +1295,7 @@ app.post("/api/admin/groups/:id/sessions", async (req, res) => {
     const collision = existing.some(session => {
       if (session.status === "cancelled") return false;
       const start = academicDate(session.startsAt), end = academicDate(session.endsAt);
-      if (!start || !end || startsAt >= end || endsAt <= start) return false;
+      if (!start || !end || !hasScheduleConflict(startsAt, endsAt, start, end)) return false;
       const otherGroup = groupById.get(session.groupId);
       const coachConflict = otherGroup?.coachId === group.coachId;
       const roomConflict = room && String(session.room || "").trim().toLowerCase() === room;
@@ -1336,13 +1334,26 @@ app.post("/api/admin/groups/:id/enroll", async (req, res) => {
   } catch (error: any) { console.error("[Groups] enrollment failed:", error); return res.status(error.status === 409 ? 409 : 500).json({ error: error.message || "No se pudo reservar el cupo." }); }
 });
 
+app.patch("/api/admin/sessions/:sessionId", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
+    const id = academicId(String(req.params.sessionId)), before = await fsGet("group_sessions", id);
+    if (!before) return res.status(404).json({ error: "Sesión no encontrada." });
+    const status = String(req.body?.status || before.status);
+    if (!academicStatuses.session.includes(status)) return res.status(400).json({ error: "Estado de sesión inválido." });
+    const next = { ...before, status, updatedAt: new Date().toISOString(), updatedBy: user.uid };
+    await fsCommit([fsUpdate("group_sessions", id, next), auditWrite(user.uid, "course.session.updated", "cursos.grupos.sesiones", id, before, next)]);
+    return res.json({ id, ...next });
+  } catch (error: any) { console.error("[Groups] session update failed:", error); return res.status(500).json({ error: "No se pudo actualizar la sesión." }); }
+});
+
 app.post("/api/admin/sessions/:sessionId/attendance", async (req, res) => {
   try {
     const user = await backofficeAdmin(req, res, "users"); if (!user) return;
     const sessionId = academicId(String(req.params.sessionId)), studentId = String(req.body?.studentId || ""), status = String(req.body?.status || "");
     if (!studentId || !academicStatuses.attendance.includes(status)) return res.status(400).json({ error: "Alumno o estado de asistencia inválido." });
     const session = await fsGet("group_sessions", sessionId);
-    if (!session || session.status === "cancelled") return res.status(404).json({ error: "Sesión no disponible." });
+    if (!session || session.status === "cancelled" || (session.status !== "held" && academicDate(session.startsAt) && academicDate(session.startsAt)!.getTime() > Date.now())) return res.status(404).json({ error: "La sesión aún no se realizó o no está disponible para asistencia." });
     const enrollmentId = academicId(studentId + "_" + String((await fsGet("course_groups", session.groupId))?.courseId || ""));
     const enrollment = await fsGet("enrollments", enrollmentId);
     if (!enrollment || enrollment.groupId !== session.groupId || ["cancelled", "suspended"].includes(enrollment.status)) return res.status(409).json({ error: "El alumno no está matriculado en este grupo." });
@@ -1384,7 +1395,7 @@ app.post("/api/admin/enrollments/:id/complete", async (req, res) => {
     const settings = await fsGetInTransaction("settings", "enrollment", transaction);
     const minAttendance = Math.max(0, Math.min(100, Number(settings?.min_attendance ?? settings?.minAttendance ?? 75)));
     const minScore = Math.max(0, Math.min(100, Number(settings?.min_score ?? settings?.minScore ?? 60)));
-    if (enrollment.groupId && (!performance || Number(performance.attendancePct) < minAttendance || Number(performance.avgScorePct) < minScore)) return res.status(409).json({ error: "No cumple los umbrales académicos para completar la matrícula.", required: { attendancePct: minAttendance, avgScorePct: minScore }, actual: performance || null });
+    if (enrollment.groupId && !meetsCompletionThresholds(performance, minAttendance, minScore)) return res.status(409).json({ error: "No cumple los umbrales académicos para completar la matrícula.", required: { attendancePct: minAttendance, avgScorePct: minScore }, actual: performance || null });
     const now = new Date().toISOString(), next = { ...enrollment, status: "completed", completed: true, courseCompleted: true, updatedAt: now, completedAt: now, completedBy: user.uid };
     await fsCommitTransaction([fsUpdate("enrollments", id, next), auditWrite(user.uid, "enrollment.completed", "alumnos.matriculas", id, { status: enrollment.status }, { status: "completed", performance }), fsCreate("outbox", "enrollment_completed_" + id, { eventId: "enrollment.completed." + id, type: "enrollment.completed.v1", aggregate: "enrollment", aggregateId: id, schemaVersion: 1, payload: { enrollmentId: id, studentId: enrollment.userId, courseId: enrollment.courseId, groupId: enrollment.groupId || null }, status: "pending", attempts: 0, createdAt: now })], transaction);
     transaction = "";
