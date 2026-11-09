@@ -64,9 +64,9 @@ La revisión se realizó sobre los archivos del repositorio mediante GitHub. Est
 **Importante:** esto informa referencias en código, no confirma la existencia de valores en Vercel. No se consultó ni modificó el dashboard de variables.
 
 ## Evidencia de pruebas y despliegue
-- Workflow GitHub Actions: \\`KIRA 2.1 Release Verification\\`; primera ejecución falló en el paso de instalación por lockfile inconsistente, antes de TypeScript/build.
-- Reintento configurado con \\`npm install --no-audit --no-fund\\`; resultado pendiente.
-- Vercel Preview API: HTTP 402 \\`api-deployments-free-per-day\\`; no se creó deployment nuevo.
+- Workflow GitHub Actions: \`KIRA 2.1 Release Verification\`; primera ejecución falló en el paso de instalación por lockfile inconsistente, antes de TypeScript/build.
+- Reintento configurado con \`npm install --no-audit --no-fund\`; resultado pendiente.
+- Vercel Preview API: HTTP 402 \`api-deployments-free-per-day\`; no se creó deployment nuevo.
 
 ## Baseline de pruebas
 
@@ -83,7 +83,7 @@ La revisión se realizó sobre los archivos del repositorio mediante GitHub. Est
 |---|---|---|
 | 0 — Auditoría | ✅ | Baseline y env vars registrados aquí; lockfile stale detectado por CI. |
 | 1 — Fundaciones | ⚠️ | Tipos compartidos, hooks Firestore, ProtectedRoute con redirect por rol, alias env server, reglas owner-only para journals/nudges y HR, índices. Se reutiliza singleton Firebase cliente existente y REST Firestore server-side; no se añade SDK firebase-admin porque duplicaría el adapter actual. Falta emulador verde. |
-| 2 — Alumno | ⚠️ | Badge Bronce/Plata/Oro/Platino, Journal CRUD sobre colección legacy \\`journals\\`, análisis IA, nudge persistente, desbloqueo server-side transaccional y helper de progreso. Faltan review transaccional/aggregate coach y prueba de tiers con datos reales. |
+| 2 — Alumno | ⚠️ | Badge Bronce/Plata/Oro/Platino, Journal CRUD sobre colección legacy \`journals\`, análisis IA, nudge persistente, desbloqueo server-side transaccional y helper de progreso. Faltan review transaccional/aggregate coach y prueba de tiers con datos reales. |
 | 3 — Coach | ⚠️ | Se reutiliza command center, editor DnD/ReactQuill y checkout existente; media upload limitado a 5 MB; API de análisis de sesión autenticada. Falta captura AudioContext/chunks ≤10s, persistencia completa E2E y pruebas de membresía recurrente. |
 | 4 — Super Admin | ⚠️ | Analítica agregada con ventanas 24h/7d/30d/90d, split 70/30, DAU/WAU y churn proxy; insights cache 1h; tab White Label reutiliza settings/website y onSnapshot. Burnout sigue no disponible si no hay agregado publicado. |
 | 5 — HR B2B | ⚠️ | Dashboard solo agrega wellbeingAggregates; lectura de miembros individuales denegada a HR/company_admin; PRIVACY.md. Falta prueba negativa con emulador y comprobar el orgId real de cada tenant. |
