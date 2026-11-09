@@ -51,7 +51,10 @@ export function registerBackofficeExtensions(app: any, d: any): void {
     for (const lead of leads.filter((x: any) => inPeriod(x.createdAt))) { const stage = String(lead.stage || "new"); if (stage in leadsByStage) leadsByStage[stage]++; }
     const periodEnrollments = enrollments.filter((e: any) => inPeriod(e.createdAt));
     const activeEnrollments = enrollments.filter((e: any) => ["active", "in_progress"].includes(String(e.status || "").toLowerCase())).length;
-    const groupCoach = new Map(groups.map((g: any) => [String(g.id), String(g.coachId || "")]));
+    const minAttendance = Number(settings?.min_attendance ?? settings?.minAttendance ?? 75);
+    const minScore = Number(settings?.min_score ?? settings?.minScore ?? 60);
+    const groupCoach = new Map<string, string>();
+    for (const group of groups as any[]) groupCoach.set(String(group.id), String(group.coachId || ""));
     const academicByCoach: Record<string, any> = {};
     for (const enrollment of enrollments) {
       const coachId = groupCoach.get(String(enrollment.groupId || "")); if (!coachId) continue;
@@ -70,8 +73,6 @@ export function registerBackofficeExtensions(app: any, d: any): void {
       leadsByAssignee[owner] ||= { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 };
       if (stage in leadsByAssignee[owner]) leadsByAssignee[owner][stage]++;
     }
-    const minAttendance = Number(settings?.min_attendance ?? settings?.minAttendance ?? 75);
-    const minScore = Number(settings?.min_score ?? settings?.minScore ?? 60);
     const atRiskStudents = performances.filter((p: any) => Number(p.attendancePct || 0) < minAttendance || Number(p.avgScorePct || 0) < minScore).length;
     const now = Date.now();
     const overdueInvoices = invoices.filter((i: any) => ["open", "overdue"].includes(String(i.status || "")) && stamp(i.dueDate) < now).length;
