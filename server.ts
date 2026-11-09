@@ -566,6 +566,260 @@ app.get("/api/certificates/validate/:token", async (req, res) => {
   }
 });
 
+
+/* Admin Expanded v1 — server-only authorization and audit layer. */
+type AdminRequest = express.Request & { adminUser?: VerifiedFirebaseUser; adminProfile?: any };
+const adminRateLimits = new Map<string, { count: number; resetAt: number }>();
+function adminLimit(req: AdminRequest, res: express.Response, operation: string, max: number): boolean {
+  const uid = req.adminUser?.uid || "unknown";
+  const key = uid + ":" + operation;
+  const now = Date.now();
+  const current = adminRateLimits.get(key);
+  if (current && current.resetAt > now && current.count >= max) {
+    res.status(429).json({ error: "Límite temporal alcanzado. Inténtalo más tarde." });
+    return false;
+  }
+  if (!current || current.resetAt <= now) adminRateLimits.set(key, { count: 1, resetAt: now + 60_000 });
+  else current.count += 1;
+  return true;
+}
+async function adminAudit(req: AdminRequest, action: string, entityType: string, entityId: string, metadata: any = {}) {
+  const id = randomBytes(16).toString("hex");
+  const safeMetadata = Object.fromEntries(Object.entries(metadata || {}).filter(([key]) => !/text|content|message|journal|body|secret|token|password/i.test(key)));
+  await fsCommit([fsCreate("activity_logs", id, {
+    userId: String(req.body?.targetUserId || req.params?.uid || req.params?.id || ""),
+    actorId: req.adminUser?.uid || "",
+    actorRole: "admin",
+    action, entityType, entityId,
+    metadata: safeMetadata,
+    ip: String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].slice(0, 80),
+    userAgent: String(req.headers["user-agent"] || "").slice(0, 300),
+    createdAt: new Date().toISOString()
+  })]);
+}
+async function fsList(collectionName: string, pageSize = 200): Promise<any[]> {
+  const url = "https://firestore.googleapis.com/v1/projects/" + serviceAccount().project_id + "/databases/(default)/documents/" + collectionName + "?pageSize=" + Math.min(Math.max(pageSize, 1), 500);
+  const response = await fetch(url, { headers: { Authorization: "Bearer " + await firestoreToken() } });
+  if (response.status === 404) return [];
+  if (!response.ok) throw new Error("Firestore list failed (" + response.status + ").");
+  const data = await response.json() as any;
+  return (data.documents || []).map((document: any) => ({
+    id: String(document.name || "").split("/").pop(),
+    ...Object.fromEntries(Object.entries(document.fields || {}).map(([key, value]) => [key, fsDecode(value)]))
+  }));
+}
+async function adminRequire(req: express.Request, res: express.Response, next: express.NextFunction) {
+  try {
+    const user = await verifiedUser(req, res);
+    if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    if (!profile || profile.role !== "admin") return res.status(403).json({ error: "Acceso reservado a administradores." });
+    (req as AdminRequest).adminUser = user;
+    (req as AdminRequest).adminProfile = profile;
+    return next();
+  } catch (error) {
+    console.error("[Admin] Authorization failed:", error);
+    return res.status(503).json({ error: "No se pudo verificar el rol administrativo." });
+  }
+}
+app.use("/api/admin", adminRequire);
+
+app.get("/api/admin/analytics/aggregate", async (_req, res) => {
+  try {
+    const [enrollments, users, courses, activity] = await Promise.all([
+      fsList("enrollments"), fsList("users"), fsList("courses"), fsList("activity_logs")
+    ]);
+    const moodCounts: Record<string, number> = {};
+    for (const entry of activity) {
+      const mood = typeof entry.metadata?.mood === "string" ? entry.metadata.mood : "";
+      if (mood) moodCounts[mood] = (moodCounts[mood] || 0) + 1;
+    }
+    res.json({ totals: { users: users.length, coaches: users.filter(x => x.role === "coach").length, students: users.filter(x => x.role === "alumno").length, courses: courses.length, enrollments: enrollments.length }, moodCounts });
+  } catch (error) { console.error("[Admin] Aggregate failed", error); res.status(500).json({ error: "No fue posible calcular los agregados." }); }
+});
+
+app.get("/api/admin/users", async (req, res) => {
+  try {
+    const items = await fsList("users");
+    const q = String(req.query.q || "").toLowerCase();
+    res.json({ items: items.filter(u => !q || [u.email, u.displayName, u.uid, u.role, u.companyId].some(v => String(v || "").toLowerCase().includes(q))).map(u => ({ uid: u.uid || u.id, email: u.email, displayName: u.displayName || u.name, role: u.role, tier: u.tier || u.membershipTier, membershipStatus: u.membershipStatus, approvalStatus: u.approvalStatus, status: u.status, orgId: u.orgId || u.companyId, points: u.points, createdAt: u.createdAt, lastActivityAt: u.lastActivityAt })) });
+  } catch (error) { console.error(error); res.status(500).json({ error: "No fue posible cargar usuarios." }); }
+});
+app.get("/api/admin/users/:uid/activity", async (req, res) => {
+  try {
+    const uid = String(req.params.uid);
+    const [user, logs, transactions, certificates, sessions] = await Promise.all([fsGet("users", uid), fsList("activity_logs"), fsList("transactions"), fsList("certificates"), fsList("sessions")]);
+    if (!user) return res.status(404).json({ error: "Usuario no encontrado." });
+    const items = logs.filter(x => x.userId === uid).sort((a,b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, Math.min(Number(req.query.limit) || 50, 100));
+    res.json({ user: { uid, email: user.email, displayName: user.displayName || user.name, role: user.role, approvalStatus: user.approvalStatus, membershipStatus: user.membershipStatus, points: user.points, createdAt: user.createdAt }, items, transactions: transactions.filter(x => x.userId === uid).map(({id, provider, amount, currency, status, createdAt}: any) => ({id,provider,amount,currency,status,createdAt})), certificates: certificates.filter(x => x.studentId === uid).map(({certificateNumber,courseTitle,status,adminStatus,issuedAt}: any) => ({certificateNumber,courseTitle,status,adminStatus,issuedAt})), sessions: sessions.filter(x => x.userId === uid || x.coachId === uid).map(({id, userId, coachId, status, createdAt, startedAt, endedAt}: any) => ({id,userId,coachId,status,createdAt,startedAt,endedAt})) });
+  } catch (error) { console.error(error); res.status(500).json({ error: "No fue posible cargar la actividad." }); }
+});
+app.post("/api/admin/users/:uid/ban", async (req: AdminRequest, res) => {
+  try {
+    const uid = String(req.params.uid), profile = await fsGet("users", uid);
+    if (!profile) return res.status(404).json({ error: "Usuario no encontrado." });
+    const banned = req.body?.banned === true;
+    await fsCommit([fsUpdate("users", uid, { ...profile, isBanned: banned, status: banned ? "banned" : "active", updatedAt: new Date().toISOString() })]);
+    await adminAudit(req, banned ? "user.banned" : "user.unbanned", "user", uid);
+    res.json({ success: true, banned });
+  } catch (error) { console.error(error); res.status(500).json({ error: "No fue posible actualizar el estado." }); }
+});
+app.post("/api/admin/users/:uid/grant-points", async (req: AdminRequest, res) => {
+  try {
+    const uid = String(req.params.uid), amount = Number(req.body?.points), justification = String(req.body?.justification || "").trim();
+    if (!Number.isInteger(amount) || amount < 1 || amount > 10000 || justification.length < 8 || justification.length > 500) return res.status(400).json({ error: "Indica puntos válidos y una justificación de 8 a 500 caracteres." });
+    const profile = await fsGet("users", uid);
+    if (!profile) return res.status(404).json({ error: "Usuario no encontrado." });
+    await fsCommit([fsUpdate("users", uid, { ...profile, points: Number(profile.points || 0) + amount, updatedAt: new Date().toISOString() })]);
+    await adminAudit(req, "user.points_granted", "user", uid, { points: amount, justification });
+    res.json({ success: true, points: Number(profile.points || 0) + amount });
+  } catch (error) { console.error(error); res.status(500).json({ error: "No fue posible otorgar puntos." }); }
+});
+
+app.get("/api/admin/coach-applications", async (_req, res) => {
+  try { const items = await fsList("coach_applications"); res.json({ items: items.filter(x => x.status === "pending").sort((a,b) => String(a.createdAt).localeCompare(String(b.createdAt))) }); }
+  catch (error) { console.error(error); res.status(500).json({ error: "No fue posible cargar solicitudes." }); }
+});
+app.post("/api/admin/coach-applications/:id/:action", async (req: AdminRequest, res) => {
+  try {
+    const id = String(req.params.id), action = String(req.params.action), application = await fsGet("coach_applications", id);
+    if (!application) return res.status(404).json({ error: "Solicitud no encontrada." });
+    if (!["approve","reject","request-info"].includes(action)) return res.status(400).json({ error: "Acción no válida." });
+    const now = new Date().toISOString(), reviewer = req.adminUser!.uid;
+    if (action === "approve") {
+      const user = await fsGet("users", application.userId);
+      if (!user) return res.status(404).json({ error: "Perfil del solicitante no encontrado." });
+      await fsCommit([
+        fsUpdate("users", application.userId, { ...user, role: "coach", isPublicProfile: true, approvalStatus: "approved", membershipStatus: "trial", trialEndsAt: new Date(Date.now()+30*86400000).toISOString() }),
+        fsUpdate("coach_applications", id, { ...application, status: "approved", reviewedBy: reviewer, reviewedAt: now })
+      ]);
+    } else {
+      const reason = String(req.body?.reason || "").trim();
+      if (action === "reject" && reason.length < 5) return res.status(400).json({ error: "La razón del rechazo es obligatoria." });
+      await fsCommit([fsUpdate("coach_applications", id, { ...application, status: action === "reject" ? "rejected" : "info_requested", ...(action === "reject" ? { rejectionReason: reason } : {}), reviewedBy: reviewer, reviewedAt: now, adminNotes: action === "request-info" ? String(req.body?.message || "").slice(0,1000) : application.adminNotes })]);
+    }
+    await adminAudit(req, "coach_application." + action, "coach_application", id, { userId: application.userId });
+    res.json({ success: true });
+  } catch (error) { console.error(error); res.status(500).json({ error: "No fue posible revisar la solicitud." }); }
+});
+
+app.get("/api/admin/certificates/pending", async (_req, res) => {
+  try { const items = await fsList("certificates"); res.json({ items: items.filter(x => (x.adminStatus || (x.status === "pending_admin" ? "pending_admin" : "active")) === "pending_admin") }); }
+  catch (error) { console.error(error); res.status(500).json({ error: "No fue posible cargar certificados." }); }
+});
+app.post("/api/admin/certificates/:id/:action", async (req: AdminRequest, res) => {
+  try {
+    const id = String(req.params.id), action = String(req.params.action), certificate = await fsGet("certificates", id);
+    if (!certificate) return res.status(404).json({ error: "Certificado no encontrado." });
+    if (!["approve","revoke"].includes(action)) return res.status(400).json({ error: "Acción no válida." });
+    const now = new Date().toISOString(), reason = String(req.body?.reason || "").trim();
+    if (action === "revoke" && reason.length < 5) return res.status(400).json({ error: "La razón de revocación es obligatoria." });
+    const publicToken = String(certificate.validationToken || "");
+    const publicRecord = publicToken ? await fsGet("certificatePublic", publicToken) : null;
+    const updated = { ...certificate, adminStatus: action === "approve" ? "active" : "revoked", reviewedBy: req.adminUser!.uid, reviewedAt: now, ...(action === "revoke" ? { revokeReason: reason } : {}) };
+    const writes: any[] = [fsUpdate("certificates", id, updated)];
+    if (publicRecord) writes.push(fsUpdate("certificatePublic", publicToken, { ...publicRecord, status: action === "approve" ? "issued" : "revoked" }));
+    if (certificate.studentId) writes.push(fsCreate("notifications", idSafe("cert_admin_"+id+"_"+action), { userId: certificate.studentId, title: action === "approve" ? "Certificado aprobado" : "Certificado revocado", message: action === "approve" ? "Tu certificado está activo." : "Tu certificado fue revocado. Contacta con soporte si necesitas más información.", type: "system", read: false, createdAt: now }));
+    await fsCommit(writes); await adminAudit(req, "certificate."+action, "certificate", id, { reason: action === "revoke" ? reason : undefined });
+    res.json({ success: true });
+  } catch (error) { console.error(error); res.status(500).json({ error: "No fue posible revisar el certificado." }); }
+});
+app.post("/api/admin/certificates/manual", async (req: AdminRequest, res) => {
+  try {
+    const userId = String(req.body?.userId || ""), title = String(req.body?.title || "").trim(), description = String(req.body?.description || "").trim();
+    const student = await fsGet("users", userId);
+    if (!student || !title) return res.status(400).json({ error: "Alumno y título son obligatorios." });
+    const now = new Date().toISOString(), token = randomBytes(24).toString("hex"), number = "KIRA-MANUAL-"+new Date().getUTCFullYear()+"-"+randomBytes(4).toString("hex").toUpperCase();
+    const payload = { certificateNumber:number, validationToken:token, studentId:userId, studentName:String(student.displayName||student.name||"Alumno"), courseId:"manual", courseTitle:title, coachId:"", coachName:"KIRA COACH", hours:0, issuerName:"KIRA COACH · SAFENESS.INC", issuedBy:req.adminUser!.uid, issuedAt:now, status:"issued", description, template:"manual" };
+    const signature=certSignature(payload);
+    await fsCommit([fsCreate("certificates",number,{...payload,signature,signatureAlgorithm:"HMAC-SHA256",adminStatus:"active",requiresManualApproval:false}),fsCreate("certificatePublic",token,{certificateNumber:number,validationToken:token,studentName:payload.studentName,courseTitle:title,coachName:payload.coachName,hours:0,issuerName:payload.issuerName,issuedBy:payload.issuedBy,issuedAt:now,status:"issued",signature,signatureAlgorithm:"HMAC-SHA256"})]);
+    await adminAudit(req,"certificate.manual_issued","certificate",number,{userId});
+    res.status(201).json({success:true,certificateNumber:number,validationUrl:"/validar-certificado/"+token});
+  } catch (error) { console.error(error); res.status(500).json({error:"No fue posible emitir el certificado manual."}); }
+});
+
+app.get("/api/admin/payments/transactions", async (_req,res) => { try { const items=await fsList("transactions"); res.json({items}); } catch(e){console.error(e);res.status(500).json({error:"No fue posible cargar transacciones."});} });
+app.get("/api/admin/payments/refunds", async (_req,res) => { try { res.json({items:await fsList("refunds")}); } catch(e){console.error(e);res.status(500).json({error:"No fue posible cargar reembolsos."});} });
+app.get("/api/admin/payments/payouts", async (_req,res) => {
+  try {
+    const [transactions,payouts]=await Promise.all([fsList("transactions"),fsList("payouts")]);
+    const paidIds=new Set(payouts.flatMap(p=>p.transactionIds||[]));
+    const pending=transactions.filter(t=>t.status==="paid"&&!paidIds.has(t.id||t.providerPaymentId)).map(t=>({...t,coachId:t.coachId||"",coachAmount:Number(t.amount||0)*0.3}));
+    res.json({items:pending,payouts});
+  } catch(e){console.error(e);res.status(500).json({error:"No fue posible calcular liquidaciones."});}
+});
+app.get("/api/admin/payments/summary", async (_req,res) => {
+  try {
+    const [transactions,refunds,payouts]=await Promise.all([fsList("transactions"),fsList("refunds"),fsList("payouts")]);
+    const gross=transactions.filter(t=>t.status==="paid").reduce((n,t)=>n+Number(t.amount||0),0);
+    const refunded=refunds.reduce((n,t)=>n+Number(t.amount||0),0);
+    const paidOut=payouts.reduce((n,t)=>n+Number(t.amount||0),0);
+    res.json({gross,kiraNet:gross*.7,coachPayouts:gross*.3,refunds:refunded,netFinal:gross-refunded-paidOut});
+  } catch(e){console.error(e);res.status(500).json({error:"No fue posible calcular totales."});}
+});
+app.post("/api/admin/payments/refund", async (req: AdminRequest,res) => {
+  try {
+    if(!adminLimit(req,res,"refund",5)) return;
+    const transactionId=String(req.body?.transactionId||""), reason=String(req.body?.reason||"").trim();
+    const transaction=await fsGet("transactions",transactionId);
+    if(!transaction || transaction.status!=="paid") return res.status(409).json({error:"La transacción no existe o no está reembolsable."});
+    if(reason.length<5) return res.status(400).json({error:"El motivo del reembolso es obligatorio."});
+    const amount=Number(transaction.amount||0), currency=String(transaction.currency||"").toLowerCase(), provider=String(transaction.provider||"");
+    if(!Number.isFinite(amount)||amount<=0||!/^[a-z]{3}$/.test(currency)) return res.status(409).json({error:"Importe o moneda original inválidos."});
+    if(amount>100 && req.body?.confirmed !== true) return res.status(409).json({requiresConfirmation:true,error:"Confirma nuevamente el reembolso superior a 100."});
+    let providerRefundId="";
+    if(provider==="stripe"){
+      const stripe=getStripe(); if(!stripe) return res.status(503).json({error:"Stripe no está configurado."});
+      const paymentIntent=String(transaction.providerPaymentId||"");
+      if(!paymentIntent.startsWith("pi_")) return res.status(409).json({error:"No se encontró el payment_intent original de Stripe."});
+      const refund=await stripe.refunds.create({payment_intent:paymentIntent,reason:"requested_by_customer",metadata:{adminReason:reason,transactionId}});
+      providerRefundId=refund.id;
+    } else if(provider==="mercadopago"){
+      const paymentId=String(transaction.providerPaymentId||""); const token=process.env.MERCADOPAGO_ACCESS_TOKEN;
+      if(!token||!paymentId) return res.status(503).json({error:"Mercado Pago o el payment_id original no están disponibles."});
+      const response=await fetch("https://api.mercadopago.com/v1/payments/"+encodeURIComponent(paymentId)+"/refunds",{method:"POST",headers:{Authorization:"Bearer "+token,"Content-Type":"application/json","X-Idempotency-Key":"kira-refund-"+transactionId},body:JSON.stringify({})});
+      if(!response.ok) throw new Error("Mercado Pago rechazó el reembolso.");
+      const data=await response.json() as any; providerRefundId=String(data.id||"");
+    } else return res.status(409).json({error:"Proveedor de pago no reconocido; no se ejecutó el reembolso."});
+    const now=new Date().toISOString(),refundId=idSafe(provider+"_"+providerRefundId);
+    await fsCommit([fsUpdate("transactions",transactionId,{...transaction,status:"refunded",refundedAt:now}),fsCreate("refunds",refundId,{transactionId,userId:transaction.userId,provider,providerRefundId,amount,currency,reason,processedBy:req.adminUser!.uid,status:"succeeded",createdAt:now})]);
+    await adminAudit(req,"payment.refunded","transaction",transactionId,{provider,currency,amount,reason});
+    res.json({success:true,refundId,provider,currency,amount});
+  }catch(e:any){console.error("[Admin refund]",e);res.status(500).json({error:e.message||"No fue posible procesar el reembolso."});}
+});
+app.post("/api/admin/payments/payouts/mark", async (req: AdminRequest,res) => {
+  try{
+    if(!adminLimit(req,res,"payout",10))return;
+    const transactionIds=Array.isArray(req.body?.transactionIds)?req.body.transactionIds.map(String):[];
+    if(!transactionIds.length||transactionIds.length>200)return res.status(400).json({error:"Selecciona transacciones para liquidar."});
+    const transactions=await Promise.all(transactionIds.map((id:string)=>fsGet("transactions",id)));
+    if(transactions.some(t=>!t||t.status!=="paid"))return res.status(409).json({error:"Una o más transacciones no están pagadas."});
+    const payouts=await fsList("payouts");const paid=new Set(payouts.flatMap(p=>p.transactionIds||[]));
+    if(transactionIds.some(id=>paid.has(id)))return res.status(409).json({error:"Una o más transacciones ya fueron liquidadas."});
+    const amount=transactions.reduce((n,t)=>n+Number(t.amount||0)*.3,0),currency=String(transactions[0].currency||"");
+    if(transactions.some(t=>String(t.currency||"")!==currency))return res.status(409).json({error:"No se pueden mezclar monedas en una liquidación."});
+    const id=randomBytes(12).toString("hex"),now=new Date().toISOString();
+    await fsCommit([fsCreate("payouts",id,{transactionIds,amount,currency,coachId:String(req.body?.coachId||""),status:"paid_manual",processedBy:req.adminUser!.uid,createdAt:now})]);
+    await adminAudit(req,"payout.marked","payout",id,{amount,currency,count:transactionIds.length});
+    res.json({success:true,payoutId:id,amount,currency});
+  }catch(e){console.error(e);res.status(500).json({error:"No fue posible registrar la liquidación."});}
+});
+app.get("/api/admin/stripe/status", async (_req,res) => {
+  const stripe=getStripe();res.json({configured:!!stripe,mode:process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")?"test":process.env.STRIPE_SECRET_KEY?.startsWith("sk_live_")?"live":"unknown"});
+});
+app.post("/api/admin/stripe/test", async (_req,res) => {
+  try{const stripe=getStripe();if(!stripe)return res.status(503).json({connected:false});const balance=await stripe.balance.retrieve();res.json({connected:true,currencyCount:balance.available.length});}
+  catch(e){console.error("[Admin stripe test]",e);res.status(502).json({connected:false,error:"Stripe no respondió correctamente."});}
+});
+app.get("/api/admin/webhooks", async (_req,res) => {
+  try{const [events,old]=await Promise.all([fsList("webhook_events"),fsList("paymentEvents")]);res.json({items:[...events,...old].sort((a,b)=>String(b.createdAt||b.processedAt).localeCompare(String(a.createdAt||a.processedAt))).slice(0,100)});}
+  catch(e){console.error(e);res.status(500).json({error:"No fue posible cargar webhooks."});}
+});
+app.post("/api/admin/webhooks/:id/reprocess", async (req: AdminRequest,res) => {
+  try{const id=String(req.params.id),event=await fsGet("webhook_events",id);if(!event)return res.status(404).json({error:"Evento no encontrado."});if(event.status==="processed")return res.status(409).json({error:"El evento ya está procesado."});await fsCommit([fsUpdate("webhook_events",id,{...event,reprocessRequestedAt:new Date().toISOString(),reprocessRequestedBy:req.adminUser!.uid})]);await adminAudit(req,"webhook.reprocess_requested","webhook_event",id);res.json({success:true,queued:true});}
+  catch(e){console.error(e);res.status(500).json({error:"No fue posible solicitar el reprocesamiento."});}
+});
+
 async function startLocalServer() {
   const PORT = 3000;
   
