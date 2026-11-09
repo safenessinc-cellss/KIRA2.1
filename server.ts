@@ -1845,8 +1845,8 @@ app.get("/api/admin/enrollments/:id", async (req, res) => {
     const id = academicId(String(req.params.id)), enrollment = await fsGet("enrollments", id);
     if (!enrollment) return res.status(404).json({ error: "Matrícula no encontrada." });
     const profile = await fsGet("users", user.uid);
-    const group = enrollment.groupId ? await fsGet("course_groups", enrollment.groupId) : null;
-    if (profile?.role === "coach" && group?.coachId !== user.uid) return res.status(404).json({ error: "Matrícula no encontrada." });
+    const accessGroup = enrollment.groupId ? await fsGet("course_groups", enrollment.groupId) : null;
+    if (profile?.role === "coach" && accessGroup?.coachId !== user.uid) return res.status(404).json({ error: "Matrícula no encontrada." });
     const [course, group] = await Promise.all([fsGet("courses", enrollment.courseId), enrollment.groupId ? fsGet("course_groups", enrollment.groupId) : Promise.resolve(null)]);
     return res.json({ id, ...enrollment, courseTitle: course?.title || course?.name || enrollment.courseId, coachId: course?.coachId || "", groupName: group?.name || null });
   } catch (error: any) { console.error("[Contracts] enrollment read failed:", error); return res.status(500).json({ error: "No se pudo consultar la matrícula." }); }
