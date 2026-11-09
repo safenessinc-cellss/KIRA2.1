@@ -265,3 +265,30 @@ Seguridad Firestore:
 - Se amplió lectura de sesiones/asistencia/evaluaciones con paginación de Firestore para no truncar silenciosamente a 200 documentos.
 
 **Limitación actual:** el chequeo de solapamiento de sesiones es una validación previa basada en el inventario actual de sesiones, no una reserva serializable de agenda. Antes de considerar calendario de alta concurrencia listo, debe añadirse un bloqueo transaccional por coach/fecha y sala/fecha. La UI de estos subnodos y la integración de Coaching aún no están terminadas.
+
+
+## 10. Fase B — contratos y mensualidades (implementación en rama)
+
+### Contratos
+- `POST /api/admin/enrollments/:id/contract`: genera PDF en backend con plantilla `settings/enrollmentContractTemplate`, lo guarda en Firebase Storage privado y persiste `contractUrl` (`gs://...`) + SHA-256.
+- `GET /api/admin/enrollments/:id/contract/download`: solo backoffice autorizado; descarga y verifica hash.
+- `GET /api/enrollments/:id/contract/download` y `POST /api/enrollments/:id/contract/sign`: acceso del alumno propietario. La aceptación exige identidad Firebase del alumno y `accepted=true`; el servidor calcula HMAC-SHA256 del hash PDF con `KIRA_CERT_SECRET`.
+- El administrador no puede firmar en nombre del alumno.
+- El botón de emisión de certificado en la vista de matrícula reutiliza `POST /api/certificates`; ese endpoint vuelve a verificar `status=completed`.
+
+### Mensualidades / cuotas
+- `invoices/{enrollmentId_periodLabel}` evita duplicados por matrícula y período.
+- Numeración global mediante transacción Firestore sobre `counters/invoiceNumber`.
+- Generación solo para matrículas `active` con plan `monthly` o `custom`; requiere importe mensual o número de cuotas configurado, no reutiliza automáticamente el precio total como cuota.
+- `POST /api/invoices/:id/checkout` genera checkout hospedado Stripe/Mercado Pago usando importe y moneda leídos de la factura.
+- `fulfillOrder` marca factura `paid` únicamente en la ruta de webhook verificado; crea claim determinista para impedir liquidar una misma factura con dos pagos.
+- Jobs protegidos por `CRON_SECRET`: `generate`, `overdue`, `dunning`, `reconcile`. La cola dunning crea notificación y evento outbox, pero la entrega efectiva por email/WhatsApp/SMS depende de integrar un proveedor de notificaciones.
+
+### Programación recomendada Cloud Scheduler
+Zona horaria: `America/Sao_Paulo`; método POST; cabecera `Authorization: Bearer <CRON_SECRET>`.
+- Día 1, 06:00 → `/api/cron/invoices/generate` con `periodLabel=YYYY-MM`.
+- Diario, 06:00 → `/api/cron/invoices/overdue`.
+- Diario, 07:00 → `/api/cron/invoices/dunning`.
+- Diario, 08:00 → `/api/cron/invoices/reconcile`.
+
+**No desplegado aún:** Cloud Scheduler jobs no se crean desde esta rama; deben configurarse en el proyecto GCP de backend. No se cargaron secretos ni se modificó producción. Las facturas, Storage privado y webhooks requieren prueba E2E con credenciales sandbox antes de considerarse listos.
