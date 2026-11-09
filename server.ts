@@ -193,7 +193,12 @@ function fsDecode(value: any): any {
   return null;
 }
 function fsFields(data: any): any {
-  return Object.fromEntries(Object.entries(data || {}).map(([k, v]) => [k, fsValue(v)]));
+  return Object.fromEntries(Object.entries(data || {}).map(([k, v]) => [
+    k,
+    k === "createdAt" && typeof v === "string" && Number.isFinite(Date.parse(v))
+      ? { timestampValue: new Date(v).toISOString() }
+      : fsValue(v)
+  ]));
 }
 function fsDocumentPath(collectionName: string, id: string): string {
   return "projects/" + serviceAccount().project_id + "/databases/(default)/documents/" + collectionName + "/" + encodeURIComponent(id);
