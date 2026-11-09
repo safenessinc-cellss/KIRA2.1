@@ -726,6 +726,7 @@ app.post("/api/admin/coach-applications/:id/:action", async (req: AdminRequest, 
   try {
     const id = String(req.params.id), action = String(req.params.action), application = await fsGet("coach_applications", id);
     if (!application) return res.status(404).json({ error: "Solicitud no encontrada." });
+    if (!["pending","info_requested"].includes(application.status)) return res.status(409).json({ error: "La solicitud ya fue revisada." });
     if (!["approve","reject","request-info"].includes(action)) return res.status(400).json({ error: "Acción no válida." });
     const now = new Date().toISOString(), reviewer = req.adminUser!.uid;
     if (action === "approve") {
@@ -741,7 +742,7 @@ app.post("/api/admin/coach-applications/:id/:action", async (req: AdminRequest, 
       if (action === "reject" && reason.length < 5) return res.status(400).json({ error: "La razón del rechazo es obligatoria." });
       await fsCommit([
         fsUpdate("coach_applications", id, { ...application, status: action === "reject" ? "rejected" : "info_requested", ...(action === "reject" ? { rejectionReason: reason } : {}), reviewedBy: reviewer, reviewedAt: now, adminNotes: action === "request-info" ? String(req.body?.message || "").slice(0,1000) : application.adminNotes }),
-        fsCreate("notifications", idSafe("coach_application_"+id+"_"+action), { userId: application.userId, title: action === "reject" ? "Solicitud de coach rechazada" : "Información adicional solicitada", message: action === "reject" ? "Motivo: "+reason : "El equipo de KIRA solicita información adicional para revisar tu solicitud.", type: "system", read: false, createdAt: now })
+        fsCreate("notifications", idSafe("coach_application_"+id+"_"+action+"_"+randomBytes(4).toString("hex")), { userId: application.userId, title: action === "reject" ? "Solicitud de coach rechazada" : "Información adicional solicitada", message: action === "reject" ? "Motivo: "+reason : "El equipo de KIRA solicita información adicional para revisar tu solicitud.", type: "system", read: false, createdAt: now })
       ]);
     }
     await adminAudit(req, action === "approve" ? "coach_approved" : "coach_application." + action, "coach_application", id, { userId: application.userId });
@@ -765,7 +766,7 @@ app.post("/api/admin/certificates/:id/:action", async (req: AdminRequest, res) =
     const updated = { ...certificate, adminStatus: action === "approve" ? "active" : "revoked", reviewedBy: req.adminUser!.uid, reviewedAt: now, ...(action === "revoke" ? { revokeReason: reason } : {}) };
     const writes: any[] = [fsUpdate("certificates", id, updated)];
     if (publicRecord) writes.push(fsUpdate("certificatePublic", publicToken, { ...publicRecord, status: action === "approve" ? "issued" : "revoked" }));
-    if (certificate.studentId) writes.push(fsCreate("notifications", idSafe("cert_admin_"+id+"_"+action), { userId: certificate.studentId, title: action === "approve" ? "Certificado aprobado" : "Certificado revocado", message: action === "approve" ? "Tu certificado está activo." : "Tu certificado fue revocado. Contacta con soporte si necesitas más información.", type: "system", read: false, createdAt: now }));
+    if (certificate.studentId) writes.push(fsCreate("notifications", idSafe("cert_admin_"+id+"_"+action+"_"+randomBytes(4).toString("hex")), { userId: certificate.studentId, title: action === "approve" ? "Certificado aprobado" : "Certificado revocado", message: action === "approve" ? "Tu certificado está activo." : "Tu certificado fue revocado. Contacta con soporte si necesitas más información.", type: "system", read: false, createdAt: now }));
     await fsCommit(writes); await adminAudit(req, "certificate."+action, "certificate", id, { userId: certificate.studentId, reason: action === "revoke" ? reason : undefined });
     res.json({ success: true });
   } catch (error) { console.error(error); res.status(500).json({ error: "No fue posible revisar el certificado." }); }
