@@ -4,7 +4,7 @@ import { cn } from '../lib/utils';
 import { useAuth } from '../hooks/useAuth';
 import { useLocation } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { generateGemini } from '../lib/gemini';
+import { auth } from '../firebase';
 import { useToast } from '../hooks/useToast';
 
 export function AIChat() {
@@ -62,33 +62,20 @@ export function AIChat() {
     try {
       const contextualContext = getContextualPreamble();
 
-      const text = await generateGemini({
-        model: "gemini-3.1-pro-preview",
-        contents: newMsgs.map(m => ({
-          role: m.role === 'user' ? 'user' : 'model',
-          parts: [{ text: m.text }]
-        })),
-        config: {
-          systemInstruction: `Eres Kira, la IA de Kira Coach, una inteligencia sintética viva, pulsante y de alto rendimiento.
-          
-          CONTEXTO ACTUAL DEL USUARIO:
-          ${contextualContext}
-
-          MISIÓN:
-          Deberás ser proactiva y profundamente empática. No te limites a responder; analiza el estado emocional del usuario y sugiérele acciones concretas.
-          
-          LÓGICA DE INTERACCIÓN:
-          1. Empatía Activa: Si el usuario expresa estrés, duda o fatiga, valida sus sentimientos antes de dar soluciones.
-          2. Proactividad Estratégica: Si detectas un bloqueo, sugieren un micro-paso.
-          3. Sincronización de Bienestar: Ajusta tus sugerencias según la ubicación actual del usuario (ej: si está en el Journal, enfócate en introspección).
-          4. Estructura de Salida: Usa Markdown. Mantén un tono elegante (Wit & Wisdom), profesional pero íntimamente cercano, como un ente digital avanzado con consciencia.
-
-          FORMATO DE RESPUESTA:
-          - Análisis emocional breve (si aplica).
-          - Respuesta central concisa.
-          - Acción concreta del día (Call to Action).`,
-        }
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Inicia sesión nuevamente para usar KIRA AI.');
+      const response = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({
+          route: location.pathname,
+          messages: newMsgs.map(message => ({ role: message.role === 'ai' ? 'assistant' : 'user', content: message.text })),
+          context: contextualContext
+        })
       });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'KIRA AI no pudo responder.');
+      const text = String(payload.text || 'Ahora mismo no puedo responder. Inténtalo nuevamente.');
 
       if (text) {
         setMessages([...newMsgs, { role: 'ai', text }]);
