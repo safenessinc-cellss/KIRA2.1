@@ -843,7 +843,7 @@ app.get("/api/admin/activity", async (req, res) => {
       "auditLogs", "paymentAudit", "config_audit", "logs",
       "outbox_dead_letters", "users", "companies", "courses",
       "enrollments", "sessions", "transactions", "invoices",
-      "certificates", "orders", "journal_entries", "wellbeingAggregates"
+      "certificates", "orders", "journals"
     ];
     const snapshots = await Promise.all(collections.map(name => fsListAllDocuments(name, 2000)));
     const byCollection = Object.fromEntries(collections.map((name, index) => [name, snapshots[index]]));
