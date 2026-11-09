@@ -84,14 +84,46 @@ export function registerBackofficeExtensions(app: any, d: any): void {
     } catch (error: any) { console.error("[Dashboard] aggregate refresh failed:", error); return res.status(500).json({ error: "No se pudieron actualizar los agregados del dashboard." }); }
   });
 
+  async function requirePermission(req: any, res: any, key: string, scope: "assigned" | "own" | "all" = "all"): Promise<any | null> {
+    const actor = await verifiedUser(req, res); if (!actor) return null;
+    const profile = await fsGet("users", actor.uid);
+    if (actor.email?.toLowerCase() === "safeness.c.a@gmail.com" && actor.emailVerified) return actor;
+    const role = String(profile?.role === "alumno" ? "student" : profile?.role || "");
+    const active = await fsGet("role_permissions", role);
+    if (active?.permissions && hasScopedPermission(active.permissions, key, scope)) return actor;
+    if (!active && role === "admin" && Array.isArray(profile?.staffPermissions) && (profile.staffPermissions.includes("system") || profile.staffPermissions.includes(key.split(".")[0]))) return actor;
+    res.status(403).json({ error: "No tienes el permiso requerido: " + key + "." }); return null;
+  }
+
+  app.get("/api/admin/permissions", async (req: any, res: any) => {
+    try { const actor = await requireSuperAdmin(req, res); if (!actor) return;
+      const docs = await fsListAllDocuments("role_permissions");
+      return res.json({ items: docs.map(({ id, ...item }: any) => ({ role: id, ...item })) });
+    } catch (error: any) { console.error("[RBAC] read failed:", error); return res.status(500).json({ error: "No se pudo consultar la matriz de permisos." }); }
+  });
+
   app.get("/api/admin/integrations", async (req: any, res: any) => {
     try {
-      const actor = await verifiedUser(req, res); if (!actor) return;
-      const profile = await fsGet("users", actor.uid);
-      if (actor.emailVerified !== true || profile?.role !== "admin" || (actor.email?.toLowerCase() !== "safeness.c.a@gmail.com" && !(Array.isArray(profile.staffPermissions) && (profile.staffPermissions.includes("configuration") || profile.staffPermissions.includes("system"))))) return res.status(403).json({ error: "No tienes permiso para consultar integraciones." });
+      const actor = await requirePermission(req, res, "configuration.integrations.read"); if (!actor) return;
       const items = await fsListAllDocuments("integrations");
       return res.json({ items: items.map(({ id, enabled, publicConfig, updatedAt, updatedBy }: any) => ({ provider: id, enabled: enabled === true, publicConfig: publicConfig || {}, updatedAt: updatedAt || null, updatedBy: updatedBy || null })) });
     } catch (error: any) { console.error("[Integrations] read failed:", error); return res.status(500).json({ error: "No se pudieron consultar las integraciones." }); }
+  });
+
+  app.patch("/api/admin/integrations/:provider", async (req: any, res: any) => {
+    try {
+      const actor = await requireSuperAdmin(req, res); if (!actor) return;
+      const provider = String(req.params.provider || "");
+      if (!["landing", "whatsapp", "zoom", "google_calendar"].includes(provider)) return res.status(400).json({ error: "Proveedor no permitido." });
+      if (typeof req.body?.enabled !== "boolean") return res.status(400).json({ error: "enabled debe ser booleano." });
+      const publicConfig = req.body?.publicConfig === undefined ? undefined : req.body.publicConfig;
+      if (publicConfig !== undefined && (!publicConfig || typeof publicConfig !== "object" || Array.isArray(publicConfig) || JSON.stringify(publicConfig).length > 10000 || Object.keys(publicConfig).some(key => /secret|token|password|private|api.?key/i.test(key)))) return res.status(400).json({ error: "publicConfig solo admite configuración pública sin credenciales." });
+      const before = await fsGet("integrations", provider);
+      const now = new Date().toISOString();
+      const next = { ...(before || {}), enabled: req.body.enabled, ...(publicConfig === undefined ? {} : { publicConfig }), updatedBy: actor.uid, updatedAt: now };
+      await fsCommit([before ? fsUpdate("integrations", provider, next) : fsCreate("integrations", provider, next), auditWrite(actor.uid, "integration.updated", "configuracion.integraciones", provider, before || null, { enabled: next.enabled, publicConfig: next.publicConfig || {} })]);
+      return res.json({ provider, enabled: next.enabled, publicConfig: next.publicConfig || {}, updatedAt: now });
+    } catch (error: any) { console.error("[Integrations] update failed:", error); return res.status(500).json({ error: "No se pudo actualizar la integración." }); }
   });
 
   app.post("/api/admin/permissions/seed", async (req: any, res: any) => {
