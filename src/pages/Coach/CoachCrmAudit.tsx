@@ -11,6 +11,7 @@ interface CoachAnalytics {
   retention: { uniqueClients: number; returningClients: number; rate: number };
   sessions: { total: number; weekly: Array<{ week: string; sessions: number }> };
   hours: number | null;
+  monthlyHours: Array<{ month: string; hours: number }>;
   satisfaction: { average: number | null; responses: number };
   funnel: { new: number; contacted: number; qualified: number; enrolled: number; lost: number };
   enrollments: number;
@@ -20,7 +21,7 @@ interface CoachAnalytics {
 const emptyMetrics: CoachAnalytics = {
   generatedAt: '', source: '', scope: 'own',
   retention: { uniqueClients: 0, returningClients: 0, rate: 0 },
-  sessions: { total: 0, weekly: [] }, hours: null,
+  sessions: { total: 0, weekly: [] }, hours: null, monthlyHours: [],
   satisfaction: { average: null, responses: 0 },
   funnel: { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 },
   enrollments: 0, coverage: { durationTrackedSessions: 0, totalSessions: 0 }
@@ -125,6 +126,22 @@ export function CoachCrmAudit() {
           </div>
         </article>
       </div>
+
+      <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="font-bold text-slate-900">Horas de coaching por mes</h2>
+        <p className="mt-1 text-xs text-slate-500">Solo se suman duraciones registradas explícitamente en las sesiones.</p>
+        <div className="mt-4 h-56">
+          {metrics.monthlyHours.length ? <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={metrics.monthlyHours}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false}/>
+              <XAxis dataKey="month" tick={{ fontSize: 10 }}/>
+              <YAxis allowDecimals tick={{ fontSize: 10 }}/>
+              <Tooltip/>
+              <Bar dataKey="hours" name="Horas" fill="#C5A059" radius={[6,6,0,0]}/>
+            </BarChart>
+          </ResponsiveContainer> : <div className="flex h-full items-center justify-center text-sm text-slate-400">Aún no hay duraciones mensuales registradas.</div>}
+        </div>
+      </article>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
