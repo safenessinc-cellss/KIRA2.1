@@ -621,6 +621,13 @@ async function fsGetInTransaction(collectionName: string, id: string, transactio
   const document = await response.json() as any;
   return Object.fromEntries(Object.entries(document.fields || {}).map(([k, v]) => [k, fsDecode(v)]));
 }
+async function rollbackFirestoreTransaction(transaction: string): Promise<void> {
+  if (!transaction) return;
+  await fetch("https://firestore.googleapis.com/v1/projects/" + serviceAccount().project_id + "/databases/(default)/documents:rollback", {
+    method: "POST", headers: { Authorization: "Bearer " + await firestoreToken(), "Content-Type": "application/json" },
+    body: JSON.stringify({ transaction })
+  }).catch(() => undefined);
+}
 async function fsCommitTransaction(writes: any[], transaction: string): Promise<void> {
   const response = await fetch("https://firestore.googleapis.com/v1/projects/" + serviceAccount().project_id + "/databases/(default)/documents:commit", {
     method: "POST", headers: { Authorization: "Bearer " + await firestoreToken(), "Content-Type": "application/json" },
@@ -1315,6 +1322,31 @@ async function writeAcademicEvent(userId: string, type: string, aggregate: strin
     auditWrite(userId, type, nodePath, aggregateId, before, after)
   ]);
 }
+function sessionDayKeys(start: Date, end: Date, timezone: string): string[] {
+  const keys = new Set<string>();
+  const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: timezone || "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
+  for (let time = start.getTime(); time < end.getTime(); time += 6 * 60 * 60 * 1000) keys.add(formatter.format(new Date(time)));
+  keys.add(formatter.format(new Date(end.getTime() - 1)));
+  return Array.from(keys);
+}
+async function reserveSessionScheduleLocks(transaction: string, group: any, sessionId: string, startsAt: Date, endsAt: Date, room: string) {
+  const resourceKeys = ["coach_" + idSafe(String(group.coachId))];
+  if (room) resourceKeys.push("room_" + createHash("sha256").update(room.toLowerCase()).digest("hex").slice(0, 24));
+  const lockIds = Array.from(new Set(resourceKeys.flatMap(resource => sessionDayKeys(startsAt, endsAt, String(group.timezone || "America/Sao_Paulo")).map(day => idSafe(resource + "_" + day)))));
+  const snapshots = await Promise.all(lockIds.map(id => fsGetInTransaction("schedule_locks", id, transaction)));
+  const interval = { sessionId, groupId: String(group.id || ""), start: startsAt.toISOString(), end: endsAt.toISOString() };
+  const writes: any[] = [];
+  for (let index = 0; index < lockIds.length; index++) {
+    const existing = snapshots[index];
+    const intervals = Array.isArray(existing?.intervals) ? existing.intervals : [];
+    const conflict = intervals.some((item: any) => item.sessionId !== sessionId && academicDate(item.start) && academicDate(item.end) && hasScheduleConflict(startsAt, endsAt, academicDate(item.start)!, academicDate(item.end)!));
+    if (conflict) { const error: any = new Error("Existe un solapamiento concurrente del coach o de la sala."); error.status = 409; throw error; }
+    const next = { resourceKey: lockIds[index], intervals: [...intervals.filter((item: any) => item.sessionId !== sessionId), interval], updatedAt: new Date().toISOString() };
+    writes.push(existing ? fsUpdate("schedule_locks", lockIds[index], next) : fsCreate("schedule_locks", lockIds[index], next));
+  }
+  return { lockIds, writes };
+}
+
 async function refreshStudentPerformance(studentId: string, groupId: string, sourceEventId: string) {
   const [sessions, attendance, assessments, group] = await Promise.all([
     fsListAllDocuments("group_sessions"), fsListAllDocuments("attendance"),
@@ -1402,12 +1434,13 @@ app.patch("/api/admin/groups/:id", async (req, res) => {
 });
 
 app.post("/api/admin/groups/:id/sessions", async (req, res) => {
+  let transaction = "";
   try {
     const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
     const groupId = academicId(String(req.params.id)), group = await fsGet("course_groups", groupId);
     if (!group || !["planned", "active"].includes(group.status)) return res.status(404).json({ error: "Grupo no disponible." });
     const startsAt = academicDate(req.body?.startsAt), endsAt = academicDate(req.body?.endsAt);
-    if (!startsAt || !endsAt || endsAt <= startsAt) return res.status(400).json({ error: "El horario debe tener fechas válidas y finalizar después de comenzar." });
+    if (!startsAt || !endsAt || endsAt <= startsAt || endsAt.getTime() - startsAt.getTime() > 24 * 60 * 60 * 1000) return res.status(400).json({ error: "El horario debe ser válido, finalizar después de comenzar y durar como máximo 24 horas." });
     const existing = await fsListAllDocuments("group_sessions");
     const groups = await fsListAllDocuments("course_groups");
     const groupById = new Map(groups.map(x => [x.id, x]));
@@ -1417,16 +1450,29 @@ app.post("/api/admin/groups/:id/sessions", async (req, res) => {
       const start = academicDate(session.startsAt), end = academicDate(session.endsAt);
       if (!start || !end || !hasScheduleConflict(startsAt, endsAt, start, end)) return false;
       const otherGroup = groupById.get(session.groupId);
-      const coachConflict = otherGroup?.coachId === group.coachId;
-      const roomConflict = room && String(session.room || "").trim().toLowerCase() === room;
-      return coachConflict || roomConflict;
+      return otherGroup?.coachId === group.coachId || (!!room && String(session.room || "").trim().toLowerCase() === room);
     });
     if (collision) return res.status(409).json({ error: "Existe un solapamiento del coach o de la sala en ese horario." });
     const id = randomBytes(16).toString("hex"), now = new Date().toISOString();
-    const session = { groupId, startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), meetingUrl: String(req.body?.meetingUrl || "").slice(0, 1000), room: String(req.body?.room || "").slice(0, 80), status: "scheduled", createdAt: now, createdBy: user.uid };
-    await fsCommit([fsCreate("group_sessions", id, session), auditWrite(user.uid, "course.session.created", "cursos.grupos.sesiones", id, null, session), fsCreate("outbox", "course_session_created_" + id, { eventId: "course.session.created." + id, type: "course.session.created.v1", aggregate: "groupSession", aggregateId: id, schemaVersion: 1, payload: { sessionId: id, groupId }, status: "pending", attempts: 0, createdAt: now })]);
+    transaction = await beginFirestoreTransaction();
+    const currentGroup = await fsGetInTransaction("course_groups", groupId, transaction);
+    if (!currentGroup || !["planned", "active"].includes(currentGroup.status) || currentGroup.coachId !== group.coachId) {
+      const error: any = new Error("El grupo cambió mientras se programaba la sesión."); error.status = 409; throw error;
+    }
+    const reserved = await reserveSessionScheduleLocks(transaction, { ...currentGroup, id: groupId }, id, startsAt, endsAt, room);
+    const session = { groupId, startsAt, endsAt, meetingUrl: String(req.body?.meetingUrl || "").slice(0, 1000), room: String(req.body?.room || "").slice(0, 80), status: "scheduled", lockIds: reserved.lockIds, createdAt: now, createdBy: user.uid };
+    await fsCommitTransaction([
+      fsCreate("group_sessions", id, session), ...reserved.writes,
+      auditWrite(user.uid, "course.session.created", "cursos.grupos.sesiones", id, null, session),
+      fsCreate("outbox", "course_session_created_" + id, { eventId: "course.session.created." + id, type: "course.session.created.v1", aggregate: "groupSession", aggregateId: id, schemaVersion: 1, payload: { sessionId: id, groupId }, status: "pending", attempts: 0, createdAt: now })
+    ], transaction);
+    transaction = "";
     return res.status(201).json({ id, ...session });
-  } catch (error: any) { console.error("[Groups] session create failed:", error); return res.status(500).json({ error: "No se pudo crear la sesión." }); }
+  } catch (error: any) {
+    if (transaction) await rollbackFirestoreTransaction(transaction);
+    console.error("[Groups] session create failed:", error);
+    return res.status(error.status === 409 ? 409 : 500).json({ error: error.message || "No se pudo crear la sesión." });
+  }
 });
 
 app.post("/api/admin/groups/:id/enroll", async (req, res) => {
@@ -1456,16 +1502,36 @@ app.post("/api/admin/groups/:id/enroll", async (req, res) => {
 });
 
 app.patch("/api/admin/sessions/:sessionId", async (req, res) => {
+  let transaction = "";
   try {
     const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
     const id = academicId(String(req.params.sessionId)), before = await fsGet("group_sessions", id);
     if (!before) return res.status(404).json({ error: "Sesión no encontrada." });
     const status = String(req.body?.status || before.status);
     if (!academicStatuses.session.includes(status)) return res.status(400).json({ error: "Estado de sesión inválido." });
-    const next = { ...before, status, updatedAt: new Date().toISOString(), updatedBy: user.uid };
-    await fsCommit([fsUpdate("group_sessions", id, next), auditWrite(user.uid, "course.session.updated", "cursos.grupos.sesiones", id, before, next)]);
+    if (before.status === "cancelled" && status !== "cancelled") return res.status(409).json({ error: "Una sesión cancelada no puede reactivarse; crea una nueva sesión." });
+    transaction = await beginFirestoreTransaction();
+    const current = await fsGetInTransaction("group_sessions", id, transaction);
+    if (!current) return res.status(404).json({ error: "Sesión no encontrada." });
+    const next = { ...current, status, updatedAt: new Date().toISOString(), updatedBy: user.uid };
+    const writes: any[] = [fsUpdate("group_sessions", id, next), auditWrite(user.uid, "course.session.updated", "cursos.grupos.sesiones", id, before, next)];
+    if (status === "cancelled" && Array.isArray(current.lockIds)) {
+      const locks = await Promise.all(current.lockIds.map((lockId: string) => fsGetInTransaction("schedule_locks", lockId, transaction)));
+      current.lockIds.forEach((lockId: string, index: number) => {
+        const lock = locks[index];
+        if (!lock) return;
+        const intervals = (Array.isArray(lock.intervals) ? lock.intervals : []).filter((item: any) => item.sessionId !== id);
+        writes.push(fsUpdate("schedule_locks", lockId, { ...lock, intervals, updatedAt: new Date().toISOString() }));
+      });
+    }
+    await fsCommitTransaction(writes, transaction);
+    transaction = "";
     return res.json({ id, ...next });
-  } catch (error: any) { console.error("[Groups] session update failed:", error); return res.status(500).json({ error: "No se pudo actualizar la sesión." }); }
+  } catch (error: any) {
+    if (transaction) await rollbackFirestoreTransaction(transaction);
+    console.error("[Groups] session update failed:", error);
+    return res.status(error.status === 409 ? 409 : 500).json({ error: "No se pudo actualizar la sesión." });
+  }
 });
 
 app.post("/api/admin/sessions/:sessionId/attendance", async (req, res) => {
