@@ -14,10 +14,15 @@ export default defineConfig(({mode}) => {
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
         manifest: {
-          name: 'Kira Coach',
+          name: 'KIRA Coach',
           short_name: 'KiraCoach',
-          description: 'Ecosistema de Bienestar',
+          description: 'Ecosistema de Bienestar y Coaching Integral - SAFENESS.INC',
+          start_url: '/',
+          scope: '/',
+          display: 'standalone',
+          background_color: '#ffffff',
           theme_color: '#1B4D5D',
+          lang: 'es',
           icons: [
             {
               src: '/assets/kira-logo.png',
