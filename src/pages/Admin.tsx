@@ -4563,3 +4563,46 @@ function CompanyManagementView() {
     </div>
   );
 }
+
+
+function ModerationView() {
+  const [reports, setReports] = useState<any[]>([]);
+  const [escalations, setEscalations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState('');
+  useEffect(() => {
+    const unsubReports = onSnapshot(collection(db, 'reports'), snap => {
+      setReports(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((r: any) => r.status === 'pending'));
+      setLoading(false);
+    }, error => { console.error('[Moderation] reports:', error); setLoading(false); });
+    const unsubEscalations = onSnapshot(collection(db, 'urgent_escalations'), snap => {
+      setEscalations(snap.docs.map(d => ({ id: d.id, ...d.data() })).filter((r: any) => !['resolved','closed'].includes(r.status)));
+    }, error => console.error('[Moderation] escalations:', error));
+    return () => { unsubReports(); unsubEscalations(); };
+  }, []);
+  const resolve = async (collectionName: string, id: string) => {
+    setBusy(id);
+    try { await updateDoc(doc(db, collectionName, id), { status: 'resolved', reviewedAt: new Date(), reviewedBy: auth.currentUser?.uid || '' }); }
+    catch (error) { console.error('[Moderation] resolve failed:', error); alert('No fue posible cerrar el reporte.'); }
+    finally { setBusy(''); }
+  };
+  return <div className="space-y-5">
+    <div><h2 className="text-lg font-black text-slate-900">Cola de moderación</h2><p className="mt-1 text-xs text-slate-500">Se muestran referencias y metadata. El contenido de diarios y mensajes no se expone en esta lista.</p></div>
+    {loading ? <div className="p-10 text-center text-sm text-slate-400">Cargando reportes…</div> : <>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5">
+        <h3 className="mb-3 font-bold text-slate-800">Reportes pendientes ({reports.length})</h3>
+        {reports.length ? reports.map(item => <article key={item.id} className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 py-3">
+          <div><p className="text-sm font-semibold text-slate-800">{item.category || item.type || 'Reporte'}</p><p className="mt-1 text-xs text-slate-500">Referencia: {item.targetId || item.messageId || item.entityId || item.id} · Reportante: {item.reporterId || '—'}</p><p className="text-[11px] text-slate-400">{item.createdAt?.toDate?.()?.toLocaleString?.() || 'Fecha no disponible'}</p></div>
+          <button disabled={!!busy} onClick={() => void resolve('reports', item.id)} className="rounded-lg bg-teal-50 px-3 py-2 text-xs font-bold text-teal-800">Marcar resuelto</button>
+        </article>) : <p className="py-5 text-sm text-slate-400">No hay reportes pendientes.</p>}
+      </section>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5">
+        <h3 className="mb-3 font-bold text-slate-800">Escalaciones urgentes ({escalations.length})</h3>
+        {escalations.length ? escalations.map(item => <article key={item.id} className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 py-3">
+          <div><p className="text-sm font-semibold text-slate-800">{item.category || item.type || 'Escalación'}</p><p className="mt-1 text-xs text-slate-500">Usuario: {item.userId || '—'} · Prioridad: {item.priority || item.severity || 'normal'}</p><p className="text-[11px] text-slate-400">{item.createdAt?.toDate?.()?.toLocaleString?.() || 'Fecha no disponible'}</p></div>
+          <button disabled={!!busy} onClick={() => void resolve('urgent_escalations', item.id)} className="rounded-lg bg-teal-50 px-3 py-2 text-xs font-bold text-teal-800">Cerrar escalación</button>
+        </article>) : <p className="py-5 text-sm text-slate-400">No hay escalaciones abiertas.</p>}
+      </section>
+    </>}
+  </div>;
+}
