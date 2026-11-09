@@ -68,7 +68,6 @@ try {
   const studentDb = env.authenticatedContext("student-a", { email: "a@example.test" }).firestore();
   await assertSucceeds(setDoc(doc(studentDb, "journals", "journal-a"), { userId: "student-a", content: "my private journal", createdAt: serverTimestamp() }));
   await assertFails(getDoc(doc(studentDb, "journals", "journal-b")));
-  await assertFails(getDoc(doc(coachDb, "journals", "journal-b")));
   await assertFails(setDoc(doc(studentDb, "transactions", "fake"), { userId: "student-a", amount: 999, status: "paid" }));
   await assertFails(setDoc(doc(studentDb, "orders", "fake"), { userId: "student-a", amount: 1, status: "paid" }));
   await assertFails(setDoc(doc(studentDb, "enrollments", "paid-fake"), { userId: "student-a", courseId: "paid-course", progress: 0, createdAt: serverTimestamp() }));
@@ -94,6 +93,7 @@ try {
   await assertFails(setDoc(doc(studentDb, "notifications", "other-notification"), { userId: "student-b", title: "Notice", message: "For other", type: "system", read: false, createdAt: serverTimestamp() }));
 
   const coachDb = env.authenticatedContext("coach-a", { email: "coach@example.test" }).firestore();
+  await assertFails(getDoc(doc(coachDb, "journals", "journal-b")));
   await assertSucceeds(setDoc(doc(coachDb, "courses", "coach-pending-course"), { title: "Coach course", description: "Real course", price: 10, coachId: "coach-a", status: "pending", hours: 4, createdAt: serverTimestamp() }));
   await assertFails(setDoc(doc(coachDb, "courses", "coach-published-course"), { title: "Coach course", description: "Cannot publish directly", price: 10, coachId: "coach-a", status: "published", hours: 4, createdAt: serverTimestamp() }));
   await assertFails(setDoc(doc(coachDb, "enrollments", "coach-paid-fake"), { userId: "student-a", courseId: "paid-course", progress: 0, createdAt: serverTimestamp() }));
