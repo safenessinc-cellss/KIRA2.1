@@ -202,7 +202,7 @@ export function CoachCourses() {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await user.getIdToken() },
         body: JSON.stringify({
           model: "gemini-3.5-flash",
           contents: prompt,
