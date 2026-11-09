@@ -245,3 +245,23 @@ La implementación deberá usar Vercel Cron Jobs o Cloud Scheduler/Cloud Tasks, 
 
 ### Matrícula sin cupo
 Los grupos y la reserva transaccional de cupo aún no están habilitados. No aceptar matrículas a grupos con capacidad hasta implementar la transacción de cupos y las pruebas de carrera.
+
+
+## 9. Fase A — vertical académica (implementación en la rama)
+
+Backend Express añadido en `server.ts`:
+- `POST /api/admin/groups`, `PATCH /api/admin/groups/:id`.
+- `POST /api/admin/groups/:id/sessions`, `PATCH /api/admin/sessions/:sessionId`.
+- `POST /api/admin/groups/:id/enroll`: transacción Firestore que lee grupo/alumno/curso/matrícula y actualiza contador + crea matrícula + audit + outbox en un commit.
+- `POST /api/admin/sessions/:sessionId/attendance`: doc ID determinista sesión/alumno, creación idempotente, solo alumno matriculado y sesión realizada.
+- `POST /api/admin/assessments`: valida rango de nota, peso y matrícula.
+- `POST /api/admin/enrollments/:id/complete`: verifica pago y umbrales académicos (75 % / 60 por defecto).
+- Proyección `student_performance` recalculada desde el flujo de eventos; no es editable por navegador.
+- Certificados ahora exigen `enrollment.status === completed`; no basta el progreso enviado o un boolean legacy.
+
+Seguridad Firestore:
+- Reglas explícitas de denegación para las colecciones snake_case académicas y agregados.
+- Los endpoints usan Firebase ID Token y control de administrador existente; permisos granulares activos quedan para Fase D.
+- Se amplió lectura de sesiones/asistencia/evaluaciones con paginación de Firestore para no truncar silenciosamente a 200 documentos.
+
+**Limitación actual:** el chequeo de solapamiento de sesiones es una validación previa basada en el inventario actual de sesiones, no una reserva serializable de agenda. Antes de considerar calendario de alta concurrencia listo, debe añadirse un bloqueo transaccional por coach/fecha y sala/fecha. La UI de estos subnodos y la integración de Coaching aún no están terminadas.
