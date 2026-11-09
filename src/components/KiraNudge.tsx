@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, X, Bell, Zap, Wind, Heart } from 'lucide-react';
-import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
+import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { db, auth } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 
 export function KiraNudge() {
@@ -11,87 +11,29 @@ export function KiraNudge() {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      generateNudge();
-    }
-  }, [user]);
+    if (!user?.uid) { setNudge(null); setIsVisible(false); return; }
+    const latestQuery = query(collection(db, 'users', user.uid, 'nudges'), orderBy('createdAt', 'desc'), limit(1));
+    const unsubscribe = onSnapshot(latestQuery, snapshot => {
+      if (snapshot.empty) return;
+      const item = snapshot.docs[0].data();
+      setNudge({ message: String(item.message || ''), action: String(item.title || 'Ver recomendación'), type: item.type === 'wellbeing' ? 'check-in' : 'prep' });
+      setIsVisible(true);
+    }, error => console.warn('Nudge subscription failed:', error));
+    void generateNudge();
+    return () => unsubscribe();
+  }, [user?.uid]);
 
   const generateNudge = async () => {
     try {
-      const q = query(
-        collection(db, 'sessions'),
-        where('userId', '==', user?.uid),
-        orderBy('createdAt', 'desc'),
-        limit(1)
-      );
-      const snap = await getDocs(q);
-      
-      // Simulación de datos externos de salud (Apple Health/Google Fit)
-      const healthData = { 
-        sleep: 5.2, 
-        hrv: 35, // Bajo para un adulto promedio
-        restingHeartRate: 72,
-        stressLevel: 'alto' 
-      }; 
-
-      if (!snap.empty) {
-        const lastSession = snap.docs[0].data().analysis;
-        const transcript = snap.docs[0].data().transcript || [];
-        const lastText = transcript.map((t: any) => t.text).join(' ').toLowerCase();
-
-        // 1. MODO DE EMERGENCIA / ALTO ESTRÉS
-        if (healthData.stressLevel === 'alto' && (lastText.includes('agobiado') || lastText.includes('presión'))) {
-          setNudge({
-            message: `Detecto que tu nivel de estrés biológico es alto y mencionaste sentirte presionado. ¿Te parece si posponemos la tarea compleja de hoy y priorizamos recuperar tu centro con una sesión de descarga?`,
-            action: "Pausa de Bienestar",
-            type: 'check-in'
-          });
-          setIsVisible(true);
-          return;
-        }
-
-        // 2. CONTEXTUALIZACIÓN DE SALUD: Sueño reparador
-        if (healthData.sleep < 6) {
-          setNudge({
-            message: `Registros vitales indican descanso de ${healthData.sleep}h. Capacidad cognitiva al 60%. Sugiero reajustar los objetivos diarios para optimizar tu reserva de energía.`,
-            action: "Sincronizar Energía",
-            type: 'prep'
-          });
-          setTimeout(() => setIsVisible(true), 2000);
-          return;
-        }
-
-        // 3. HRV BAJO: Recuperación necesaria
-        if (healthData.hrv < 40) {
-          setNudge({
-            message: "Métricas del HRV sugieren saturación del sistema nervioso. Propongo un 'Quiet Protocol'. ¿Iniciamos una recarga rápida?",
-            action: "Iniciar Protocolo",
-            type: 'prep'
-          });
-          setTimeout(() => setIsVisible(true), 4000);
-          return;
-        }
-
-        const commitment = lastSession.nuevos_compromisos?.[0]?.tarea;
-        if (commitment) {
-          setNudge({
-            message: `Tengo en la memoria tu directiva: "${commitment}". Los niveles son óptimos. ¿Ejecutamos ahora?`,
-            action: 'Iniciar Ejecución',
-            type: 'prep'
-          });
-          setTimeout(() => setIsVisible(true), 3000);
-        }
-      } else {
-        // ONBOARDING MÁGICO: Primer contacto para nuevos usuarios
-        setNudge({
-          message: `Sistemas biométricos y conductuales enlazados. He trazado una proyección de tu potencial y es masiva. ¿Sincronizamos tu primer "Desafío Maestro"?`,
-          action: "Activar Evolución",
-          type: 'check-in'
-        });
-        setTimeout(() => setIsVisible(true), 3000);
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return;
+      const response = await fetch('/api/ai/nudges', { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        if (response.status !== 429) console.warn('Nudge generation unavailable:', payload.error || response.status);
       }
-    } catch (e) {
-      console.error("Error generating nudge:", e);
+    } catch (error) {
+      console.warn('Nudge generation unavailable:', error);
     }
   };
 
