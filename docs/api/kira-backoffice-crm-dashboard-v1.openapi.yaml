@@ -14,6 +14,10 @@ tags:
   - name: Dashboard
   - name: CRM Leads
   - name: CRM Interactions
+  - name: Academic Groups
+  - name: Academic Performance
+  - name: Enrollment Contracts
+  - name: Invoices
 paths:
   /api/admin/dashboard:
     get:
@@ -488,6 +492,10 @@ paths:
       type: http
       scheme: bearer
       bearerFormat: Firebase ID token
+    CronBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: CRON_SECRET
   schemas:
     Lead:
       type: object
