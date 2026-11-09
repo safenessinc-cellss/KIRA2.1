@@ -1501,13 +1501,23 @@ app.post("/api/admin/assessments", async (req, res) => {
   } catch (error: any) { console.error("[Assessments] grade failed:", error); return res.status(500).json({ error: "No se pudo guardar la evaluación." }); }
 });
 
+app.get("/api/admin/enrollments", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const status = String(req.query.status || ""), groupId = String(req.query.groupId || "");
+    const enrollments = await fsListAllDocuments("enrollments");
+    const items = enrollments.filter(x => (!status || x.status === status) && (!groupId || x.groupId === groupId)).map(x => ({ id: x.id, ...x }));
+    return res.json({ items, total: items.length });
+  } catch (error: any) { console.error("[Contracts] enrollment list failed:", error); return res.status(500).json({ error: "No se pudieron consultar las matrículas." }); }
+});
+
 app.get("/api/admin/enrollments/:id", async (req, res) => {
   try {
     const user = await backofficeAdmin(req, res, "users"); if (!user) return;
     const id = academicId(String(req.params.id)), enrollment = await fsGet("enrollments", id);
     if (!enrollment) return res.status(404).json({ error: "Matrícula no encontrada." });
     const [course, group] = await Promise.all([fsGet("courses", enrollment.courseId), enrollment.groupId ? fsGet("course_groups", enrollment.groupId) : Promise.resolve(null)]);
-    return res.json({ id, ...enrollment, courseTitle: course?.title || course?.name || enrollment.courseId, groupName: group?.name || null });
+    return res.json({ id, ...enrollment, courseTitle: course?.title || course?.name || enrollment.courseId, coachId: course?.coachId || "", groupName: group?.name || null });
   } catch (error: any) { console.error("[Contracts] enrollment read failed:", error); return res.status(500).json({ error: "No se pudo consultar la matrícula." }); }
 });
 
@@ -1536,6 +1546,24 @@ app.post("/api/admin/enrollments/:id/contract", async (req, res) => {
     await fsCommit([fsUpdate("enrollments", id, next), auditWrite(user.uid, "enrollment.contract.generated", "alumnos.matriculas.contratos", id, { contractHash: enrollment.contractHash || null }, { contractHash, contractUrl }), fsCreate("outbox", "contract_generated_" + id + "_" + contractHash.slice(0,12), { eventId: "enrollment.contract.generated." + id + "." + contractHash, type: "enrollment.contract.generated.v1", aggregate: "enrollment", aggregateId: id, schemaVersion: 1, payload: { enrollmentId: id, contractHash }, status: "pending", attempts: 0, createdAt: now })]);
     return res.status(201).json({ enrollmentId: id, contractUrl, contractHash, generatedAt: now });
   } catch (error: any) { console.error("[Contracts] generate failed:", error); return res.status(500).json({ error: error.message || "No se pudo generar el contrato." }); }
+});
+
+app.get("/api/admin/enrollments/:id/contract/download", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const id = academicId(String(req.params.id)), enrollment = await fsGet("enrollments", id);
+    if (!enrollment?.contractUrl || !String(enrollment.contractUrl).startsWith("gs://")) return res.status(404).json({ error: "Contrato privado no encontrado." });
+    const bucket = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || "";
+    const objectPath = String(enrollment.contractUrl).slice(("gs://" + bucket + "/").length);
+    if (!bucket || !String(enrollment.contractUrl).startsWith("gs://" + bucket + "/")) return res.status(500).json({ error: "El bucket del contrato no coincide con la configuración." });
+    const url = "https://storage.googleapis.com/storage/v1/b/" + encodeURIComponent(bucket) + "/o/" + encodeURIComponent(objectPath) + "?alt=media";
+    const response = await fetch(url, { headers: { Authorization: "Bearer " + await firestoreToken() } });
+    if (!response.ok) return res.status(502).json({ error: "No se pudo recuperar el contrato privado." });
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (createHash("sha256").update(bytes).digest("hex") !== enrollment.contractHash) return res.status(409).json({ error: "La integridad del contrato no coincide." });
+    res.setHeader("Content-Type", "application/pdf"); res.setHeader("Content-Disposition", "attachment; filename=KIRA-contrato-" + id + ".pdf");
+    return res.send(bytes);
+  } catch (error: any) { console.error("[Contracts] download failed:", error); return res.status(500).json({ error: "No se pudo descargar el contrato." }); }
 });
 
 app.post("/api/admin/enrollments/:id/contract/sign", async (req, res) => {
@@ -1595,7 +1623,9 @@ async function createMonthlyInvoice(enrollment: any, enrollmentId: string, perio
   if (!course) return false;
   const plan = String(enrollment.paymentPlan || "upfront");
   if (!["monthly", "custom"].includes(plan)) return false;
-  const amountCents = Math.round(Number(enrollment.installmentAmountCents || course.monthlyAmountCents || course.priceCents || (Number(course.monthlyPrice ?? course.price ?? 0) * 100)));
+  const totalCourseCents = Math.round(Number(course.priceCents || (Number(course.price || 0) * 100)));
+  const installmentCount = Math.max(0, Number(enrollment.installmentsCount || course.installmentsCount || 0));
+  const amountCents = Math.round(Number(enrollment.installmentAmountCents || course.monthlyAmountCents || (installmentCount > 0 ? totalCourseCents / installmentCount : Number(course.monthlyPrice || 0) * 100)));
   if (!Number.isSafeInteger(amountCents) || amountCents <= 0) return false;
   const currency = String(enrollment.currency || course.currency || "BRL").toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) return false;
@@ -1629,7 +1659,7 @@ async function runInvoiceGeneration(periodLabel: string) {
   const enrollments = await fsListAllDocuments("enrollments");
   let created = 0, skipped = 0;
   for (const enrollment of enrollments) {
-    if (!["active", "pending_payment"].includes(String(enrollment.status || ""))) { skipped++; continue; }
+    if (String(enrollment.status || "") !== "active") { skipped++; continue; }
     try { if (await createMonthlyInvoice(enrollment, enrollment.id, periodLabel)) created++; else skipped++; }
     catch (error: any) { if (error.status === 409) skipped++; else throw error; }
   }
