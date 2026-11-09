@@ -789,7 +789,7 @@ app.get("/api/admin/payments/payouts", async (_req,res) => {
 app.get("/api/admin/payments/summary", async (_req,res) => {
   try {
     const [transactions,refunds,payouts]=await Promise.all([fsList("transactions"),fsList("refunds"),fsList("payouts")]);
-    const gross=transactions.filter(t=>t.status==="paid").reduce((n,t)=>n+Number(t.amount||0),0);
+    const gross=transactions.filter(t=>["paid","refunded"].includes(t.status)).reduce((n,t)=>n+Number(t.amount||0),0);
     const refunded=refunds.reduce((n,t)=>n+Number(t.amount||0),0);
     const paidOut=payouts.reduce((n,t)=>n+Number(t.amount||0),0);
     res.json({gross,kiraNet:gross*.7,coachPayouts:gross*.3,refunds:refunded,netFinal:gross-refunded-paidOut});
@@ -820,7 +820,7 @@ app.post("/api/admin/payments/refund", async (req: AdminRequest,res) => {
       const data=await response.json() as any; providerRefundId=String(data.id||"");
     } else return res.status(409).json({error:"Proveedor de pago no reconocido; no se ejecutó el reembolso."});
     const now=new Date().toISOString(),refundId=idSafe(provider+"_"+providerRefundId);
-    const writes:any[]=[fsUpdate("transactions",transactionId,{...transaction,status:"refunded",refundedAt:now}),fsCreate("refunds",refundId,{transactionId,userId:transaction.userId,provider,providerRefundId,amount,currency,reason,processedBy:req.adminUser!.uid,status:"succeeded",createdAt:now})];
+    const writes:any[]=[fsUpdate("transactions",transactionId,{...transaction,status:"refunded",refundedAt:now}),fsCreate("refunds",refundId,{transactionId,userId:transaction.userId,provider,providerRefundId,amount,currency,reason,processedBy:req.adminUser!.uid,status:"succeeded",createdAt:now}),fsCreate("notifications",idSafe("refund_student_"+refundId),{userId:transaction.userId,title:"Reembolso procesado",message:"El reembolso de tu pago fue procesado por el equipo de KIRA.",type:"system",read:false,createdAt:now})];
     if(transaction.courseId){
       const enrollmentId=idSafe(String(transaction.userId)+"_"+String(transaction.courseId));
       const enrollment=await fsGet("enrollments",enrollmentId);
@@ -848,7 +848,7 @@ app.post("/api/admin/payments/payouts/mark", async (req: AdminRequest,res) => {
     const amount=transactions.reduce((n,t)=>n+Number(t.amount||0)*.3,0),currency=String(transactions[0].currency||"");
     if(transactions.some(t=>String(t.currency||"")!==currency))return res.status(409).json({error:"No se pueden mezclar monedas en una liquidación."});
     const id=randomBytes(12).toString("hex"),now=new Date().toISOString();
-    await fsCommit([fsCreate("payouts",id,{transactionIds,amount,currency,coachId:String(req.body?.coachId||""),status:"paid_manual",processedBy:req.adminUser!.uid,createdAt:now})]);
+    await fsCommit([fsCreate("payouts",id,{transactionIds,amount,currency,coachId,status:"paid_manual",processedBy:req.adminUser!.uid,createdAt:now})]);
     await adminAudit(req,"payout.marked","payout",id,{amount,currency,count:transactionIds.length});
     res.json({success:true,payoutId:id,amount,currency});
   }catch(e){console.error(e);res.status(500).json({error:"No fue posible registrar la liquidación."});}
