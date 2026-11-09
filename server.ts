@@ -671,7 +671,7 @@ app.get("/api/admin/dashboard", async (req, res) => {
       result.leads = { byStage, total: periodLeads.length };
       result.conversion = { rate: periodLeads.length ? converted / periodLeads.length * 100 : 0, converted, qualified: byStage.qualified || 0 };
     }
-    if (can("billing") || can("finance") || can("courses")) result.topCourses = topCourses;
+    if (can("billing") || can("finance")) result.topCourses = topCourses;
     if (can("billing") || can("finance")) result.overdueInvoices = overdueInvoices;
     if (can("users") || can("courses")) result.students = { active: activeEnrollments.length, atRisk: 0 };
     if (can("users")) result.certificates = { issued: issuedCertificates };
