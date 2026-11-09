@@ -1565,22 +1565,22 @@ app.post("/api/admin/groups/:id/enroll", async (req, res) => {
     if (!studentId) return res.status(400).json({ error: "studentId es obligatorio." });
     transaction = await beginFirestoreTransaction();
     const [group, student] = await Promise.all([fsGetInTransaction("course_groups", groupId, transaction), fsGetInTransaction("users", studentId, transaction)]);
-    if (!group || !student || student.role !== "alumno") return res.status(404).json({ error: "Grupo o alumno no encontrado." });
-    if (!["planned", "active"].includes(group.status)) return res.status(409).json({ error: "El grupo no acepta matrículas." });
-    if (Number(group.enrolledCount || 0) >= Number(group.capacity || 0)) return res.status(409).json({ error: "El grupo alcanzó su capacidad máxima." });
+    if (!group || !student || student.role !== "alumno") { await rollbackFirestoreTransaction(transaction); transaction = ""; return res.status(404).json({ error: "Grupo o alumno no encontrado." }); }
+    if (!["planned", "active"].includes(group.status)) { await rollbackFirestoreTransaction(transaction); transaction = ""; return res.status(409).json({ error: "El grupo no acepta matrículas." }); }
+    if (Number(group.enrolledCount || 0) >= Number(group.capacity || 0)) { await rollbackFirestoreTransaction(transaction); transaction = ""; return res.status(409).json({ error: "El grupo alcanzó su capacidad máxima." }); }
     const course = await fsGetInTransaction("courses", group.courseId, transaction);
-    if (!course || !["published", "active"].includes(String(course.status || ""))) return res.status(409).json({ error: "El curso no está disponible." });
+    if (!course || !["published", "active"].includes(String(course.status || ""))) { await rollbackFirestoreTransaction(transaction); transaction = ""; return res.status(409).json({ error: "El curso no está disponible." }); }
     const enrollmentId = academicId(studentId + "_" + group.courseId);
     const existing = await fsGetInTransaction("enrollments", enrollmentId, transaction);
-    if (existing?.groupId) return res.status(409).json({ error: "El alumno ya está asignado a un grupo de este curso." });
-    if (existing && ["cancelled", "suspended", "completed"].includes(String(existing.status))) return res.status(409).json({ error: "La matrícula existente no admite reasignación a un grupo." });
+    if (existing?.groupId) { await rollbackFirestoreTransaction(transaction); transaction = ""; return res.status(409).json({ error: "El alumno ya está asignado a un grupo de este curso." }); }
+    if (existing && ["cancelled", "suspended", "completed"].includes(String(existing.status))) { await rollbackFirestoreTransaction(transaction); transaction = ""; return res.status(409).json({ error: "La matrícula existente no admite reasignación a un grupo." }); }
     const now = new Date().toISOString(), paidUpfront = Number(course.price || 0) <= 0;
     const enrollment = existing ? { ...existing, groupId, updatedAt: now, updatedBy: user.uid } : { userId: studentId, courseId: group.courseId, groupId, progress: 0, completed: false, courseCompleted: false, status: paidUpfront ? "active" : "pending_payment", paymentStatus: paidUpfront ? "not_required" : "pending_verification", paymentPlan: String(req.body?.paymentPlan || "upfront"), createdAt: now, updatedAt: now };
     const nextGroup = { ...group, enrolledCount: Number(group.enrolledCount || 0) + 1, updatedAt: now, updatedBy: user.uid };
     await fsCommitTransaction([fsUpdate("course_groups", groupId, nextGroup), existing ? fsUpdate("enrollments", enrollmentId, enrollment) : fsCreate("enrollments", enrollmentId, enrollment), auditWrite(user.uid, existing ? "enrollment.group.assigned" : "enrollment.group.created", "alumnos.matriculas", enrollmentId, existing || null, enrollment), fsCreate("outbox", "enrollment_group_assigned_" + enrollmentId, { eventId: "enrollment.group.assigned." + enrollmentId, type: "enrollment.group.assigned.v1", aggregate: "enrollment", aggregateId: enrollmentId, schemaVersion: 1, payload: { enrollmentId, studentId, courseId: group.courseId, groupId }, status: "pending", attempts: 0, createdAt: now })], transaction);
     transaction = "";
     return res.status(201).json({ id: enrollmentId, ...enrollment });
-  } catch (error: any) { console.error("[Groups] enrollment failed:", error); return res.status(error.status === 409 ? 409 : 500).json({ error: error.message || "No se pudo reservar el cupo." }); }
+  } catch (error: any) { if (transaction) await rollbackFirestoreTransaction(transaction); console.error("[Groups] enrollment failed:", error); return res.status(error.status === 409 ? 409 : 500).json({ error: error.message || "No se pudo reservar el cupo." }); }
 });
 
 app.patch("/api/admin/sessions/:sessionId", async (req, res) => {
@@ -1758,19 +1758,20 @@ app.post("/api/admin/enrollments/:id/complete", async (req, res) => {
     const id = academicId(String(req.params.id));
     transaction = await beginFirestoreTransaction();
     const enrollment = await fsGetInTransaction("enrollments", id, transaction);
-    if (!enrollment) return res.status(404).json({ error: "Matrícula no encontrada." });
+    if (!enrollment) { await rollbackFirestoreTransaction(transaction); transaction = ""; return res.status(404).json({ error: "Matrícula no encontrada." }); }
+    if (enrollment.status === "completed") { await rollbackFirestoreTransaction(transaction); transaction = ""; return res.json({ id, status: "completed", alreadyCompleted: true }); }
     const course = await fsGetInTransaction("courses", enrollment.courseId, transaction);
-    if (!course || (Number(course.price || 0) > 0 && enrollment.paymentStatus !== "paid") || enrollment.status === "pending_payment") return res.status(409).json({ error: "La matrícula requiere pago verificado." });
+    if (!course || (Number(course.price || 0) > 0 && enrollment.paymentStatus !== "paid") || enrollment.status === "pending_payment") { await rollbackFirestoreTransaction(transaction); transaction = ""; return res.status(409).json({ error: "La matrícula requiere pago verificado." }); }
     const performance = enrollment.groupId ? await fsGetInTransaction("student_performance", academicId(enrollment.userId + "_" + enrollment.groupId), transaction) : null;
     const settings = await fsGetInTransaction("settings", "enrollment", transaction);
     const minAttendance = Math.max(0, Math.min(100, Number(settings?.min_attendance ?? settings?.minAttendance ?? 75)));
     const minScore = Math.max(0, Math.min(100, Number(settings?.min_score ?? settings?.minScore ?? 60)));
-    if (enrollment.groupId && !meetsCompletionThresholds(performance, minAttendance, minScore)) return res.status(409).json({ error: "No cumple los umbrales académicos para completar la matrícula.", required: { attendancePct: minAttendance, avgScorePct: minScore }, actual: performance || null });
+    if (enrollment.groupId && !meetsCompletionThresholds(performance, minAttendance, minScore)) { await rollbackFirestoreTransaction(transaction); transaction = ""; return res.status(409).json({ error: "No cumple los umbrales académicos para completar la matrícula.", required: { attendancePct: minAttendance, avgScorePct: minScore }, actual: performance || null }); }
     const now = new Date().toISOString(), next = { ...enrollment, status: "completed", completed: true, courseCompleted: true, updatedAt: now, completedAt: now, completedBy: user.uid };
     await fsCommitTransaction([fsUpdate("enrollments", id, next), auditWrite(user.uid, "enrollment.completed", "alumnos.matriculas", id, { status: enrollment.status }, { status: "completed", performance }), fsCreate("outbox", "enrollment_completed_" + id, { eventId: "enrollment.completed." + id, type: "enrollment.completed.v1", aggregate: "enrollment", aggregateId: id, schemaVersion: 1, payload: { enrollmentId: id, studentId: enrollment.userId, courseId: enrollment.courseId, groupId: enrollment.groupId || null }, status: "pending", attempts: 0, createdAt: now })], transaction);
     transaction = "";
     return res.json({ id, status: "completed", performance });
-  } catch (error: any) { console.error("[Enrollment] complete failed:", error); return res.status(409).json({ error: "No se pudo completar la matrícula; revisa los requisitos y vuelve a intentar." }); }
+  } catch (error: any) { if (transaction) await rollbackFirestoreTransaction(transaction); console.error("[Enrollment] complete failed:", error); return res.status(409).json({ error: "No se pudo completar la matrícula; revisa los requisitos y vuelve a intentar." }); }
 });
 
 
