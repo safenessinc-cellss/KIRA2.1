@@ -14,6 +14,14 @@ Zona horaria America/Sao_Paulo, POST con Authorization: Bearer <CRON_SECRET>.
 - Diario 08:00: /api/cron/invoices/reconcile.
 Cloud Scheduler no se crea automáticamente por el código; debe provisionarse en el proyecto GCP del backend. Las ejecuciones deben monitorearse y alertar por HTTP != 2xx.
 
+## Outbox académico (asistencia y evaluaciones)
+
+- Configurar Cloud Scheduler con POST a `/api/internal/academic-outbox/dispatch` cada 1–5 minutos, Authorization: Bearer `KIRA_OUTBOX_CRON_SECRET`.
+- El endpoint procesa únicamente `session.attendance_marked.v1` y `assessment.graded.v1`; otros eventos quedan disponibles para sus consumidores.
+- La proyección `student_performance/{studentId}_{groupId}` se recalcula idempotentemente desde el outbox. Los eventos usan lease, reintento exponencial y estado `failed` después de 8 intentos.
+- Monitorizar respuestas HTTP, cantidad pending/failed y `lastError`; no editar la proyección desde el cliente.
+- Si el worker falla, corregir la causa y reactivar/reintentar el evento mediante proceso administrativo auditado; nunca marcarlo processed manualmente.
+
 ## Incidentes
 
 ### Webhook de pago no confirma
