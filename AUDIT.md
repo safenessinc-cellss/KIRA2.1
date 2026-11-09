@@ -46,24 +46,29 @@ La revisión se realizó sobre los archivos del repositorio mediante GitHub. Est
 | Variable esperada | Resultado baseline |
 |---|---|
 | `FIREBASE_PROJECT_ID` | ✅ server usa `process.env.FIREBASE_PROJECT_ID` |
-| `FIREBASE_CLIENT_EMAIL` | ❌ no se observó consumo; backend usa JSON de service account |
-| `FIREBASE_PRIVATE_KEY` | ❌ no se observó consumo; backend usa JSON de service account |
+| `FIREBASE_CLIENT_EMAIL` | ✅ server usa `process.env.FIREBASE_CLIENT_EMAIL` como alternativa a JSON legacy |
+| `FIREBASE_PRIVATE_KEY` | ✅ server usa `process.env.FIREBASE_PRIVATE_KEY` como alternativa a JSON legacy |
 | `STRIPE_SECRET_KEY` | ✅ server |
-| `STRIPE_WEBHOOK_SECRET` | ⚠️ referencia debe confirmarse en cada webhook existente |
-| `GOOGLE_GENAI_API_KEY` | ❌ server usa `GEMINI_API_KEY` |
-| `APP_URL` | ⚠️ verificar callbacks/URLs de backend; no asumir equivalencia con `KIRA_APP_URL` |
+| `STRIPE_WEBHOOK_SECRET` | ✅ server verifica firma en `/api/webhooks/stripe` |
+| `GOOGLE_GENAI_API_KEY` | ✅ server usa `process.env.GOOGLE_GENAI_API_KEY` con fallback `GEMINI_API_KEY` |
+| `APP_URL` | ✅ server usa `process.env.APP_URL` con fallback `KIRA_APP_URL` |
 | `VITE_FIREBASE_API_KEY` | ✅ client |
 | `VITE_FIREBASE_AUTH_DOMAIN` | ✅ client |
 | `VITE_FIREBASE_PROJECT_ID` | ✅ client |
 | `VITE_FIREBASE_STORAGE_BUCKET` | ✅ client |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | ✅ client |
 | `VITE_FIREBASE_APP_ID` | ✅ client |
-| `VITE_STRIPE_PUBLISHABLE_KEY` | ⚠️ no confirmada |
-| `VITE_APP_URL` | ❌ no confirmada |
+| `VITE_STRIPE_PUBLISHABLE_KEY` | ⚠️ no consumida: el checkout actual es redirección alojada por backend |
+| `VITE_APP_URL` | ⚠️ no consumida: frontend usa rutas relativas/origen actual |
 
 **Importante:** esto informa referencias en código, no confirma la existencia de valores en Vercel. No se consultó ni modificó el dashboard de variables.
 
-## Evidencia de pruebas y despliegue\n- Workflow GitHub Actions: \\`KIRA 2.1 Release Verification\\`; primera ejecución falló en el paso de instalación por lockfile inconsistente, antes de TypeScript/build.\n- Reintento configurado con \\`npm install --no-audit --no-fund\\`; resultado pendiente.\n- Vercel Preview API: HTTP 402 \\`api-deployments-free-per-day\\`; no se creó deployment nuevo.\n\n## Baseline de pruebas
+## Evidencia de pruebas y despliegue
+- Workflow GitHub Actions: \\`KIRA 2.1 Release Verification\\`; primera ejecución falló en el paso de instalación por lockfile inconsistente, antes de TypeScript/build.
+- Reintento configurado con \\`npm install --no-audit --no-fund\\`; resultado pendiente.
+- Vercel Preview API: HTTP 402 \\`api-deployments-free-per-day\\`; no se creó deployment nuevo.
+
+## Baseline de pruebas
 
 - `npm run build`: pendiente de ejecución en runner/Preview.
 - `tsc --noEmit`: pendiente de ejecución en runner/Preview.
@@ -72,6 +77,26 @@ La revisión se realizó sobre los archivos del repositorio mediante GitHub. Est
 - Secret scan de `src/` y `dist/`: pendiente de ejecutar en runner; se detectó una inyección de env Gemini en `vite.config.ts`.
 - Firestore Emulator y smoke tests por rol: pendientes.
 
-## Estado de implementación en release/v2.1.0\n\n| Fase | Estado actual | Evidencia / pendiente |\n|---|---|---|\n| 0 — Auditoría | ✅ | Baseline y env vars registrados aquí; lockfile stale detectado por CI. |\n| 1 — Fundaciones | ⚠️ | Tipos compartidos, hooks Firestore, ProtectedRoute con redirect por rol, alias env server, reglas owner-only para journals/nudges y HR, índices. Se reutiliza singleton Firebase cliente existente y REST Firestore server-side; no se añade SDK firebase-admin porque duplicaría el adapter actual. Falta emulador verde. |\n| 2 — Alumno | ⚠️ | Badge Bronce/Plata/Oro/Platino, Journal CRUD sobre colección legacy \\`journals\\`, análisis IA, nudge persistente, desbloqueo server-side transaccional y helper de progreso. Faltan review transaccional/aggregate coach y prueba de tiers con datos reales. |\n| 3 — Coach | ⚠️ | Se reutiliza command center, editor DnD/ReactQuill y checkout existente; media upload limitado a 5 MB; API de análisis de sesión autenticada. Falta captura AudioContext/chunks ≤10s, persistencia completa E2E y pruebas de membresía recurrente. |\n| 4 — Super Admin | ⚠️ | Analítica agregada con ventanas 24h/7d/30d/90d, split 70/30, DAU/WAU y churn proxy; insights cache 1h; tab White Label reutiliza settings/website y onSnapshot. Burnout sigue no disponible si no hay agregado publicado. |\n| 5 — HR B2B | ⚠️ | Dashboard solo agrega wellbeingAggregates; lectura de miembros individuales denegada a HR/company_admin; PRIVACY.md. Falta prueba negativa con emulador y comprobar el orgId real de cada tenant. |\n| 6 — KIRA AI | ⚠️ | AIChat usa /api/ai/chat con contexto de ruta y rate-limit 10/min por uid; fallback UI; rutas AI específicas autenticadas. Falta smoke test y revisar cuotas reales. |\n| 7 — Hardening | ❌ | No aprobar hasta CI build, typecheck, lint, tests Firestore y secret scan verdes. Primera corrida falló en npm ci por lockfile desincronizado; segundo workflow en curso. |\n| 8 — Deploy | ❌ | Vercel Preview bloqueado por límite API de deployments (HTTP 402, retry 24h). No se ha promovido a producción ni desplegado Firestore rules/indexes. |\n\n## Próximas fases
+## Estado de implementación en release/v2.1.0
 
-Fase 1 debe preservar `src/firebase.ts` como singleton y adaptar tipos/hooks/rutas/rules sin romper el esquema existente. Fases 2–6 se completarán por módulos, con writes protegidos por backend o reglas y sin exponer datos privados. La promoción de producción solo se hará si la fase 7 queda verde con evidencia reproducible.
+| Fase | Estado actual | Evidencia / pendiente |
+|---|---|---|
+| 0 — Auditoría | ✅ | Baseline y env vars registrados aquí; lockfile stale detectado por CI. |
+| 1 — Fundaciones | ⚠️ | Tipos compartidos, hooks Firestore, ProtectedRoute con redirect por rol, alias env server, reglas owner-only para journals/nudges y HR, índices. Se reutiliza singleton Firebase cliente existente y REST Firestore server-side; no se añade SDK firebase-admin porque duplicaría el adapter actual. Falta emulador verde. |
+| 2 — Alumno | ⚠️ | Badge Bronce/Plata/Oro/Platino, Journal CRUD sobre colección legacy \\`journals\\`, análisis IA, nudge persistente, desbloqueo server-side transaccional y helper de progreso. Faltan review transaccional/aggregate coach y prueba de tiers con datos reales. |
+| 3 — Coach | ⚠️ | Se reutiliza command center, editor DnD/ReactQuill y checkout existente; media upload limitado a 5 MB; API de análisis de sesión autenticada. Falta captura AudioContext/chunks ≤10s, persistencia completa E2E y pruebas de membresía recurrente. |
+| 4 — Super Admin | ⚠️ | Analítica agregada con ventanas 24h/7d/30d/90d, split 70/30, DAU/WAU y churn proxy; insights cache 1h; tab White Label reutiliza settings/website y onSnapshot. Burnout sigue no disponible si no hay agregado publicado. |
+| 5 — HR B2B | ⚠️ | Dashboard solo agrega wellbeingAggregates; lectura de miembros individuales denegada a HR/company_admin; PRIVACY.md. Falta prueba negativa con emulador y comprobar el orgId real de cada tenant. |
+| 6 — KIRA AI | ⚠️ | AIChat usa /api/ai/chat con contexto de ruta y rate-limit 10/min por uid; fallback UI; rutas AI específicas autenticadas. Falta smoke test y revisar cuotas reales. |
+| 7 — Hardening | ❌ | No aprobar hasta CI build, typecheck, lint, tests Firestore y secret scan verdes. Primera corrida falló en npm ci por lockfile desincronizado; segundo workflow en curso. |
+| 8 — Deploy | ❌ | Vercel Preview bloqueado por límite API de deployments (HTTP 402, retry 24h). No se ha promovido a producción ni desplegado Firestore rules/indexes. |
+
+## Decisiones de compatibilidad
+- `src/firebase.ts` se conserva como singleton de cliente; no se duplica con `lib/firebase.ts`.
+- El acceso de servidor usa el adaptador REST de Firestore ya presente en `server.ts`, con cache de token; no se introduce `firebase-admin` porque no está en dependencias y duplicaría la capa actual.
+- `journals` sigue siendo la colección canónica durante la migración. Se añadieron rules owner-only para `journal_entries`, pero el portal CRUD sigue usando `journals` para no perder entradas existentes.
+- `membershipStatus` y `membershipExpiresAt` se mantienen; no se crea un campo paralelo `coachMembership`.
+- Los niveles de energía usan umbrales iniciales Bronce 0–99, Plata 100–499, Oro 500–999 y Platino 1000+. Deben confirmarse como regla comercial antes de anunciar recompensas.
+- La analítica reporta churn como proxy por estado de membresía y burnout solo cuando exista agregado publicado; no inventa datos.
+
+La promoción de producción solo se hará si la fase 7 queda verde con evidencia reproducible y existe Preview accesible.
