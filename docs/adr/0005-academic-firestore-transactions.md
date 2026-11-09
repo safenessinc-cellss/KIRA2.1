@@ -12,7 +12,8 @@ KIRA usa Firebase/Firestore como única fuente de verdad. El flujo académico de
 3. La asistencia usa ID determinista `{sessionId}_{studentId}` y creación condicional para idempotencia.
 4. Los cambios relevantes escriben audit log y evento outbox en el mismo commit cuando la operación es transaccional.
 5. `student_performance` es una proyección derivada, nunca una fuente editable desde cliente; los eventos de asistencia/evaluación se consumen desde outbox con lease, reintentos y deduplicación.
-6. Solo `enrollment.status=completed` permite emitir certificado; finalización requiere pago confirmado y umbrales académicos.
+6. Solo `enrollment.status=completed` permite emitir certificado; finalización requiere pago confirmado y umbrales académicos. Firestore Rules impiden que el cliente modifique `completed`, `courseCompleted`, `completedAt` o `completionConfirmedBy`; solo el endpoint Express transaccional puede completar.
+7. `lessonsCompleted` se deriva de asistencias `present`/`late` de sesiones elegibles y se persiste junto con attendancePct y avgScorePct en la proyección.
 7. Las colecciones operativas nuevas se deniegan a clientes en Firestore Rules; el backend Express aplica autenticación y autorización.
 
 8. Los locks `schedule_locks` reservan intervalos por coach/sala y día UTC dentro de una transacción; el uso de buckets UTC evita divergencias entre zonas horarias de grupos.

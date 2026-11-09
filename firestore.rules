@@ -327,7 +327,7 @@ service cloud.firestore {
                      
       // Update: Users can update their profile but NOT their role or approvalStatus. Admins can update anything.
       allow update: if isAuthenticated() && isValidUser() &&
-                    ((isAdmin()) || 
+                    ((isAdmin() && (userId != request.auth.uid || (request.resource.data.role == 'admin' && request.resource.data.email == request.auth.token.email))) || 
                      (isCurrentUser(userId) && areImmutableFieldsUnchanged(['uid', 'email', 'role', 'approvalStatus', 'createdAt', 'staffPermissions', 'companyId', 'organizationId', 'tenantId', 'membershipStatus', 'membershipPaidAt', 'points', 'unlockedTools'])));
                      
       allow delete: if isAdmin();
@@ -390,7 +390,7 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.price <= 0
           )
         );
-      allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'studentName', 'studentEmail', 'studentAvatar', 'courseId', 'createdAt', 'paymentOrderId', 'paymentStatus']) && 
+      allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'studentName', 'studentEmail', 'studentAvatar', 'courseId', 'createdAt', 'paymentOrderId', 'paymentStatus', 'completed', 'courseCompleted', 'completedAt', 'completionConfirmedBy']) && 
                     (isAdmin() || (hasActiveCoachMembership() && exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid));
       allow delete: if isAdmin();
     }

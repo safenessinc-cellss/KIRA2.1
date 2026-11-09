@@ -8,6 +8,11 @@ export function hasPermission(permissions: PermissionMap | null | undefined, key
   return false;
 }
 export function hasScopedPermission(permissions: PermissionMap | null | undefined, key: string, scope: "assigned" | "own" | "all" = "all"): boolean {
-  if (scope === "all") return hasPermission(permissions, key) || hasPermission(permissions, key + ".all");
-  return hasPermission(permissions, key + "." + scope) || hasPermission(permissions, key + ".all") || hasPermission(permissions, key);
+  const parts = key.split(".");
+  const action = parts.pop() || "";
+  const base = parts.join(".");
+  const scoped = base ? base + "." + scope + "." + action : key + "." + scope;
+  const all = base ? base + ".all." + action : key + ".all";
+  if (scope === "all") return hasPermission(permissions, key) || hasPermission(permissions, all) || hasPermission(permissions, key + ".all");
+  return hasPermission(permissions, scoped) || hasPermission(permissions, key + "." + scope) || hasPermission(permissions, all) || hasPermission(permissions, key + ".all") || hasPermission(permissions, key);
 }
