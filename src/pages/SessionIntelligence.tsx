@@ -392,6 +392,8 @@ export default function SessionIntelligence() {
         audioStored: false,
         createdAt: serverTimestamp()
       });
+      setConsentConfirmed(false);
+      setConsentConfirmed(false);
 
       setStatus('idle');
     } catch (e) {
