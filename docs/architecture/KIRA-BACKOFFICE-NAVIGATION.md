@@ -31,6 +31,53 @@
 
 La sidebar se implementa en \`src/pages/Admin.tsx\` como componente exportado \`Sidebar\`. Los contadores se consultan al backend; la navegación usa la matriz legacy \`staffPermissions\` como puente. El servidor vuelve a comprobar permisos en cada endpoint.
 
+### Diagrama Mermaid del árbol y sus dependencias
+
+\`\`\`mermaid
+flowchart TD
+  ROOT[KIRA Backoffice]
+  ROOT --> DASH[Dashboard]
+  ROOT --> CRM[Embudo de Ventas]
+  CRM --> LEADS[Leads Captados]
+  CRM --> CONTACT[Intentos de Contacto]
+  CRM --> CONVERT[Inscripciones Confirmadas]
+  ROOT --> COURSES[Gestión de Cursos]
+  COURSES --> CATALOG[Todos los Cursos]
+  COURSES --> GROUPS[Grupos y Horarios]
+  COURSES --> LESSONS[Módulos y Clases]
+  ROOT --> STUDENTS[Alumnos y Matrículas]
+  STUDENTS --> BASE[Base de Alumnos]
+  STUDENTS --> CONTRACTS[Contratos y Matrículas]
+  STUDENTS --> ATTEND[ Rendimiento / Asistencia]
+  ROOT --> FINANCE[Finanzas]
+  FINANCE --> INVOICES[Mensualidades / Cuotas]
+  FINANCE --> GATEWAYS[Pasarela de Pago]
+  FINANCE --> COUPONS[Cupones de Descuento]
+  ROOT --> CONFIG[Configuración]
+  CONFIG --> INTEGRATIONS[Integraciones Landing / WhatsApp]
+  CONFIG --> PERMISSIONS[Usuarios y Permisos]
+  LEADS --> DBCRM[(crmLeads)]
+  CONTACT --> DBINTERACTIONS[(crmInteractions)]
+  CONVERT --> DBENROLL[(enrollments)]
+  CATALOG --> DBCOURSES[(courses)]
+  GROUPS --> DBGROUPS[(courseGroups / groupSessions)]
+  LESSONS --> DBLESSONS[(modules / lessons)]
+  BASE --> DBUSERS[(users)]
+  CONTRACTS --> DBCONTRACTS[(contracts / enrollments)]
+  ATTEND --> DBATTEND[(attendance / assessments)]
+  INVOICES --> DBINVOICES[(invoices)]
+  GATEWAYS --> DBPAYMENTS[(paymentSettings / paymentGateways)]
+  COUPONS --> DBCOUPONS[(paymentCoupons)]
+  INTEGRATIONS --> DBINTEGRATIONS[(integrations / landingForms / webhookInbox)]
+  PERMISSIONS --> DBPERMS[(rolePermissions)]
+  DBCRM --> OUTBOX[(outbox)]
+  DBENROLL --> OUTBOX
+  DBPAYMENTS --> OUTBOX
+  OUTBOX --> AUDIT[(auditLogs)]
+  OUTBOX --> NOTIFY[Notifications]
+  OUTBOX --> KPI[(dashboardKpis)]
+\`\`\`
+
 ## 2. Mapeo y estado real
 
 | Nodo | Implementación | Estado en esta rama |
@@ -157,7 +204,20 @@ El vertical CRM persiste los eventos en \`outbox\`, pero aún no existe un worke
 | Integraciones | No implementado |
 | Usuarios y permisos | RBAC legacy; role_permissions y MFA step-up pendientes |
 
-## 9. Runbook inicial
+## 10. Jobs programados: estado y diseño objetivo
+
+**No hay cron de cuotas ni conciliación habilitado todavía.** No se crea un job que llame a endpoints inexistentes o que marque pagos por inferencia.
+
+| Job objetivo | Horario | Operación | Estado |
+|---|---|---|---|
+| Generación de cuotas | Diario 06:00, America/Sao_Paulo | Crear invoice por enrollment + periodo con clave única determinista | Pendiente de invoices y paymentPlan |
+| Marcar vencidas | Diario 06:10, America/Sao_Paulo | Transición open → overdue según dueDate | Pendiente de invoices |
+| Conciliación de pagos | Diario 07:00, America/Sao_Paulo | Comparar proveedor, order, transaction e invoice; generar discrepancias auditadas | Parcial en pagos, job pendiente |
+| Refresco de KPIs | Cada 5 minutos | Recalcular agregados autorizados y persistir dashboardKpis | Pendiente de worker durable |
+
+La implementación deberá usar Vercel Cron Jobs o Cloud Scheduler/Cloud Tasks, con autenticación interna, idempotencia, lock/lease y auditoría. El job no debe ejecutar cobros ni emitir certificados desde el cliente.
+
+## 11. Runbook inicial
 
 ### Clave CRM no configurada
 1. Revisar variable Vercel \`KIRA_CRM_PII_ENCRYPTION_KEY\` en Preview y Production.
