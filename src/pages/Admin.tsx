@@ -17,7 +17,7 @@ import { Funnel, PhoneCall, BadgeCheck, GraduationCap, CalendarDays, Layers3, Us
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'activity' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions';
+type AdminTab = 'dashboard' | 'activity' | 'certificates' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions';
 
 type BackofficeItem = { id: AdminTab; label: string; icon: React.ReactNode; permission: string; ready: boolean; countKey?: 'leads' | 'overdue' };
 
@@ -267,7 +267,8 @@ export function AdminMonitor() {
     { label: 'Alumnos y Matrículas', items: [
       { id: 'students', label: 'Base de Alumnos', icon: <UsersRound size={18}/>, permission: 'users', ready: true },
       { id: 'contracts', label: 'Contratos y Matrículas', icon: <FileSignature size={18}/>, permission: 'users', ready: true },
-      { id: 'attendance', label: 'Rendimiento / Asistencia', icon: <ClipboardCheck size={18}/>, permission: 'courses', ready: true }
+      { id: 'attendance', label: 'Rendimiento / Asistencia', icon: <ClipboardCheck size={18}/>, permission: 'courses', ready: true },
+      { id: 'certificates', label: 'Certificados', icon: <FileText size={18}/>, permission: 'superadmin', ready: true }
     ] },
     { label: 'Finanzas', items: [
       { id: 'invoices', label: 'Mensualidades / Cuotas', icon: <Wallet size={18}/>, permission: 'finance', ready: true, countKey: 'overdue' },
@@ -291,6 +292,7 @@ export function AdminMonitor() {
       case 'courses': return <CMSView />;
       case 'groups': return <AcademicGroupsView />;
       case 'attendance': return <AcademicPerformanceView />;
+      case 'certificates': return <CertificateManagementView />;
       case 'contracts': return <EnrollmentContractsView />;
       case 'invoices': return <InvoicesView />;
       case 'lessons': return <CMSView />;
