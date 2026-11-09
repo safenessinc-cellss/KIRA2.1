@@ -482,6 +482,7 @@ app.post("/api/webhooks/stripe", async (req: any, res) => {
   } catch (error: any) {
     if (error.status === 409) return res.status(200).json({ received: true, duplicate: true });
     console.error("[Stripe] Fulfillment failed:", error);
+    await fsCommit([fsCreate("webhook_events",idSafe("stripe_"+event.id),{provider:"stripe",eventId:event.id,status:"error",errorCode:"fulfillment_failed",createdAt:new Date().toISOString()})]).catch(()=>{});
     return res.status(500).json({ error: "Confirmación pendiente; Stripe podrá reintentar el webhook." });
   }
 });
@@ -508,6 +509,7 @@ app.post("/api/webhooks/mercadopago", async (req: any, res) => {
   } catch (error: any) {
     if (error.status === 409) return res.status(200).json({ received: true, duplicate: true });
     console.error("[MercadoPago] Fulfillment failed:", error);
+    await fsCommit([fsCreate("webhook_events",idSafe("mercadopago_"+paymentId),{provider:"mercadopago",eventId:paymentId,status:"error",errorCode:"fulfillment_failed",createdAt:new Date().toISOString()})]).catch(()=>{});
     return res.status(500).json({ error: "Confirmación pendiente; Mercado Pago podrá reintentar el webhook." });
   }
 });
@@ -872,8 +874,12 @@ app.post("/api/admin/stripe/test", async (req: AdminRequest,res) => {
   catch(e){console.error("[Admin stripe test]",e);res.status(502).json({connected:false,error:"Stripe no respondió correctamente."});}
 });
 app.get("/api/admin/webhooks", async (_req,res) => {
-  try{const [events,old]=await Promise.all([fsList("webhook_events"),fsList("paymentEvents")]);res.json({items:[...events,...old].sort((a,b)=>String(b.createdAt||b.processedAt).localeCompare(String(a.createdAt||a.processedAt))).slice(0,100)});}
-  catch(e){console.error(e);res.status(500).json({error:"No fue posible cargar webhooks."});}
+  try{
+    const [events,old]=await Promise.all([fsList("webhook_events"),fsList("paymentEvents")]);
+    const since=Date.now()-24*60*60*1000;
+    const errorCount24h=events.filter(x=>x.status==="error"&&new Date(x.createdAt||0).getTime()>=since).length;
+    res.json({items:[...events,...old].sort((a,b)=>String(b.createdAt||b.processedAt).localeCompare(String(a.createdAt||a.processedAt))).slice(0,100),errorCount24h,alert:errorCount24h>3});
+  }catch(e){console.error(e);res.status(500).json({error:"No fue posible cargar webhooks."});}
 });
 app.post("/api/admin/webhooks/:id/reprocess", async (req: AdminRequest,res) => {
   try{const id=String(req.params.id),event=await fsGet("webhook_events",id);if(!event)return res.status(404).json({error:"Evento no encontrado."});if(event.status==="processed")return res.status(409).json({error:"El evento ya está procesado."});await fsCommit([fsUpdate("webhook_events",id,{...event,reprocessRequestedAt:new Date().toISOString(),reprocessRequestedBy:req.adminUser!.uid})]);await adminAudit(req,"webhook.reprocess_requested","webhook_event",id);res.json({success:true,queued:true});}
