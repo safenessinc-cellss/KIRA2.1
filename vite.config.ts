@@ -47,7 +47,7 @@ export default defineConfig(({mode}) => {
               options: { cacheName: 'kira-fonts', expiration: { maxEntries: 20, maxAgeSeconds: 2592000 } }
             },
             {
-              urlPattern: /\.(?:png|jpg|jpeg|webp|svg)$/i,
+              urlPattern: /\/(?:assets|icons)\//,
               handler: 'CacheFirst',
               options: { cacheName: 'kira-images', expiration: { maxEntries: 100, maxAgeSeconds: 604800 } }
             }
