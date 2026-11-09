@@ -12,25 +12,9 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
-        manifest: {
-          name: 'Kira Coach',
-          short_name: 'KiraCoach',
-          description: 'Ecosistema de Bienestar',
-          theme_color: '#1B4D5D',
-          icons: [
-            {
-              src: '/assets/kira-logo.png',
-              sizes: '192x192',
-              type: 'image/png'
-            },
-            {
-              src: '/assets/kira-logo.png',
-              sizes: '512x512',
-              type: 'image/png'
-            }
-          ]
-        },
+        includeAssets: ['manifest.webmanifest', 'assets/kira-logo.png'],
+        manifest: false,
+        scope: '/',
         workbox: {
           maximumFileSizeToCacheInBytes: 5000000
         }
