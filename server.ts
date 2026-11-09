@@ -673,7 +673,7 @@ app.get("/api/admin/dashboard", async (req, res) => {
     }
     if (can("billing") || can("finance")) result.topCourses = topCourses;
     if (can("billing") || can("finance")) result.overdueInvoices = overdueInvoices;
-    if (can("users") || can("courses")) result.students = { active: activeEnrollments.length, atRisk: 0 };
+    if (can("users") || can("courses")) result.students = { active: activeEnrollments.length, atRisk: null };
     if (can("users")) result.certificates = { issued: issuedCertificates };
     return res.json(result);
   } catch (error: any) {
