@@ -1322,11 +1322,17 @@ async function writeAcademicEvent(userId: string, type: string, aggregate: strin
     auditWrite(userId, type, nodePath, aggregateId, before, after)
   ]);
 }
-function sessionDayKeys(start: Date, end: Date, timezone: string): string[] {
+function sessionDayKeys(start: Date, end: Date, _timezone: string): string[] {
+  // UTC day buckets are shared by every timezone, preventing concurrent sessions
+  // from escaping the same coach/room lock merely because groups use different zones.
   const keys = new Set<string>();
-  const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: timezone || "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" });
-  for (let time = start.getTime(); time < end.getTime(); time += 6 * 60 * 60 * 1000) keys.add(formatter.format(new Date(time)));
-  keys.add(formatter.format(new Date(end.getTime() - 1)));
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const last = new Date(end.getTime() - 1);
+  const lastDay = Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate());
+  while (cursor.getTime() <= lastDay) {
+    keys.add(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
   return Array.from(keys);
 }
 async function reserveSessionScheduleLocks(transaction: string, group: any, sessionId: string, startsAt: Date, endsAt: Date, room: string) {
