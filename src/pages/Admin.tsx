@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../hooks/useAuth';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
@@ -10,10 +11,11 @@ import { AdminBooksView } from './AdminBooksView';
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates' | 'companies';
+type AdminTab = 'usercenter' | 'coachapproval' | 'certapproval' | 'paymentsConsole' | 'moderation' | 'insights' | 'configuration' | 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates' | 'companies';
 
 export function AdminMonitor() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [profile, setProfile] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -40,7 +42,15 @@ export function AdminMonitor() {
 
   const navItems = [
     { id: 'dashboard', label: 'Resumen ejecutivo', icon: <LayoutDashboard size={18}/>, category: 'Inicio y métricas' },
-    { id: 'analytics', label: 'Analítica e indicadores', icon: <TrendingUp size={18}/>, category: 'Inicio y métricas', perm: 'system' },
+    { id: 'analytics', label: 'Analytics', icon: <TrendingUp size={18}/>, category: 'Inicio y métricas', perm: 'system' },
+    { id: 'usercenter', label: 'Usuarios', icon: <Users size={18}/>, category: 'Personas y acceso', perm: 'users' },
+    { id: 'coachapproval', label: 'Coach Approvals', icon: <UserCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
+    { id: 'certapproval', label: 'Certificate Approvals', icon: <FileText size={18}/>, category: 'Academia y certificados', perm: 'users' },
+    { id: 'paymentsConsole', label: 'Pagos y Pasarela', icon: <CreditCard size={18}/>, category: 'Finanzas', perm: 'billing' },
+    { id: 'moderation', label: 'Moderación', icon: <ShieldAlert size={18}/>, category: 'Gobernanza', perm: 'system' },
+    { id: 'website', label: 'Branding', icon: <Palette size={18}/>, category: 'Gobernanza', perm: 'system' },
+    { id: 'insights', label: 'Insights IA', icon: <Sparkles size={18}/>, category: 'Gobernanza', perm: 'system' },
+    { id: 'configuration', label: 'Configuración', icon: <Settings size={18}/>, category: 'Gobernanza', superOnly: true },
     { id: 'approvals', label: 'Aprobaciones y onboarding', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
     { id: 'students', label: 'Gestión de alumnos', icon: <Users size={18}/>, category: 'Personas y acceso', perm: 'users' },
     { id: 'coaches', label: 'Gestión de coaches', icon: <UserCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
@@ -82,7 +92,7 @@ export function AdminMonitor() {
             <div key={cat} className="contents">
               <h3 className="col-span-full px-3 pb-1 pt-3 text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">{cat}</h3>
               {filteredNav.filter(n => n.category === cat).map(item => (
-                <NavButton key={item.id} active={activeTab === item.id} disabled={!canOpen(item)} onClick={() => { if (canOpen(item)) setActiveTab(item.id as AdminTab); }} icon={item.icon} label={item.label} />
+                <NavButton key={item.id} active={activeTab === item.id} disabled={!canOpen(item)} onClick={() => { if (!canOpen(item)) return; if (item.id === 'usercenter') navigate('/admin/users'); else if (item.id === 'coachapproval') navigate('/admin/coach-approvals'); else if (item.id === 'certapproval') navigate('/admin/certificate-approvals'); else if (item.id === 'paymentsConsole') navigate('/admin/payments'); else setActiveTab(item.id as AdminTab); }} icon={item.icon} label={item.label} />
               ))}
             </div>
           ))}
@@ -93,6 +103,10 @@ export function AdminMonitor() {
       <div className="min-w-0 w-full">
         {activeTab === 'dashboard' && hasPerm(navItems.find(i=>i.id==='dashboard')) && <GlobalDashboardView />}
         {activeTab === 'analytics' && hasPerm(navItems.find(i=>i.id==='analytics')) && <BIView />}
+          {activeTab === 'website' && hasPerm(navItems.find(i=>i.id==='website')) && <WebsiteConfigView />}
+          {activeTab === 'insights' && hasPerm(navItems.find(i=>i.id==='insights')) && <GlobalDashboardView />}
+          {activeTab === 'moderation' && hasPerm(navItems.find(i=>i.id==='moderation')) && <ModerationView />}
+          {activeTab === 'configuration' && isSuperAdmin && <SecurityView />}
 
         {activeTab === 'security' && isSuperAdmin && <SecurityView />}
         {activeTab === 'companies' && isSuperAdmin && <CompanyManagementView />}
