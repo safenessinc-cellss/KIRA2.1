@@ -367,8 +367,8 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
     }
 
     const items = Array.isArray(order.items) ? order.items : [];
-    const courseItems = Array.from(new Map(items.filter((item: any) => item.type === "course" || item.collectionName === "courses").map((item: any) => [String(item.id), item])).values());
-    const bookItems = Array.from(new Map(items.filter((item: any) => item.collectionName === "books" || item.type === "book").map((item: any) => [String(item.id), item])).values());
+    const courseItems: any[] = Array.from(new Map<string, any>(items.filter((item: any) => item.type === "course" || item.collectionName === "courses").map((item: any) => [String(item.id), item])).values());
+    const bookItems: any[] = Array.from(new Map<string, any>(items.filter((item: any) => item.collectionName === "books" || item.type === "book").map((item: any) => [String(item.id), item])).values());
     const membershipItems = items.filter((item: any) => item.type === "membership");
     if (membershipItems.length > 1) throw new Error("Una orden no puede incluir más de una membresía.");
     const buyerProfile = await fsGetInTransaction("users", order.userId, transaction);
@@ -709,6 +709,13 @@ async function fsCommitTransaction(writes: any[], transaction: string): Promise<
     throw error;
   }
 }
+function canAccessBackofficePermission(isSuperAdmin: boolean, permissions: string[], permission?: string): boolean {
+  if (isSuperAdmin) return true;
+  if (!permission || !Array.isArray(permissions)) return false;
+  // Fail closed: legacy domain grants are not expanded into wildcard permissions.
+  return permissions.includes(permission);
+}
+
 async function backofficeAdmin(req: express.Request, res: express.Response, permission?: string): Promise<VerifiedFirebaseUser | null> {
   const user = await verifiedUser(req, res);
   if (!user) return null;
