@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from '../components/Brand';
-import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart } from 'lucide-react';
+import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart, Mic, ClipboardCheck, ShieldCheck, Headset } from 'lucide-react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { NotificationCenter } from '../components/Notifications';
@@ -58,6 +58,10 @@ export function DashboardLayout({ title }: { title: string }) {
     coach: [
       { to: '/coach', icon: Activity, label: 'Gestión académica', detail: 'Resumen, alumnos y actividad' },
       { to: '/coach/courses', icon: BookOpen, label: 'Studio de cursos', detail: 'Cursos, contenidos y programas' },
+      { to: '/coach/session', icon: Mic, label: 'Session Intelligence', detail: 'Sesiones, transcripción y análisis' },
+      { to: '/coach/homework', icon: ClipboardCheck, label: 'Revisión de tareas', detail: 'Seguimiento y feedback de alumnos' },
+      { to: '/coach/crm-audit', icon: ShieldCheck, label: 'Auditoría CRM', detail: 'Trazabilidad y actividad de clientes' },
+      { to: '/coach/support', icon: Headset, label: 'Soporte', detail: 'Ayuda y acompañamiento' },
       { to: '/coach/profile', icon: Users, label: 'Perfil profesional', detail: 'Datos y presencia del coach' },
     ],
     alumno: [
@@ -69,11 +73,13 @@ export function DashboardLayout({ title }: { title: string }) {
     ],
   };
   const currentLinks = links[role as keyof typeof links] || links.alumno;
-  const isActive = (path: string) => path === '/coach'
-    ? location.pathname === '/coach' && !location.search.includes('tab=courses')
-    : path === '/coach/courses'
-      ? location.pathname === '/coach/courses' || (location.pathname === '/coach' && location.search.includes('tab=courses'))
-      : location.pathname === path || (location.pathname.startsWith(path + '/') && path !== '/');
+  const isActive = (path: string) => path === '/coach/support'
+    ? location.pathname === '/coach' && location.search.includes('tab=support')
+    : path === '/coach'
+      ? location.pathname === '/coach' && !location.search.includes('tab=courses') && !location.search.includes('tab=support')
+      : path === '/coach/courses'
+        ? location.pathname === '/coach/courses' || (location.pathname === '/coach' && location.search.includes('tab=courses'))
+        : location.pathname === path || (location.pathname.startsWith(path + '/') && path !== '/');
 
   return (
     <div className="flex min-h-[100dvh] w-full flex-col bg-slate-50 text-slate-900">
@@ -118,10 +124,10 @@ export function DashboardLayout({ title }: { title: string }) {
               ].map((theme) => <button key={theme.id} type="button" onClick={() => changeTheme(theme.id)} aria-label={`Tema ${theme.id}`} aria-pressed={theme.id === (user?.theme || 'teal')} className={cn('h-5 w-5 rounded-full border border-white shadow-sm ring-offset-2', theme.color, theme.id === (user?.theme || 'teal') && 'ring-2 ring-slate-300')} />)}
             </div>
           </div>
-          <nav aria-label="Navegación de módulos" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-col xl:grid-cols-1">
+          <nav aria-label="Navegación de módulos" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2">
             {currentLinks.map((item) => {
               const active = isActive(item.to);
-              return <Link key={item.to} to={item.to} aria-current={active ? 'page' : undefined} className={cn('group flex min-h-24 min-w-0 flex-col items-start gap-2 rounded-xl border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-4 lg:min-h-16 lg:flex-row lg:items-center lg:gap-3 lg:hover:translate-y-0', active ? 'border-primary/40 bg-primary/[0.06] shadow-sm' : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-white')}>
+              return <Link key={item.to} to={item.to} aria-current={active ? 'page' : undefined} className={cn('group flex min-h-24 min-w-0 flex-col items-start gap-2 rounded-xl border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-4', active ? 'border-primary/40 bg-primary/[0.06] shadow-sm' : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-white')}>
                 <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', active ? 'bg-primary text-white' : 'bg-white text-slate-500 shadow-sm')}><item.icon size={19} /></span>
                 <span className="min-w-0"><span className={cn('block truncate text-xs font-bold sm:text-sm', active ? 'text-primary' : 'text-slate-800')}>{item.label}</span><span className="mt-1 hidden text-xs leading-4 text-slate-500 sm:block">{item.detail}</span></span>
               </Link>;
