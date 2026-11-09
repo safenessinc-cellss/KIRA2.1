@@ -1,0 +1,35 @@
+name: Admin Expanded Quality Gate
+
+on:
+  push:
+    branches:
+      - release/admin-expanded-v1
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: TypeScript and server checks
+        run: npm run lint
+      - name: Production build
+        run: npm run build
+      - name: Install rules test tools
+        run: npm install --no-save @firebase/rules-unit-testing firebase-tools
+      - name: Firestore rules tests
+        run: npx firebase emulators:exec --only firestore --project demo-kira-rules "npm run test:rules"

@@ -18,6 +18,7 @@ const Journal = React.lazy(() => import('./pages/Dashboard').then(m => ({ defaul
 const EliteLibrary = React.lazy(() => import('./pages/EliteLibrary').then(m => ({ default: m.EliteLibrary })));
 const Community = React.lazy(() => import('./pages/Community').then(m => ({ default: m.Community })));
 const AdminMonitor = React.lazy(() => import('./pages/Admin').then(m => ({ default: m.AdminMonitor })));
+const AdminExpandedPage = React.lazy(() => import('./pages/admin/AdminExpandedPage'));
 const CoachDashboard = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachDashboard })));
 const CoachCourses = React.lazy(() => import('./pages/Coach').then(m => ({ default: m.CoachCourses })));
 const CoachHomeworkReview = React.lazy(() => import('./pages/Coach/CoachHomeworkReview').then(m => ({ default: m.CoachHomeworkReview })));
@@ -116,6 +117,11 @@ export default function App() {
                     <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
                       <Route element={<DashboardLayout title="Control total" />}>
                         <Route path="/admin" element={<AdminMonitor />} />
+                        <Route path="/admin/users" element={<AdminExpandedPage />} />
+                        <Route path="/admin/users/:uid" element={<AdminExpandedPage />} />
+                        <Route path="/admin/coach-approvals" element={<AdminExpandedPage />} />
+                        <Route path="/admin/certificate-approvals" element={<AdminExpandedPage />} />
+                        <Route path="/admin/payments" element={<AdminExpandedPage />} />
                       </Route>
                     </Route>
       

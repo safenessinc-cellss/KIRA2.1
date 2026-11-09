@@ -1,27 +1,28 @@
 importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging-compat.js');
 
-// Fetch the config via a workaround or just hardcode the necessary parts
-// In a real app we would load the config dynamically, but since we are compiling to static,
-// we can just put minimum required fields.
-const firebaseConfig = {
-  projectId: "gen-lang-client-0082259364",
-  appId: "1:929279176008:web:c58eaaa666db86b1e4577d",
-  apiKey: "AIzaSyCYmfCeHXfrpKdMn_3G-rrim3wu0FIopiE",
-  authDomain: "gen-lang-client-0082259364.firebaseapp.com",
-  messagingSenderId: "929279176008"
-};
+// Do not hardcode a Firebase project or API key in the public service worker.
+// Load the same public web configuration used by the application at runtime.
+fetch('/api/firebase-config', { cache: 'no-store' })
+  .then(async (response) => {
+    if (!response.ok) {
+      throw new Error(`Firebase config endpoint returned HTTP ${response.status}`);
+    }
+    return response.json();
+  })
+  .then((firebaseConfig) => {
+    firebase.initializeApp(firebaseConfig);
+    const messaging = firebase.messaging();
 
-firebase.initializeApp(firebaseConfig);
-const messaging = firebase.messaging();
-
-messaging.onBackgroundMessage((payload) => {
-  console.log('[firebase-messaging-sw.js] Received background message ', payload);
-  const notificationTitle = payload.notification?.title || 'Nuevo mensaje';
-  const notificationOptions = {
-    body: payload.notification?.body || 'Tienes una nueva alerta en Kira.',
-    icon: '/assets/kira-logo.png'
-  };
-
-  self.registration.showNotification(notificationTitle, notificationOptions);
-});
+    messaging.onBackgroundMessage((payload) => {
+      const notificationTitle = payload.notification?.title || 'Nuevo mensaje';
+      const notificationOptions = {
+        body: payload.notification?.body || 'Tienes una nueva alerta en Kira.',
+        icon: '/assets/kira-logo.png'
+      };
+      self.registration.showNotification(notificationTitle, notificationOptions);
+    });
+  })
+  .catch((error) => {
+    console.error('[firebase-messaging-sw.js] No se pudo inicializar Firebase Messaging:', error);
+  });

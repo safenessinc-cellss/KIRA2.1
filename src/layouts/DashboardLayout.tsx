@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from '../components/Brand';
-import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart } from 'lucide-react';
+import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart, Menu } from 'lucide-react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { NotificationCenter } from '../components/Notifications';
@@ -15,6 +15,7 @@ export function DashboardLayout({ title }: { title: string }) {
   const { cartCount, setIsCartOpen } = useCart();
   const location = useLocation();
   const [toast, setToast] = useState<{ title: string; message: string } | null>(null);
+  const [adminMoreOpen, setAdminMoreOpen] = useState(false);
 
   const emailLower = user?.email?.toLowerCase();
   const rawDisplayName = user?.displayName || '';
@@ -76,11 +77,11 @@ export function DashboardLayout({ title }: { title: string }) {
 
   return (
     <div className="flex min-h-[100dvh] w-full flex-col bg-slate-50 text-slate-900">
-      {(user?.approvalStatus === 'suspended' || user?.approvalStatus === 'pending') && role !== 'admin' && (
+      {(user?.isBanned === true || user?.status === 'banned' || user?.approvalStatus === 'suspended' || user?.approvalStatus === 'pending') && role !== 'admin' && (
         <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-white/95 p-6 text-center backdrop-blur-sm">
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-amber-200 bg-amber-100 text-amber-600"><Activity size={30} /></div>
-          <h2 className="mb-3 text-2xl font-bold text-slate-800">{user?.approvalStatus === 'suspended' ? 'Servicio suspendido' : 'Cuenta en revisión'}</h2>
-          <p className="mb-7 max-w-md text-sm leading-relaxed text-slate-500">{user?.approvalStatus === 'suspended' ? 'Tu acceso a la plataforma ha sido pausado. Contacta a soporte o a tu administrador si necesitas ayuda.' : 'Estamos revisando tu solicitud para habilitar el acceso a la comunidad.'}</p>
+          <h2 className="mb-3 text-2xl font-bold text-slate-800">{user?.isBanned || user?.status === 'banned' ? 'Cuenta bloqueada' : user?.approvalStatus === 'suspended' ? 'Servicio suspendido' : 'Cuenta en revisión'}</h2>
+          <p className="mb-7 max-w-md text-sm leading-relaxed text-slate-500">{user?.isBanned || user?.status === 'banned' ? 'Tu acceso a la plataforma ha sido bloqueado por un administrador. Contacta a soporte para solicitar una revisión.' : user?.approvalStatus === 'suspended' ? 'Tu acceso a la plataforma ha sido pausado. Contacta a soporte o a tu administrador si necesitas ayuda.' : 'Estamos revisando tu solicitud para habilitar el acceso a la comunidad.'}</p>
           <button onClick={logout} className="flex min-h-11 items-center gap-2 rounded-xl bg-slate-800 px-6 py-3 font-bold text-white"><LogOut size={18} /> Cerrar sesión</button>
         </div>
       )}
@@ -94,6 +95,7 @@ export function DashboardLayout({ title }: { title: string }) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          {role === 'admin' && <button type="button" onClick={() => setAdminMoreOpen(true)} className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-700 lg:hidden"><Menu size={16}/> Más</button>}
           {role === 'coach' && <span className="hidden rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 sm:inline-flex">Membresía activa</span>}
           <NotificationCenter />
           <button type="button" onClick={() => setIsCartOpen(true)} aria-label={`Ver carrito, ${cartCount} artículos`} className="relative flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"><ShoppingCart size={18} />{cartCount > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-rose-500 px-1 text-[9px] font-black text-white">{cartCount}</span>}</button>
@@ -133,6 +135,7 @@ export function DashboardLayout({ title }: { title: string }) {
           <main className="min-w-0 w-full flex-1"><Outlet /></main>
         </div>
 
+        {adminMoreOpen && role === 'admin' && <div className="fixed inset-0 z-[90] bg-slate-900/30 backdrop-blur-sm lg:hidden" onClick={() => setAdminMoreOpen(false)}><section role="dialog" aria-modal="true" aria-label="Más módulos administrativos" className="absolute right-0 top-0 flex h-full w-[min(88vw,360px)] flex-col gap-2 bg-white p-5 shadow-2xl" onClick={event => event.stopPropagation()}><div className="mb-3 flex items-center justify-between"><div><p className="text-[10px] font-black uppercase tracking-widest text-teal-700">KIRA ADMIN</p><h2 className="text-lg font-black text-slate-900">Más módulos</h2></div><button onClick={() => setAdminMoreOpen(false)} className="rounded-lg border border-slate-200 p-2"><X size={18}/></button></div>{[{to:'/admin',label:'Administración'},{to:'/admin?tab=analytics',label:'Analytics'},{to:'/admin?tab=moderation',label:'Moderación'},{to:'/admin?tab=website',label:'Branding'},{to:'/admin?tab=insights',label:'Insights IA'},{to:'/admin?tab=configuration',label:'Configuración'},{to:'/admin/users',label:'Usuarios'},{to:'/admin/coach-approvals',label:'Coach Approvals'},{to:'/admin/certificate-approvals',label:'Certificate Approvals'},{to:'/admin/payments',label:'Pagos y Pasarela'}].map(item => <Link key={item.to} to={item.to} onClick={() => setAdminMoreOpen(false)} className="rounded-xl border border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">{item.label}</Link>)}</section></div>}
         {toast && <div role="status" className="fixed right-3 top-20 z-[100] w-[calc(100vw-1.5rem)] max-w-sm cursor-pointer sm:right-6" onClick={() => setToast(null)}><div className="flex items-start gap-3 rounded-xl border-l-4 border-primary bg-white p-4 shadow-2xl ring-1 ring-slate-200"><div className="shrink-0 rounded-lg bg-primary/10 p-2 text-primary"><BellRing size={20} /></div><div className="min-w-0 flex-1"><h4 className="mb-0.5 text-sm font-bold text-slate-800">{toast.title}</h4><p className="line-clamp-2 text-xs text-slate-500">{toast.message}</p></div><button type="button" aria-label="Descartar notificación" className="shrink-0 text-slate-400 hover:text-slate-600" onClick={(event) => { event.stopPropagation(); setToast(null); }}><X size={14} /></button></div></div>}
       </div>
     </div>

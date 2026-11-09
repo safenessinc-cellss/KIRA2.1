@@ -113,7 +113,7 @@ service cloud.firestore {
     
     function isValidUser() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'name', 'photoURL', 'photoUrl', 'role', 'approvalStatus', 'points', 'theme', 'isEmailVerified', 'staffPermissions', 'lastLoginAt', 'lastActivityAt', 'createdAt', 'specialty', 'bio', 'aiFeedback', 'registeredByCoach', 'status', 'membershipStatus', 'membershipPaidAt', 'socialLinks', 'specialties', 'calendlyUrl', 'experienceLevel', 'languages', 'welcomeVideoUrl', 'rating', 'studentCount', 'mediaItems', 'updatedAt', 'manualActiveStudents', 'manualAvgProgress', 'manualRecentSessions', 'companyId', 'companyName', 'department', 'jobTitle', 'employeeCode', 'organizationId', 'tenantId']) &&
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'name', 'photoURL', 'photoUrl', 'role', 'approvalStatus', 'points', 'theme', 'isEmailVerified', 'staffPermissions', 'lastLoginAt', 'lastActivityAt', 'createdAt', 'specialty', 'bio', 'aiFeedback', 'registeredByCoach', 'status', 'membershipStatus', 'membershipPaidAt', 'socialLinks', 'specialties', 'calendlyUrl', 'experienceLevel', 'languages', 'welcomeVideoUrl', 'rating', 'studentCount', 'mediaItems', 'updatedAt', 'manualActiveStudents', 'manualAvgProgress', 'manualRecentSessions', 'companyId', 'companyName', 'department', 'jobTitle', 'employeeCode', 'organizationId', 'tenantId', 'isPublicProfile', 'trialEndsAt', 'isBanned', 'coachId']) &&
              data.uid is string &&
              data.email is string &&
              data.role in ['admin', 'coach', 'alumno', 'hr_admin', 'company_admin', 'company_member'] &&
@@ -282,7 +282,7 @@ service cloud.firestore {
       // Update: Users can update their profile but NOT their role or approvalStatus. Admins can update anything.
       allow update: if isAuthenticated() && isValidUser() &&
                     ((isAdmin()) || 
-                     (isCurrentUser(userId) && areImmutableFieldsUnchanged(['uid', 'email', 'role', 'approvalStatus', 'createdAt', 'staffPermissions', 'companyId', 'organizationId', 'tenantId', 'membershipStatus', 'membershipPaidAt'])));
+                     (isCurrentUser(userId) && areImmutableFieldsUnchanged(['uid', 'email', 'role', 'approvalStatus', 'createdAt', 'staffPermissions', 'companyId', 'organizationId', 'tenantId', 'membershipStatus', 'membershipPaidAt', 'isPublicProfile', 'trialEndsAt', 'isBanned', 'coachId', 'status'])));
                      
       allow delete: if isAdmin();
     }
@@ -429,9 +429,105 @@ service cloud.firestore {
     }
 
     match /messages/{messageId} {
-      allow read: if isAuthenticated() && (isAdmin() || resource.data.chatId.matches('.*' + request.auth.uid + '.*'));
+      // Administrators do not receive blanket access to private message content.
+      // A reported message may be inspected only while its linked report is pending.
+      allow read: if isAuthenticated() && (
+        resource.data.senderId == request.auth.uid ||
+        (resource.data.chatId is string && resource.data.chatId.matches('.*' + request.auth.uid + '.*')) ||
+        (resource.data.reportId is string &&
+          exists(/databases/$(database)/documents/reports/$(resource.data.reportId)) &&
+          get(/databases/$(database)/documents/reports/$(resource.data.reportId)).data.status == 'pending' &&
+          isAdmin())
+      );
       allow create: if isAuthenticated() && isValidMessage() && request.auth.uid == request.resource.data.senderId;
+      allow update, delete: if false;
+    }
+
+    match /chats/{chatId} {
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow create: if isAuthenticated() && request.auth.uid in request.resource.data.participants;
+      allow update: if isAuthenticated() && request.auth.uid in resource.data.participants
+        && areImmutableFieldsUnchanged(['participants', 'createdAt']);
+      allow delete: if false;
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && (
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants ||
+          (resource.data.reportId is string &&
+            exists(/databases/$(database)/documents/reports/$(resource.data.reportId)) &&
+            get(/databases/$(database)/documents/reports/$(resource.data.reportId)).data.status == 'pending' &&
+            isAdmin())
+        );
+        allow create: if isAuthenticated() &&
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants &&
+          request.resource.data.senderId == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.reporterId == request.auth.uid);
+      allow create: if isAuthenticated()
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.status == 'pending';
       allow update, delete: if isAdmin();
+    }
+
+    match /aiCache/{cacheId} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/{subcollection}/{documentId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated() && request.auth.uid == userId
+        && subcollection in ['nudges','calm_events','notifications'];
+      allow update: if isAuthenticated() && request.auth.uid == userId
+        && subcollection in ['nudges','calm_events','notifications'];
+      allow delete: if isAuthenticated() && request.auth.uid == userId
+        && subcollection in ['nudges','calm_events','notifications'];
+    }
+
+    match /users/{userId}/tutor_sessions/{courseId}/messages/{messageId} {
+      allow read, create: if isAuthenticated() && request.auth.uid == userId;
+      allow update, delete: if false;
+    }
+
+    match /activity_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.action is string
+        && request.resource.data.entityType is string
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.keys().hasOnly(['userId','action','entityType','entityId','metadata','userAgent','createdAt'])
+        && (!('metadata' in request.resource.data) || request.resource.data.metadata.keys().hasOnly(['courseId','lessonId','reviewId','certificateId','coachId','paymentId','provider','currency','amount','mood','durationSeconds','reportId','channel']));
+      allow update, delete: if false;
+    }
+
+    match /coach_applications/{applicationId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','rejectionReason','reviewedBy','reviewedAt','adminNotes']);
+      allow delete: if false;
+    }
+
+    match /refunds/{refundId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow write: if false;
+    }
+    match /payouts/{payoutId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
+      allow write: if false;
+    }
+    match /webhook_events/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /transactions_processed/{eventId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     match /contracts/{contractId} {
@@ -527,7 +623,10 @@ service cloud.firestore {
         && request.resource.data.status == 'issued'
         && request.resource.data.validationToken == certificateId
         && request.resource.data.issuedBy == request.auth.uid;
-      allow update, delete: if false;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','reviewedBy','reviewedAt','revokeReason','adminStatus'])
+        && request.resource.data.status in ['issued','revoked'];
+      allow delete: if false;
     }
 
     // This public projection deliberately contains only certificate verification fields.
@@ -536,7 +635,10 @@ service cloud.firestore {
       allow create: if isKiraOwner()
         && request.resource.data.status == 'issued'
         && request.resource.data.validationToken == token;
-      allow update, delete: if false;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && request.resource.data.status in ['issued','revoked'];
+      allow delete: if false;
     }
 
     match /urgent_escalations/{id} {
