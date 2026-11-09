@@ -277,7 +277,7 @@ async function catalogItem(id: string): Promise<any | null> {
   return null;
 }
 function certSignature(data: any): string {
-  const secret = process.env.KIRA_CERTIFICATE_SIGNING_SECRET || "";
+  const secret = process.env.KIRA_CERT_SECRET || process.env.KIRA_CERTIFICATE_SIGNING_SECRET || "";
   if (secret.length < 32) throw new Error("Configura KIRA_CERTIFICATE_SIGNING_SECRET (mínimo 32 caracteres).");
   const canonical = JSON.stringify(Object.keys(data).sort().reduce((result: any, key) => { result[key] = data[key]; return result; }, {}));
   return createHmac("sha256", secret).update(canonical).digest("hex");
@@ -1080,7 +1080,7 @@ app.post("/api/certificates", async (req,res) => {
     ]);
     if (!student || student.role!=="alumno" || !course || !coach || coach.role!=="coach" || coach.approvalStatus!=="approved") return res.status(404).json({error:"Alumno, curso o coach no válidos."});
     if (String(course.coachId)!==coachId) return res.status(409).json({error:"El coach seleccionado no es responsable del curso."});
-    if (!enrollment || enrollment.userId!==studentId || enrollment.courseId!==courseId || !(enrollment.completed===true || enrollment.courseCompleted===true || Number(enrollment.progress)>=100)) return res.status(409).json({error:"No existe una matrícula completada para ese alumno y curso."});
+    if (!enrollment || enrollment.userId!==studentId || enrollment.courseId!==courseId || enrollment.status !== "completed") return res.status(409).json({error:"El certificado solo puede emitirse cuando la matrícula tiene status=completed."});
     if (Number(course.price||0)>0 && enrollment.paymentStatus!=="paid") return res.status(409).json({error:"El pago del curso no está verificado por webhook."});
     const logoPath=String(branding?.logoStoragePath||"");
     const adminSignaturePath=String(branding?.adminSignatureStoragePath||"");
