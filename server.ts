@@ -1629,8 +1629,10 @@ app.post("/api/admin/sessions/:sessionId/attendance", async (req, res) => {
     const id = academicId(sessionId + "_" + studentId), now = new Date().toISOString();
     const mark = { sessionId, groupId: session.groupId, studentId, status, markedBy: user.uid, markedAt: new Date(now), deletedAt: null };
     await fsCommit([fsCreate("attendance", id, mark), auditWrite(user.uid, "session.attendance_marked", "alumnos.rendimiento-asistencia", id, null, mark), fsCreate("outbox", "attendance_marked_" + id, { eventId: "session.attendance_marked." + id, type: "session.attendance_marked.v1", aggregate: "attendance", aggregateId: id, schemaVersion: 1, payload: { sessionId, groupId: session.groupId, studentId }, status: "pending", attempts: 0, createdAt: now })]);
-    const dispatch = await dispatchAcademicOutboxBatch(5);
-    return res.status(201).json({ id, ...mark, performance: dispatch.performances.find(item => item.studentId === studentId && item.groupId === session.groupId) || null });
+    let performance = null;
+    try { const dispatch = await dispatchAcademicOutboxBatch(5); performance = dispatch.performances.find(item => item.studentId === studentId && item.groupId === session.groupId) || null; }
+    catch (dispatchError: any) { console.error("[Attendance] outbox deferred:", dispatchError?.message || "dispatch_error"); }
+    return res.status(201).json({ id, ...mark, performance, performancePending: !performance });
   } catch (error: any) { console.error("[Attendance] mark failed:", error); return res.status(409).json({ error: "La asistencia ya existe o no pudo registrarse." }); }
 });
 
@@ -1646,9 +1648,10 @@ app.post("/api/admin/assessments", async (req, res) => {
     const id = randomBytes(16).toString("hex"), now = new Date().toISOString();
     const assessment = { courseId: group.courseId, studentId, groupId, type, score, maxScore, weight, gradedBy: user.uid, gradedAt: now };
     await fsCommit([fsCreate("assessments", id, assessment), auditWrite(user.uid, "assessment.graded", "alumnos.rendimiento-asistencia", id, null, assessment), fsCreate("outbox", "assessment_graded_" + id, { eventId: "assessment.graded." + id, type: "assessment.graded.v1", aggregate: "assessment", aggregateId: id, schemaVersion: 1, payload: { assessmentId: id, studentId, groupId }, status: "pending", attempts: 0, createdAt: now })]);
-    const dispatch = await dispatchAcademicOutboxBatch(5);
-    const performance = dispatch.performances.find(item => item.studentId === studentId && item.groupId === groupId) || null;
-    return res.status(201).json({ id, ...assessment, performance });
+    let performance = null;
+    try { const dispatch = await dispatchAcademicOutboxBatch(5); performance = dispatch.performances.find(item => item.studentId === studentId && item.groupId === groupId) || null; }
+    catch (dispatchError: any) { console.error("[Assessments] outbox deferred:", dispatchError?.message || "dispatch_error"); }
+    return res.status(201).json({ id, ...assessment, performance, performancePending: !performance });
   } catch (error: any) { console.error("[Assessments] grade failed:", error); return res.status(500).json({ error: "No se pudo guardar la evaluación." }); }
 });
 
