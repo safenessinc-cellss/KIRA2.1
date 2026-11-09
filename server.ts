@@ -59,7 +59,7 @@ function getStripe() {
 let geminiClient: GoogleGenAI | null = null;
 function getGeminiAI() {
   if (!geminiClient) {
-    const key = process.env.GEMINI_API_KEY;
+    const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
     if (!isValidGeminiKey(key)) {
       throw new Error("GEMINI_API_KEY is not defined or is a placeholder in environment variables. Please add a real key under Settings > Secrets.");
     }
@@ -327,7 +327,7 @@ app.get("/api/firebase-config", (_req, res) => {
 
 // Report configuration truthfully; never claim the AI is ready when no key is configured.
 app.get("/api/gemini/config", (req, res) => {
-  const configured = isValidGeminiKey(process.env.GEMINI_API_KEY);
+  const configured = isValidGeminiKey(process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY);
   res.status(configured ? 200 : 503).json({ configured, isRealKey: configured });
 });
 
