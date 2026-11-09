@@ -167,7 +167,7 @@ El vertical CRM persiste los eventos en \`outbox\`, pero aún no existe un worke
 ## 6. Seguridad y privacidad
 
 - Los documentos CRM no son legibles/escribibles desde Firebase Client SDK; las reglas Firestore los deniegan explícitamente.
-- La API cifra PII con AES-256-GCM y exige \`KIRA_CRM_PII_ENCRYPTION_KEY\` (32 bytes en base64 o 64 caracteres hex).
+- La API cifra PII con AES-256-GCM y AAD asociado a entidad/campo (evita intercambiar ciphertext entre email, teléfono, nombre o notas), con versión de esquema PII 2; exige \`KIRA_CRM_PII_ENCRYPTION_KEY\` (32 bytes en base64 o 64 caracteres hex).
 - La deduplicación utiliza HMAC determinista de email + teléfono normalizado + source. No se almacena un hash simple de contacto.
 - Los administradores no superadmin solo pueden consultar/editar leads cuyo \`assignedTo\` sea su UID. El superadmin autorizado es \`safeness.c.a@gmail.com\`.
 - La conversión requiere consentimiento, etapa \`contacted\` o \`qualified\`, usuario alumno existente y curso publicado. La matrícula y la actualización del lead se confirman en una transacción Firestore.
