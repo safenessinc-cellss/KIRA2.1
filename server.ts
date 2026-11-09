@@ -779,10 +779,33 @@ app.get("/api/coach/homework", async (req, res) => {
     const isAdmin = user.emailVerified === true && profile?.role === "admin";
     const isCoach = profile?.role === "coach" && profile?.approvalStatus === "approved";
     if (!isAdmin && !isCoach) return res.status(403).json({ error: "Solo coaches aprobados y administradores pueden consultar entregas." });
-    const all = await fsListAllDocuments("homework_submissions", 5000);
-    const items = all.filter((item: any) => isAdmin || item.coachId === user.uid)
-      .map(({ id, ...item }: any) => ({ id, ...item }))
-      .sort((a: any, b: any) => String(b.submittedAt || "").localeCompare(String(a.submittedAt || "")));
+
+    const [all, courses, students] = await Promise.all([
+      fsListAllDocuments("homework_submissions", 5000),
+      fsListAllDocuments("courses", 5000),
+      fsListAllDocuments("users", 10000)
+    ]);
+    const courseById = new Map(courses.map((course: any) => [String(course.id), course]));
+    const studentById = new Map(students.map((student: any) => [String(student.id), student]));
+    const scoped = all.filter((item: any) => {
+      if (isAdmin) return true;
+      const course = courseById.get(String(item.courseId || ""));
+      return item.coachId === user.uid || course?.coachId === user.uid;
+    });
+    const items = scoped.map((item: any) => {
+      const studentId = String(item.studentId || item.userId || "");
+      const student = studentById.get(studentId);
+      const course = courseById.get(String(item.courseId || ""));
+      return {
+        ...item,
+        studentId,
+        coachId: item.coachId || course?.coachId || "",
+        studentName: item.studentName || student?.displayName || student?.name || "Alumno",
+        courseTitle: item.courseTitle || course?.title || "Curso",
+        assignmentTitle: item.assignmentTitle || item.taskTitle || item.title || "Actividad",
+        attachments: Array.isArray(item.attachments) ? item.attachments : Array.isArray(item.files) ? item.files : []
+      };
+    }).sort((a: any, b: any) => String(b.submittedAt || b.createdAt || "").localeCompare(String(a.submittedAt || a.createdAt || "")));
     return res.json({ items, total: items.length, generatedAt: new Date().toISOString() });
   } catch (error) {
     console.error("[Coach Homework] list failed:", error);
@@ -791,15 +814,29 @@ app.get("/api/coach/homework", async (req, res) => {
 });
 
 app.post("/api/coach/homework/:id/review", async (req, res) => {
+  let transaction = "";
   try {
     const user = await verifiedUser(req, res); if (!user) return;
     const profile = await fsGet("users", user.uid);
     const isAdmin = user.emailVerified === true && profile?.role === "admin";
     const isCoach = profile?.role === "coach" && profile?.approvalStatus === "approved";
     if (!isAdmin && !isCoach) return res.status(403).json({ error: "Solo coaches aprobados y administradores pueden revisar entregas." });
+
     const id = idSafe(String(req.params.id || ""));
-    const submission = await fsGet("homework_submissions", id);
-    if (!submission || (!isAdmin && submission.coachId !== user.uid)) return res.status(404).json({ error: "Entrega no encontrada." });
+    if (!id) return res.status(400).json({ error: "Identificador de entrega inválido." });
+    transaction = await beginFirestoreTransaction();
+    const submission = await fsGetInTransaction("homework_submissions", id, transaction);
+    if (!submission) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(404).json({ error: "Entrega no encontrada." });
+    }
+    const course = submission.courseId ? await fsGet("courses", String(submission.courseId)) : null;
+    const assignedCoachId = String(submission.coachId || course?.coachId || "");
+    if (!isAdmin && assignedCoachId !== user.uid) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(404).json({ error: "Entrega no encontrada." });
+    }
+
     const body = req.body || {};
     const status = String(body.status || "");
     const score = Number(body.score);
@@ -807,13 +844,32 @@ app.post("/api/coach/homework/:id/review", async (req, res) => {
     const requestedPoints = Number(body.energyPoints || 0);
     if (!["approved", "needs_correction"].includes(status) || !Number.isInteger(score) || score < 0 || score > 100 ||
       feedback.length < 2 || feedback.length > 5000 || !Number.isInteger(requestedPoints) || requestedPoints < 0 || requestedPoints > 100) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
       return res.status(400).json({ error: "Revisa el estado, la calificación (0–100), el feedback y los puntos (0–100)." });
     }
-    if (!submission.studentId || typeof submission.studentId !== "string") return res.status(409).json({ error: "La entrega no contiene un alumno válido." });
+
+    const studentId = String(submission.studentId || submission.userId || "");
+    if (!studentId) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(409).json({ error: "La entrega no contiene un identificador de alumno válido." });
+    }
+    const student = await fsGetInTransaction("users", studentId, transaction);
+    if (!student) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(409).json({ error: "El alumno asociado a la entrega ya no existe." });
+    }
+
     const now = new Date().toISOString();
     const awardPoints = status === "approved" && !submission.pointsAwardedAt ? requestedPoints : 0;
     const updated = {
-      ...submission, score, feedback, status, reviewedAt: now, reviewedBy: user.uid,
+      ...submission,
+      coachId: assignedCoachId,
+      studentId,
+      score,
+      feedback,
+      status,
+      reviewedAt: now,
+      reviewedBy: user.uid,
       energyPointsAwarded: Number(submission.energyPointsAwarded || 0) + awardPoints,
       ...(awardPoints > 0 ? { pointsAwardedAt: now } : {})
     };
@@ -821,25 +877,34 @@ app.post("/api/coach/homework/:id/review", async (req, res) => {
     const writes: any[] = [
       fsUpdate("homework_submissions", id, updated),
       fsCreate("notifications", notificationId, {
-        userId: submission.studentId,
+        userId: studentId,
         title: status === "approved" ? "Tarea aprobada" : "Tu tarea necesita una revisión",
         message: status === "approved"
-          ? "Tu tarea \"" + String(submission.assignmentTitle || "Actividad").slice(0, 160) + "\" fue aprobada. " + (awardPoints ? "Recibiste " + awardPoints + " puntos de energía." : "")
-          : "Tu tarea \"" + String(submission.assignmentTitle || "Actividad").slice(0, 160) + "\" recibió comentarios del coach.",
+          ? "Tu tarea \"" + String(submission.assignmentTitle || submission.taskTitle || "Actividad").slice(0, 160) + "\" fue aprobada. " + (awardPoints ? "Recibiste " + awardPoints + " puntos de energía." : "")
+          : "Tu tarea \"" + String(submission.assignmentTitle || submission.taskTitle || "Actividad").slice(0, 160) + "\" recibió comentarios del coach.",
         type: "course", read: false, createdAt: now
       })
     ];
     if (awardPoints > 0) writes.push({
       transform: {
-        document: fsDocumentPath("users", submission.studentId),
+        document: fsDocumentPath("users", studentId),
         fieldTransforms: [{ fieldPath: "points", increment: { integerValue: String(awardPoints) } }]
       }
     });
-    await fsCommit(writes);
-    return res.json({ item: { id, status, score, feedback, reviewedAt: now, energyPointsAwarded: updated.energyPointsAwarded }, pointsAwarded: awardPoints });
-  } catch (error) {
+    await fsCommitTransaction(writes, transaction);
+    transaction = "";
+    return res.json({
+      item: { id, status, score, feedback, reviewedAt: now, energyPointsAwarded: updated.energyPointsAwarded },
+      pointsAwarded: awardPoints
+    });
+  } catch (error: any) {
+    if (transaction) await rollbackFirestoreTransaction(transaction);
     console.error("[Coach Homework] review failed:", error);
-    return res.status(500).json({ error: "No se pudo guardar la revisión." });
+    return res.status(error?.status === 409 || error?.status === 412 ? 409 : 500).json({
+      error: error?.status === 409 || error?.status === 412
+        ? "La entrega cambió durante la revisión. Actualiza la lista e inténtalo otra vez."
+        : "No se pudo guardar la revisión."
+    });
   }
 });
 
@@ -850,55 +915,95 @@ app.get("/api/coach/analytics", async (req, res) => {
     const isAdmin = user.emailVerified === true && profile?.role === "admin";
     const isCoach = profile?.role === "coach" && profile?.approvalStatus === "approved";
     if (!isAdmin && !isCoach) return res.status(403).json({ error: "Solo coaches aprobados y administradores pueden consultar estas métricas." });
+
     const [courses, sessions, leads, enrollments, reviews] = await Promise.all([
-      fsListAllDocuments("courses", 5000), fsListAllDocuments("sessions", 10000),
-      fsListAllDocuments("crmLeads", 10000), fsListAllDocuments("enrollments", 10000),
+      fsListAllDocuments("courses", 5000),
+      fsListAllDocuments("sessions", 10000),
+      fsListAllDocuments("crmLeads", 10000),
+      fsListAllDocuments("enrollments", 10000),
       fsListAllDocuments("reviews", 10000)
     ]);
     const ownCourses = courses.filter((item: any) => isAdmin || item.coachId === user.uid);
     const courseIds = new Set(ownCourses.map((item: any) => String(item.id)));
     const ownSessions = sessions.filter((item: any) => isAdmin || item.coachId === user.uid);
-    const ownLeads = leads.filter((item: any) => isAdmin || item.assignedTo === user.uid);
-    const ownEnrollments = enrollments.filter((item: any) => courseIds.has(String(item.courseId)));
-    const ownReviews = reviews.filter((item: any) => courseIds.has(String(item.courseId)) && Number(item.rating) >= 1 && Number(item.rating) <= 5);
+    const ownLeads = leads.filter((item: any) => isAdmin || item.assignedTo === user.uid || item.coachId === user.uid);
+    const ownEnrollments = enrollments.filter((item: any) => courseIds.has(String(item.courseId)) || (!item.courseId && (isAdmin || item.coachId === user.uid)));
+    const ownReviews = reviews.filter((item: any) =>
+      (courseIds.has(String(item.courseId)) || (item.coachId && (isAdmin || item.coachId === user.uid))) &&
+      Number(item.rating) >= 1 && Number(item.rating) <= 5
+    );
+
+    // SessionIntelligence stores userId as the coach for history lookup.
+    // Client recurrence must therefore use an explicit client identity, never userId.
     const clientsById = new Map<string, number>();
-    for (const item of ownSessions) if (item.userId) clientsById.set(String(item.userId), (clientsById.get(String(item.userId)) || 0) + 1);
+    let sessionsWithClientIdentity = 0;
+    for (const item of ownSessions) {
+      const identity = item.clientId || item.clientUid || item.studentId || item.clientName || item.customerName;
+      if (typeof identity !== "string" || !identity.trim()) continue;
+      const key = identity.trim().toLocaleLowerCase();
+      sessionsWithClientIdentity++;
+      clientsById.set(key, (clientsById.get(key) || 0) + 1);
+    }
     const returningClients = [...clientsById.values()].filter(count => count > 1).length;
     const uniqueClients = clientsById.size;
+
     const stageCounts = { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 };
-    for (const item of ownLeads) if (item.stage in stageCounts) stageCounts[item.stage as keyof typeof stageCounts]++;
+    const stageAliases: Record<string, keyof typeof stageCounts> = {
+      new: "new", lead: "new", new_lead: "new",
+      contacted: "contacted", contactado: "contacted", in_contact: "contacted",
+      qualified: "qualified", calificado: "qualified",
+      enrolled: "enrolled", converted: "enrolled", won: "enrolled", matriculado: "enrolled",
+      lost: "lost", closed_lost: "lost", perdido: "lost"
+    };
+    for (const item of ownLeads) {
+      const stage = String(item.stage || item.status || "").trim().toLowerCase();
+      const normalized = stageAliases[stage];
+      if (normalized) stageCounts[normalized]++;
+    }
+
     const weekly = new Map<string, { sessions: number; minutes: number }>();
     const monthlyMinutes = new Map<string, number>();
     const now = Date.now();
+    const sessionMinutes = (item: any): number => {
+      const explicit = Number(item.durationMinutes ?? item.sessionDurationMinutes ?? item.duration ?? 0);
+      if (Number.isFinite(explicit) && explicit > 0 && explicit <= 1440) return explicit;
+      const start = Date.parse(String(item.startedAt || item.startTime || ""));
+      const end = Date.parse(String(item.endedAt || item.endTime || ""));
+      const derived = (end - start) / 60000;
+      return Number.isFinite(derived) && derived > 0 && derived <= 1440 ? derived : 0;
+    };
+    const sessionDate = (item: any): Date | null => {
+      const raw = item.createdAt || item.startedAt || item.startTime || item.sessionDate;
+      const date = new Date(raw || "");
+      return Number.isFinite(date.getTime()) ? date : null;
+    };
     for (const item of ownSessions) {
-      const raw = item.createdAt;
-      const date = raw && typeof raw === "object" && typeof raw.toDate === "function" ? raw.toDate() : new Date(raw || 0);
-      if (!Number.isFinite(date.getTime())) continue;
-      const duration = Number(item.durationMinutes ?? item.sessionDurationMinutes ?? item.duration ?? 0);
-      const validMinutes = Number.isFinite(duration) && duration > 0 && duration <= 1440 ? duration : 0;
-      if (now - date.getTime() <= 366 * 86400000 && validMinutes) {
+      const date = sessionDate(item);
+      if (!date) continue;
+      const duration = sessionMinutes(item);
+      if (now - date.getTime() <= 366 * 86400000 && duration) {
         const month = date.toISOString().slice(0, 7);
-        monthlyMinutes.set(month, (monthlyMinutes.get(month) || 0) + validMinutes);
+        monthlyMinutes.set(month, (monthlyMinutes.get(month) || 0) + duration);
       }
-      if (now - date.getTime() > 42 * 86400000) continue;
+      if (now - date.getTime() > 42 * 86400000 || date.getTime() > now + 86400000) continue;
       const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
       monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
       const key = monday.toISOString().slice(0, 10);
       const current = weekly.get(key) || { sessions: 0, minutes: 0 };
-      weekly.set(key, { sessions: current.sessions + 1, minutes: current.minutes + validMinutes });
+      weekly.set(key, { sessions: current.sessions + 1, minutes: current.minutes + duration });
     }
+
     const weeklySessions = [...weekly.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([week, value]) => ({
       week, sessions: value.sessions, hours: Math.round(value.minutes / 60 * 10) / 10
     }));
     const monthlyHours = [...monthlyMinutes.entries()].sort(([a], [b]) => a.localeCompare(b))
       .map(([month, minutes]) => ({ month, hours: Math.round(minutes / 60 * 10) / 10 }));
-    const durationMinutes = ownSessions.reduce((total: number, item: any) => {
-      const duration = Number(item.durationMinutes ?? item.sessionDurationMinutes ?? item.duration ?? 0);
-      return total + (Number.isFinite(duration) && duration > 0 && duration <= 1440 ? duration : 0);
-    }, 0);
+    const durationMinutes = ownSessions.reduce((total: number, item: any) => total + sessionMinutes(item), 0);
+    const durationTrackedSessions = ownSessions.filter((item: any) => sessionMinutes(item) > 0).length;
     const averageSatisfaction = ownReviews.length
       ? Math.round((ownReviews.reduce((total: number, item: any) => total + Number(item.rating), 0) / ownReviews.length) * 100) / 100
       : null;
+
     return res.json({
       generatedAt: new Date().toISOString(),
       source: "Firestore: sessions, crmLeads, courses, enrollments y reviews",
@@ -909,8 +1014,14 @@ app.get("/api/coach/analytics", async (req, res) => {
       hours: durationMinutes ? Math.round(durationMinutes / 60 * 10) / 10 : null,
       satisfaction: { average: averageSatisfaction, responses: ownReviews.length },
       funnel: stageCounts,
+      leads: ownLeads.length,
       enrollments: ownEnrollments.length,
-      coverage: { durationTrackedSessions: ownSessions.filter((item: any) => Number(item.durationMinutes ?? item.sessionDurationMinutes ?? item.duration ?? 0) > 0).length, totalSessions: ownSessions.length }
+      coverage: {
+        durationTrackedSessions,
+        totalSessions: ownSessions.length,
+        sessionsWithClientIdentity,
+        sessionsWithoutClientIdentity: Math.max(0, ownSessions.length - sessionsWithClientIdentity)
+      }
     });
   } catch (error) {
     console.error("[Coach Analytics] metrics failed:", error);
@@ -1576,7 +1687,7 @@ app.get("/api/verify/:kiraNumber",async(req,res)=>{
   try {
     const kiraNumber=String(req.params.kiraNumber||"");
     const signature=String(req.query.sig||"");
-    if(!/^KIRA-\\d{4}-[A-F0-9]{12}$/.test(kiraNumber)||!/^([a-f0-9]{64})$/.test(signature)) return res.status(404).json({valid:false,status:"not_found"});
+    if(!/^KIRA-\d{4}-[A-F0-9]{12}$/.test(kiraNumber)||!/^([a-f0-9]{64})$/.test(signature)) return res.status(404).json({valid:false,status:"not_found"});
     const record=await fsGet("certificates",kiraNumber);
     if(!record) return res.status(404).json({valid:false,status:"not_found"});
     const payload={kiraNumber:record.kiraNumber,studentId:record.studentId,studentName:record.studentName,courseId:record.courseId,courseName:record.courseName,coachId:record.coachId,coachName:record.coachName,academicHours:record.academicHours,adminId:record.adminId,adminName:record.adminName,watermarkHash:record.watermarkHash,issueDate:record.issueDate,status:"issued"};
