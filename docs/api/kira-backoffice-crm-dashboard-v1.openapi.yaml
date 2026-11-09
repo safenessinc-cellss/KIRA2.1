@@ -191,6 +191,181 @@ paths:
         '400': { description: Missing student or course }
         '404': { description: Lead/student/course not found }
         '409': { description: Consent, stage, course, or duplicate enrollment conflict }
+
+  /api/admin/groups:
+    post:
+      tags: [Academic Groups]
+      summary: Create a course group
+      x-kira-status: implemented-branch-unverified
+      description: Requires courses permission. Creates group, audit record and outbox event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courseId, name, coachId, capacity]
+              properties:
+                courseId: { type: string }
+                name: { type: string, maxLength: 120 }
+                coachId: { type: string }
+                capacity: { type: integer, minimum: 1 }
+                timezone: { type: string, default: America/Sao_Paulo }
+      responses:
+        '201': { description: Group created }
+        '400': { description: Invalid group or coach }
+        '403': { description: Missing courses permission }
+  /api/admin/groups/{id}:
+    patch:
+      tags: [Academic Groups]
+      summary: Update group name, capacity or status
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                capacity: { type: integer, minimum: 1 }
+                status: { type: string, enum: [planned, active, finished, cancelled] }
+      responses:
+        '200': { description: Group updated and audited }
+        '409': { description: Capacity cannot be lower than current enrollment count }
+  /api/admin/groups/{id}/sessions:
+    post:
+      tags: [Academic Groups]
+      summary: Schedule a group session
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startsAt, endsAt]
+              properties:
+                startsAt: { type: string, format: date-time }
+                endsAt: { type: string, format: date-time }
+                meetingUrl: { type: string }
+                room: { type: string, maxLength: 80 }
+      responses:
+        '201': { description: Session created }
+        '409': { description: Coach or room schedule conflict }
+  /api/admin/groups/{id}/enroll:
+    post:
+      tags: [Academic Groups]
+      summary: Enroll a student with transactional capacity reservation
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentId]
+              properties:
+                studentId: { type: string }
+                paymentPlan: { type: string, enum: [upfront, monthly, custom] }
+      responses:
+        '201': { description: Enrollment created and group capacity incremented atomically }
+        '409': { description: Group full or enrollment already exists }
+  /api/admin/sessions/{sessionId}:
+    patch:
+      tags: [Academic Groups]
+      summary: Mark a session held or cancelled
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [scheduled, held, cancelled] }
+      responses:
+        '200': { description: Session updated and audited }
+  /api/admin/sessions/{sessionId}/attendance:
+    post:
+      tags: [Academic Performance]
+      summary: Record immutable attendance for an enrolled student
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentId, status]
+              properties:
+                studentId: { type: string }
+                status: { type: string, enum: [present, absent, late, excused] }
+      responses:
+        '201': { description: Attendance and outbox event persisted; performance projection refreshed }
+        '409': { description: Student not enrolled or attendance already exists }
+  /api/admin/assessments:
+    post:
+      tags: [Academic Performance]
+      summary: Grade a student assessment
+      x-kira-status: implemented-branch-unverified
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentId, groupId, type, score]
+              properties:
+                studentId: { type: string }
+                groupId: { type: string }
+                type: { type: string, enum: [quiz, exam, project, participation] }
+                score: { type: number, minimum: 0 }
+                maxScore: { type: number, exclusiveMinimum: 0, default: 100 }
+                weight: { type: number, exclusiveMinimum: 0, default: 1 }
+      responses:
+        '201': { description: Assessment, audit/outbox and performance projection persisted }
+        '409': { description: Student is not enrolled in the group }
+  /api/admin/enrollments/{id}/complete:
+    post:
+      tags: [Academic Performance]
+      summary: Complete an enrollment after payment and academic thresholds pass
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Enrollment completed transactionally }
+        '409': { description: Payment or academic thresholds not satisfied }
+
 components:
   securitySchemes:
     FirebaseBearer:
