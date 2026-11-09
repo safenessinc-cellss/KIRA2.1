@@ -11,7 +11,7 @@ import { AdminBooksView } from './AdminBooksView';
 import { AdminMembershipPlansView } from './AdminMembershipPlansView';
 import { AdminPaymentsConfig } from './AdminPaymentsConfig';
 import { BackofficeDashboard, BackofficeCRM } from './admin/BackofficeDataViews';
-import { Funnel, PhoneCall, BadgeCheck, GraduationCap, CalendarDays, Layers3, UsersRound, FileSignature, ClipboardCheck, Wallet, BadgePercent, PlugZap, ShieldCheck, ChevronRight, LockKeyhole } from 'lucide-react';
+import { Funnel, PhoneCall, BadgeCheck, GraduationCap, CalendarDays, Layers3, UsersRound, FileSignature, ClipboardCheck, Wallet, BadgePercent, PlugZap, LockKeyhole } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
