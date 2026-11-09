@@ -625,7 +625,8 @@ app.get("/api/admin/dashboard", async (req, res) => {
       }
     }
     const periodEnrollments = enrollments.filter(e => inRange(e.createdAt));
-    const periodLeads = leads.filter(l => inRange(l.createdAt));
+    const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
+    const periodLeads = leads.filter(l => inRange(l.createdAt) && (isSuperAdmin || l.assignedTo === user.uid));
     const byStage: Record<string, number> = { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 };
     for (const lead of periodLeads) byStage[String(lead.stage || "new")] = (byStage[String(lead.stage || "new")] || 0) + 1;
     const converted = byStage.enrolled || 0;
@@ -652,7 +653,8 @@ app.get("/api/admin/crm/leads", async (req, res) => {
     const user = await backofficeAdmin(req, res); if (!user) return;
     const stage = String(req.query.stage || ""), source = String(req.query.source || ""), assignedTo = String(req.query.assigned_to || "");
     const leads = await fsListDocuments("crmLeads", 200);
-    const items = leads.filter(lead => (!stage || lead.stage === stage) && (!source || lead.source === source) && (!assignedTo || lead.assignedTo === assignedTo))
+    const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
+    const items = leads.filter(lead => (isSuperAdmin || lead.assignedTo === user.uid) && (!stage || lead.stage === stage) && (!source || lead.source === source) && (!assignedTo || lead.assignedTo === assignedTo))
       .map(({ id, ...lead }) => crmLeadView(id, lead))
       .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     return res.json({ items, total: items.length, limit: 200 });
@@ -678,7 +680,7 @@ app.post("/api/admin/crm/leads", async (req, res) => {
     const lead = {
       fullNameEncrypted: crmEncrypt(fullName), emailEncrypted: email ? crmEncrypt(email) : "", phoneEncrypted: phone ? crmEncrypt(phone) : "",
       source, campaign: String(body.campaign || "").slice(0, 120), courseInterest: String(body.courseInterest || "").slice(0, 180),
-      stage: "new", assignedTo: String(body.assignedTo || "").slice(0, 180), score: 0,
+      stage: "new", assignedTo: (user.email?.toLowerCase() === "safeness.c.a@gmail.com" ? String(body.assignedTo || "") : user.uid).slice(0, 180), score: 0,
       consentGdpr: body.consentGdpr === true, createdAt: now, updatedAt: now, piiVersion: 1
     };
     try {
@@ -703,6 +705,7 @@ app.patch("/api/admin/crm/leads/:id", async (req, res) => {
     const user = await backofficeAdmin(req, res); if (!user) return;
     const id = idSafe(String(req.params.id || "")), before = await fsGet("crmLeads", id);
     if (!before) return res.status(404).json({ error: "Lead no encontrado." });
+    if (user.email?.toLowerCase() !== "safeness.c.a@gmail.com" && before.assignedTo !== user.uid) return res.status(404).json({ error: "Lead no encontrado." });
     const body = req.body || {}, allowedStages = ["new", "contacted", "qualified", "enrolled", "lost"];
     if (body.stage === "enrolled") return res.status(409).json({ error: "La etapa enrolled solo se asigna mediante conversión transaccional." });
     const next: any = { ...before, updatedAt: new Date().toISOString(), updatedBy: user.uid };
@@ -732,7 +735,7 @@ app.post("/api/admin/crm/leads/:id/interactions", async (req, res) => {
   try {
     const user = await backofficeAdmin(req, res); if (!user) return;
     const leadId = idSafe(String(req.params.id || "")), lead = await fsGet("crmLeads", leadId);
-    if (!lead) return res.status(404).json({ error: "Lead no encontrado." });
+    if (!lead || (user.email?.toLowerCase() !== "safeness.c.a@gmail.com" && lead.assignedTo !== user.uid)) return res.status(404).json({ error: "Lead no encontrado." });
     const body = req.body || {}, channel = String(body.channel || ""), outcome = String(body.outcome || "");
     if (!["call", "whatsapp", "email", "meeting", "sms"].includes(channel) || !["no_answer", "left_message", "interested", "not_interested", "scheduled"].includes(outcome)) return res.status(400).json({ error: "Canal u resultado de contacto inválido." });
     const id = randomBytes(16).toString("hex"), now = new Date().toISOString();
@@ -760,7 +763,7 @@ app.post("/api/admin/crm/leads/:id/convert-to-enrollment", async (req, res) => {
       fsGetInTransaction("users", studentUid, transaction),
       fsGetInTransaction("courses", courseId, transaction)
     ]);
-    if (!lead || !student || student.role !== "alumno") return res.status(404).json({ error: "Lead o cuenta de alumno no encontrados." });
+    if (!lead || (user.email?.toLowerCase() !== "safeness.c.a@gmail.com" && lead.assignedTo !== user.uid) || !student || student.role !== "alumno") return res.status(404).json({ error: "Lead o cuenta de alumno no encontrados." });
     if (!["qualified", "contacted"].includes(String(lead.stage)) || lead.consentGdpr !== true) return res.status(409).json({ error: "Solo se convierte un lead contactado/calificado con consentimiento LGPD registrado." });
     if (!course || !["published", "active"].includes(String(course.status || ""))) return res.status(409).json({ error: "El curso no está publicado o disponible." });
     if (lead.courseInterest && lead.courseInterest !== courseId) return res.status(409).json({ error: "El curso seleccionado no coincide con el interés registrado." });
