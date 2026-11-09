@@ -2084,7 +2084,7 @@ async function runPaymentReconciliation() {
 
 app.get("/api/admin/invoices", async (req, res) => {
   try {
-    const user = await backofficeAdmin(req, res, "finance"); if (!user) return;
+    const user = await backofficePermission(req, res, "finance.invoices.read", "all"); if (!user) return;
     const status = String(req.query.status || ""), enrollmentId = String(req.query.enrollmentId || "");
     const invoices = await fsListAllDocuments("invoices");
     const items = invoices.filter(x => (!status || x.status === status) && (!enrollmentId || x.enrollmentId === enrollmentId)).sort((a,b) => String(a.dueDate).localeCompare(String(b.dueDate)));
