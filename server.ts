@@ -805,7 +805,7 @@ app.get("/api/admin/payments/summary", async (_req,res) => {
       return [currency,{gross,kiraNet:gross*.7,coachPayouts:gross*.3,refunds:refunded,netFinal:gross-refunded-paidOut}];
     }));
     const single=currencies.length===1?totalsByCurrency[currencies[0]]:null;
-    res.json({mixedCurrencies:currencies.length>1,currencies,totalsByCurrency,...(single||{gross:null,kiraNet:null,coachPayouts:null,refunds:null,netFinal:null})});
+    res.json({mixedCurrencies:currencies.length>1,currencies,currency:currencies.length===1?currencies[0]:null,totalsByCurrency,...(single||{gross:null,kiraNet:null,coachPayouts:null,refunds:null,netFinal:null})});
   } catch(e){console.error(e);res.status(500).json({error:"No fue posible calcular totales."});}
 });
 app.post("/api/admin/payments/refund", async (req: AdminRequest,res) => {
