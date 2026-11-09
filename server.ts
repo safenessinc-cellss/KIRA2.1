@@ -242,7 +242,10 @@ async function catalogItem(id: string): Promise<any | null> {
 function certSignature(data: any): string {
   const secret = process.env.KIRA_CERTIFICATE_SIGNING_SECRET || "";
   if (secret.length < 32) throw new Error("Configura KIRA_CERTIFICATE_SIGNING_SECRET (mínimo 32 caracteres).");
-  const canonical = JSON.stringify(Object.keys(data).sort().reduce((result: any, key) => { result[key] = data[key]; return result; }, {}));
+  // Review metadata is deliberately outside the signed legacy payload so approvals/revocations
+  // never invalidate an existing public certificate signature.
+  const excluded = new Set(["signature", "signatureAlgorithm", "adminStatus", "requiresManualApproval", "reviewedBy", "reviewedAt", "revokeReason"]);
+  const canonical = JSON.stringify(Object.keys(data).filter(key => !excluded.has(key)).sort().reduce((result: any, key) => { result[key] = data[key]; return result; }, {}));
   return createHmac("sha256", secret).update(canonical).digest("hex");
 }
 async function fulfillOrder(orderId: string, provider: string, paymentId: string, eventId: string, paidMinor: number, currency: string, expectedUserId?: string): Promise<void> {
@@ -799,7 +802,7 @@ app.post("/api/admin/payments/refund", async (req: AdminRequest,res) => {
       const stripe=getStripe(); if(!stripe) return res.status(503).json({error:"Stripe no está configurado."});
       const paymentIntent=String(transaction.providerPaymentId||"");
       if(!paymentIntent.startsWith("pi_")) return res.status(409).json({error:"No se encontró el payment_intent original de Stripe."});
-      const refund=await stripe.refunds.create({payment_intent:paymentIntent,reason:"requested_by_customer",metadata:{adminReason:reason,transactionId}});
+      const refund=await stripe.refunds.create({payment_intent:paymentIntent,reason:"requested_by_customer",metadata:{adminReason:reason,transactionId}},{idempotencyKey:"kira-refund-"+transactionId});
       providerRefundId=refund.id;
     } else if(provider==="mercadopago"){
       const paymentId=String(transaction.providerPaymentId||""); const token=process.env.MERCADOPAGO_ACCESS_TOKEN;
