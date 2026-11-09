@@ -19,3 +19,12 @@ test("MFA assurance rejects stale or implausibly future authentication", () => {
   assert.equal(hasRecentMfaAuthentication({ mfaSecondFactor: "phone", authTime: NOW / 1000 - 601 }, NOW), false);
   assert.equal(hasRecentMfaAuthentication({ mfaSecondFactor: "phone", authTime: NOW / 1000 + 301 }, NOW), false);
 });
+
+import { canAccessBackofficePermission } from "../server/security-domain";
+
+test("backoffice staff permissions require an exact grant; legacy system is not a wildcard", () => {
+  assert.equal(canAccessBackofficePermission(false, ["crm"], "crm"), true);
+  assert.equal(canAccessBackofficePermission(false, ["crm"], "finance"), false);
+  assert.equal(canAccessBackofficePermission(false, ["system"], "finance"), false);
+  assert.equal(canAccessBackofficePermission(true, [], "finance"), true);
+});
