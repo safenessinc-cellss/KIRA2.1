@@ -78,7 +78,7 @@ export function EliteLibrary() {
       return allowedTier && (searchTerm === '' || String(item.title || '').toLowerCase().includes(searchTerm.toLowerCase())) && (filterType === 'all' || item.type === filterType);
     });
     setDisplayItems(items);
-  }, [coaches, searchTerm, filterType]);
+  }, [coaches, searchTerm, filterType, tier]);
 
   const handleUnlock = async (item: any) => {
     if (!user?.uid || unlocking) return;
