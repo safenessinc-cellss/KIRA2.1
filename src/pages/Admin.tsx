@@ -17,9 +17,121 @@ import { Funnel, PhoneCall, BadgeCheck, GraduationCap, CalendarDays, Layers3, Us
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions';
+type AdminTab = 'dashboard' | 'activity' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions';
 
 type BackofficeItem = { id: AdminTab; label: string; icon: React.ReactNode; permission: string; ready: boolean; countKey?: 'leads' | 'overdue' };
+
+function OwnerActivityView() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error("La sesión de propietario no está disponible.");
+      const response = await fetch("/api/admin/activity", { headers: { Authorization: "Bearer " + token } });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || (response.status === 403
+        ? "Se requiere MFA reciente. Vuelve a autenticarte con el segundo factor de Firebase para consultar el centro global."
+        : "No fue posible cargar la actividad global."));
+      setData(body);
+    } catch (cause: any) {
+      setError(cause?.message || "Error al consultar la actividad global.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(); }, []);
+
+  const counts = data?.counts || {};
+  const metrics = [
+    ["Usuarios", data?.recentUsers?.length ?? 0],
+    ["Empresas", counts.companies ?? 0],
+    ["Cursos", counts.courses ?? 0],
+    ["Matrículas", counts.enrollments ?? 0],
+    ["Sesiones", counts.sessions ?? 0],
+    ["Transacciones", counts.transactions ?? 0],
+    ["Facturas", counts.invoices ?? 0],
+    ["Certificados", counts.certificates ?? 0],
+    ["Diarios privados", counts.journal_entries ?? 0]
+  ];
+
+  const formatTimestamp = (value: any) => {
+    if (!value) return "Sin fecha";
+    const date = value?.toDate ? value.toDate() : new Date(value);
+    return Number.isNaN(date.getTime()) ? "Sin fecha" : date.toLocaleString();
+  };
+
+  return <div className="space-y-6">
+    <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[.18em] text-teal-700">SAFENESS · Propietario único</p>
+          <h2 className="mt-1 text-2xl font-black text-slate-900">Centro de Control Global KIRA</h2>
+          <p className="mt-2 text-sm text-slate-600">Actividad operativa, accesos, auditoría, finanzas y estado de los módulos de toda la plataforma.</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">{data?.owner?.email || "safeness.c.a@gmail.com"} · {data?.owner?.verified ? "Cuenta verificada" : "Verificación pendiente"}</p>
+        </div>
+        <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          <Activity size={16} className={loading ? "animate-pulse" : ""}/> Actualizar actividad
+        </button>
+      </div>
+    </header>
+    {error && <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{error}</div>}
+    <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      {metrics.map(([label, value]) => <article key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
+        <p className="mt-2 text-2xl font-black tabular-nums text-slate-900">{loading ? "—" : Number(value).toLocaleString()}</p>
+        {label === "Diarios privados" && <p className="mt-1 text-[10px] text-slate-400">Solo conteo; no se muestran contenidos</p>}
+      </article>)}
+    </section>
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 p-5">
+        <h3 className="font-bold text-slate-900">Registro global de actividad</h3>
+        <p className="mt-1 text-xs text-slate-500">{data?.eventCount ?? 0} eventos encontrados · mostrando hasta 250 recientes</p>
+      </div>
+      {loading ? <div className="p-8 text-center text-sm text-slate-500">Consultando eventos de la plataforma…</div> :
+        !data?.events?.length ? <div className="p-8 text-center text-sm text-slate-500">No hay eventos disponibles en las fuentes de auditoría consultadas.</div> :
+        <div className="max-h-[620px] overflow-auto">
+          {data.events.map((event: any) => <article key={event.id} className="grid gap-2 border-b border-slate-100 px-5 py-4 md:grid-cols-[170px_minmax(0,1fr)_170px]">
+            <time className="text-xs text-slate-500">{formatTimestamp(event.timestamp)}</time>
+            <div className="min-w-0">
+              <p className="break-words text-sm font-bold text-slate-800">{event.action}</p>
+              <p className="mt-1 break-all text-xs text-slate-500">{event.source} · Actor: {event.actorId} · Destino: {event.target || "—"}</p>
+              {event.error && <p className="mt-1 break-words text-xs text-rose-700">{event.error}</p>}
+            </div>
+            <div className="text-xs text-slate-500 md:text-right">{event.provider}{event.status ? " · " + event.status : ""}</div>
+          </article>)}
+        </div>}
+    </section>
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 p-5">
+        <h3 className="font-bold text-slate-900">Usuarios y últimos accesos</h3>
+        <p className="mt-1 text-xs text-slate-500">Identidad, rol, estado y actividad de acceso de toda KIRA.</p>
+      </div>
+      {loading ? <div className="p-8 text-center text-sm text-slate-500">Cargando usuarios…</div> :
+        <div className="max-h-[460px] overflow-auto">
+          <table className="w-full min-w-[700px] text-left text-xs">
+            <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-3">Usuario</th><th className="px-5 py-3">Rol</th><th className="px-5 py-3">Empresa</th><th className="px-5 py-3">Estado</th><th className="px-5 py-3">Último acceso</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {(data?.recentUsers || []).map((item: any) => <tr key={item.uid}>
+                <td className="px-5 py-3"><p className="font-semibold text-slate-800">{item.displayName || "Sin nombre"}</p><p className="mt-1 text-slate-500">{item.email}</p></td>
+                <td className="px-5 py-3 font-semibold text-slate-700">{item.role}</td>
+                <td className="px-5 py-3 text-slate-600">{item.companyName || "—"}</td>
+                <td className="px-5 py-3 text-slate-600">{item.status || item.approvalStatus || "—"}</td>
+                <td className="px-5 py-3 text-slate-500">{formatTimestamp(item.lastLoginAt)}</td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>}
+    </section>
+    <p className="text-xs leading-relaxed text-slate-500">{data?.privacy || "La auditoría muestra metadatos operativos. No se exponen credenciales ni contenido privado de usuarios."}</p>
+    {data?.limits && <p className="text-[10px] text-slate-400">Cobertura de consulta: máximo {data.limits.perCollection} registros por colección; {data.limits.events} eventos y {data.limits.recentUsers} usuarios en la vista. No representa un archivo histórico ilimitado.</p>}
+  </div>;
+}
 
 export function AdminMonitor() {
   const { user } = useAuth();
@@ -49,10 +161,14 @@ export function AdminMonitor() {
   }, [user]);
 
   const isSuperAdmin = user?.email?.toLowerCase() === 'safeness.c.a@gmail.com' && user?.emailVerified === true;
+  useEffect(() => { if (isSuperAdmin) setActiveTab('activity'); }, [isSuperAdmin]);
   const perms: string[] = Array.isArray(profile?.staffPermissions) ? profile.staffPermissions : [];
   const canOpen = (item: BackofficeItem) => item.ready && (isSuperAdmin || (item.permission !== 'superadmin' && (perms.includes('system') || perms.includes(item.permission))));
   const tree: Array<{ label: string; items: BackofficeItem[] }> = [
-    { label: 'Dashboard', items: [{ id: 'dashboard', label: 'Visión General de Ventas y Matrículas', icon: <LayoutDashboard size={18}/>, permission: 'system', ready: true }] },
+    { label: 'Control Global', items: [
+      { id: 'activity', label: 'Actividad Global y Auditoría', icon: <Activity size={18}/>, permission: 'superadmin', ready: true },
+      { id: 'dashboard', label: 'Visión General de Ventas y Matrículas', icon: <LayoutDashboard size={18}/>, permission: 'system', ready: true }
+    ] },
     { label: 'Embudo de Ventas (CRM)', items: [
       { id: 'crm_leads', label: 'Leads Captados', icon: <Funnel size={18}/>, permission: 'crm', ready: true, countKey: 'leads' },
       { id: 'crm_interactions', label: 'Intentos de Contacto', icon: <PhoneCall size={18}/>, permission: 'crm', ready: true },
@@ -82,6 +198,7 @@ export function AdminMonitor() {
   const activeGroup = tree.find(group => group.items.some(item => item.id === activeTab));
   const renderContent = () => {
     switch (activeTab) {
+      case 'activity': return isSuperAdmin ? <OwnerActivityView /> : null;
       case 'dashboard': return <BackofficeDashboard />;
       case 'crm_leads': return <BackofficeCRM view="leads" />;
       case 'crm_interactions': return <BackofficeCRM view="interactions" />;
