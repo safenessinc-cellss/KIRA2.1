@@ -57,7 +57,7 @@ function OwnerActivityView() {
     ["Transacciones", counts.transactions ?? 0],
     ["Facturas", counts.invoices ?? 0],
     ["Certificados", counts.certificates ?? 0],
-    ["Diarios privados", counts.journal_entries ?? 0]
+    ["Diarios privados", counts.journals ?? 0]
   ];
 
   const formatTimestamp = (value: any) => {
