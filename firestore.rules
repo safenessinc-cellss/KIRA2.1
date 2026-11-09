@@ -73,17 +73,34 @@ service cloud.firestore {
     }
     
     function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.email == "safeness.c.a@gmail.com" ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
-      );
+      return isAuthenticated()
+        && request.auth.token.email == "safeness.c.a@gmail.com"
+        && request.auth.token.email_verified == true;
     }
     
+    function isKiraOwner() {
+      return isAuthenticated() && request.auth.token.email == "safeness.c.a@gmail.com" && request.auth.token.email_verified == true;
+    }
+
+    function isKiraStaffAdmin() {
+      return isAuthenticated()
+        && request.auth.token.email_verified == true
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
     function isApprovedCoach() {
       return isAuthenticated() && 
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'coach' &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'approved';
+    }
+
+    function hasActiveCoachMembership() {
+      let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isApprovedCoach()
+        && profile.membershipStatus == 'active'
+        && (!('membershipExpiresAt' in profile) || profile.membershipExpiresAt > request.time);
     }
     
     function isCompanyAdmin(companyId) {
@@ -113,13 +130,14 @@ service cloud.firestore {
     
     function isValidUser() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'name', 'photoURL', 'photoUrl', 'role', 'approvalStatus', 'points', 'theme', 'isEmailVerified', 'staffPermissions', 'lastLoginAt', 'lastActivityAt', 'createdAt', 'specialty', 'bio', 'aiFeedback', 'registeredByCoach', 'status', 'membershipStatus', 'membershipPaidAt', 'socialLinks', 'specialties', 'calendlyUrl', 'experienceLevel', 'languages', 'welcomeVideoUrl', 'rating', 'studentCount', 'mediaItems', 'updatedAt', 'manualActiveStudents', 'manualAvgProgress', 'manualRecentSessions', 'companyId', 'companyName', 'department', 'jobTitle', 'employeeCode', 'organizationId', 'tenantId']) &&
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'name', 'photoURL', 'photoUrl', 'role', 'approvalStatus', 'points', 'theme', 'isEmailVerified', 'staffPermissions', 'lastLoginAt', 'lastActivityAt', 'createdAt', 'specialty', 'bio', 'aiFeedback', 'registeredByCoach', 'status', 'membershipStatus', 'membershipPaidAt', 'socialLinks', 'specialties', 'calendlyUrl', 'experienceLevel', 'languages', 'welcomeVideoUrl', 'rating', 'studentCount', 'mediaItems', 'updatedAt', 'manualActiveStudents', 'manualAvgProgress', 'manualRecentSessions', 'hasCompletedOnboarding', 'companyId', 'companyName', 'department', 'jobTitle', 'employeeCode', 'organizationId', 'tenantId']) &&
              data.uid is string &&
              data.email is string &&
              data.role in ['admin', 'coach', 'alumno', 'hr_admin', 'company_admin', 'company_member'] &&
              (!('createdAt' in data) || data.createdAt is timestamp) &&
              (!('approvalStatus' in data) || data.approvalStatus in ['pending', 'approved', 'rejected']) &&
-             (!('points' in data) || data.points is number) &&
+             (!('points' in data) || (data.points is number && data.points >= 0)) &&
+             (!('hasCompletedOnboarding' in data) || data.hasCompletedOnboarding is bool) &&
              (!('theme' in data) || data.theme is string) &&
              (!('isEmailVerified' in data) || data.isEmailVerified is bool) &&
              (!('staffPermissions' in data) || data.staffPermissions is list) &&
@@ -149,9 +167,13 @@ service cloud.firestore {
 
     function isValidMessage() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['chatId', 'senderId', 'senderName', 'content', 'createdAt']) &&
+      return hasOnlyAllowedFields(['chatId', 'senderId', 'senderName', 'content', 'createdAt', 'participants']) &&
              data.chatId is string && data.senderId is string &&
              (!('senderName' in data) || data.senderName is string) &&
+             data.participants is list && data.participants.size() == 2 &&
+             request.auth.uid in data.participants &&
+             data.participants[0] < data.participants[1] &&
+             data.chatId == data.participants[0] + '_' + data.participants[1] &&
              data.content is string && data.content.size() > 0 && data.content.size() < 10000 &&
              data.createdAt is timestamp;
     }
@@ -168,12 +190,13 @@ service cloud.firestore {
     
     function isValidCourse() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['title', 'description', 'price', 'coachId', 'status', 'bannerUrl', 'createdAt', 'hours', 'coachName', 'studentsCount']) &&
+      return hasOnlyAllowedFields(['title', 'description', 'price', 'coachId', 'status', 'bannerUrl', 'createdAt', 'updatedAt', 'hours', 'coachName', 'studentsCount']) &&
              data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
              data.price is number && data.price >= 0 &&
              data.coachId is string &&
              data.status in ['draft', 'pending', 'published'] &&
              data.createdAt is timestamp &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp) &&
              (!('description' in data) || (data.description is string && data.description.size() < 10000)) &&
              (!('bannerUrl' in data) || (data.bannerUrl is string && data.bannerUrl.size() < 1000)) &&
              (!('hours' in data) || (data.hours is number && data.hours >= 0 && data.hours <= 10000)) &&
@@ -183,14 +206,18 @@ service cloud.firestore {
     
     function isValidEnrollment() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['userId', 'courseId', 'progress', 'createdAt', 'completed', 'courseCompleted', 'completedAt', 'paymentOrderId', 'paymentStatus']) &&
+      return hasOnlyAllowedFields(['userId', 'studentName', 'studentEmail', 'studentAvatar', 'courseId', 'progress', 'createdAt', 'completed', 'courseCompleted', 'completedAt', 'completionConfirmedBy', 'paymentOrderId', 'paymentStatus']) &&
              data.userId is string &&
              data.courseId is string &&
+             (!('studentName' in data) || data.studentName is string) &&
+             (!('studentEmail' in data) || data.studentEmail is string) &&
+             (!('studentAvatar' in data) || data.studentAvatar is string) &&
              data.progress is number && data.progress >= 0 && data.progress <= 100 &&
              data.createdAt is timestamp &&
              (!('completed' in data) || data.completed is bool) &&
              (!('courseCompleted' in data) || data.courseCompleted is bool) &&
-             (!('completedAt' in data) || data.completedAt is timestamp);
+             (!('completedAt' in data) || data.completedAt is timestamp) &&
+             (!('completionConfirmedBy' in data) || data.completionConfirmedBy is string);
     }
     
     function isValidJournal() {
@@ -204,8 +231,10 @@ service cloud.firestore {
 
     function isValidReview() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['courseId', 'userId', 'rating', 'comment', 'status', 'createdAt']) &&
-             data.courseId is string &&
+      return hasOnlyAllowedFields(['courseId', 'bookId', 'itemId', 'itemType', 'userId', 'rating', 'comment', 'status', 'createdAt']) &&
+             ((('courseId' in data) && data.courseId is string) || (('bookId' in data) && data.bookId is string)) &&
+             (!('itemId' in data) || data.itemId is string) &&
+             (!('itemType' in data) || data.itemType in ['course', 'book']) &&
              data.userId is string &&
              data.rating is number && data.rating >= 1 && data.rating <= 5 &&
              data.status in ['published', 'hidden'] &&
@@ -266,10 +295,27 @@ service cloud.firestore {
     // Collection Rules
     // ===============================================================
     
+    // Sanitized public projection: no email, auth metadata, tenant IDs, or private notes.
+    match /coachPublicProfiles/{coachId} {
+      allow read: if resource.data.status == 'published';
+      allow create, update: if isAdmin() || (isAuthenticated()
+        && request.auth.uid == coachId
+        && isApprovedCoach()
+        && request.resource.data.uid == coachId
+        && request.resource.data.status == 'published'
+        && request.resource.data.approvalStatus == 'approved'
+        && request.resource.data.keys().hasOnly(['uid', 'displayName', 'photoURL', 'specialty', 'bio', 'specialties', 'languages', 'socialLinks', 'rating', 'studentCount', 'mediaItems', 'approvalStatus', 'status', 'updatedAt']));
+      allow delete: if isAdmin() || (isAuthenticated()
+        && request.auth.uid == coachId
+        && (!exists(/databases/$(database)/documents/users/$(coachId))
+          || get(/databases/$(database)/documents/users/$(coachId)).data.role != 'coach'
+          || get(/databases/$(database)/documents/users/$(coachId)).data.approvalStatus != 'approved'));
+    }
+
     match /users/{userId} {
       // Read: Public can see ALL coach profiles (needed for directory query). Users can read their own. Admins all.
       // And authenticated users can read profiles for chats etc.
-      allow read: if (resource.data.role == 'coach') || isAuthenticated();
+      allow read: if isAdmin() || isKiraStaffAdmin() || isCurrentUser(userId) || isCompanyAdmin(resource.data.companyId);
       
       // Create: Users can create their own profile. Only admins can create an admin role.
       allow create: if isAuthenticated() && isCurrentUser(userId) && isValidUser() && 
@@ -282,25 +328,54 @@ service cloud.firestore {
       // Update: Users can update their profile but NOT their role or approvalStatus. Admins can update anything.
       allow update: if isAuthenticated() && isValidUser() &&
                     ((isAdmin()) || 
-                     (isCurrentUser(userId) && areImmutableFieldsUnchanged(['uid', 'email', 'role', 'approvalStatus', 'createdAt', 'staffPermissions', 'companyId', 'organizationId', 'tenantId', 'membershipStatus', 'membershipPaidAt'])));
+                     (isCurrentUser(userId) && areImmutableFieldsUnchanged(['uid', 'email', 'role', 'approvalStatus', 'createdAt', 'staffPermissions', 'companyId', 'organizationId', 'tenantId', 'membershipStatus', 'membershipPaidAt', 'points', 'unlockedTools'])));
                      
       allow delete: if isAdmin();
     }
     
+    // Public catalog items are visible only when published; only admins can manage inventory.
+    match /books/{bookId} {
+      allow read: if isAdmin() || resource.data.status == 'published';
+      allow create: if isAdmin()
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.price is number
+        && request.resource.data.price >= 0
+        && request.resource.data.currency in ['USD', 'BRL', 'EUR']
+        && request.resource.data.status == 'published';
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Private storage pointers and paid-book entitlements never appear in public catalog documents.
+    match /bookAssets/{bookId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /bookEntitlements/{entitlementId} {
+      allow read: if isAdmin() || isKiraStaffAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /membershipPlans/{planId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
+      allow create, update, delete: if isAdmin();
+    }
+
     match /courses/{courseId} {
-      allow read: if isAuthenticated() && (isAdmin() || resource.data.status == 'published' || (isAuthenticated() && resource.data.coachId == request.auth.uid));
-      allow create: if isValidCourse() && (isAdmin() || (isApprovedCoach() && request.resource.data.coachId == request.auth.uid));
+      allow read: if isAuthenticated() && (isAdmin() || isKiraStaffAdmin() || resource.data.status == 'published' || (isAuthenticated() && resource.data.coachId == request.auth.uid));
+      allow create: if isValidCourse() && (isAdmin() || (hasActiveCoachMembership() && request.resource.data.coachId == request.auth.uid && request.resource.data.status in ['draft', 'pending']));
       allow update: if isAuthenticated() && isValidCourse() && areImmutableFieldsUnchanged(['coachId', 'createdAt']) && 
-                    (isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid));
-      allow delete: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
+                    (isAdmin() || (hasActiveCoachMembership() && resource.data.coachId == request.auth.uid && request.resource.data.status == resource.data.status));
+      allow delete: if isAdmin();
     }
     
     match /enrollments/{enrollmentId} {
-      allow read: if isAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid)));
+      allow read: if isAdmin() || isKiraStaffAdmin() || (isAuthenticated() && (resource.data.userId == request.auth.uid || (exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid)));
       // Enrollment is a business entitlement, not a client-side payment flag.
       // Students may self-enroll only in published free courses. Paid enrollments
       // must be created by a trusted backend after a verified payment webhook.
-      // Coaches may enroll students only in their own courses; admins may support operations.
+      // Coaches cannot create enrollment entitlements from the client; admins may support operations.
       allow create: if isAuthenticated()
         && isValidEnrollment()
         && request.resource.data.progress == 0
@@ -310,17 +385,13 @@ service cloud.firestore {
         && (
           isAdmin()
           || (
-            isApprovedCoach()
-            && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.coachId == request.auth.uid
-          )
-          || (
             request.resource.data.userId == request.auth.uid
             && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.status == 'published'
             && get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.price <= 0
           )
         );
-      allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'courseId', 'createdAt', 'paymentOrderId', 'paymentStatus']) && 
-                    (isAdmin() || (isApprovedCoach() && exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid));
+      allow update: if isAuthenticated() && isValidEnrollment() && areImmutableFieldsUnchanged(['userId', 'studentName', 'studentEmail', 'studentAvatar', 'courseId', 'createdAt', 'paymentOrderId', 'paymentStatus']) && 
+                    (isAdmin() || (hasActiveCoachMembership() && exists(/databases/$(database)/documents/courses/$(resource.data.courseId)) && get(/databases/$(database)/documents/courses/$(resource.data.courseId)).data.coachId == request.auth.uid));
       allow delete: if isAdmin();
     }
     
@@ -336,9 +407,9 @@ service cloud.firestore {
     
     match /sessions/{sessionId} {
       allow read: if isAdmin() || (isAuthenticated() && (resource.data.coachId == request.auth.uid || resource.data.userId == request.auth.uid));
-      allow create: if isAuthenticated() && (isAdmin() || request.resource.data.coachId == request.auth.uid);
-      allow update: if isAuthenticated() && (isAdmin() || resource.data.coachId == request.auth.uid);
-      allow delete: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
+      allow create: if isAuthenticated() && (isAdmin() || (hasActiveCoachMembership() && request.resource.data.coachId == request.auth.uid));
+      allow update: if isAuthenticated() && (isAdmin() || (hasActiveCoachMembership() && resource.data.coachId == request.auth.uid && areImmutableFieldsUnchanged(['coachId', 'userId', 'createdAt'])));
+      allow delete: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
     }
     
     match /reviews/{reviewId} {
@@ -376,6 +447,44 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create, update, delete: if false;
     }
+
+    // Backoffice CRM, academic operations and financial documents are server-only.
+    // Express enforces role/assignment checks and writes immutable audit records.
+    match /crmLeads/{id} { allow read, write: if false; }
+    match /crmInteractions/{id} { allow read, write: if false; }
+    match /courseGroups/{id} { allow read, write: if false; }
+    match /groupSessions/{id} { allow read, write: if false; }
+    match /attendance/{id} { allow read, write: if false; }
+    match /assessments/{id} { allow read, write: if false; }
+    match /invoices/{id} { allow read, write: if false; }
+    match /paymentReminders/{id} { allow read, write: if false; }
+    match /integrations/{id} { allow read, write: if false; }
+    match /landingForms/{id} { allow read, write: if false; }
+    match /webhookInbox/{id} { allow read, write: if false; }
+    match /rolePermissions/{id} { allow read, write: if false; }
+    match /dashboardKpis/{id} { allow read, write: if false; }
+    // Snake_case aliases used by the academic aggregate model are server-only too.
+    match /course_groups/{id} { allow read, write: if false; }
+    match /group_sessions/{id} { allow read, write: if false; }
+    match /student_performance/{id} { allow read, write: if false; }
+    match /role_permissions/{id} { allow read, write: if false; }
+    match /webhook_inbox/{id} { allow read, write: if false; }
+    match /payment_reminders/{id} { allow read, write: if false; }
+    match /invoice_payment_claims/{id} { allow read, write: if false; }
+    match /schedule_locks/{id} { allow read, write: if false; }
+    match /paymentReconciliationReports/{id} { allow read, write: if false; }
+    match /counters/{id} { allow read, write: if false; }
+    match /dashboard_aggregates/{id} { allow read, write: if false; }
+    match /outbox/{id} { allow read, write: if false; }
+
+    // Payment configuration and ledger are managed only through trusted server APIs.
+    // Secret ciphertext is never exposed to client-side Firestore listeners.
+    match /paymentSettings/{id} { allow read, write: if false; }
+    match /paymentGateways/{id} { allow read, write: if false; }
+    match /paymentPlans/{id} { allow read, write: if false; }
+    match /paymentCoupons/{id} { allow read, write: if false; }
+    match /paymentAudit/{id} { allow read, write: if false; }
+    match /config_audit/{id} { allow read, write: if false; }
 
     match /auditLogs/{logId} {
       allow read: if isAdmin();
@@ -429,39 +538,40 @@ service cloud.firestore {
     }
 
     match /messages/{messageId} {
-      allow read: if isAuthenticated() && (isAdmin() || resource.data.chatId.matches('.*' + request.auth.uid + '.*'));
-      allow create: if isAuthenticated() && isValidMessage() && request.auth.uid == request.resource.data.senderId;
+      allow read: if isAuthenticated() && (isAdmin() || (resource.data.participants is list && request.auth.uid in resource.data.participants));
+      allow create: if isAuthenticated() && isValidMessage() && request.auth.uid == request.resource.data.senderId && (isAdmin() || hasActiveCoachMembership() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'alumno'));
       allow update, delete: if isAdmin();
     }
 
     match /contracts/{contractId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
-      allow create: if isAdmin() || isApprovedCoach();
-      allow update: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+      allow create: if isAdmin() || hasActiveCoachMembership();
+      allow update: if isAdmin() || (hasActiveCoachMembership() && resource.data.coachId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
     match /notifications/{id} {
       allow read: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
-      allow create: if isAuthenticated() && isValidNotification();
-      allow update: if isAuthenticated() && (isAdmin() || resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidNotification() && (isAdmin() || request.resource.data.userId == request.auth.uid);
+      allow update: if isAuthenticated() && (isAdmin() || (resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']) && request.resource.data.read is bool));
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
 
     match /automations/{id} {
       allow read: if isAdmin() || isApprovedCoach();
-      allow create, update, delete: if isAdmin() || isApprovedCoach();
+      allow create, update, delete: if isAdmin() || hasActiveCoachMembership();
     }
 
     match /campaign_logs/{id} {
-      allow read, create: if isAdmin() || isApprovedCoach();
+      allow read: if isAdmin() || isApprovedCoach();
+      allow create: if isAdmin() || hasActiveCoachMembership();
       allow update, delete: if false;
     }
 
     match /contract_templates/{id} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.coachId == request.auth.uid);
-      allow create: if isApprovedCoach() && request.resource.data.coachId == request.auth.uid;
-      allow update, delete: if isAdmin() || (isApprovedCoach() && resource.data.coachId == request.auth.uid);
+      allow create: if hasActiveCoachMembership() && request.resource.data.coachId == request.auth.uid;
+      allow update, delete: if isAdmin() || (hasActiveCoachMembership() && resource.data.coachId == request.auth.uid);
     }
 
     match /course_activity/{id} {
@@ -492,23 +602,17 @@ service cloud.firestore {
     }
 
     // Certificate lifecycle: students submit requests; only the KIRA owner issues immutable credentials.
-    function isKiraOwner() {
-      return isAuthenticated() && request.auth.token.email == "safeness.c.a@gmail.com";
-    }
-
     match /certificateRequests/{requestId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow read: if isAdmin() || isKiraStaffAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
       allow create: if isAuthenticated()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'pending'
         && request.resource.data.courseCompleted == true
-        && request.resource.data.progress >= 100
         && request.resource.data.enrollmentId is string
         && exists(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId))
         && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.userId == request.auth.uid
         && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.courseId == request.resource.data.courseId
-        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.progress >= 100
-        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.courseCompleted == true
+        && get(/databases/$(database)/documents/enrollments/$(request.resource.data.enrollmentId)).data.status == 'completed'
         && exists(/databases/$(database)/documents/courses/$(request.resource.data.courseId))
         && ((get(/databases/$(database)/documents/courses/$(request.resource.data.courseId)).data.price <= 0
              && request.resource.data.paymentRequired == false
@@ -522,21 +626,20 @@ service cloud.firestore {
     }
 
     match /certificates/{certificateId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.studentId == request.auth.uid);
-      allow create: if isKiraOwner()
-        && request.resource.data.status == 'issued'
-        && request.resource.data.validationToken == certificateId
-        && request.resource.data.issuedBy == request.auth.uid;
-      allow update, delete: if false;
+      allow read: if isAdmin() || isKiraStaffAdmin() || (isAuthenticated() && resource.data.studentId == request.auth.uid);
+      // All issuance and revocation writes are performed by the trusted server.
+      allow create, update, delete: if false;
     }
 
-    // This public projection deliberately contains only certificate verification fields.
-    match /certificatePublic/{token} {
-      allow read: if resource.data.status == 'issued' && resource.data.validationToken == token;
-      allow create: if isKiraOwner()
-        && request.resource.data.status == 'issued'
-        && request.resource.data.validationToken == token;
-      allow update, delete: if false;
+    match /certificate_audit/{auditId} {
+      allow read: if isAdmin() || isKiraStaffAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Public projection contains only fields needed for verification.
+    match /certificatePublic/{certificateId} {
+      allow read: if resource.data.status in ['issued', 'revoked'];
+      allow create, update, delete: if false;
     }
 
     match /urgent_escalations/{id} {

@@ -83,7 +83,7 @@ export function ChatWidget() {
               if (cDoc.exists()) {
                 const cData = cDoc.data();
                 if (!contactsMap.has(cData.coachId)) {
-                  const coachProfile = await getDoc(doc(db, 'users', cData.coachId));
+                  const coachProfile = await getDoc(doc(db, 'coachPublicProfiles', cData.coachId));
                   if (coachProfile.exists()) {
                     contactsMap.set(cData.coachId, { uid: cData.coachId, ...coachProfile.data() });
                   }
@@ -104,10 +104,13 @@ export function ChatWidget() {
               for (const eDoc of enrollSnap.docs) {
                 const sId = eDoc.data().userId;
                 if (!contactsMap.has(sId)) {
-                  const studentProfile = await getDoc(doc(db, 'users', sId));
-                  if (studentProfile.exists()) {
-                    contactsMap.set(sId, { uid: sId, ...studentProfile.data() });
-                  }
+                  contactsMap.set(sId, {
+                    uid: sId,
+                    displayName: eDoc.data().studentName || 'Alumno',
+                    email: eDoc.data().studentEmail || '',
+                    photoURL: eDoc.data().studentAvatar || '',
+                    role: 'alumno'
+                  });
                 }
               }
             }
@@ -130,29 +133,10 @@ export function ChatWidget() {
           console.warn("Could not fetch contacts by participants array:", e);
         }
 
-        // Query by senderId (as fallback)
-        try {
-          const sentQ = query(collection(db, 'messages'), where('senderId', '==', user.uid));
-          const sentSnap = await getDocs(sentQ);
-          sentSnap.docs.forEach(d => {
-            const data = d.data();
-            if (data.chatId) {
-              const parts = data.chatId.split('_');
-              const otherId = parts.find((p: string) => p !== user.uid);
-              if (otherId) contactIdsFromMessages.add(otherId);
-            }
-          });
-        } catch (e) {
-          console.warn("Could not fetch contacts by senderId:", e);
-        }
-
         // Resolve profile information for any message contacts that aren't loaded yet
         for (const otherId of contactIdsFromMessages) {
           if (!contactsMap.has(otherId)) {
-            const uDoc = await getDoc(doc(db, 'users', otherId));
-            if (uDoc.exists()) {
-              contactsMap.set(otherId, { uid: otherId, ...uDoc.data() });
-            }
+            contactsMap.set(otherId, { uid: otherId, displayName: 'Contacto', role: 'contact' });
           }
         }
 
@@ -177,6 +161,7 @@ export function ChatWidget() {
     const q = query(
       collection(db, 'messages'),
       where('chatId', '==', chatId),
+      where('participants', 'array-contains', user.uid),
       orderBy('createdAt', 'desc'),
       limit(messageLimit)
     );
@@ -226,24 +211,10 @@ export function ChatWidget() {
     const content = input.trim();
     const chatId = [user.uid, selectedContact.uid].sort().join('_');
 
-    // 1. Anti-fraud intercept
+    // Do not persist client-authored system messages; only the user's own messages are accepted.
     if (containsContactInfo(content)) {
-      toastWarning('Intento de contacto externo detectado. Canalizado por seguridad.');
+      toastWarning('No compartas datos de contacto externo en el chat. Esta función requiere un flujo de sesión verificado.');
       setInput('');
-      
-      try {
-        await addDoc(collection(db, 'messages'), {
-          chatId,
-          senderId: 'kira-guard',
-          senderName: 'Mediador Kira',
-          type: 'contact_warning',
-          content: '⚠️ Alto ahí. Has intentado compartir un dato de contacto externo. Por tu seguridad y la del otro usuario, Kira Coach no permite compartir datos personales hasta que la transacción (sesión) esté completada. Si deseas compartirlo después, usa el botón de \'Compartir contacto seguro\' que aparecerá al finalizar el pago.',
-          participants: [user.uid, selectedContact.uid],
-          createdAt: new Date()
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, 'messages');
-      }
       return;
     }
 
@@ -270,7 +241,7 @@ export function ChatWidget() {
         senderId: user.uid,
         senderName: user.displayName,
         content,
-        participants: [user.uid, selectedContact.uid],
+        participants: [user.uid, selectedContact.uid].sort(),
         createdAt: new Date()
       });
     } catch (err) {
@@ -282,178 +253,23 @@ export function ChatWidget() {
 
   // Propose a secure session from Coach
   const handleSendOffer = async () => {
-    if (!proposedDate || !user || !selectedContact) return;
-    setSubmittingOffer(true);
-    try {
-      const chatId = [user.uid, selectedContact.uid].sort().join('_');
-      await addDoc(collection(db, 'messages'), {
-        chatId,
-        senderId: user.uid,
-        senderName: user.displayName || 'Coach',
-        content: `Propuesta de Sesión para el ${new Date(proposedDate).toLocaleString()}`,
-        participants: [user.uid, selectedContact.uid],
-        createdAt: new Date(),
-        type: 'session_offer',
-        offerData: {
-          date: proposedDate,
-          duration: parseInt(proposedDuration) || 60,
-          price: parseInt(proposedPrice) || 30,
-          status: 'pending'
-        }
-      });
-      success('Propuesta de sesión enviada con éxito.');
-      setShowOfferForm(false);
-      setProposedDate('');
-    } catch (err: any) {
-      console.error('Send Offer Error:', err);
-      toastError('Error al enviar la propuesta: ' + err.message);
-    } finally {
-      setSubmittingOffer(false);
-    }
+    toastError('Las reservas y los pagos de sesiones aún no están conectados a un proveedor de pago verificado. No se realizará ningún cargo ni transferencia de puntos.');
   };
 
-  // Secure checkout & points settlement by Kira Pay
   const handleAcceptOffer = async (msgId: string, offer: any) => {
-    if (!user || !selectedContact) return;
-    try {
-      // 1. Fetch student points
-      const studentDocRef = doc(db, 'users', user.uid);
-      const studentSnap = await getDoc(studentDocRef);
-      if (!studentSnap.exists()) {
-        toastError('No se encontró tu perfil de usuario.');
-        return;
-      }
-      const studentData = studentSnap.data();
-      const currentPoints = studentData.points || 0;
-      const price = offer.price || 0;
-
-      if (currentPoints < price) {
-        toastError(`No tienes suficientes puntos de consciencia (${currentPoints} de ${price} requeridos). ¡Consigue más en tu Diario!`);
-        return;
-      }
-
-      // 2. Fetch coach points
-      const coachDocRef = doc(db, 'users', selectedContact.uid);
-      const coachSnap = await getDoc(coachDocRef);
-      let coachPoints = 0;
-      if (coachSnap.exists()) {
-        coachPoints = coachSnap.data().points || 0;
-      }
-
-      // 3. Atomically update balances
-      await updateDoc(studentDocRef, { points: currentPoints - price });
-      if (coachSnap.exists()) {
-        await updateDoc(coachDocRef, { points: coachPoints + price });
-      }
-
-      // 4. Update offer status to accepted
-      const msgRef = doc(db, 'messages', msgId);
-      await updateDoc(msgRef, {
-        'offerData.status': 'accepted'
-      });
-
-      // 5. Append system confirmation message
-      const chatId = [user.uid, selectedContact.uid].sort().join('_');
-      await addDoc(collection(db, 'messages'), {
-        chatId,
-        senderId: 'kira-guard',
-        senderName: 'Mediador Kira',
-        type: 'system',
-        content: `🎉 ¡Pago confirmado! Sesión programada con éxito para el ${new Date(offer.date).toLocaleString()}. La transacción por ${price} puntos ha sido completada de manera segura por Kira Pay. Ahora es seguro compartir información de contacto si lo desean.`,
-        participants: [user.uid, selectedContact.uid],
-        createdAt: new Date()
-      });
-
-      success('¡Pago procesado con éxito por Kira Pay! Sesión confirmada.');
-    } catch (err: any) {
-      console.error('Accept Offer Error:', err);
-      toastError('Error al procesar el pago: ' + err.message);
-    }
+    toastError('Las reservas y los pagos de sesiones aún no están conectados a un proveedor de pago verificado. No se realizará ningún cargo ni transferencia de puntos.');
   };
 
   const handleDeclineOffer = async (msgId: string) => {
-    try {
-      const msgRef = doc(db, 'messages', msgId);
-      await updateDoc(msgRef, {
-        'offerData.status': 'declined'
-      });
-      success('Propuesta rechazada.');
-    } catch (err: any) {
-      console.error('Decline Offer Error:', err);
-      toastError('Error al declinar: ' + err.message);
-    }
+    toastError('La gestión de sesiones no está disponible hasta conectar reservas, pagos y confirmaciones verificadas.');
   };
 
-  // Complete session and prompt feedback rating
   const handleCompleteSession = async (msgId: string, offer: any) => {
-    try {
-      const msgRef = doc(db, 'messages', msgId);
-      await updateDoc(msgRef, {
-        'offerData.status': 'completed'
-      });
-
-      const chatId = [user!.uid, selectedContact.uid].sort().join('_');
-      await addDoc(collection(db, 'messages'), {
-        chatId,
-        senderId: 'kira-guard',
-        senderName: 'Mediador Kira',
-        type: 'session_review',
-        content: `Calificación de la sesión de ${selectedContact.displayName}`,
-        participants: [user!.uid, selectedContact.uid],
-        createdAt: new Date(),
-        reviewData: {
-          coachId: selectedContact.uid,
-          coachName: selectedContact.displayName,
-          studentId: user!.uid,
-          studentName: user!.displayName || 'Alumno',
-          status: 'pending'
-        }
-      });
-
-      success('¡Sesión finalizada! Se ha habilitado la calificación privada.');
-    } catch (err: any) {
-      console.error('Complete Session Error:', err);
-      toastError('Error al finalizar la sesión: ' + err.message);
-    }
+    toastError('La gestión de sesiones no está disponible hasta conectar reservas, pagos y confirmaciones verificadas.');
   };
 
-  // Submit private rating & review to the database
-  const handleSubmitReview = async (msgId: string, reviewData: any) => {
-    const rating = ratings[msgId] || 5;
-    const comment = comments[msgId] || '';
-
-    if (!user) return;
-
-    setSubmittingReview(prev => ({ ...prev, [msgId]: true }));
-    try {
-      await addDoc(collection(db, 'reviews'), {
-        courseId: null,
-        bookId: null,
-        coachId: reviewData.coachId,
-        itemId: reviewData.coachId,
-        itemType: 'coach',
-        itemName: reviewData.coachName,
-        userId: user.uid,
-        rating,
-        comment,
-        status: 'published',
-        createdAt: new Date()
-      });
-
-      const msgRef = doc(db, 'messages', msgId);
-      await updateDoc(msgRef, {
-        'reviewData.status': 'completed',
-        'reviewData.rating': rating,
-        'reviewData.comment': comment
-      });
-
-      success('¡Gracias por tu calificación privada! Tu feedback ha sido guardado de forma segura.');
-    } catch (err: any) {
-      console.error('Submit Review Error:', err);
-      toastError('Error al enviar la calificación: ' + err.message);
-    } finally {
-      setSubmittingReview(prev => ({ ...prev, [msgId]: false }));
-    }
+  const handleSubmitReview = async (_msgId: string, _reviewData: any) => {
+    toastError('Las reseñas de sesiones se habilitarán después de una sesión confirmada y completada por el sistema.');
   };
 
   return (

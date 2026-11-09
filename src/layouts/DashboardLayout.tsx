@@ -5,6 +5,7 @@ import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, 
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { NotificationCenter } from '../components/Notifications';
+import { ChatWidget } from '../components/Chat';
 import { useCart } from '../components/CartProvider';
 import { auth, db } from '../firebase';
 import { doc, updateDoc, collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
@@ -94,7 +95,7 @@ export function DashboardLayout({ title }: { title: string }) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-          {role === 'coach' && <span className="hidden rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 sm:inline-flex">Membresía activa</span>}
+          {role === 'coach' && user?.membershipStatus === 'active' && (!user?.membershipExpiresAt || new Date(user.membershipExpiresAt?.toDate ? user.membershipExpiresAt.toDate() : user.membershipExpiresAt).getTime() > Date.now()) && <span className="hidden rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 sm:inline-flex">Membresía activa</span>}
           <NotificationCenter />
           <button type="button" onClick={() => setIsCartOpen(true)} aria-label={`Ver carrito, ${cartCount} artículos`} className="relative flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"><ShoppingCart size={18} />{cartCount > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-rose-500 px-1 text-[9px] font-black text-white">{cartCount}</span>}</button>
           <div className="hidden items-center gap-2 sm:flex">
@@ -105,8 +106,8 @@ export function DashboardLayout({ title }: { title: string }) {
         </div>
       </header>
 
-      <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
-        {role !== 'admin' && <section aria-label="Módulos principales" className="w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-stretch lg:gap-6 lg:px-8">
+        {role !== 'admin' && <section aria-label="Módulos principales" className="w-full shrink-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:sticky lg:top-[5.25rem] lg:w-64 lg:self-start">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Espacio de trabajo</p><h2 className="mt-1 text-base font-bold text-slate-800">Tus módulos</h2></div>
             <div className="flex items-center gap-2">
@@ -117,10 +118,10 @@ export function DashboardLayout({ title }: { title: string }) {
               ].map((theme) => <button key={theme.id} type="button" onClick={() => changeTheme(theme.id)} aria-label={`Tema ${theme.id}`} aria-pressed={theme.id === (user?.theme || 'teal')} className={cn('h-5 w-5 rounded-full border border-white shadow-sm ring-offset-2', theme.color, theme.id === (user?.theme || 'teal') && 'ring-2 ring-slate-300')} />)}
             </div>
           </div>
-          <nav aria-label="Navegación de módulos" className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
+          <nav aria-label="Navegación de módulos" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-col xl:grid-cols-1">
             {currentLinks.map((item) => {
               const active = isActive(item.to);
-              return <Link key={item.to} to={item.to} aria-current={active ? 'page' : undefined} className={cn('group flex min-h-28 min-w-0 flex-col items-start gap-2 rounded-xl border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-4', active ? 'border-primary/40 bg-primary/[0.06] shadow-sm' : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-white')}>
+              return <Link key={item.to} to={item.to} aria-current={active ? 'page' : undefined} className={cn('group flex min-h-24 min-w-0 flex-col items-start gap-2 rounded-xl border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-4 lg:min-h-16 lg:flex-row lg:items-center lg:gap-3 lg:hover:translate-y-0', active ? 'border-primary/40 bg-primary/[0.06] shadow-sm' : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-white')}>
                 <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', active ? 'bg-primary text-white' : 'bg-white text-slate-500 shadow-sm')}><item.icon size={19} /></span>
                 <span className="min-w-0"><span className={cn('block truncate text-xs font-bold sm:text-sm', active ? 'text-primary' : 'text-slate-800')}>{item.label}</span><span className="mt-1 hidden text-xs leading-4 text-slate-500 sm:block">{item.detail}</span></span>
               </Link>;
@@ -128,12 +129,13 @@ export function DashboardLayout({ title }: { title: string }) {
           </nav>
         </section>}
 
-        <div className="min-w-0 w-full flex-1">
+        <div className="min-w-0 w-full flex-1 lg:w-0 lg:self-stretch">
           {!user?.emailVerified && !loading && <div className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="text-sm font-medium text-amber-800">Verifica tu correo para asegurar tu cuenta.</div><button onClick={() => auth.currentUser && sendEmailVerification(auth.currentUser)} className="min-h-10 self-start rounded-lg bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700 sm:self-auto">Reenviar</button></div>}
           <main className="min-w-0 w-full flex-1"><Outlet /></main>
         </div>
 
         {toast && <div role="status" className="fixed right-3 top-20 z-[100] w-[calc(100vw-1.5rem)] max-w-sm cursor-pointer sm:right-6" onClick={() => setToast(null)}><div className="flex items-start gap-3 rounded-xl border-l-4 border-primary bg-white p-4 shadow-2xl ring-1 ring-slate-200"><div className="shrink-0 rounded-lg bg-primary/10 p-2 text-primary"><BellRing size={20} /></div><div className="min-w-0 flex-1"><h4 className="mb-0.5 text-sm font-bold text-slate-800">{toast.title}</h4><p className="line-clamp-2 text-xs text-slate-500">{toast.message}</p></div><button type="button" aria-label="Descartar notificación" className="shrink-0 text-slate-400 hover:text-slate-600" onClick={(event) => { event.stopPropagation(); setToast(null); }}><X size={14} /></button></div></div>}
+        {user && (role === 'alumno' || (role === 'coach' && user.membershipStatus === 'active' && (!user.membershipExpiresAt || new Date(user.membershipExpiresAt?.toDate ? user.membershipExpiresAt.toDate() : user.membershipExpiresAt).getTime() > Date.now()))) && <ChatWidget />}
       </div>
     </div>
   );

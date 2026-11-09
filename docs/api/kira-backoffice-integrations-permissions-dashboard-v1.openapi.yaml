@@ -1,0 +1,79 @@
+openapi: 3.1.0
+info:
+  title: KIRA Backoffice Integrations, RBAC and Dashboard API
+  version: 1.0.0
+servers:
+  - url: https://kira.coach
+security:
+  - FirebaseBearer: []
+paths:
+  /api/admin/permissions:
+    get:
+      summary: Read the active permission matrix
+      responses:
+        '200': { description: Active role permission maps }
+        '403': { description: Superadmin with recent MFA required }
+  /api/admin/integrations:
+    get:
+      summary: Read integration status and public configuration
+      responses:
+        '200': { description: No secrets returned }
+        '403': { description: configuration.integrations.read required }
+  /api/admin/integrations/{provider}:
+    patch:
+      summary: Enable or disable an integration and update public configuration
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema: { type: string, enum: [landing, whatsapp, zoom, google_calendar] }
+      responses:
+        '200': { description: Updated and audited }
+        '403': { description: Superadmin with recent MFA required }
+  /api/admin/permissions/seed:
+    post:
+      summary: Apply the reviewed role permission seed to Firestore
+      responses:
+        '200': { description: Seed applied and audited }
+        '403': { description: Superadmin with recent MFA required }
+  /api/admin/permissions/{role}:
+    patch:
+      summary: Update one role permission map
+      parameters:
+        - in: path
+          name: role
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Updated and audited }
+        '400': { description: Invalid role or permission map }
+        '403': { description: Superadmin with recent MFA required }
+  /api/public/landing/{slug}:
+    post:
+      security: []
+      summary: Accept a public landing form with honeypot and CAPTCHA validation
+      responses:
+        '201': { description: Lead accepted }
+        '410': { description: Form or integration disabled }
+        '429': { description: Rate limit exceeded }
+  /api/webhooks/whatsapp:
+    post:
+      security: []
+      summary: Receive a timestamped HMAC-SHA256 WhatsApp event
+      responses:
+        '200': { description: Event accepted or duplicate }
+        '401': { description: Invalid signature or stale timestamp }
+        '410': { description: Provider integration disabled }
+        '429': { description: Rate limit exceeded }
+  /api/cron/dashboard/refresh:
+    post:
+      summary: Reconcile persisted dashboard aggregates
+      responses:
+        '200': { description: Aggregate refresh complete }
+        '401': { description: Invalid cron credential }
+components:
+  securitySchemes:
+    FirebaseBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID Token

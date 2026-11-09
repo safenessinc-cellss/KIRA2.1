@@ -1,0 +1,403 @@
+openapi: 3.1.0
+info:
+  title: KIRA Payments and Configuration API
+  version: 1.0.0
+  description: >
+    Target contract for KIRA's Express + Firestore implementation.
+    x-kira-status marks existing, partial, or planned endpoints; a documented
+    endpoint is not evidence that the implementation is already deployed.
+servers:
+  - url: https://kira.coach
+    description: Production origin; do not use for unapproved tests.
+security:
+  - FirebaseBearer: []
+tags:
+  - name: Payments Admin
+  - name: Configuration
+  - name: Checkout
+  - name: Provider Webhooks
+paths:
+  /api/admin/payments/config:
+    get:
+      tags: [Payments Admin]
+      summary: Read global payment settings, gateways, plans and coupons
+      x-kira-status: partial-existing
+      responses:
+        '200':
+          description: Settings and public gateway metadata only; never returns ciphertext or plaintext secrets.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PaymentConfigView'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/admin/payments/settings:
+    patch:
+      tags: [Payments Admin]
+      summary: Update global payment settings
+      x-kira-status: partial-existing
+      description: Superadmin only. Must write config_audit atomically with expectedVersion.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedVersion]
+              properties:
+                expectedVersion: {type: integer, minimum: 0}
+                paymentsEnabled: {type: boolean}
+                baseCurrency: {type: string, pattern: '^[A-Z]{3}$'}
+                allowedCurrencies:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  uniqueItems: true
+                  items: {type: string, pattern: '^[A-Z]{3}$'}
+                roundingRule: {type: string, enum: [half_up, up, down]}
+                requirePayment: {type: boolean}
+                revokeOnRefund: {type: boolean}
+      responses:
+        '200': {description: Updated and audited}
+        '409': {description: Version conflict}
+        '400': {description: Validation error}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/admin/payments/gateways:
+    get:
+      tags: [Payments Admin]
+      summary: List configured gateways
+      x-kira-status: planned-normalized-route
+      responses:
+        '200':
+          description: Gateway metadata with masked secret state only.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/GatewayView'}
+    post:
+      tags: [Payments Admin]
+      summary: Create or configure an allowlisted gateway
+      x-kira-status: partial-existing-put-by-provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GatewayWrite'}
+      responses:
+        '201': {description: Gateway configured}
+        '400': {description: Invalid provider or configuration}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/admin/payments/gateways/{provider}:
+    parameters:
+      - name: provider
+        in: path
+        required: true
+        schema: {type: string, enum: [stripe, mercadopago]}
+    patch:
+      tags: [Payments Admin]
+      summary: Update gateway status, mode, priority or credentials
+      x-kira-status: partial-existing-put-by-provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GatewayWrite'}
+      responses:
+        '200': {description: Saved; secrets are write-only}
+        '400': {description: Validation error}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/admin/payments/plans:
+    get:
+      tags: [Payments Admin]
+      summary: List active and archived plans
+      x-kira-status: partial-existing-through-config-aggregate
+      responses:
+        '200':
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Plan'}
+    post:
+      tags: [Payments Admin]
+      summary: Create a plan
+      x-kira-status: partial-existing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PlanWrite'}
+      responses:
+        '201': {description: Created}
+        '400': {description: Invalid plan}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/admin/payments/plans/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    patch:
+      tags: [Payments Admin]
+      summary: Update or archive a plan (soft archive only)
+      x-kira-status: partial-existing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/PlanWrite'}
+                - type: object
+                  properties:
+                    status: {type: string, enum: [active, archived]}
+      responses:
+        '200': {description: Updated}
+        '404': {description: Not found}
+        '409': {description: Version conflict}
+  /api/admin/payments/coupons:
+    get:
+      tags: [Payments Admin]
+      summary: List coupons
+      x-kira-status: partial-existing-through-config-aggregate
+      responses:
+        '200': {description: Coupon list}
+    post:
+      tags: [Payments Admin]
+      summary: Create a coupon
+      x-kira-status: partial-existing; checkout-redemption-not-verified
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CouponWrite'}
+      responses:
+        '201': {description: Created}
+        '409': {description: Duplicate code}
+  /api/admin/payments/refunds:
+    post:
+      tags: [Payments Admin]
+      summary: Request a refund with approval and provider idempotency
+      x-kira-status: planned
+      description: Refund is not successful until the provider confirms it. Never revoke entitlements on request alone.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, amountMinor, currency, reason, idempotencyKey]
+              properties:
+                orderId: {type: string}
+                amountMinor: {type: integer, minimum: 1}
+                currency: {type: string, pattern: '^[A-Z]{3}$'}
+                reason: {type: string, minLength: 3, maxLength: 500}
+                idempotencyKey: {type: string, format: uuid}
+      responses:
+        '202': {description: Refund requested; provider confirmation pending}
+        '409': {description: Not refundable or duplicate request}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/admin/payments/audit:
+    get:
+      tags: [Payments Admin]
+      summary: Read redacted payment and configuration audit
+      x-kira-status: partial-existing
+      parameters:
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses:
+        '200': {description: Paginated audit events}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/admin/config/{key}:
+    parameters:
+      - {name: key, in: path, required: true, schema: {type: string, maxLength: 160}}
+    get:
+      tags: [Configuration]
+      summary: Read a typed configuration setting
+      x-kira-status: planned
+      responses:
+        '200': {description: Setting value and version}
+    patch:
+      tags: [Configuration]
+      summary: Update a typed setting with optimistic concurrency
+      x-kira-status: planned
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value, expectedVersion, reason]
+              properties:
+                value: {}
+                expectedVersion: {type: integer, minimum: 0}
+                reason: {type: string, minLength: 3, maxLength: 500}
+      responses:
+        '200': {description: New version committed and audited}
+        '409': {description: Version conflict}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/admin/config/{key}/rollback:
+    post:
+      tags: [Configuration]
+      summary: Roll back a setting by creating a new version from a prior value
+      x-kira-status: planned
+      parameters:
+        - {name: key, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetVersion, expectedVersion, reason]
+              properties:
+                targetVersion: {type: integer, minimum: 1}
+                expectedVersion: {type: integer, minimum: 1}
+                reason: {type: string, minLength: 3, maxLength: 500}
+      responses:
+        '200': {description: Rollback committed as a new version}
+        '409': {description: Version conflict}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/payments/checkout:
+    post:
+      tags: [Checkout]
+      summary: Create a hosted checkout using server-resolved prices
+      x-kira-status: partial-existing-legacy-create-checkout-session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items, provider, idempotencyKey]
+              properties:
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  items:
+                    type: object
+                    required: [id, type]
+                    properties:
+                      id: {type: string}
+                      type: {type: string, enum: [course, membership, book]}
+                provider: {type: string, enum: [stripe, mercadopago]}
+                couponCode: {type: string, maxLength: 40}
+                idempotencyKey: {type: string, format: uuid}
+      responses:
+        '201': {description: Checkout session created}
+        '400': {description: Invalid product or currency}
+        '503': {description: Checkout disabled}
+  /api/webhooks/stripe:
+    post:
+      tags: [Provider Webhooks]
+      security: []
+      summary: Stripe signed webhook
+      x-kira-status: partial-existing
+      responses:
+        '200': {description: Processed or duplicate event}
+        '400': {description: Invalid signature or payload}
+  /api/webhooks/mercadopago:
+    post:
+      tags: [Provider Webhooks]
+      security: []
+      summary: Mercado Pago signed webhook
+      x-kira-status: partial-existing
+      responses:
+        '200': {description: Processed or duplicate event}
+        '401': {description: Invalid signature}
+components:
+  securitySchemes:
+    FirebaseBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID Token
+  responses:
+    Unauthorized:
+      description: Missing or invalid Firebase ID token
+    Forbidden:
+      description: Superadmin permission required
+  schemas:
+    PaymentConfigView:
+      type: object
+      required: [settings, gateways, plans, coupons]
+      properties:
+        settings:
+          type: object
+          properties:
+            paymentsEnabled: {type: boolean}
+            baseCurrency: {type: string}
+            allowedCurrencies: {type: array, items: {type: string}}
+            roundingRule: {type: string, enum: [half_up, up, down]}
+            requirePayment: {type: boolean}
+        gateways:
+          type: array
+          items: {$ref: '#/components/schemas/GatewayView'}
+        plans:
+          type: array
+          items: {$ref: '#/components/schemas/Plan'}
+        coupons:
+          type: array
+          items: {$ref: '#/components/schemas/Coupon'}
+    GatewayView:
+      type: object
+      required: [provider, enabled, mode, priority, hasApiKey, hasWebhookSecret]
+      properties:
+        provider: {type: string, enum: [stripe, mercadopago]}
+        enabled: {type: boolean}
+        mode: {type: string, enum: [test, live]}
+        priority: {type: integer, minimum: 0, maximum: 100}
+        publicKey: {type: string}
+        hasApiKey: {type: boolean}
+        hasWebhookSecret: {type: boolean}
+        maskedApiKey: {type: string, readOnly: true}
+    GatewayWrite:
+      type: object
+      properties:
+        enabled: {type: boolean}
+        mode: {type: string, enum: [test, live]}
+        priority: {type: integer, minimum: 0, maximum: 100}
+        publicKey: {type: string, maxLength: 500}
+        apiKey: {type: string, writeOnly: true}
+        webhookSecret: {type: string, writeOnly: true}
+    Plan:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string}
+        amountCents: {type: integer, minimum: 0}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        interval: {type: string, enum: [one_time, monthly, yearly]}
+        trialDays: {type: integer, minimum: 0, maximum: 365}
+        courseId: {type: string}
+        status: {type: string, enum: [active, archived]}
+        version: {type: integer}
+    PlanWrite:
+      type: object
+      required: [name, amountCents, currency, interval]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        amountCents: {type: integer, minimum: 0}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        interval: {type: string, enum: [one_time, monthly, yearly]}
+        trialDays: {type: integer, minimum: 0, maximum: 365}
+        courseId: {type: string}
+        expectedVersion: {type: integer, minimum: 0}
+    Coupon:
+      type: object
+      properties:
+        code: {type: string}
+        type: {type: string, enum: [percent, fixed]}
+        value: {type: number, exclusiveMinimum: 0}
+        maxUses: {type: integer, minimum: 1}
+        usedCount: {type: integer, minimum: 0}
+        expiresAt: {type: string, format: date-time}
+        status: {type: string, enum: [active, disabled, exhausted, expired]}
+    CouponWrite:
+      type: object
+      required: [code, type, value]
+      properties:
+        code: {type: string, pattern: '^[A-Z0-9_-]{3,40}$'}
+        type: {type: string, enum: [percent, fixed]}
+        value: {type: number, exclusiveMinimum: 0}
+        maxUses: {type: integer, minimum: 1}
+        expiresAt: {type: string, format: date-time}

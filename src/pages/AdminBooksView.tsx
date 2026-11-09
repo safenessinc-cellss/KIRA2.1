@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDoc, serverTimestamp, setDoc, deleteField } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { BookOpen, FileText, Link as LinkIcon, Trash2, Plus, Loader2, UploadCloud, CheckCircle2, ShieldAlert, Sparkles, BookMarked, Eye, Search, Filter, Pencil } from 'lucide-react';
@@ -26,16 +26,53 @@ export function AdminBooksView() {
   const [type, setType] = useState<'pdf' | 'link'>('pdf');
   const [url, setUrl] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
+  const [price, setPrice] = useState(0);
+  const [currency, setCurrency] = useState('USD');
+  const [storagePath, setStoragePath] = useState('');
 
   useEffect(() => {
     // Fetch ALL books in the entire ecosystem
     const q = collection(db, 'books');
+    const migrating = new Set<string>();
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const list = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data() as any
+      const list = snapshot.docs.map(bookDoc => ({
+        id: bookDoc.id,
+        ...bookDoc.data() as any
       }));
+
+      // Move legacy public file URLs into admin-only asset documents, then
+      // remove them from the public catalog so paid files cannot be scraped.
+      for (const bookDoc of snapshot.docs) {
+        const data = bookDoc.data() as any;
+        const legacyUrl = data.fileUrl || data.pdfUrl || data.downloadUrl || data.contentUrl || data.url;
+        if (!legacyUrl || migrating.has(bookDoc.id)) continue;
+        migrating.add(bookDoc.id);
+        void (async () => {
+          const assetRef = doc(db, 'bookAssets', bookDoc.id);
+          const existingAsset = await getDoc(assetRef);
+          if (!existingAsset.exists()) {
+            let storagePath = '';
+            try {
+              const parsed = new URL(legacyUrl);
+              const objectIndex = parsed.pathname.indexOf('/o/');
+              if (parsed.hostname.includes('firebasestorage.googleapis.com') && objectIndex >= 0) storagePath = decodeURIComponent(parsed.pathname.slice(objectIndex + 3));
+              else if (parsed.hostname === 'storage.googleapis.com') storagePath = decodeURIComponent(parsed.pathname.split('/').slice(2).join('/'));
+            } catch { /* retain a valid HTTPS external link only */ }
+            await setDoc(assetRef, {
+              type: data.type || (storagePath ? 'pdf' : 'link'),
+              storagePath,
+              externalUrl: storagePath ? '' : (String(legacyUrl).startsWith('https://') ? legacyUrl : ''),
+              migratedAt: serverTimestamp(),
+              migratedBy: user?.uid || ''
+            });
+          }
+          await updateDoc(doc(db, 'books', bookDoc.id), {
+            url: deleteField(), fileUrl: deleteField(), pdfUrl: deleteField(),
+            downloadUrl: deleteField(), contentUrl: deleteField()
+          });
+        })().catch(err => console.error('Legacy book asset migration failed:', bookDoc.id, err)).finally(() => migrating.delete(bookDoc.id));
+      }
       // Sort client-side
       list.sort((a: any, b: any) => {
         const t1 = a.createdAt?.seconds || 0;
@@ -86,40 +123,43 @@ export function AdminBooksView() {
     setUploadingFile(true);
     try {
       const storageBucket = storage.app.options.storageBucket || '';
-      const isMock = !storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value';
-
-      if (isMock) {
-        // Wait 1.2 seconds for simulation
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        const mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-        setUrl(mockUrl);
-        toastSuccess("Archivo cargado en modo simulación administrativa.");
-      } else {
-        const storageRef = ref(storage, `books/admin/${Date.now()}_${file.name}`);
-        const uploadResult = await uploadBytes(storageRef, file);
-        const downloadUrl = await getDownloadURL(uploadResult.ref);
-        
-        setUrl(downloadUrl);
-        toastSuccess("Libro administrativo cargado con éxito.");
+      if (!storageBucket || storageBucket.includes('YOUR_PROJECT') || storageBucket === 'placeholder-value') {
+        throw new Error('Firebase Storage no está configurado. No se publicará un archivo de demostración.');
       }
+      if (file.size > 25 * 1024 * 1024) throw new Error('El PDF supera el límite de 25 MB.');
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storageRef = ref(storage, `books/admin/${user.uid}/${Date.now()}_${safeName}`);
+      const uploadResult = await uploadBytes(storageRef, file, { contentType: 'application/pdf' });
+      setStoragePath(uploadResult.ref.fullPath);
+      setUrl('');
+      toastSuccess("Libro administrativo cargado con éxito.");
     } catch (err: any) {
-      console.warn("Storage upload failed, using simulation mode fallback:", err);
-      const mockUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-      setUrl(mockUrl);
-      toastSuccess("Libro cargado en modo de respaldo (simulado).");
+      console.error("Storage upload failed:", err);
+      toastError(err?.message || "No se pudo subir el PDF. No se publicará un enlace de prueba.");
     } finally {
       setUploadingFile(false);
       e.target.value = '';
     }
   };
 
-  const startEdit = (book: any) => {
+  const startEdit = async (book: any) => {
     setEditingBook(book);
     setTitle(book.title);
     setDescription(book.description || '');
     setType(book.type || 'pdf');
-    setUrl(book.url || '');
+    setUrl('');
+    setStoragePath('');
+    try {
+      const assetSnap = await getDoc(doc(db, 'bookAssets', book.id));
+      if (assetSnap.exists()) {
+        const asset = assetSnap.data();
+        setStoragePath(asset.storagePath || '');
+        setUrl(asset.externalUrl || '');
+      }
+    } catch (err) { console.error('Could not load private book asset:', err); toastError('No se pudo cargar el archivo privado del libro.'); }
     setCoverUrl(book.coverUrl || '');
+    setPrice(Number(book.price || 0));
+    setCurrency(String(book.currency || 'USD').toUpperCase());
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -129,7 +169,10 @@ export function AdminBooksView() {
     setDescription('');
     setType('pdf');
     setUrl('');
+    setStoragePath('');
     setCoverUrl('');
+    setPrice(0);
+    setCurrency('USD');
   };
 
   const handlePublish = async (e: React.FormEvent) => {
@@ -141,17 +184,23 @@ export function AdminBooksView() {
       return;
     }
 
-    let finalUrl = url.trim();
-    if (!finalUrl) {
-      toastError("Debes cargar un archivo o ingresar un enlace.");
+    if (!Number.isFinite(price) || price < 0 || price > 100000) { toastError('Introduce un precio válido igual o superior a cero.'); return; }
+    let finalUrl = type === 'link' ? url.trim() : '';
+    if (type === 'pdf' && !storagePath) {
+      toastError("Debes subir el PDF a Firebase Storage antes de publicar.");
       return;
     }
-
-    // Auto prepend https:// if it looks like an external domain link and is missing protocol
-    if (type === 'link' && !finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
-      if (!finalUrl.startsWith('/') && !finalUrl.startsWith('data:')) {
-        finalUrl = 'https://' + finalUrl;
-      }
+    if (type === 'link' && !finalUrl) {
+      toastError("Debes ingresar un enlace HTTPS.");
+      return;
+    }
+    if (type === 'link' && !/^https:\/\//i.test(finalUrl)) {
+      toastError("Los enlaces externos deben usar HTTPS.");
+      return;
+    }
+    if (type === 'link' && price > 0) {
+      toastError("Los enlaces externos no pueden protegerse frente a descargas directas. Para vender un libro, sube el PDF a Firebase Storage.");
+      return;
     }
 
     setPublishing(true);
@@ -186,32 +235,40 @@ export function AdminBooksView() {
         finalName = 'Kira Coach';
       }
 
+      const catalogData = {
+        title: title.trim(),
+        description: description.trim(),
+        type,
+        price: Number(price),
+        currency,
+        status: 'published',
+        assetReady: true,
+        coverUrl: coverUrl || '',
+        publisherId: user.uid,
+        publisherName: finalName,
+        publisherRole: 'admin',
+        updatedAt: serverTimestamp()
+      };
+      const privateAsset = {
+        type,
+        storagePath: type === 'pdf' ? storagePath : '',
+        externalUrl: type === 'link' ? finalUrl : '',
+        updatedAt: serverTimestamp(),
+        updatedBy: user.uid
+      };
       if (editingBook) {
-        // Edit mode
-        await updateDoc(doc(db, 'books', editingBook.id), {
-          title: title.trim(),
-          description: description.trim(),
-          type,
-          url: finalUrl,
-          coverUrl: coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400',
-          publisherName: finalName,
-          updatedAt: serverTimestamp()
-        });
+        await updateDoc(doc(db, 'books', editingBook.id), catalogData);
+        await setDoc(doc(db, 'bookAssets', editingBook.id), privateAsset, { merge: true });
         toastSuccess("¡Libro actualizado con éxito!");
         setEditingBook(null);
       } else {
-        // Create mode
-        await addDoc(collection(db, 'books'), {
-          title: title.trim(),
-          description: description.trim(),
-          type,
-          url: finalUrl,
-          coverUrl: coverUrl || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400',
-          publisherId: user.uid,
-          publisherName: finalName,
-          publisherRole: 'admin',
-          createdAt: serverTimestamp()
-        });
+        const created = await addDoc(collection(db, 'books'), { ...catalogData, createdAt: serverTimestamp() });
+        try {
+          await setDoc(doc(db, 'bookAssets', created.id), { ...privateAsset, createdAt: serverTimestamp() });
+        } catch (assetError) {
+          await deleteDoc(created);
+          throw assetError;
+        }
         toastSuccess("¡Libro oficial publicado con éxito!");
       }
       
@@ -219,7 +276,10 @@ export function AdminBooksView() {
       setTitle('');
       setDescription('');
       setUrl('');
+      setStoragePath('');
       setCoverUrl('');
+      setPrice(0);
+      setCurrency('USD');
     } catch (err: any) {
       console.error("Error saving admin book:", err);
       toastError(editingBook ? "Error al actualizar el libro." : "Error al publicar el libro.");
@@ -233,6 +293,7 @@ export function AdminBooksView() {
     
     try {
       await deleteDoc(doc(db, 'books', bookId));
+      await deleteDoc(doc(db, 'bookAssets', bookId));
       toastSuccess("Libro eliminado permanentemente.");
     } catch (err) {
       console.error("Error deleting book:", err);
@@ -318,10 +379,23 @@ export function AdminBooksView() {
               />
             </div>
 
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Precio de venta</label>
+                <input type="number" min="0" step="0.01" value={price} onChange={e => setPrice(Number(e.target.value))} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-widest px-1">Moneda</label>
+                <select value={currency} onChange={e => setCurrency(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm">
+                  <option value="USD">USD</option><option value="BRL">BRL</option><option value="EUR">EUR</option>
+                </select>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4 bg-slate-50 p-1.5 rounded-2xl border border-slate-200/50">
               <button
                 type="button"
-                onClick={() => { setType('pdf'); setUrl(''); }}
+                onClick={() => { setType('pdf'); setUrl(''); setStoragePath(''); }}
                 className={cn(
                   "py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2",
                   type === 'pdf' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
@@ -331,7 +405,7 @@ export function AdminBooksView() {
               </button>
               <button
                 type="button"
-                onClick={() => { setType('link'); setUrl(''); }}
+                onClick={() => { setType('link'); setUrl(''); setStoragePath(''); }}
                 className={cn(
                   "py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2",
                   type === 'link' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-800"

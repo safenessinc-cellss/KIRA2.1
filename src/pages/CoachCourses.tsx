@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { doc, getDoc, collection, addDoc, query, where, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useAuth } from '../hooks/useAuth';
 import { MediaUpload } from '../components/MediaUpload';
@@ -22,6 +22,7 @@ export function CoachCourses() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState(0);
+  const [hours, setHours] = useState(1);
   const [bannerUrl, setBannerUrl] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [editingCourse, setEditingCourse] = useState<any | null>(null);
@@ -38,57 +39,33 @@ export function CoachCourses() {
   }, [user]);
 
   const fetchEnrolledStudents = async (courseList: any[]) => {
-    if (courseList.length === 0) {
-      setEnrolledStudents([]);
-      return;
-    }
+    if (courseList.length === 0) { setEnrolledStudents([]); return; }
     setLoadingStudents(true);
     try {
       const allEnrollments: any[] = [];
       for (const course of courseList) {
         const enrollQ = query(collection(db, 'enrollments'), where('courseId', '==', course.id));
         const enrollSnap = await getDocs(enrollQ);
-        enrollSnap.docs.forEach(docSnap => {
+        enrollSnap.docs.forEach(enrollmentDoc => {
+          const enrollment = enrollmentDoc.data();
           allEnrollments.push({
-            id: docSnap.id,
+            id: enrollmentDoc.id,
+            studentId: enrollment.userId,
+            studentName: enrollment.studentName || 'Alumno',
+            studentEmail: enrollment.studentEmail || '',
+            studentAvatar: enrollment.studentAvatar || '',
             courseTitle: course.title,
-            ...docSnap.data()
+            courseId: course.id,
+            progress: Number(enrollment.progress || 0),
+            createdAt: enrollment.createdAt?.seconds ? new Date(enrollment.createdAt.seconds * 1000) : new Date()
           });
         });
       }
-
-      const uniqueUserIds = Array.from(new Set(allEnrollments.map(e => e.userId)));
-      const studentProfiles: { [key: string]: any } = {};
-
-      for (const sId of uniqueUserIds) {
-        if (!sId) continue;
-        const userDoc = await getDoc(doc(db, 'users', sId));
-        if (userDoc.exists()) {
-          studentProfiles[sId] = userDoc.data();
-        }
-      }
-
-      const mergedStudents = allEnrollments.map(enroll => {
-        const p = studentProfiles[enroll.userId] || { name: 'Alumno Desconocido', email: 'S/D' };
-        return {
-          id: enroll.id,
-          studentId: enroll.userId,
-          studentName: p.name || p.displayName || 'Alumno Desconocido',
-          studentEmail: p.email || 'Sin correo',
-          studentAvatar: p.photoURL || p.avatarUrl || '',
-          courseTitle: enroll.courseTitle,
-          courseId: enroll.courseId,
-          progress: enroll.progress || 0,
-          createdAt: enroll.createdAt?.seconds ? new Date(enroll.createdAt.seconds * 1000) : new Date()
-        };
-      });
-
-      setEnrolledStudents(mergedStudents);
+      setEnrolledStudents(allEnrollments);
     } catch (e) {
-      console.error("Error fetching enrolled students:", e);
-    } finally {
-      setLoadingStudents(false);
-    }
+      console.error('Error loading course roster:', e);
+      setErrorMsg('No se pudo cargar la lista de alumnos inscritos.');
+    } finally { setLoadingStudents(false); }
   };
 
   const fetchCourses = async () => {
@@ -107,20 +84,8 @@ export function CoachCourses() {
     }
   };
 
-  const handleDeleteCourse = async (courseId: string) => {
-    if (!window.confirm("¿Estás seguro de que deseas eliminar este curso de tu catálogo?")) return;
-    try {
-      await deleteDoc(doc(db, 'courses', courseId));
-      fetchCourses();
-      toastSuccess("Curso eliminado exitosamente.");
-    } catch(e) {
-      console.error(e);
-      setErrorMsg('Error al eliminar el curso.');
-      setTimeout(() => setErrorMsg(''), 5000);
-    }
-  };
-
-  const isApproved = true;
+  const membershipExpiry = profile?.membershipExpiresAt?.toDate ? profile.membershipExpiresAt.toDate() : (profile?.membershipExpiresAt ? new Date(profile.membershipExpiresAt) : null);
+  const isApproved = profile?.role === 'coach' && profile?.approvalStatus === 'approved' && profile?.membershipStatus === 'active' && (!membershipExpiry || membershipExpiry.getTime() > Date.now());
 
   const handleCancel = () => {
     setIsCreating(false);
@@ -128,6 +93,7 @@ export function CoachCourses() {
     setTitle('');
     setDescription('');
     setPrice(0);
+    setHours(1);
     setBannerUrl('');
   };
 
@@ -136,6 +102,7 @@ export function CoachCourses() {
     setTitle(course.title || '');
     setDescription(course.description || '');
     setPrice(course.price || 0);
+    setHours(Number(course.hours || course.durationHours || 1));
     setBannerUrl(course.bannerUrl || '');
     setIsCreating(false);
   };
@@ -150,7 +117,9 @@ export function CoachCourses() {
         price: Number(price),
         bannerUrl,
         coachId: user.uid,
-        status: 'published',
+        hours: Number(hours),
+        coachName: profile?.displayName || user.displayName || '',
+        status: 'pending',
         createdAt: new Date()
       });
       handleCancel();
@@ -172,6 +141,7 @@ export function CoachCourses() {
         description,
         price: Number(price),
         bannerUrl,
+        hours: Number(hours),
         updatedAt: new Date()
       });
       handleCancel();
@@ -200,9 +170,11 @@ export function CoachCourses() {
       
       Devuelve la respuesta en formato JSON estrictamente válido con las llaves: "title", "description", "syllabus" (donde syllabus es un string formateado con los módulos).`;
 
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({
           model: "gemini-3.5-flash",
           contents: prompt,
@@ -229,7 +201,7 @@ export function CoachCourses() {
     return (
       <div className="bg-white rounded-xl border border-slate-200 p-8 text-center animate-in zoom-in-95">
         <h2 className="text-lg font-bold text-slate-800 mb-2 tracking-tight">Acceso Restringido</h2>
-        <p className="text-sm text-slate-500">Debes ser aprobado por un administrador antes de subir cursos.</p>
+        <p className="text-sm text-slate-500">Necesitas aprobación de KIRA y una membresía vigente para administrar cursos.</p>
       </div>
     );
   }
@@ -280,12 +252,16 @@ export function CoachCourses() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Inversión Alumno ($)</label>
-                <input required value={price} onChange={e=>setPrice(Number(e.target.value))} type="number" min="0" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none text-slate-800 font-medium" />
+                <input required value={price} onChange={e=>setPrice(Number(e.target.value))} type="number" min="0" step="0.01" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none text-slate-800 font-medium" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Carga horaria</label>
+                <input required value={hours} onChange={e=>setHours(Number(e.target.value))} type="number" min="1" max="10000" step="0.5" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:bg-white focus:ring-2 focus:ring-primary/20 transition-all outline-none text-slate-800 font-medium" />
               </div>
               <div>
                 <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 px-1">Estado de Publicación</label>
-                <div className="bg-slate-100 p-2.5 rounded-xl text-center text-xs font-bold text-emerald-700 uppercase tracking-wider border border-slate-200">
-                  {editingCourse ? editingCourse.status : 'published'}
+                <div className="bg-amber-50 p-2.5 rounded-xl text-center text-xs font-bold text-amber-700 uppercase tracking-wider border border-amber-200">
+                  {editingCourse ? editingCourse.status : 'pending · revisión admin'}
                 </div>
               </div>
             </div>
@@ -383,13 +359,7 @@ export function CoachCourses() {
                         >
                            Editar
                         </button>
-                        <button 
-                          type="button"
-                          onClick={() => handleDeleteCourse(c.id)}
-                          className="text-[11px] font-black uppercase tracking-wider text-rose-500 hover:underline flex items-center gap-1"
-                        >
-                           Eliminar
-                        </button>
+
                       </div>
                     </div>
                   </div>

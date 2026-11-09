@@ -10,7 +10,10 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit --project tsconfig.app.json && tsc --noEmit --target ES2022 --module ESNext --moduleResolution bundler --skipLibCheck --types node server.ts",
-    "test:rules": "node scripts/firestore-rules.test.mjs"
+    "test:rules": "node scripts/firestore-rules.test.mjs",
+    "typecheck": "tsc --noEmit --project tsconfig.app.json && tsc --noEmit --target ES2022 --module ESNext --moduleResolution bundler --skipLibCheck --types node server.ts",
+    "test": "tsx --test scripts/academic-domain.test.ts scripts/finance-domain.test.ts scripts/outbox-domain.test.ts scripts/security-domain.test.ts scripts/integrations-domain.test.ts scripts/permissions-domain.test.ts",
+    "test:all": "npm test && npm run test:rules"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -42,7 +45,8 @@
     "tailwindcss": "^4.1.14",
     "vite": "^6.2.0",
     "vite-plugin-pwa": "^1.2.0",
-    "ws": "^8.21.0"
+    "ws": "^8.21.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/compression": "^1.8.1",
@@ -54,6 +58,9 @@
     "autoprefixer": "^10.4.21",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "@types/qrcode": "^1.5.5",
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase-tools": "^14.0.0"
   }
 }
