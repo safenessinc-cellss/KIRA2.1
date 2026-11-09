@@ -359,6 +359,7 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
     const courseItems = items.filter((item: any) => item.type === "course" || item.collectionName === "courses");
     const bookItems = items.filter((item: any) => item.collectionName === "books" || item.type === "book");
     const membershipItems = items.filter((item: any) => item.type === "membership");
+    if (membershipItems.length > 1) throw new Error("Una orden no puede incluir más de una membresía.");
     const buyerProfile = await fsGetInTransaction("users", order.userId, transaction);
     const [courseEnrollments, bookRecords, memberships] = await Promise.all([
       Promise.all(courseItems.map((item: any) => fsGetInTransaction("enrollments", idSafe(order.userId + "_" + item.id), transaction))),
@@ -406,9 +407,9 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
         payload: { enrollmentId, userId: order.userId, courseId: item.id, orderId }, status: "pending", attempts: 0, createdAt: now
       }));
     });
-    bookRecords.forEach(({ purchaseId, entitlementId, purchase, entitlement, item }: any) => {
-      const purchase = { userId: order.userId, productId: item.id, productType: "book", orderId, paymentStatus: "paid", createdAt: purchase?.createdAt || now };
-      writes.push(purchase ? fsUpdate("purchases", purchaseId, purchase) : fsCreate("purchases", purchaseId, purchase));
+    bookRecords.forEach(({ purchaseId, entitlementId, purchase: existingPurchase, entitlement, item }: any) => {
+      const nextPurchase = { userId: order.userId, productId: item.id, productType: "book", orderId, paymentStatus: "paid", createdAt: existingPurchase?.createdAt || now };
+      writes.push(existingPurchase ? fsUpdate("purchases", purchaseId, nextPurchase) : fsCreate("purchases", purchaseId, nextPurchase));
       const nextEntitlement = { userId: order.userId, productId: item.id, status: "active", paymentStatus: "paid", orderId, grantedAt: now };
       writes.push(entitlement ? fsUpdate("bookEntitlements", entitlementId, nextEntitlement) : fsCreate("bookEntitlements", entitlementId, nextEntitlement));
     });
