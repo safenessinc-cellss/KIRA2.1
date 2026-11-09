@@ -14,7 +14,7 @@ import { PerformanceMonitor } from './components/PerformanceMonitor';
 
 // Performance Optimization: Lazy Loading for Code-Splitting heavy chunks
 const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
-const Journal = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Journal })));
+const Journal = React.lazy(() => import('./pages/Journal').then(m => ({ default: m.Journal })));
 const EliteLibrary = React.lazy(() => import('./pages/EliteLibrary').then(m => ({ default: m.EliteLibrary })));
 const Community = React.lazy(() => import('./pages/Community').then(m => ({ default: m.Community })));
 const AdminMonitor = React.lazy(() => import('./pages/Admin').then(m => ({ default: m.AdminMonitor })));
