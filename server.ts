@@ -256,6 +256,8 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
   const now = new Date().toISOString();
   const writes: any[] = [
     fsCreate("paymentEvents", idSafe(provider + "_" + eventId), { provider, eventId, orderId, status: "processed", processedAt: now }),
+    fsCreate("transactions_processed", idSafe(provider + "_" + eventId), { provider, eventId, orderId, status: "processed", processedAt: now }),
+    fsCreate("webhook_events", idSafe(provider + "_" + eventId), { provider, eventId, orderId, status: "processed", createdAt: now, processedAt: now }),
     fsCreate("transactions", idSafe(provider + "_" + paymentId), { userId: order.userId, orderId, courseId: (order.items || []).find((item: any) => item.type === "course")?.id || "", courseIds: (order.items || []).filter((item: any) => item.type === "course").map((item: any) => item.id), provider, providerPaymentId: paymentId, amount: order.amount, currency: order.currency, status: "paid", createdAt: now }),
     fsUpdate("orders", orderId, { ...order, status: "paid", providerPaymentId: paymentId, paidAt: now, updatedAt: now }),
     fsCreate("auditLogs", idSafe("payment_" + provider + "_" + paymentId), { actorId: "payment_webhook", action: "payment.confirmed", targetId: orderId, provider, paymentId, amount: order.amount, currency: order.currency, createdAt: now }),
