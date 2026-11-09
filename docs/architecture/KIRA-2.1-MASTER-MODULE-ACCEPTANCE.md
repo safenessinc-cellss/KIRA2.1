@@ -18,7 +18,7 @@ Toda autorización debe comprobarse en servidor y Firestore Rules; ocultar una o
 - Plan Maestro con cursos inscritos, progreso y catálogo.
 - Energía: Bronce 0–500; Plata 501–1.500; Oro 1.501–5.000; Platino >5.000.
 - Kira Predictive Insights y Nudges: sugerencias explicables basadas en actividad y progreso; no inventar eventos ni métricas.
-- Journal en `/dashboard/journal`: entradas privadas en `journal_entries`, con acceso del propio alumno y servicios IA autorizados.
+- Journal en `/dashboard/journal`: entradas privadas en `journals`, con acceso del propio alumno y servicios IA autorizados.
 - Biblioteca Élite en `/dashboard/elite-library`: recursos públicos/premium; desbloqueo y puntos ejecutados en servidor mediante transacción atómica e idempotente. No descontar puntos desde el cliente.
 - Reseñas de coaches: una valoración de 1–5, vinculada a interacción/matrícula válida y protegida contra duplicados/abuso.
 
@@ -55,8 +55,8 @@ Toda autorización debe comprobarse en servidor y Firestore Rules; ocultar una o
 
 ## 7. Modelo Firestore canónico
 
-Colecciones principales: `users`, `courses`, `enrollments`, `sessions`, `journal_entries`, `transactions`, `settings/website`.  
-Colecciones de dominio adicionales cuando corresponda: `orders`, `paymentEvents`, `paymentAudit`, `certificates`, `certificatePublic`, `certificate_audit`, `outbox`, `companies/{companyId}/members`, `companies/{companyId}/wellbeingAggregates`.
+Colecciones principales: `users`, `courses`, `enrollments`, `sessions`, `journals` (diario privado), `wellbeing_checkins` (check-in separado y consentido), `transactions`, `settings/website`.  
+Colecciones de dominio adicionales cuando corresponda: `orders`, `paymentEvents`, `paymentAudit`, `certificates`, `certificatePublic`, `certificate_audit`, `outbox`, `companies/{companyId}/members`, `companies/{companyId}/wellbeingAggregates`, `homework_assignments`, `homework_submissions`.
 
 Invariantes:
 1. Webhooks de pago firmados, idempotentes y con importe/moneda/orden/usuario coincidentes.
