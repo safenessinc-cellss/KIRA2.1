@@ -709,6 +709,12 @@ app.post("/api/admin/users/:uid/grant-points", async (req: AdminRequest, res) =>
   } catch (error) { console.error(error); res.status(500).json({ error: "No fue posible otorgar puntos." }); }
 });
 
+app.get("/api/admin/counts", async (_req,res) => {
+  try{
+    const [coaches,certificates]=await Promise.all([fsList("coach_applications"),fsList("certificates")]);
+    res.json({coaches:coaches.filter(x=>x.status==="pending").length,certificates:certificates.filter(x=>(x.adminStatus||x.status)==="pending_admin").length});
+  }catch(e){console.error(e);res.status(500).json({error:"No fue posible cargar contadores."});}
+});
 app.get("/api/admin/coach-applications", async (_req, res) => {
   try { const items = await fsList("coach_applications"); res.json({ items: items.filter(x => x.status === "pending").sort((a,b) => String(a.createdAt).localeCompare(String(b.createdAt))) }); }
   catch (error) { console.error(error); res.status(500).json({ error: "No fue posible cargar solicitudes." }); }
