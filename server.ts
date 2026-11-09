@@ -865,6 +865,131 @@ app.post("/api/journals", async (req, res) => {
   }
 });
 
+app.get("/api/student/homework", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    if (!profile || !["alumno", "company_member"].includes(String(profile.role || ""))) {
+      return res.status(403).json({ error: "Este espacio está disponible únicamente para alumnos." });
+    }
+    const [enrollments, courses, assignments, submissions] = await Promise.all([
+      fsListAllDocuments("enrollments", 10000),
+      fsListAllDocuments("courses", 5000),
+      fsListAllDocuments("homework_assignments", 10000),
+      fsListAllDocuments("homework_submissions", 10000)
+    ]);
+    const enrolledCourseIds = new Set(enrollments.filter((item: any) =>
+      item.userId === user.uid && (!item.status || ["active", "approved", "completed"].includes(String(item.status)))
+    ).map((item: any) => String(item.courseId)));
+    const courseById = new Map(courses.map((item: any) => [String(item.id), item]));
+    const submissionByAssignment = new Map(submissions.filter((item: any) =>
+      (item.studentId || item.userId) === user.uid
+    ).map((item: any) => [String(item.assignmentId), item]));
+    const items = assignments.filter((item: any) =>
+      item.status === "published" && enrolledCourseIds.has(String(item.courseId))
+    ).map((item: any) => {
+      const course = courseById.get(String(item.courseId));
+      const submission: any = submissionByAssignment.get(String(item.id));
+      return {
+        ...item,
+        courseTitle: item.courseTitle || course?.title || "Curso",
+        submission: submission ? {
+          id: submission.id,
+          status: submission.status,
+          submittedAt: submission.submittedAt,
+          score: submission.score,
+          feedback: submission.feedback,
+          submissionText: submission.submissionText,
+          submissionUrl: submission.submissionUrl
+        } : null
+      };
+    }).sort((a: any, b: any) => String(a.dueAt || "9999").localeCompare(String(b.dueAt || "9999")));
+    return res.json({ items, total: items.length, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error("[Student Homework] list failed:", error);
+    return res.status(500).json({ error: "No se pudieron cargar las actividades." });
+  }
+});
+
+app.post("/api/student/homework/:assignmentId/submit", async (req, res) => {
+  let transaction = "";
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    if (!profile || !["alumno", "company_member"].includes(String(profile.role || ""))) {
+      return res.status(403).json({ error: "Solo los alumnos pueden enviar actividades." });
+    }
+    const assignmentId = idSafe(String(req.params.assignmentId || ""));
+    const submissionText = String(req.body?.submissionText || "").trim();
+    const submissionUrl = String(req.body?.submissionUrl || "").trim();
+    if (!assignmentId || submissionText.length > 10000 || submissionUrl.length > 2048 ||
+      (!submissionText && !submissionUrl) ||
+      (submissionUrl && (!/^https:\/\//i.test(submissionUrl) || !URL.canParse(submissionUrl)))) {
+      return res.status(400).json({ error: "Incluye una respuesta o un enlace HTTPS válido." });
+    }
+    const assignment = await fsGet("homework_assignments", assignmentId);
+    if (!assignment || assignment.status !== "published") return res.status(404).json({ error: "Actividad no encontrada." });
+    const enrollment = (await fsListAllDocuments("enrollments", 10000)).find((item: any) =>
+      item.userId === user.uid && String(item.courseId) === String(assignment.courseId) &&
+      (!item.status || ["active", "approved", "completed"].includes(String(item.status)))
+    );
+    if (!enrollment) return res.status(403).json({ error: "Necesitas una matrícula activa para enviar esta actividad." });
+
+    const submissionId = idSafe(assignmentId + "_" + user.uid);
+    transaction = await beginFirestoreTransaction();
+    const existing = await fsGetInTransaction("homework_submissions", submissionId, transaction);
+    if (existing && existing.status !== "needs_correction") {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(409).json({ error: existing.status === "approved" ? "Esta actividad ya fue aprobada." : "Ya existe una entrega pendiente de revisión." });
+    }
+    const course = await fsGet("courses", String(assignment.courseId));
+    const now = new Date();
+    const priorHistory = Array.isArray(existing?.revisionHistory) ? existing.revisionHistory : [];
+    const revisionHistory = existing ? [...priorHistory, {
+      submissionText: existing.submissionText || "",
+      submissionUrl: existing.submissionUrl || "",
+      submittedAt: existing.submittedAt || existing.createdAt || null,
+      feedback: existing.feedback || ""
+    }].slice(-10) : [];
+    const item = {
+      ...(existing || {}),
+      assignmentId,
+      assignmentTitle: assignment.title,
+      assignmentDescription: assignment.description || "",
+      courseId: String(assignment.courseId),
+      courseTitle: assignment.courseTitle || course?.title || "Curso",
+      coachId: String(assignment.coachId || course?.coachId || ""),
+      studentId: user.uid,
+      studentName: profile.displayName || profile.name || "Alumno",
+      submissionText,
+      submissionUrl,
+      attachments: [],
+      status: "pending",
+      submittedAt: now,
+      revisionHistory
+    };
+    const notificationId = randomBytes(16).toString("hex");
+    const writes: any[] = [
+      existing
+        ? fsUpdate("homework_submissions", submissionId, item)
+        : fsCreate("homework_submissions", submissionId, item),
+      fsCreate("notifications", notificationId, {
+        userId: item.coachId,
+        title: "Nueva entrega de actividad",
+        message: (item.studentName + " entregó: " + String(assignment.title || "Actividad")).slice(0, 220),
+        type: "course", read: false, createdAt: now
+      })
+    ];
+    await fsCommitTransaction(writes, transaction);
+    transaction = "";
+    return res.status(201).json({ id: submissionId, status: "pending", submittedAt: now.toISOString() });
+  } catch (error: any) {
+    if (transaction) await rollbackFirestoreTransaction(transaction);
+    console.error("[Student Homework] submission failed:", error);
+    return res.status(error?.status === 409 || error?.status === 412 ? 409 : 500).json({ error: "No se pudo enviar la actividad." });
+  }
+});
+
 app.get("/api/coach/homework", async (req, res) => {
   try {
     const user = await verifiedUser(req, res); if (!user) return;
@@ -873,10 +998,11 @@ app.get("/api/coach/homework", async (req, res) => {
     const isCoach = profile?.role === "coach" && profile?.approvalStatus === "approved";
     if (!isAdmin && !isCoach) return res.status(403).json({ error: "Solo coaches aprobados y administradores pueden consultar entregas." });
 
-    const [all, courses, students] = await Promise.all([
+    const [all, courses, students, assignments] = await Promise.all([
       fsListAllDocuments("homework_submissions", 5000),
       fsListAllDocuments("courses", 5000),
-      fsListAllDocuments("users", 10000)
+      fsListAllDocuments("users", 10000),
+      fsListAllDocuments("homework_assignments", 5000)
     ]);
     const courseById = new Map(courses.map((course: any) => [String(course.id), course]));
     const studentById = new Map(students.map((student: any) => [String(student.id), student]));
@@ -899,10 +1025,57 @@ app.get("/api/coach/homework", async (req, res) => {
         attachments: Array.isArray(item.attachments) ? item.attachments : Array.isArray(item.files) ? item.files : []
       };
     }).sort((a: any, b: any) => String(b.submittedAt || b.createdAt || "").localeCompare(String(a.submittedAt || a.createdAt || "")));
-    return res.json({ items, total: items.length, generatedAt: new Date().toISOString() });
+    const coachAssignments = assignments.filter((item: any) => {
+      const course = courseById.get(String(item.courseId || ""));
+      return isAdmin || item.coachId === user.uid || course?.coachId === user.uid;
+    }).map((item: any) => ({
+      ...item,
+      courseTitle: item.courseTitle || courseById.get(String(item.courseId || ""))?.title || "Curso"
+    })).sort((a: any, b: any) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+    return res.json({ items, assignments: coachAssignments, total: items.length, generatedAt: new Date().toISOString() });
   } catch (error) {
     console.error("[Coach Homework] list failed:", error);
     return res.status(500).json({ error: "No se pudieron cargar las entregas." });
+  }
+});
+
+app.post("/api/coach/homework/assignments", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    const isAdmin = user.emailVerified === true && profile?.role === "admin";
+    const isCoach = profile?.role === "coach" && profile?.approvalStatus === "approved";
+    if (!isAdmin && !isCoach) return res.status(403).json({ error: "Solo coaches aprobados pueden crear actividades." });
+    const courseId = idSafe(String(req.body?.courseId || ""));
+    const title = String(req.body?.title || "").trim();
+    const description = String(req.body?.description || "").trim();
+    const dueAtRaw = String(req.body?.dueAt || "").trim();
+    if (!courseId || title.length < 3 || title.length > 160 || description.length > 5000) {
+      return res.status(400).json({ error: "Indica un curso, un título de 3–160 caracteres y una descripción de hasta 5000 caracteres." });
+    }
+    const course = await fsGet("courses", courseId);
+    if (!course || (!isAdmin && course.coachId !== user.uid)) return res.status(404).json({ error: "Curso no encontrado." });
+    const dueAt = dueAtRaw ? new Date(dueAtRaw) : null;
+    if (dueAtRaw && (!dueAt || Number.isNaN(dueAt.getTime()))) return res.status(400).json({ error: "La fecha límite no es válida." });
+    const id = randomBytes(16).toString("hex");
+    const now = new Date();
+    const assignment = {
+      coachId: String(course.coachId || user.uid),
+      courseId,
+      courseTitle: String(course.title || "Curso"),
+      title,
+      description,
+      dueAt,
+      status: "published",
+      createdBy: user.uid,
+      createdAt: now,
+      updatedAt: now
+    };
+    await fsCreate("homework_assignments", id, assignment);
+    return res.status(201).json({ item: { id, ...assignment } });
+  } catch (error) {
+    console.error("[Coach Homework] assignment create failed:", error);
+    return res.status(500).json({ error: "No se pudo publicar la actividad." });
   }
 });
 
