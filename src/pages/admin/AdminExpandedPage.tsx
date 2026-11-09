@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Activity, Award, CheckCircle2, CreditCard, Download, FileText, Loader2, RefreshCw, Search, ShieldCheck, UserCheck, Users, Wallet } from 'lucide-react';
-import { auth } from '../../firebase';
+import { auth, db } from '../../firebase';
+import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 
 type Row = Record<string, any>;
 const API = '/api/admin';
@@ -33,6 +34,11 @@ export default function AdminExpandedPage() {
     }catch(e:any){setError(e.message||'No fue posible cargar los datos.');}finally{setLoading(false);}
   },[section,detail,uid,request]);
   useEffect(()=>{void load();},[load]);
+  useEffect(()=>{
+    if(section!=='users'||!detail||!uid)return;
+    const liveQuery=query(collection(db,'activity_logs'),where('userId','==',uid),orderBy('createdAt','desc'),limit(100));
+    return onSnapshot(liveQuery,snapshot=>setItems(snapshot.docs.map(d=>({id:d.id,...d.data()}))),error=>setError(error.message||'No fue posible sincronizar la actividad.'));
+  },[section,detail,uid]);
   useEffect(()=>{void request(API+'/counts').then(setCounts).catch(()=>{});},[request]);
   const act=async(key:string,url:string,body:Row,success:string)=>{
     setBusy(key);setError('');setNotice('');
