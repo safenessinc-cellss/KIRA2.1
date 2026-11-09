@@ -101,7 +101,7 @@ export function AdminMonitor() {
         <span>Backoffice</span><ChevronRight size={13}/><span>{activeGroup?.label || 'Dashboard'}</span>
         {activeItem && <><ChevronRight size={13}/><span className="font-semibold text-slate-800">{activeItem.label}</span></>}
       </nav>
-      {activeItem && !activeItem.ready ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6"><div className="flex items-center gap-2 font-bold text-amber-900"><AlertTriangle size={18}/> Módulo aún no habilitado</div><p className="mt-2 text-sm text-amber-800">Este nodo forma parte del árbol oficial, pero su API, persistencia y pruebas de autorización todavía no cumplen el criterio de aceptación. Permanece bloqueado para evitar una pantalla sin backend funcional.</p></div> : renderContent()}
+      {activeItem && !activeItem.ready ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6"><div className="flex items-center gap-2 font-bold text-amber-900"><AlertTriangle size={18}/> Módulo aún no habilitado</div><p className="mt-2 text-sm text-amber-800">Este nodo forma parte del árbol oficial, pero su API, persistencia y pruebas de autorización todavía no cumplen el criterio de aceptación. Permanece bloqueado para evitar una pantalla sin backend funcional.</p></div> : activeItem && !canOpen(activeItem) ? <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-800">Tu rol no tiene permiso para consultar este módulo.</div> : renderContent()}
     </div>
   </div>;
 }
