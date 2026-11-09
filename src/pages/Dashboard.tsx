@@ -18,6 +18,7 @@ export function Dashboard() {
   const [reviewingItem, setReviewingItem] = useState<{ id: string; type: 'course' | 'book'; title: string } | null>(null);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [availableCourses, setAvailableCourses] = useState<any[]>([]);
   const [availableBooks, setAvailableBooks] = useState<any[]>([]);
   const [myEnrollments, setMyEnrollments] = useState<any[]>([]);
@@ -375,24 +376,26 @@ export function Dashboard() {
   };
 
   const submitReview = async () => {
-    if (!user || !reviewingItem) return;
+    if (!user || !reviewingItem || reviewSubmitting) return;
+    setReviewSubmitting(true);
     try {
-      await addDoc(collection(db, 'reviews'), {
-        itemId: reviewingItem.id,
-        itemType: reviewingItem.type,
-        courseId: reviewingItem.type === 'course' ? reviewingItem.id : null,
-        bookId: reviewingItem.type === 'book' ? reviewingItem.id : null,
-        userId: user.uid,
-        rating,
-        comment,
-        status: 'published',
-        createdAt: new Date()
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('Inicia sesión nuevamente.');
+      const response = await fetch('/api/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify({ itemId: reviewingItem.id, itemType: reviewingItem.type, rating, comment })
       });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'No fue posible guardar la reseña.');
       setReviewingItem(null);
       setComment('');
       setRating(5);
-    } catch(e) {
+    } catch(e: any) {
       console.error(e);
+      alert(e?.message || 'No fue posible guardar la reseña.');
+    } finally {
+      setReviewSubmitting(false);
     }
   };
   
@@ -1047,8 +1050,8 @@ export function Dashboard() {
                <button onClick={() => setReviewingItem(null)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black text-xs hover:bg-slate-200 transition-colors uppercase tracking-widest">
                  Cancelar
                </button>
-               <button onClick={submitReview} className="flex-[2] py-4 bg-kirateal text-white rounded-2xl font-black text-xs hover:bg-kirateal-light transition-all shadow-lg shadow-teal-100 uppercase tracking-widest">
-                 Enviar mi Opinión
+               <button onClick={submitReview} disabled={reviewSubmitting} className="flex-[2] py-4 bg-kirateal text-white rounded-2xl font-black text-xs hover:bg-kirateal-light transition-all shadow-lg shadow-teal-100 uppercase tracking-widest disabled:opacity-50">
+                 {reviewSubmitting ? "Enviando…" : "Enviar mi Opinión"}
                </button>
               </div>
             </div>
