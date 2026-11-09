@@ -56,7 +56,7 @@ export function useCollection<T extends DocumentData = DocumentData>(source: Que
 
 export function useUser() {
   const { user, loading } = useAuth();
-  const ref = useMemo(() => user?.uid ? doc(db, "users", user.uid) : null, [user?.uid]);
+  const ref = useMemo(() => user?.uid ? doc(db, "users", user.uid) as DocumentReference<User> : null, [user?.uid]);
   const profile = useDocument<User>(ref);
   return { user: profile.data, loading: loading || profile.loading, error: profile.error };
 }
