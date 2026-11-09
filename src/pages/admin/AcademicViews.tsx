@@ -13,7 +13,7 @@ async function api<T>(path: string, method = "GET", body?: unknown): Promise<T> 
 type Group = { id: string; courseId: string; name: string; coachId: string; capacity: number; enrolledCount: number; status: string; timezone?: string };
 type Session = { id: string; startsAt: string; endsAt: string; room?: string; status: string };
 type Enrollment = { id?: string; userId: string; studentName?: string; status: string };
-type Performance = { studentId: string; attendancePct: number; avgScorePct: number };
+type Performance = { studentId: string; attendancePct: number; avgScorePct: number; lastCalculatedAt?: string };
 
 export function AcademicGroupsView() {
   const [groups, setGroups] = useState<Group[]>([]);
