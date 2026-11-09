@@ -102,7 +102,7 @@ export function AdminMonitor() {
     }
   };
 
-  return <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
+  return <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
     <Sidebar tree={tree} activeTab={activeTab} onSelect={setActiveTab} canOpen={canOpen} counts={counts}/>
     <div className="min-w-0 space-y-4">
       <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -124,11 +124,11 @@ export function Sidebar({ tree, activeTab, onSelect, canOpen, counts }: {
   return <aside aria-label="Navegación oficial KIRA" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-24">
     <div className="px-3 pb-3 pt-2"><p className="text-[10px] font-black uppercase tracking-[.18em] text-teal-700">KIRA · Backoffice</p><h2 className="mt-1 text-base font-black text-slate-900">Navegación principal</h2><p className="mt-1 text-xs text-slate-500">Estructura oficial de gestión.</p></div>
     <nav className="space-y-4">
-      {tree.map(group => <section key={group.label}><h3 className="px-3 pb-1 text-[10px] font-black uppercase tracking-[.13em] text-slate-400">{group.label}</h3><div className="space-y-1">{group.items.map(item => {
+      {tree.map(group => <section key={group.label}><h3 className="px-3 pb-1 text-[10px] font-black uppercase tracking-[.13em] text-slate-400">{group.label}</h3><div className="grid grid-cols-2 gap-2">{group.items.map(item => {
         const allowed = canOpen(item), active = activeTab === item.id;
         const count = item.countKey ? counts[item.countKey] : 0;
-        return <button key={item.id} type="button" onClick={() => allowed && onSelect(item.id)} disabled={!allowed} aria-current={active ? 'page' : undefined} title={!item.ready ? 'Pendiente: backend y pruebas de aceptación' : !allowed ? 'Tu rol no tiene permiso para este módulo' : item.label} className={'flex min-h-11 w-full items-center gap-3 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition ' + (active ? 'border-teal-700 bg-teal-700 text-white' : allowed ? 'border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50' : 'cursor-not-allowed border-transparent bg-slate-50 text-slate-400')}>
-          <span className="shrink-0">{item.icon}</span><span className="min-w-0 flex-1">{item.label}</span>
+        return <button key={item.id} type="button" onClick={() => allowed && onSelect(item.id)} disabled={!allowed} aria-current={active ? 'page' : undefined} title={!item.ready ? 'Pendiente: backend y pruebas de aceptación' : !allowed ? 'Tu rol no tiene permiso para este módulo' : item.label} className={'relative flex min-h-[104px] w-full flex-col items-center justify-center gap-2 rounded-[1.25rem] border px-2 py-3 text-center text-[11px] font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ' + (active ? 'border-teal-700 bg-teal-700 text-white shadow-md shadow-teal-900/10' : allowed ? 'border-slate-200/80 bg-white/80 text-slate-700 shadow-sm backdrop-blur-xl hover:-translate-y-0.5 hover:border-teal-200 hover:bg-white hover:shadow-md' : 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400')}>
+          <span className={'flex h-10 w-10 items-center justify-center rounded-2xl ' + (active ? 'bg-white/15 text-white' : allowed ? 'bg-slate-100 text-slate-600' : 'bg-slate-100 text-slate-400')}>{item.icon}</span><span className="min-w-0 w-full leading-4">{item.label}</span>
           {item.countKey && count > 0 && <span className={'rounded-full px-2 py-0.5 text-[10px] ' + (active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600')}>{count}</span>}
           {!item.ready && <LockKeyhole size={13} className="shrink-0"/>}
           {item.ready && !allowed && <ShieldAlert size={13} className="shrink-0"/>}
