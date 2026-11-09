@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { initializeTestEnvironment, assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, runTransaction } from "firebase/firestore";
 
 const projectId = "demo-kira-rules";
 const rules = fs.readFileSync("firestore.rules", "utf8");
@@ -30,6 +30,37 @@ try {
     await setDoc(doc(db, "companies", "company-a", "members", "company-admin"), { uid: "company-admin", role: "company_admin" });
     await setDoc(doc(db, "companies", "company-a", "wellbeingAggregates", "2026-11"), { period: "2026-11", highRiskCount: 2 });
     await setDoc(doc(db, "companies", "company-b", "members", "other-admin"), { uid: "other-admin", role: "company_admin" });
+  });
+
+
+  // Firestore transaction concurrency: capacity one permits exactly one of two students.
+  await env.withSecurityRulesDisabled(async context => {
+    const db = context.firestore();
+    const groupRef = doc(db, "course_groups", "capacity-one");
+    await setDoc(groupRef, { capacity: 1, enrolledCount: 0 });
+    const reserve = (studentId) => runTransaction(db, async transaction => {
+      const snapshot = await transaction.get(groupRef);
+      const group = snapshot.data();
+      if (Number(group.enrolledCount) >= Number(group.capacity)) throw new Error("group_full");
+      transaction.update(groupRef, { enrolledCount: Number(group.enrolledCount) + 1 });
+      transaction.set(doc(db, "enrollments", studentId + "_course-capacity"), { userId: studentId, courseId: "course-capacity", groupId: "capacity-one", status: "active" });
+      return true;
+    });
+    const results = await Promise.allSettled([reserve("student-a"), reserve("student-b")]);
+    assert.equal(results.filter(result => result.status === "fulfilled").length, 1);
+    assert.equal((await getDoc(groupRef)).data().enrolledCount, 1);
+
+    // Deterministic invoice ID + transaction guard: running generation twice creates one invoice.
+    const invoiceRef = doc(db, "invoices", "enrollment-a_2026-11");
+    const createInvoiceOnce = () => runTransaction(db, async transaction => {
+      const existing = await transaction.get(invoiceRef);
+      if (existing.exists()) return false;
+      transaction.set(invoiceRef, { enrollmentId: "enrollment-a", periodLabel: "2026-11", status: "open" });
+      return true;
+    });
+    const invoiceResults = await Promise.all([createInvoiceOnce(), createInvoiceOnce()]);
+    assert.equal(invoiceResults.filter(Boolean).length, 1);
+    assert.equal(await createInvoiceOnce(), false);
   });
 
   const studentDb = env.authenticatedContext("student-a", { email: "a@example.test" }).firestore();
@@ -74,7 +105,7 @@ try {
 
   // Gateway credentials, payment configuration and financial ledgers are server-only,
   // including for the owner browser session; the Express API is the sole access path.
-  for (const collectionName of ["paymentSettings","paymentGateways","paymentPlans","paymentCoupons","paymentAudit","config_audit","course_groups","group_sessions","student_performance","role_permissions","webhook_inbox","payment_reminders","dashboard_aggregates","invoice_payment_claims","paymentReconciliationReports","counters"]) {
+  for (const collectionName of ["paymentSettings","paymentGateways","paymentPlans","paymentCoupons","paymentAudit","config_audit","course_groups","group_sessions","student_performance","role_permissions","webhook_inbox","payment_reminders","dashboard_aggregates","invoice_payment_claims","paymentReconciliationReports","counters","schedule_locks"]) {
     await assertFails(getDoc(doc(ownerDb, collectionName, "global")));
     await assertFails(setDoc(doc(ownerDb, collectionName, "browser-write"), { enabled: true, apiKeyEncrypted: "must-not-be-client-written" }));
     await assertFails(getDoc(doc(studentDb, collectionName, "global")));
