@@ -398,6 +398,7 @@ export function Dashboard() {
   
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-10 animate-in fade-in duration-700">
+      <div className="flex justify-end"><EnergyTierBadge /></div>
       {/* Header Ejecutivo para Alumno */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-100 pb-10">
         <div>
