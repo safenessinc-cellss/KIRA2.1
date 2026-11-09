@@ -771,6 +771,139 @@ function auditWrite(userId: string, action: string, nodePath: string, entityId: 
   });
 }
 
+
+app.get("/api/coach/homework", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    const isAdmin = user.emailVerified === true && profile?.role === "admin";
+    const isCoach = profile?.role === "coach" && profile?.approvalStatus === "approved";
+    if (!isAdmin && !isCoach) return res.status(403).json({ error: "Solo coaches aprobados y administradores pueden consultar entregas." });
+    const all = await fsListAllDocuments("homework_submissions", 5000);
+    const items = all.filter((item: any) => isAdmin || item.coachId === user.uid)
+      .map(({ id, ...item }: any) => ({ id, ...item }))
+      .sort((a: any, b: any) => String(b.submittedAt || "").localeCompare(String(a.submittedAt || "")));
+    return res.json({ items, total: items.length, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error("[Coach Homework] list failed:", error);
+    return res.status(500).json({ error: "No se pudieron cargar las entregas." });
+  }
+});
+
+app.post("/api/coach/homework/:id/review", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    const isAdmin = user.emailVerified === true && profile?.role === "admin";
+    const isCoach = profile?.role === "coach" && profile?.approvalStatus === "approved";
+    if (!isAdmin && !isCoach) return res.status(403).json({ error: "Solo coaches aprobados y administradores pueden revisar entregas." });
+    const id = idSafe(String(req.params.id || ""));
+    const submission = await fsGet("homework_submissions", id);
+    if (!submission || (!isAdmin && submission.coachId !== user.uid)) return res.status(404).json({ error: "Entrega no encontrada." });
+    const body = req.body || {};
+    const status = String(body.status || "");
+    const score = Number(body.score);
+    const feedback = String(body.feedback || "").trim();
+    const requestedPoints = Number(body.energyPoints || 0);
+    if (!["approved", "needs_correction"].includes(status) || !Number.isInteger(score) || score < 0 || score > 100 ||
+      feedback.length < 2 || feedback.length > 5000 || !Number.isInteger(requestedPoints) || requestedPoints < 0 || requestedPoints > 100) {
+      return res.status(400).json({ error: "Revisa el estado, la calificación (0–100), el feedback y los puntos (0–100)." });
+    }
+    if (!submission.studentId || typeof submission.studentId !== "string") return res.status(409).json({ error: "La entrega no contiene un alumno válido." });
+    const now = new Date().toISOString();
+    const awardPoints = status === "approved" && !submission.pointsAwardedAt ? requestedPoints : 0;
+    const updated = {
+      ...submission, score, feedback, status, reviewedAt: now, reviewedBy: user.uid,
+      energyPointsAwarded: Number(submission.energyPointsAwarded || 0) + awardPoints,
+      ...(awardPoints > 0 ? { pointsAwardedAt: now } : {})
+    };
+    const notificationId = randomBytes(16).toString("hex");
+    const writes: any[] = [
+      fsUpdate("homework_submissions", id, updated),
+      fsCreate("notifications", notificationId, {
+        userId: submission.studentId,
+        title: status === "approved" ? "Tarea aprobada" : "Tu tarea necesita una revisión",
+        message: status === "approved"
+          ? "Tu tarea \"" + String(submission.assignmentTitle || "Actividad").slice(0, 160) + "\" fue aprobada. " + (awardPoints ? "Recibiste " + awardPoints + " puntos de energía." : "")
+          : "Tu tarea \"" + String(submission.assignmentTitle || "Actividad").slice(0, 160) + "\" recibió comentarios del coach.",
+        type: "course", read: false, createdAt: now
+      })
+    ];
+    if (awardPoints > 0) writes.push({
+      transform: {
+        document: fsDocumentPath("users", submission.studentId),
+        fieldTransforms: [{ fieldPath: "points", increment: { integerValue: String(awardPoints) } }]
+      }
+    });
+    await fsCommit(writes);
+    return res.json({ item: { id, status, score, feedback, reviewedAt: now, energyPointsAwarded: updated.energyPointsAwarded }, pointsAwarded: awardPoints });
+  } catch (error) {
+    console.error("[Coach Homework] review failed:", error);
+    return res.status(500).json({ error: "No se pudo guardar la revisión." });
+  }
+});
+
+app.get("/api/coach/analytics", async (req, res) => {
+  try {
+    const user = await verifiedUser(req, res); if (!user) return;
+    const profile = await fsGet("users", user.uid);
+    const isAdmin = user.emailVerified === true && profile?.role === "admin";
+    const isCoach = profile?.role === "coach" && profile?.approvalStatus === "approved";
+    if (!isAdmin && !isCoach) return res.status(403).json({ error: "Solo coaches aprobados y administradores pueden consultar estas métricas." });
+    const [courses, sessions, leads, enrollments, reviews] = await Promise.all([
+      fsListAllDocuments("courses", 5000), fsListAllDocuments("sessions", 10000),
+      fsListAllDocuments("crmLeads", 10000), fsListAllDocuments("enrollments", 10000),
+      fsListAllDocuments("reviews", 10000)
+    ]);
+    const ownCourses = courses.filter((item: any) => isAdmin || item.coachId === user.uid);
+    const courseIds = new Set(ownCourses.map((item: any) => String(item.id)));
+    const ownSessions = sessions.filter((item: any) => isAdmin || item.coachId === user.uid);
+    const ownLeads = leads.filter((item: any) => isAdmin || item.assignedTo === user.uid);
+    const ownEnrollments = enrollments.filter((item: any) => courseIds.has(String(item.courseId)));
+    const ownReviews = reviews.filter((item: any) => courseIds.has(String(item.courseId)) && Number(item.rating) >= 1 && Number(item.rating) <= 5);
+    const clientsById = new Map<string, number>();
+    for (const item of ownSessions) if (item.userId) clientsById.set(String(item.userId), (clientsById.get(String(item.userId)) || 0) + 1);
+    const returningClients = [...clientsById.values()].filter(count => count > 1).length;
+    const uniqueClients = clientsById.size;
+    const stageCounts = { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 };
+    for (const item of ownLeads) if (item.stage in stageCounts) stageCounts[item.stage as keyof typeof stageCounts]++;
+    const weekly = new Map<string, number>();
+    const now = Date.now();
+    for (const item of ownSessions) {
+      const raw = item.createdAt;
+      const date = raw && typeof raw === "object" && typeof raw.toDate === "function" ? raw.toDate() : new Date(raw || 0);
+      if (!Number.isFinite(date.getTime()) || now - date.getTime() > 42 * 86400000) continue;
+      const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+      monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+      const key = monday.toISOString().slice(0, 10);
+      weekly.set(key, (weekly.get(key) || 0) + 1);
+    }
+    const weeklySessions = [...weekly.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([week, count]) => ({ week, sessions: count }));
+    const durationMinutes = ownSessions.reduce((total: number, item: any) => {
+      const duration = Number(item.durationMinutes ?? item.sessionDurationMinutes ?? item.duration ?? 0);
+      return total + (Number.isFinite(duration) && duration > 0 && duration <= 1440 ? duration : 0);
+    }, 0);
+    const averageSatisfaction = ownReviews.length
+      ? Math.round((ownReviews.reduce((total: number, item: any) => total + Number(item.rating), 0) / ownReviews.length) * 100) / 100
+      : null;
+    return res.json({
+      generatedAt: new Date().toISOString(),
+      source: "Firestore: sessions, crmLeads, courses, enrollments y reviews",
+      scope: isAdmin ? "all" : "own",
+      retention: { uniqueClients, returningClients, rate: uniqueClients ? Math.round(returningClients / uniqueClients * 1000) / 10 : 0 },
+      sessions: { total: ownSessions.length, weekly: weeklySessions },
+      hours: durationMinutes ? Math.round(durationMinutes / 60 * 10) / 10 : null,
+      satisfaction: { average: averageSatisfaction, responses: ownReviews.length },
+      funnel: stageCounts,
+      enrollments: ownEnrollments.length,
+      coverage: { durationTrackedSessions: ownSessions.filter((item: any) => Number(item.durationMinutes ?? item.sessionDurationMinutes ?? item.duration ?? 0) > 0).length, totalSessions: ownSessions.length }
+    });
+  } catch (error) {
+    console.error("[Coach Analytics] metrics failed:", error);
+    return res.status(500).json({ error: "No se pudieron calcular las métricas del coach." });
+  }
+});
+
 app.get("/api/admin/dashboard", async (req, res) => {
   try {
     const user = await verifiedUser(req, res); if (!user) return;
