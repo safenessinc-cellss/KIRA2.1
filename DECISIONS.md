@@ -28,3 +28,8 @@ Rama: `release/admin-expanded-v1`
 23. Signed URLs para documentos de coach siguen pendientes.
 24. No ejecutar migraciones, reembolsos ni cambios de roles sobre datos reales durante pruebas.
 25. No promover a producción sin CI verde, reglas desplegadas, Preview validado y smoke tests por rol.
+
+
+26. Diagnóstico PR #25 (2026-11-09): GitHub Compare reporta `main...release/admin-expanded-v1` como `ahead`, 71 commits ahead y 0 behind; `merge_base_commit` coincide con `main`. Esto no muestra divergencia de historia ni evidencia de conflictos de contenido en el compare. El campo `mergeable=false` del PR no basta para concluir que existan conflictos; se debe volver a consultar después de que GitHub recalcule el estado y revisar checks requeridos. No se ejecutó `git fetch/merge` porque esta sesión no dispone de checkout local.
+27. Se eligió CI alternativo (Opción A): workflow `.github/workflows/ci.yml` añadido para typecheck/lint, build, Firestore Emulator y escaneos de secretos/env. No se modificó branch protection; no se dispone de evidencia de permisos ni de CI verde.
+28. `TEST_REPORT.md` distingue los escenarios ejecutados de los no ejecutados. No se marcan como verdes las pruebas de integración que aún no existen o no se ejecutaron.
