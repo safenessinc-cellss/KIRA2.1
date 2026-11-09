@@ -30,16 +30,103 @@ function OwnerActivityView() {
     setLoading(true);
     setError("");
     try {
-      const token = await auth.currentUser?.getIdToken();
-      if (!token) throw new Error("La sesión de propietario no está disponible.");
-      const response = await fetch("/api/admin/activity", { headers: { Authorization: "Bearer " + token } });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || (response.status === 403
-        ? "Se requiere MFA reciente. Vuelve a autenticarte con el segundo factor de Firebase para consultar el centro global."
-        : "No fue posible cargar la actividad global."));
-      setData(body);
+      const currentUser = auth.currentUser;
+      if (!currentUser || currentUser.email?.toLowerCase() !== "safeness.c.a@gmail.com" || !currentUser.emailVerified) {
+        throw new Error("El centro global solo está disponible para la cuenta propietaria verificada.");
+      }
+
+      // Firebase client reads are governed by the owner-only Firestore rules.
+      // This keeps the owner dashboard readable even while server-only service credentials
+      // are not configured in Vercel. Sensitive collections remain excluded by design.
+      const [auditSnap, logsSnap, usersSnap, companiesSnap, coursesSnap, enrollmentsSnap, sessionsSnap, transactionsSnap, ordersSnap, certificatesSnap] = await Promise.all([
+        getDocs(query(collection(db, "auditLogs"), orderBy("createdAt", "desc"), limit(200))),
+        getDocs(query(collection(db, "logs"), orderBy("createdAt", "desc"), limit(100))),
+        getDocs(query(collection(db, "users"), limit(2000))),
+        getDocs(query(collection(db, "companies"), limit(2000))),
+        getDocs(query(collection(db, "courses"), limit(2000))),
+        getDocs(query(collection(db, "enrollments"), limit(2000))),
+        getDocs(query(collection(db, "sessions"), limit(2000))),
+        getDocs(query(collection(db, "transactions"), limit(2000))),
+        getDocs(query(collection(db, "orders"), limit(2000))),
+        getDocs(query(collection(db, "certificates"), limit(2000)))
+      ]);
+
+      const users = usersSnap.docs.map(snapshot => ({ id: snapshot.id, ...snapshot.data() })) as any[];
+      const events: any[] = [
+        ...auditSnap.docs.map(snapshot => {
+          const item = snapshot.data();
+          return {
+            id: "audit:" + snapshot.id, source: "auditLogs",
+            action: String(item.action || "system.event"),
+            actorId: String(item.actorId || "system"),
+            target: String(item.targetId || item.nodePath || ""),
+            provider: String(item.provider || item.source || "KIRA"),
+            status: String(item.status || ""),
+            timestamp: item.createdAt || null,
+            error: ""
+          };
+        }),
+        ...logsSnap.docs.map(snapshot => {
+          const item = snapshot.data();
+          return {
+            id: "log:" + snapshot.id, source: "logs",
+            action: String(item.action || "security.event"),
+            actorId: String(item.actorId || "system"),
+            target: String(item.targetId || ""),
+            provider: "KIRA",
+            status: String(item.status || ""),
+            timestamp: item.createdAt || null,
+            error: ""
+          };
+        }),
+        ...users.filter(item => item.lastLoginAt).map(item => ({
+          id: "login:" + item.id, source: "Firebase Authentication",
+          action: "user.login", actorId: String(item.email || item.id),
+          target: String(item.role || "unknown"), provider: "Firebase",
+          status: String(item.status || item.approvalStatus || "active"),
+          timestamp: item.lastLoginAt, error: ""
+        }))
+      ];
+      const time = (value: any) => {
+        const date = value?.toDate ? value.toDate() : new Date(value || 0);
+        return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+      };
+      events.sort((a, b) => time(b.timestamp) - time(a.timestamp));
+
+      const recentUsers = users
+        .slice()
+        .sort((a, b) => time(b.lastActivityAt || b.lastLoginAt) - time(a.lastActivityAt || a.lastLoginAt))
+        .slice(0, 100)
+        .map(item => ({
+          uid: item.uid || item.id,
+          email: item.email || "",
+          displayName: item.displayName || item.name || "",
+          role: item.role || "unknown",
+          approvalStatus: item.approvalStatus || "",
+          status: item.status || "",
+          companyName: item.companyName || "",
+          lastLoginAt: item.lastLoginAt || null,
+          lastActivityAt: item.lastActivityAt || null
+        }));
+
+      setData({
+        owner: { email: currentUser.email, verified: currentUser.emailVerified },
+        generatedAt: new Date().toISOString(),
+        counts: {
+          users: usersSnap.size, companies: companiesSnap.size, courses: coursesSnap.size,
+          enrollments: enrollmentsSnap.size, sessions: sessionsSnap.size,
+          transactions: transactionsSnap.size, orders: ordersSnap.size,
+          certificates: certificatesSnap.size
+        },
+        eventCount: events.length,
+        events: events.slice(0, 250),
+        recentUsers,
+        limits: { perCollection: 2000, events: 250, recentUsers: 100 },
+        privacy: "Se muestran metadatos operativos y de auditoría. No se consultan contraseñas, secretos, tokens, diarios personales, transcripciones, facturas privadas ni payloads de webhooks."
+      });
     } catch (cause: any) {
-      setError(cause?.message || "Error al consultar la actividad global.");
+      console.error("[Owner Activity] Firestore read failed:", cause);
+      setError(cause?.message || "No fue posible leer la actividad autorizada de KIRA. Verifica la cuenta propietaria y las reglas Firestore.");
     } finally {
       setLoading(false);
     }
@@ -55,9 +142,8 @@ function OwnerActivityView() {
     ["Matrículas", counts.enrollments ?? 0],
     ["Sesiones", counts.sessions ?? 0],
     ["Transacciones", counts.transactions ?? 0],
-    ["Facturas", counts.invoices ?? 0],
-    ["Certificados", counts.certificates ?? 0],
-    ["Diarios privados", counts.journals ?? 0]
+    ["Órdenes", counts.orders ?? 0],
+    ["Certificados", counts.certificates ?? 0]
   ];
 
   const formatTimestamp = (value: any) => {
@@ -72,7 +158,7 @@ function OwnerActivityView() {
         <div>
           <p className="text-xs font-black uppercase tracking-[.18em] text-teal-700">SAFENESS · Propietario único</p>
           <h2 className="mt-1 text-2xl font-black text-slate-900">Centro de Control Global KIRA</h2>
-          <p className="mt-2 text-sm text-slate-600">Actividad operativa, accesos, auditoría, finanzas y estado de los módulos de toda la plataforma.</p>
+          <p className="mt-2 text-sm text-slate-600">Actividad operativa, accesos, auditoría y volumen de los módulos de toda la plataforma.</p>
           <p className="mt-2 text-xs font-semibold text-slate-500">{data?.owner?.email || "safeness.c.a@gmail.com"} · {data?.owner?.verified ? "Cuenta verificada" : "Verificación pendiente"}</p>
         </div>
         <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
@@ -85,7 +171,6 @@ function OwnerActivityView() {
       {metrics.map(([label, value]) => <article key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
         <p className="mt-2 text-2xl font-black tabular-nums text-slate-900">{loading ? "—" : Number(value).toLocaleString()}</p>
-        {label === "Diarios privados" && <p className="mt-1 text-[10px] text-slate-400">Solo conteo; no se muestran contenidos</p>}
       </article>)}
     </section>
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
