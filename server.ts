@@ -299,9 +299,20 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
   for (const item of order.items || []) {
     if (item.type === "course" || item.collectionName === "courses") {
       const enrollmentId = idSafe(order.userId + "_" + item.id);
-      if (!(await fsGet("enrollments", enrollmentId))) writes.push(fsCreate("enrollments", enrollmentId, {
-        userId: order.userId, studentName: buyerProfile?.displayName || buyerProfile?.name || "Alumno", studentEmail: buyerProfile?.email || "", studentAvatar: buyerProfile?.photoURL || "", courseId: item.id, progress: 0, completed: false, courseCompleted: false,
-        paymentOrderId: orderId, paymentStatus: "paid", createdAt: new Date(now)
+      const existingEnrollment = await fsGet("enrollments", enrollmentId);
+      const enrollment = {
+        ...(existingEnrollment || {}),
+        userId: order.userId, studentName: existingEnrollment?.studentName || buyerProfile?.displayName || buyerProfile?.name || "Alumno",
+        studentEmail: existingEnrollment?.studentEmail || buyerProfile?.email || "", studentAvatar: existingEnrollment?.studentAvatar || buyerProfile?.photoURL || "",
+        courseId: item.id, progress: Number(existingEnrollment?.progress || 0), completed: existingEnrollment?.completed === true,
+        courseCompleted: existingEnrollment?.courseCompleted === true, status: existingEnrollment?.completed === true ? "completed" : "active",
+        paymentOrderId: orderId, paymentStatus: "paid", paidAt: now, updatedAt: now, createdAt: existingEnrollment?.createdAt || now
+      };
+      writes.push(existingEnrollment ? fsUpdate("enrollments", enrollmentId, enrollment) : fsCreate("enrollments", enrollmentId, enrollment));
+      writes.push(fsCreate("outbox", "enrollment_activated_" + enrollmentId, {
+        eventId: "enrollment.activated." + enrollmentId + "." + orderId, type: "enrollment.activated.v1",
+        aggregate: "enrollment", aggregateId: enrollmentId, schemaVersion: 1,
+        payload: { enrollmentId, userId: order.userId, courseId: item.id, orderId }, status: "pending", attempts: 0, createdAt: now
       }));
     } else if (item.collectionName === "books" || item.type === "book") {
       const purchaseId = idSafe(order.userId + "_" + orderId + "_" + item.id);
@@ -318,6 +329,11 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
       writes.push(fsCreate("memberships", idSafe(order.userId + "_" + orderId), { userId: order.userId, planId: item.id, planTitle: item.title, status: "active", paymentOrderId: orderId, startsAt: now, expiresAt, durationDays, autoRenew: false }));
     }
   }
+  writes.push(fsCreate("outbox", "payment_paid_" + orderId, {
+    eventId: "payment.paid." + orderId, type: "payment.paid.v1", aggregate: "order", aggregateId: orderId,
+    schemaVersion: 1, payload: { orderId, provider, paymentId, userId: order.userId, amount: order.amount, currency: order.currency },
+    status: "pending", attempts: 0, createdAt: now
+  }));
   await fsCommit(writes);
 }
 
