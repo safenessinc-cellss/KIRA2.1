@@ -6,12 +6,14 @@ Todos los valores sensibles son server-only. Nunca añadir valores a Git, PR, lo
 |---|---|---|
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Cuenta de servicio con acceso limitado a Firestore/Storage | API Express |
 | `FIREBASE_PROJECT_ID` | ID del proyecto Firebase esperado | Validación de identidad |
+| `FIREBASE_STORAGE_BUCKET` | Bucket privado para contratos PDF | Contratos |
 | `KIRA_CRM_PII_ENCRYPTION_KEY` | AES-256-GCM CRM PII, 32 bytes base64 o 64 hex | Crear/leer PII CRM |
 | `KIRA_CONFIG_ENCRYPTION_KEY` | Cifrado de configuración de pasarelas | Configuración de pagos |
 | `KIRA_CERT_SECRET` | HMAC-SHA256 de certificados y contratos (mínimo 32 caracteres) | Firmas verificables |
 | `KIRA_CERTIFICATE_SIGNING_SECRET` | Nombre legacy compatible para firma de certificados | Compatibilidad |
 | `WHATSAPP_WEBHOOK_SECRET` | Firma HMAC de eventos entrantes WhatsApp | Integración WhatsApp |
 | `LANDING_CAPTCHA_SECRET` | Validación server-side CAPTCHA de formularios | Landing pages |
+| `CRON_SECRET` | Bearer secreto para Cloud Scheduler; mínimo 24 caracteres aleatorios | Jobs financieros programados |
 | `STRIPE_SECRET_KEY` | Acceso API Stripe (si no se usa secreto cifrado en Firestore) | Stripe |
 | `STRIPE_WEBHOOK_SECRET` | Verificación de webhook Stripe | Stripe |
 | `MERCADOPAGO_ACCESS_TOKEN` | Acceso API Mercado Pago | Mercado Pago |
