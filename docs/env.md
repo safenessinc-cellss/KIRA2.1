@@ -9,7 +9,7 @@ Todos los valores sensibles son server-only. Nunca añadir valores a Git, PR, lo
 | `FIREBASE_STORAGE_BUCKET` | Bucket privado para contratos PDF | Contratos |
 | `KIRA_CRM_PII_ENCRYPTION_KEY` | AES-256-GCM CRM PII, 32 bytes base64 o 64 hex | Crear/leer PII CRM |
 | `KIRA_PAYMENTS_ENCRYPTION_KEY` | Clave independiente AES-256-GCM para secretos de pagos | Configuración de pagos (preferida) |
-| `KIRA_PAYMENTS_ENCRYPTION_KEY` (o legacy `KIRA_CONFIG_ENCRYPTION_KEY`) | Clave legacy compatible para configuración de pasarelas | Compatibilidad durante rotación |
+| `KIRA_CONFIG_ENCRYPTION_KEY` | Clave legacy compatible para configuración de pasarelas | Compatibilidad durante rotación |
 | `KIRA_CERT_SECRET` | HMAC-SHA256 de certificados y contratos (mínimo 32 caracteres) | Firmas verificables |
 | `KIRA_CERTIFICATE_SIGNING_SECRET` | Nombre legacy compatible para firma de certificados | Compatibilidad |
 | `WHATSAPP_WEBHOOK_SECRET` | Firma HMAC de eventos entrantes WhatsApp | Integración WhatsApp |
@@ -23,7 +23,7 @@ Todos los valores sensibles son server-only. Nunca añadir valores a Git, PR, lo
 
 ## Generación de claves
 - CRM: `openssl rand -base64 32` para `KIRA_CRM_PII_ENCRYPTION_KEY`.
-- Config: generar una clave independiente de 32 bytes para `KIRA_CONFIG_ENCRYPTION_KEY`.
+- Config: generar una clave independiente de 32 bytes para `KIRA_PAYMENTS_ENCRYPTION_KEY`; la clave legacy `KIRA_CONFIG_ENCRYPTION_KEY` solo se mantiene durante la rotación.
 - Certificados: generar un secreto aleatorio de al menos 32 bytes; no reutilizar la clave CRM ni la de pagos.
 
 ## Rotación
