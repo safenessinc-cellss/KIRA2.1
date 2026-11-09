@@ -784,7 +784,7 @@ app.get("/api/admin/dashboard", async (req, res) => {
     };
     if (can("crm.leads.read", "crm.leads.own.read")) {
       const leadsByStage = selected.reduce((out: any, x: any) => { for (const [stage, count] of Object.entries(x.leadsByStage || {})) out[stage] = (out[stage] || 0) + Number(count || 0); return out; }, {});
-      const total = Object.values(leadsByStage).reduce((a: number, b: any) => a + Number(b || 0), 0);
+      const total = Object.values(leadsByStage).reduce<number>((a, b) => a + Number(b || 0), 0);
       result.crm = { leadsByStage, conversionRate: total ? Number(leadsByStage.enrolled || 0) / total * 100 : 0 };
     }
     if (can("courses.read", "finance.payments.read", "dashboard.finance.read")) result.topCourses = Object.values(selected.reduce((out: any, x: any) => {
