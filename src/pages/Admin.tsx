@@ -49,7 +49,7 @@ function OwnerActivityView() {
 
   const counts = data?.counts || {};
   const metrics = [
-    ["Usuarios", data?.recentUsers?.length ?? 0],
+    ["Usuarios (muestra)", counts.users ?? 0],
     ["Empresas", counts.companies ?? 0],
     ["Cursos", counts.courses ?? 0],
     ["Matrículas", counts.enrollments ?? 0],
