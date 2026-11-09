@@ -66,6 +66,7 @@ export function DashboardLayout({ title }: { title: string }) {
     ],
     alumno: [
       { to: '/dashboard', icon: BookOpen, label: 'Mi aprendizaje', detail: 'Plan de aprendizaje y progreso' },
+      { to: '/dashboard/homework', icon: ClipboardCheck, label: 'Mis actividades', detail: 'Entregas y feedback del coach' },
       { to: '/dashboard/elite-library', icon: Sparkles, label: 'Biblioteca', detail: 'Recursos y contenidos exclusivos' },
       { to: '/dashboard/journal', icon: Activity, label: 'Diario inteligente', detail: 'Reflexión y seguimiento personal' },
       { to: '/dashboard/community', icon: Users, label: 'Comunidad', detail: 'Conexión y participación' },
