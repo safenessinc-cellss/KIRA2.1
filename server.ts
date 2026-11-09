@@ -14,6 +14,7 @@ import { canSettleInvoice, installmentAmountCents, invoiceDocumentId, isValidPer
 import { isOutboxEventEligible, outboxFailureTransition } from "./server/outbox-domain.js";
 import { registerBackofficeExtensions } from "./server/backoffice-extensions.js";
 import { hasRecentMfaAuthentication } from "./server/security-domain.js";
+import { hasScopedPermission } from "./server/permissions-domain.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -738,6 +739,27 @@ async function backofficeAdmin(req: express.Request, res: express.Response, perm
     if (!canAccessBackofficePermission(false, legacy, permission)) {
       res.status(403).json({ error: "No tienes permiso para esta operación del backoffice." }); return null;
     }
+  }
+  return user;
+}
+
+async function backofficePermission(
+  req: express.Request,
+  res: express.Response,
+  permission: string,
+  scope: "assigned" | "own" | "all" = "all"
+): Promise<VerifiedFirebaseUser | null> {
+  const user = await verifiedUser(req, res);
+  if (!user) return null;
+  if (user.emailVerified !== true) { res.status(403).json({ error: "Se requiere una cuenta verificada." }); return null; }
+  if (user.email?.toLowerCase() === "safeness.c.a@gmail.com") return user;
+  const profile = await fsGet("users", user.uid);
+  const role = String(profile?.role === "alumno" ? "student" : profile?.role || "");
+  if (!["admin", "coach", "sales", "finance"].includes(role)) { res.status(403).json({ error: "Rol sin acceso al backoffice." }); return null; }
+  const matrix = await fsGet("role_permissions", role);
+  if (!matrix?.permissions || !hasScopedPermission(matrix.permissions, permission, scope)) {
+    res.status(403).json({ error: "No tienes el permiso requerido: " + permission + " (" + scope + ")." });
+    return null;
   }
   return user;
 }
