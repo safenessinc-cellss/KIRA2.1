@@ -1521,6 +1521,52 @@ app.post("/api/internal/academic-outbox/dispatch", async (req, res) => {
   }
 });
 
+/* Dead-letter operations are restricted to the verified KIRA superadministrator. */
+app.get("/api/admin/outbox/dead-letters", async (req, res) => {
+  try {
+    const user = await requireSuperAdmin(req, res); if (!user) return;
+    const items = await fsListDocuments("outbox_dead_letters", 200);
+    return res.json({ items: items.sort((a, b) => String(b.failedAt || "").localeCompare(String(a.failedAt || ""))) });
+  } catch (error: any) {
+    console.error("[Outbox] dead-letter list failed:", error);
+    return res.status(500).json({ error: "No se pudo consultar la cola de mensajes fallidos." });
+  }
+});
+
+app.post("/api/admin/outbox/dead-letters/:id/requeue", async (req, res) => {
+  let transaction = "";
+  try {
+    const user = await requireSuperAdmin(req, res); if (!user) return;
+    const id = idSafe(String(req.params.id || ""));
+    if (!id) return res.status(400).json({ error: "Identificador de evento no válido." });
+    transaction = await beginFirestoreTransaction();
+    const [deadLetter, source] = await Promise.all([
+      fsGetInTransaction("outbox_dead_letters", id, transaction),
+      fsGetInTransaction("outbox", id, transaction)
+    ]);
+    if (!deadLetter || !source) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(404).json({ error: "El evento fallido o su origen no existe." });
+    }
+    if (deadLetter.status !== "pending_review" || source.status !== "failed" || !ACADEMIC_OUTBOX_TYPES.has(String(source.type || ""))) {
+      await rollbackFirestoreTransaction(transaction); transaction = "";
+      return res.status(409).json({ error: "El evento ya fue gestionado o no admite reintento académico." });
+    }
+    const now = new Date().toISOString();
+    await fsCommitTransaction([
+      fsUpdate("outbox", id, { ...source, status: "pending", attempts: 0, nextAttemptAt: now, leaseUntil: null, claimToken: null, lastError: null, failedAt: null, updatedAt: now }),
+      fsUpdate("outbox_dead_letters", id, { ...deadLetter, status: "requeued", requeuedAt: now, requeuedBy: user.uid }),
+      auditWrite(user.uid, "outbox.dead_letter.requeued", "sistema.outbox-dlq", id, { status: deadLetter.status, attempts: deadLetter.attempts }, { status: "pending", attempts: 0 })
+    ], transaction);
+    transaction = "";
+    return res.json({ ok: true, eventId: id, status: "pending", requeuedAt: now });
+  } catch (error: any) {
+    if (transaction) await rollbackFirestoreTransaction(transaction);
+    console.error("[Outbox] dead-letter requeue failed:", error);
+    return res.status(500).json({ error: "No se pudo devolver el evento a la cola de procesamiento." });
+  }
+});
+
 app.get("/api/admin/groups", async (req, res) => {
   try {
     const user = await backofficeAdmin(req, res, "courses"); if (!user) return;
