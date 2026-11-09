@@ -85,3 +85,16 @@ Cloud Scheduler no se crea automáticamente por el código; debe provisionarse e
 - No se han configurado Cloud Scheduler jobs ni secretos en proyecto remoto.
 - Refunds, impuestos, payouts y conciliación completa de contracargos quedan fuera del módulo actual.
 - Los locks transaccionales de solapamiento coach/sala todavía deben reforzarse para concurrencia de agenda alta.
+
+
+## Dashboard materializado
+- Configurar Cloud Scheduler en America/Sao_Paulo con POST a /api/cron/dashboard/refresh cada 15 minutos y Authorization: Bearer <CRON_SECRET>.
+- El body puede incluir periodId: YYYY-MM; por defecto se recalcula el mes actual.
+- La API del dashboard lee exclusivamente dashboard_aggregates y oculta widgets según role_permissions. Si faltan agregados devuelve HTTP 503, no métricas ficticias.
+- La reconciliación actual vuelve a calcular el período desde Firestore; supervisar la latencia y el límite de lecturas del proyecto.
+
+## RBAC e integraciones
+- Después de configurar MFA del superadministrador, ejecutar POST /api/admin/permissions/seed una sola vez para inicializar role_permissions.
+- Los cambios se hacen con PATCH /api/admin/permissions/{role}; el rol superadmin es inmutable desde esta API.
+- Configurar LANDING_CAPTCHA_SECRET y WHATSAPP_WEBHOOK_SECRET como secretos server-only. Los webhooks usan x-kira-timestamp y x-kira-signature con HMAC-SHA256 sobre timestamp + punto + cuerpo HTTP original.
+- Revisar webhook_inbox para firmas inválidas, duplicados y errores de procesamiento; nunca reintentar manualmente eventos con signatureOk=false.
