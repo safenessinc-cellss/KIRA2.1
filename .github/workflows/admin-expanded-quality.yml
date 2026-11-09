@@ -29,5 +29,7 @@ jobs:
         run: npm run lint
       - name: Production build
         run: npm run build
+      - name: Install rules test tools
+        run: npm install --no-save @firebase/rules-unit-testing firebase-tools
       - name: Firestore rules tests
-        run: npm run test:rules
+        run: npx firebase emulators:exec --only firestore --project demo-kira-rules "npm run test:rules"
