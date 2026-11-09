@@ -857,14 +857,15 @@ app.post("/api/admin/payments/payouts/mark", async (req: AdminRequest,res) => {
     if(!transactionIds.length||transactionIds.length>200)return res.status(400).json({error:"Selecciona transacciones para liquidar."});
     const [transactions,courses,payouts]=await Promise.all([Promise.all(transactionIds.map((id:string)=>fsGet("transactions",id))),fsList("courses"),fsList("payouts")]);
     if(transactions.some(t=>!t||t.status!=="paid"))return res.status(409).json({error:"Una o más transacciones no están pagadas."});
+    const validTransactions=transactions.filter((t:any)=>Boolean(t));
     const paid=new Set(payouts.flatMap(p=>p.transactionIds||[]));
     if(transactionIds.some(id=>paid.has(id)))return res.status(409).json({error:"Una o más transacciones ya fueron liquidadas."});
     const courseMap=new Map<string, any>(courses.map(c=>[String(c.id),c] as [string, any]));
-    const coachIds=transactions.map(t=>String(t.coachId||courseMap.get(t.courseId)?.coachId||""));
+    const coachIds=validTransactions.map(t=>String(t.coachId||courseMap.get(t.courseId)?.coachId||""));
     const coachId=String(req.body?.coachId||"");
     if(!coachId||coachIds.some(id=>id!==coachId))return res.status(409).json({error:"Las transacciones deben pertenecer al coach seleccionado."});
-    const amount=transactions.reduce((n,t)=>n+Number(t.amount||0)*.3,0),currency=String(transactions[0].currency||"");
-    if(transactions.some(t=>String(t.currency||"")!==currency))return res.status(409).json({error:"No se pueden mezclar monedas en una liquidación."});
+    const amount=validTransactions.reduce((n,t)=>n+Number(t.amount||0)*.3,0),currency=String(validTransactions[0].currency||"");
+    if(validTransactions.some(t=>String(t.currency||"")!==currency))return res.status(409).json({error:"No se pueden mezclar monedas en una liquidación."});
     const id=randomBytes(12).toString("hex"),now=new Date().toISOString();
     await fsCommit([fsCreate("payouts",id,{transactionIds,amount,currency,coachId,status:"paid_manual",processedBy:req.adminUser!.uid,createdAt:now})]);
     await adminAudit(req,"payout.marked","payout",id,{amount,currency,count:transactionIds.length});
