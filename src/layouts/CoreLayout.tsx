@@ -41,14 +41,31 @@ export function CoreLayout() {
   );
 }
 
-export function ProtectedRoute({ allowedRoles }: { allowedRoles?: string[] }) {
+export function ProtectedRoute({ allowedRoles, role: requiredRole }: { allowedRoles?: string[]; role?: string }) {
   const { user, role, loading } = useAuth();
+  const location = useLocation();
+  const permittedRoles = requiredRole ? [requiredRole] : allowedRoles;
+  const roleHome: Record<string, string> = {
+    admin: '/admin',
+    coach: '/coach',
+    hr_admin: '/hr',
+    company_admin: '/hr',
+    company_member: '/hr',
+    alumno: '/dashboard',
+  };
 
-  if (loading) return null;
-  if (!user) return <Navigate to="/" replace />;
-  
-  if (allowedRoles && (!role || !allowedRoles.includes(role))) {
-    return <Navigate to="/" replace />;
+  if (loading) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center" role="status" aria-live="polite">
+        <Loader2 className="w-8 h-8 animate-spin text-teal-500" />
+        <span className="sr-only">Verificando permisos…</span>
+      </div>
+    );
+  }
+  if (!user) return <Navigate to="/login" replace state={{ from: location }} />;
+
+  if (permittedRoles && (!role || !permittedRoles.includes(role))) {
+    return <Navigate to={roleHome[role || ''] || '/'} replace />;
   }
 
   return <Outlet />;
