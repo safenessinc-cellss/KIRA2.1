@@ -666,6 +666,26 @@ app.post("/api/admin/users/:uid/ban", async (req: AdminRequest, res) => {
     res.json({ success: true, banned });
   } catch (error) { console.error(error); res.status(500).json({ error: "No fue posible actualizar el estado." }); }
 });
+app.post("/api/admin/users/:uid/reassign-coach", async (req: AdminRequest, res) => {
+  try {
+    const uid=String(req.params.uid),coachId=String(req.body?.coachId||"");
+    if(!coachId)return res.status(400).json({error:"Selecciona un coach."});
+    const [student,coach]=await Promise.all([fsGet("users",uid),fsGet("users",coachId)]);
+    if(!student||!coach||coach.role!=="coach"||coach.approvalStatus!=="approved")return res.status(409).json({error:"Alumno o coach no válido."});
+    await fsCommit([fsUpdate("users",uid,{...student,coachId,updatedAt:new Date().toISOString()})]);
+    await adminAudit(req,"user.coach_reassigned","user",uid,{coachId});
+    res.json({success:true});
+  }catch(e){console.error(e);res.status(500).json({error:"No fue posible reasignar el coach."});}
+});
+app.post("/api/admin/users/:uid/reset-membership", async (req: AdminRequest, res) => {
+  try {
+    const uid=String(req.params.uid),profile=await fsGet("users",uid);
+    if(!profile)return res.status(404).json({error:"Usuario no encontrado."});
+    await fsCommit([fsUpdate("users",uid,{...profile,membershipStatus:"inactive",membershipPaidAt:null,trialEndsAt:null,updatedAt:new Date().toISOString()})]);
+    await adminAudit(req,"user.membership_reset","user",uid);
+    res.json({success:true});
+  }catch(e){console.error(e);res.status(500).json({error:"No fue posible restablecer la membresía."});}
+});
 app.post("/api/admin/users/:uid/grant-points", async (req: AdminRequest, res) => {
   try {
     const uid = String(req.params.uid), amount = Number(req.body?.points), justification = String(req.body?.justification || "").trim();
@@ -825,8 +845,8 @@ app.post("/api/admin/payments/payouts/mark", async (req: AdminRequest,res) => {
 app.get("/api/admin/stripe/status", async (_req,res) => {
   const stripe=getStripe();res.json({configured:!!stripe,mode:process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")?"test":process.env.STRIPE_SECRET_KEY?.startsWith("sk_live_")?"live":"unknown"});
 });
-app.post("/api/admin/stripe/test", async (_req,res) => {
-  try{const stripe=getStripe();if(!stripe)return res.status(503).json({connected:false});const balance=await stripe.balance.retrieve();res.json({connected:true,currencyCount:balance.available.length});}
+app.post("/api/admin/stripe/test", async (req: AdminRequest,res) => {
+  try{const stripe=getStripe();if(!stripe)return res.status(503).json({connected:false});const balance=await stripe.balance.retrieve();await adminAudit(req,"stripe.connection_tested","stripe","account",{currencyCount:balance.available.length});res.json({connected:true,currencyCount:balance.available.length});}
   catch(e){console.error("[Admin stripe test]",e);res.status(502).json({connected:false,error:"Stripe no respondió correctamente."});}
 });
 app.get("/api/admin/webhooks", async (_req,res) => {
