@@ -1,0 +1,259 @@
+openapi: 3.1.0
+info:
+  title: KIRA Backoffice CRM and Dashboard API
+  version: 1.0.0
+  description: >
+    API implemented on the isolated audit branch. Requires Firebase ID token.
+    CRM PII is encrypted at rest and decrypted only for authorized API responses.
+servers:
+  - url: https://kira.coach
+    description: Production origin; do not use for unapproved tests.
+security:
+  - FirebaseBearer: []
+tags:
+  - name: Dashboard
+  - name: CRM Leads
+  - name: CRM Interactions
+paths:
+  /api/admin/dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Read dashboard aggregates for a date range
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Aggregates from persisted Firestore records; current implementation scans up to 200 documents per collection.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Dashboard' }
+        '400': { description: Invalid date range }
+        '401': { description: Missing or invalid Firebase token }
+        '403': { description: Missing system permission }
+  /api/admin/crm/leads:
+    get:
+      tags: [CRM Leads]
+      summary: List CRM leads visible to the caller
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: query
+          name: stage
+          schema: { type: string, enum: [new, contacted, qualified, enrolled, lost] }
+        - in: query
+          name: source
+          schema: { type: string }
+        - in: query
+          name: assigned_to
+          schema: { type: string }
+      responses:
+        '200':
+          description: Leads are restricted to assignedTo UID except for the KIRA superadmin.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Lead' } }
+                  total: { type: integer }
+                  limit: { type: integer }
+        '401': { description: Unauthorized }
+        '403': { description: Missing crm permission }
+    post:
+      tags: [CRM Leads]
+      summary: Create a lead
+      x-kira-status: implemented-branch-unverified
+      description: >
+        Requires KIRA_CRM_PII_ENCRYPTION_KEY. At least email or phone is required.
+        PII is encrypted with AES-256-GCM. Deterministic HMAC key enforces composite deduplication by email, phone and source.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fullName, source]
+              properties:
+                fullName: { type: string, maxLength: 180 }
+                email: { type: string, format: email, maxLength: 180 }
+                phone: { type: string, maxLength: 40 }
+                source: { type: string, enum: [landing, whatsapp, instagram, referido, manual] }
+                campaign: { type: string, maxLength: 120 }
+                courseInterest: { type: string, maxLength: 180 }
+                assignedTo: { type: string, maxLength: 180 }
+                consentGdpr: { type: boolean, default: false }
+      responses:
+        '201': { description: Lead created and audit/outbox records persisted }
+        '400': { description: Invalid lead data }
+        '409': { description: Duplicate lead }
+        '503': { description: CRM encryption key unavailable }
+  /api/admin/crm/leads/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [CRM Leads]
+      summary: Update stage, assignment, score or notes
+      x-kira-status: implemented-branch-unverified
+      description: The enrolled stage cannot be set manually; use conversion endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stage: { type: string, enum: [new, contacted, qualified, lost] }
+                assignedTo: { type: string }
+                score: { type: integer, minimum: 0, maximum: 100 }
+                notes: { type: string, maxLength: 4000 }
+      responses:
+        '200': { description: Lead updated and audited }
+        '404': { description: Lead not found or not assigned to caller }
+        '403': { description: Missing crm permission }
+  /api/admin/crm/interactions:
+    get:
+      tags: [CRM Interactions]
+      summary: List contact attempts visible to the caller
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: query
+          name: leadId
+          schema: { type: string }
+      responses:
+        '200':
+          description: Contact history; notes are decrypted only for assigned leads or superadmin.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Interaction' } }
+                  total: { type: integer }
+                  limit: { type: integer }
+  /api/admin/crm/leads/{id}/interactions:
+    post:
+      tags: [CRM Interactions]
+      summary: Record a contact attempt
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, outcome]
+              properties:
+                channel: { type: string, enum: [call, whatsapp, email, meeting, sms] }
+                outcome: { type: string, enum: [no_answer, left_message, interested, not_interested, scheduled] }
+                notes: { type: string, maxLength: 2000 }
+                nextActionAt: { type: string, format: date-time }
+      responses:
+        '201': { description: Interaction created and audited }
+        '404': { description: Lead not found or not assigned to caller }
+  /api/admin/crm/leads/{id}/convert-to-enrollment:
+    post:
+      tags: [CRM Leads]
+      summary: Convert a qualified/contacted lead into a canonical enrollment
+      x-kira-status: implemented-branch-unverified
+      description: >
+        Firestore transaction checks consent, stage, student UID, published course and absence of existing enrollment.
+        Paid courses create pending_payment enrollment; free courses create active enrollment.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentUid, courseId]
+              properties:
+                studentUid: { type: string }
+                courseId: { type: string }
+      responses:
+        '201': { description: Enrollment created and lead converted }
+        '400': { description: Missing student or course }
+        '404': { description: Lead/student/course not found }
+        '409': { description: Consent, stage, course, or duplicate enrollment conflict }
+components:
+  securitySchemes:
+    FirebaseBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID token
+  schemas:
+    Lead:
+      type: object
+      properties:
+        id: { type: string }
+        fullName: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        source: { type: string }
+        stage: { type: string, enum: [new, contacted, qualified, enrolled, lost] }
+        courseInterest: { type: string }
+        assignedTo: { type: string }
+        score: { type: integer }
+        consentGdpr: { type: boolean }
+        createdAt: { type: string }
+    Interaction:
+      type: object
+      properties:
+        id: { type: string }
+        leadId: { type: string }
+        leadName: { type: string }
+        channel: { type: string }
+        outcome: { type: string }
+        notes: { type: string }
+        nextActionAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+    Dashboard:
+      type: object
+      properties:
+        sales:
+          type: object
+          properties:
+            grossByCurrency: { type: object, additionalProperties: { type: integer } }
+            netByCurrency: { type: object, additionalProperties: { type: integer } }
+        enrollments:
+          type: object
+          properties: { newCount: { type: integer } }
+        leads:
+          type: object
+          properties:
+            total: { type: integer }
+            byStage: { type: object, additionalProperties: { type: integer } }
+        conversion:
+          type: object
+          properties:
+            rate: { type: number }
+            converted: { type: integer }
+            qualified: { type: integer }
+        topCourses: { type: array, items: { type: object } }
+        overdueInvoices: { type: integer }
+        students:
+          type: object
+          properties:
+            active: { type: integer }
+            atRisk: { type: integer }
+        certificates:
+          type: object
+          properties: { issued: { type: integer } }
+        generatedAt: { type: string, format: date-time }
+        source: { type: string }
