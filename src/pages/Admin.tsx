@@ -3309,6 +3309,10 @@ function SecurityView() {
   }
 
   const changeRole = async (userId: string, newRole: string) => {
+    if (searchResult?.email?.toLowerCase() === 'safeness.c.a@gmail.com') {
+      alert('La cuenta propietaria de KIRA es inmutable y no puede cambiar de rol.');
+      return;
+    }
     if (!confirm(`¿Estás seguro de cambiar el rol a ${newRole}?`)) return;
     try {
       await updateDoc(doc(db, 'users', userId), { role: newRole });
@@ -3329,6 +3333,10 @@ function SecurityView() {
   }
 
   const togglePermission = async (userId: string, current: string[], perm: string) => {
+    if (staff.find(member => member.id === userId)?.email?.toLowerCase() === 'safeness.c.a@gmail.com') {
+      alert('No se pueden modificar los permisos de la cuenta propietaria.');
+      return;
+    }
     try {
       const next = current?.includes(perm) ? current.filter(p => p !== perm) : [...(current || []), perm];
       await updateDoc(doc(db, 'users', userId), { staffPermissions: next });
@@ -3351,6 +3359,10 @@ function SecurityView() {
   };
 
   const toggleStatus = async (userId: string, currentStatus: string) => {
+    if (staff.find(member => member.id === userId)?.email?.toLowerCase() === 'safeness.c.a@gmail.com') {
+      alert('La cuenta propietaria no puede ser suspendida desde el backoffice.');
+      return;
+    }
     try {
       const next = currentStatus === 'frozen' ? 'active' : 'frozen';
       await updateDoc(doc(db, 'users', userId), { status: next });
