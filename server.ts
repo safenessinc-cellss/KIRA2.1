@@ -294,6 +294,19 @@ async function catalogItem(id: string): Promise<any | null> {
   }
   return null;
 }
+async function uploadPrivateStorage(objectPath: string, content: Buffer, contentType: string): Promise<string> {
+  const bucket = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || "";
+  if (!bucket) throw new Error("FIREBASE_STORAGE_BUCKET no está configurado.");
+  const url = "https://storage.googleapis.com/upload/storage/v1/b/" + encodeURIComponent(bucket) + "/o?uploadType=media&name=" + encodeURIComponent(objectPath);
+  const response = await fetch(url, { method: "POST", headers: { Authorization: "Bearer " + await firestoreToken(), "Content-Type": contentType }, body: new Uint8Array(content) });
+  if (!response.ok) throw new Error("No fue posible guardar el documento privado en Firebase Storage.");
+  return "gs://" + bucket + "/" + objectPath;
+}
+function contractSigningSecret(): string {
+  const secret = process.env.KIRA_CERT_SECRET || process.env.KIRA_CERTIFICATE_SIGNING_SECRET || "";
+  if (secret.length < 32) throw new Error("Configura KIRA_CERT_SECRET con al menos 32 caracteres.");
+  return secret;
+}
 function certSignature(data: any): string {
   const secret = process.env.KIRA_CERT_SECRET || process.env.KIRA_CERTIFICATE_SIGNING_SECRET || "";
   if (secret.length < 32) throw new Error("Configura KIRA_CERTIFICATE_SIGNING_SECRET (mínimo 32 caracteres).");
@@ -1433,6 +1446,58 @@ app.post("/api/admin/assessments", async (req, res) => {
     const performance = await refreshStudentPerformance(studentId, groupId, "assessment.graded." + id);
     return res.status(201).json({ id, ...assessment, performance });
   } catch (error: any) { console.error("[Assessments] grade failed:", error); return res.status(500).json({ error: "No se pudo guardar la evaluación." }); }
+});
+
+app.get("/api/admin/enrollments/:id", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const id = academicId(String(req.params.id)), enrollment = await fsGet("enrollments", id);
+    if (!enrollment) return res.status(404).json({ error: "Matrícula no encontrada." });
+    const [course, group] = await Promise.all([fsGet("courses", enrollment.courseId), enrollment.groupId ? fsGet("course_groups", enrollment.groupId) : Promise.resolve(null)]);
+    return res.json({ id, ...enrollment, courseTitle: course?.title || course?.name || enrollment.courseId, groupName: group?.name || null });
+  } catch (error: any) { console.error("[Contracts] enrollment read failed:", error); return res.status(500).json({ error: "No se pudo consultar la matrícula." }); }
+});
+
+app.post("/api/admin/enrollments/:id/contract", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    const id = academicId(String(req.params.id)), enrollment = await fsGet("enrollments", id);
+    if (!enrollment) return res.status(404).json({ error: "Matrícula no encontrada." });
+    if (enrollment.status === "cancelled") return res.status(409).json({ error: "No se genera contrato para matrículas canceladas." });
+    const [student, course, templateDoc] = await Promise.all([fsGet("users", enrollment.userId), fsGet("courses", enrollment.courseId), fsGet("settings", "enrollmentContractTemplate")]);
+    if (!student || !course) return res.status(404).json({ error: "Alumno o curso no encontrado." });
+    const template = String(templateDoc?.template || "CONTRATO DE MATRÍCULA\n\nAlumno: {{studentName}}\nCurso: {{courseTitle}}\nMatrícula: {{enrollmentId}}\nFecha: {{date}}\n\nLas partes aceptan las condiciones académicas y financieras configuradas por KIRA.");
+    const values: Record<string,string> = { studentName: String(student.displayName || student.name || student.email || enrollment.userId), courseTitle: String(course.title || course.name || enrollment.courseId), enrollmentId: id, date: new Date().toLocaleDateString("pt-BR"), paymentPlan: String(enrollment.paymentPlan || "upfront") };
+    const rendered = template.replace(/\{\{([a-zA-Z]+)\}\}/g, (_match: string, key: string) => values[key] || "");
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    pdf.setFont("helvetica", "bold"); pdf.setFontSize(18); pdf.text("KIRA · CONTRATO DE MATRÍCULA", 20, 24);
+    pdf.setFont("helvetica", "normal"); pdf.setFontSize(11);
+    const lines = pdf.splitTextToSize(rendered, 170);
+    pdf.text(lines, 20, 42, { lineHeightFactor: 1.5 });
+    const pdfBuffer = Buffer.from(pdf.output("arraybuffer"));
+    const contractHash = createHash("sha256").update(pdfBuffer).digest("hex");
+    const objectPath = "contracts/" + id + "/" + contractHash + ".pdf";
+    const contractUrl = await uploadPrivateStorage(objectPath, pdfBuffer, "application/pdf");
+    const now = new Date().toISOString();
+    const next = { ...enrollment, contractUrl, contractHash, contractGeneratedAt: now, contractGeneratedBy: user.uid, contractSignedAt: null, contractSignature: null, updatedAt: now };
+    await fsCommit([fsUpdate("enrollments", id, next), auditWrite(user.uid, "enrollment.contract.generated", "alumnos.matriculas.contratos", id, { contractHash: enrollment.contractHash || null }, { contractHash, contractUrl }), fsCreate("outbox", "contract_generated_" + id + "_" + contractHash.slice(0,12), { eventId: "enrollment.contract.generated." + id + "." + contractHash, type: "enrollment.contract.generated.v1", aggregate: "enrollment", aggregateId: id, schemaVersion: 1, payload: { enrollmentId: id, contractHash }, status: "pending", attempts: 0, createdAt: now })]);
+    return res.status(201).json({ enrollmentId: id, contractUrl, contractHash, generatedAt: now });
+  } catch (error: any) { console.error("[Contracts] generate failed:", error); return res.status(500).json({ error: error.message || "No se pudo generar el contrato." }); }
+});
+
+app.post("/api/admin/enrollments/:id/contract/sign", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "users"); if (!user) return;
+    if (req.body?.accepted !== true) return res.status(400).json({ error: "Se requiere aceptación explícita del contrato." });
+    const id = academicId(String(req.params.id)), enrollment = await fsGet("enrollments", id);
+    if (!enrollment || !enrollment.contractUrl || !/^[a-f0-9]{64}$/i.test(String(enrollment.contractHash || ""))) return res.status(409).json({ error: "Genera primero un contrato válido." });
+    if (enrollment.contractSignedAt) return res.status(409).json({ error: "El contrato ya fue firmado." });
+    const signedAt = new Date().toISOString();
+    const signature = createHmac("sha256", contractSigningSecret()).update(String(enrollment.contractHash)).digest("hex");
+    const next = { ...enrollment, contractSignedAt: signedAt, contractSignature: signature, contractSignedBy: user.uid, updatedAt: signedAt };
+    await fsCommit([fsUpdate("enrollments", id, next), auditWrite(user.uid, "enrollment.contract.signed", "alumnos.matriculas.contratos", id, { contractSignedAt: null }, { contractSignedAt: signedAt, contractHash: enrollment.contractHash, signatureAlgorithm: "HMAC-SHA256" }), fsCreate("outbox", "contract_signed_" + id, { eventId: "enrollment.contract.signed." + id, type: "enrollment.contract.signed.v1", aggregate: "enrollment", aggregateId: id, schemaVersion: 1, payload: { enrollmentId: id, contractHash: enrollment.contractHash }, status: "pending", attempts: 0, createdAt: signedAt })]);
+    return res.json({ enrollmentId: id, contractSignedAt: signedAt, contractHash: enrollment.contractHash, signatureAlgorithm: "HMAC-SHA256" });
+  } catch (error: any) { console.error("[Contracts] sign failed:", error); return res.status(500).json({ error: "No se pudo firmar el contrato." }); }
 });
 
 app.post("/api/admin/enrollments/:id/complete", async (req, res) => {
