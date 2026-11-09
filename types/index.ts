@@ -4,6 +4,7 @@ export type Role = "alumno" | "coach" | "admin" | "hr_admin" | "company_admin" |
 export type Roles = Role;
 
 export interface User {
+  [key: string]: any;
   uid: string;
   email: string;
   displayName?: string;
