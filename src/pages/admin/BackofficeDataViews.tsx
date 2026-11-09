@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { auth } from '../../firebase';
-import { Activity, AlertCircle, BadgeCheck, BookOpen, CircleDollarSign, FileBadge, Loader2, Plus, RefreshCw, Users } from 'lucide-react';
+import { Activity, AlertCircle, BadgeCheck, BookOpen, CalendarClock, CircleDollarSign, FileBadge, Loader2, Plus, RefreshCw, Users } from 'lucide-react';
 
 type DashboardData = {
   sales: { grossByCurrency: Record<string, number>; netByCurrency: Record<string, number> };
