@@ -16,6 +16,7 @@ import { registerBackofficeExtensions } from "./server/backoffice-extensions.js"
 import { hasRecentMfaAuthentication } from "./server/security-domain.js";
 import { hasScopedPermission } from "./server/permissions-domain.js";
 import { calculateCoachClientRetention, homeworkPointsAward, normalizeCoachLeadStage, validateHomeworkReview } from "./server/coach-domain.js";
+import { aggregateCompanyWellbeing, isValidWellbeingCheckin } from "./server/wellbeing-domain.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -889,8 +890,7 @@ app.post("/api/wellbeing/checkin", async (req, res) => {
     const energyLevel = Number(req.body?.energyLevel);
     const clarityLevel = Number(req.body?.clarityLevel);
     const shareWithCompany = req.body?.shareWithCompany === true && Boolean(profile.companyId);
-    if (!Number.isInteger(energyLevel) || energyLevel < 1 || energyLevel > 5 ||
-      !Number.isInteger(clarityLevel) || clarityLevel < 1 || clarityLevel > 5) {
+    if (!isValidWellbeingCheckin(energyLevel, clarityLevel)) {
       return res.status(400).json({ error: "Energía y claridad deben estar entre 1 y 5." });
     }
     const day = new Date().toISOString().slice(0, 10);
@@ -966,42 +966,18 @@ app.get("/api/cron/hr/aggregate", async (req, res) => {
       const aggregateId = idSafe(period);
       const existing = await fsGet(collectionName, aggregateId);
       const now = new Date();
-      let aggregate: any;
       const periodStart = new Date(Date.UTC(Number(period.slice(0, 4)), Number(period.slice(5, 7)) - 1, 1));
-      if (rows.length < 5) {
-        aggregate = {
-          period,
-          periodStart,
-          periodEnd: now,
-          createdAt: existing?.createdAt || now,
-          sampleSize: 0,
-          minimumCohortSize: 5,
-          suppressed: true,
-          updatedAt: now
-        };
-        suppressed++;
-      } else {
-        const average = (key: "energyLevel" | "clarityLevel") =>
-          Math.round(rows.reduce((sum, row) => sum + Number(row[key] || 0), 0) / rows.length * 100) / 100;
-        const averageEnergy = average("energyLevel");
-        const averageClarity = average("clarityLevel");
-        const highRiskCount = rows.filter(row => Number(row.energyLevel) <= 2 || Number(row.clarityLevel) <= 2).length;
-        aggregate = {
-          period,
-          periodStart,
-          periodEnd: now,
-          createdAt: existing?.createdAt || now,
-          sampleSize: rows.length,
-          minimumCohortSize: 5,
-          suppressed: false,
-          averageEnergy,
-          averageClarity,
-          averageEngagement: Math.round(((averageEnergy + averageClarity) / 2) * 100) / 100,
-          highRiskCount,
-          updatedAt: now
-        };
-        published++;
-      }
+      const result = aggregateCompanyWellbeing(rows, 5);
+      const aggregate: any = {
+        ...result,
+        period,
+        periodStart,
+        periodEnd: now,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now
+      };
+      if (result.suppressed) suppressed++;
+      else published++;
       const write = existing
         ? fsUpdate(collectionName, aggregateId, aggregate)
         : fsCreate(collectionName, aggregateId, aggregate);
