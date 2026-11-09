@@ -327,7 +327,7 @@ service cloud.firestore {
                      
       // Update: Users can update their profile but NOT their role or approvalStatus. Admins can update anything.
       allow update: if isAuthenticated() && isValidUser() &&
-                    ((isAdmin()) || 
+                    ((isAdmin() && (userId != request.auth.uid || (request.resource.data.role == 'admin' && request.resource.data.email == request.auth.token.email))) || 
                      (isCurrentUser(userId) && areImmutableFieldsUnchanged(['uid', 'email', 'role', 'approvalStatus', 'createdAt', 'staffPermissions', 'companyId', 'organizationId', 'tenantId', 'membershipStatus', 'membershipPaidAt', 'points', 'unlockedTools'])));
                      
       allow delete: if isAdmin();
