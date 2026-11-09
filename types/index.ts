@@ -16,6 +16,7 @@ export interface User {
   orgId?: string;
   points?: number;
   energyPoints?: number;
+  unlockedTools?: string[];
   membershipStatus?: "inactive" | "pending" | "active" | "expired" | string;
   membershipExpiresAt?: Timestamp | Date | null;
   createdAt?: Timestamp | Date;
