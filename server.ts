@@ -11,6 +11,7 @@ import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
 import { calculateAcademicPerformance, hasScheduleConflict, meetsCompletionThresholds, sessionDayKeysUTC } from "./server/academic-domain";
 import { canSettleInvoice, installmentAmountCents, invoiceDocumentId } from "./server/finance-domain";
+import { outboxFailureTransition } from "./server/outbox-domain";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1486,15 +1487,22 @@ async function dispatchAcademicOutboxBatch(limit = 10): Promise<{ processed: num
     } catch (error: any) {
       const current = await fsGet("outbox", event.id);
       if (current?.claimToken === claimed.claimToken) {
-        const attempts = Number(claimed.attempts || 1);
-        const failed = attempts >= 8;
-        const delayMs = Math.min(60 * 60 * 1000, 30_000 * Math.pow(2, Math.max(0, attempts - 1)));
-        await fsCommit([fsUpdate("outbox", event.id, {
-          ...current, status: failed ? "failed" : "pending", leaseUntil: null, claimToken: null,
-          nextAttemptAt: failed ? null : new Date(Date.now() + delayMs).toISOString(),
-          lastError: String(error?.message || "academic_outbox_error").slice(0, 300),
-          failedAt: failed ? new Date().toISOString() : null
-        })]);
+        const transition = outboxFailureTransition({
+          id: event.id, eventId: claimed.eventId, type: claimed.type,
+          aggregate: claimed.aggregate, aggregateId: claimed.aggregateId,
+          schemaVersion: claimed.schemaVersion, payload: claimed.payload,
+          attempts: claimed.attempts, createdAt: claimed.createdAt
+        }, error);
+        const writes = [fsUpdate("outbox", event.id, {
+          ...current, status: transition.status, attempts: transition.attempts,
+          leaseUntil: transition.leaseUntil, claimToken: transition.claimToken,
+          nextAttemptAt: transition.nextAttemptAt, lastError: transition.lastError,
+          failedAt: transition.failedAt
+        })];
+        if (transition.deadLetter) {
+          writes.push(fsCreate("outbox_dead_letters", event.id, transition.deadLetter));
+        }
+        await fsCommit(writes);
       }
       retried++;
     }
