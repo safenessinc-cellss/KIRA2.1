@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, getDoc, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { logActivityEvent } from './useActivityLogger';
 import { 
   onAuthStateChanged, 
   signInWithPopup, 
@@ -149,7 +150,8 @@ export function useAuth() {
     }
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      const credential = await signInWithPopup(auth, provider);
+      await logActivityEvent(credential.user.uid, 'login', 'session', credential.user.uid);
     } catch (error: any) {
       if (error.code === 'auth/cancelled-popup-request') {
         console.warn('Login popup was closed before completion or another request was pending.');
@@ -164,7 +166,8 @@ export function useAuth() {
 
   const loginWithEmail = async (email: string, password: string) => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const credential = await signInWithEmailAndPassword(auth, email, password);
+      await logActivityEvent(credential.user.uid, 'login', 'session', credential.user.uid);
     } catch (error: any) {
       console.error('Email login error:', error);
       throw error;
@@ -189,6 +192,8 @@ export function useAuth() {
   };
   
   const logout = async () => {
+    const current = auth.currentUser;
+    if (current) await logActivityEvent(current.uid, 'logout', 'session', current.uid);
     await signOut(auth);
   };
 
