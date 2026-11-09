@@ -9,7 +9,7 @@ import compression from "compression";
 import { verify as verifySignature, createSign, createHmac, createHash, timingSafeEqual, randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
 import { jsPDF } from "jspdf";
 import QRCode from "qrcode";
-import { calculateAcademicPerformance, hasScheduleConflict, meetsCompletionThresholds } from "./server/academic-domain";
+import { calculateAcademicPerformance, hasScheduleConflict, meetsCompletionThresholds, sessionDayKeysUTC } from "./server/academic-domain";
 import { canSettleInvoice, installmentAmountCents, invoiceDocumentId } from "./server/finance-domain";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1323,17 +1323,8 @@ async function writeAcademicEvent(userId: string, type: string, aggregate: strin
   ]);
 }
 function sessionDayKeys(start: Date, end: Date, _timezone: string): string[] {
-  // UTC day buckets are shared by every timezone, preventing concurrent sessions
-  // from escaping the same coach/room lock merely because groups use different zones.
-  const keys = new Set<string>();
-  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
-  const last = new Date(end.getTime() - 1);
-  const lastDay = Date.UTC(last.getUTCFullYear(), last.getUTCMonth(), last.getUTCDate());
-  while (cursor.getTime() <= lastDay) {
-    keys.add(cursor.toISOString().slice(0, 10));
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return Array.from(keys);
+  // UTC buckets ensure coach/room locks are shared across group timezones.
+  return sessionDayKeysUTC(start, end);
 }
 async function reserveSessionScheduleLocks(transaction: string, group: any, sessionId: string, startsAt: Date, endsAt: Date, room: string) {
   const resourceKeys = ["coach_" + idSafe(String(group.coachId))];
