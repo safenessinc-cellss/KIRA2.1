@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../hooks/useAuth';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
@@ -16,8 +16,10 @@ type AdminTab = 'usercenter' | 'coachapproval' | 'certapproval' | 'paymentsConso
 export function AdminMonitor() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+  const [activeTab, setActiveTab] = useState<AdminTab>((searchParams.get('tab') as AdminTab) || 'dashboard');
   const [profile, setProfile] = useState<any>(null);
+
+  useEffect(() => { const tab = searchParams.get('tab'); if (tab) setActiveTab(tab as AdminTab); }, [searchParams]);
   const [searchQuery, setSearchQuery] = useState('');
 
 
@@ -77,7 +79,7 @@ export function AdminMonitor() {
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
-      <aside aria-label="Navegación de administración" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-24">
+      <aside aria-label="Navegación de administración" className="hidden min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-24 lg:block">
         <div className="px-3 pb-3 pt-2">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-kirateal">Centro de control</p>
           <h2 className="mt-1 text-base font-black text-slate-900">Módulos KIRA</h2>
