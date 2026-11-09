@@ -17,7 +17,7 @@ import { Funnel, PhoneCall, BadgeCheck, GraduationCap, CalendarDays, Layers3, Us
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'activity' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions';
+type AdminTab = 'dashboard' | 'activity' | 'analytics' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions';
 
 type BackofficeItem = { id: AdminTab; label: string; icon: React.ReactNode; permission: string; ready: boolean; countKey?: 'leads' | 'overdue' };
 
@@ -218,6 +218,62 @@ function OwnerActivityView() {
   </div>;
 }
 
+function BusinessInsightsView() {
+  const [period, setPeriod] = useState<'24h' | '7d' | '30d' | '90d'>('30d');
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) throw new Error('Inicia sesión nuevamente.');
+        const response = await fetch('/api/ai/business-insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ period })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'No se pudieron cargar los indicadores.');
+        if (active) setData(payload.insights);
+      } catch (cause: any) {
+        if (active) setError(cause?.message || 'Analítica temporalmente no disponible.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [period]);
+
+  const counts = data?.counts || {};
+  const finance = data?.finance || {};
+  const split = Object.entries(finance.revenueByCurrency || {}).map(([currency, value]: [string, any]) => ({ currency, gross: value.gross, coach: value.coach70, platform: value.platform30 }));
+
+  return <div className="space-y-5">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-5">
+      <div><h2 className="text-lg font-black text-slate-900">Analítica ejecutiva</h2><p className="text-xs text-slate-500">Métricas agregadas; no se muestran diarios ni datos individuales.</p></div>
+      <div className="flex gap-1 rounded-xl bg-slate-100 p-1">{(['24h','7d','30d','90d'] as const).map(value => <button key={value} type="button" onClick={() => setPeriod(value)} className={'rounded-lg px-3 py-2 text-xs font-bold ' + (period === value ? 'bg-white text-teal-800 shadow-sm' : 'text-slate-500')}>{value}</button>)}</div>
+    </div>
+    {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {[['Usuarios (muestra)',counts.users],['DAU',data?.activity?.dau],['WAU',data?.activity?.wau],['Matrículas',counts.enrollments],['Transacciones pagadas',finance.paidTransactions],['Membresías activas',data?.memberships?.active],['Membresías expiradas',data?.memberships?.expired],['Churn proxy',data?.memberships?.churnProxyPercent == null ? null : data.memberships.churnProxyPercent + '%']].map(([label,value]: any) => <article key={label} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</p><p className="mt-2 text-2xl font-black text-slate-900">{loading ? '—' : value ?? '—'}</p></article>)}
+    </div>
+    <section className="rounded-2xl border border-slate-200 bg-white p-5">
+      <h3 className="font-bold text-slate-900">Distribución financiera por moneda</h3>
+      <p className="mt-1 text-xs text-slate-500">Split contractual de referencia: 70% coach / 30% plataforma. Solo transacciones pagadas incluidas en la ventana.</p>
+      {loading ? <p className="py-6 text-sm text-slate-500">Calculando indicadores…</p> : split.length === 0 ? <p className="py-6 text-sm text-slate-500">No hay transacciones pagadas en el período consultado.</p> : <div className="mt-4 space-y-3">{split.map(item => <div key={item.currency} className="rounded-xl bg-slate-50 p-4"><p className="font-bold text-slate-800">{item.currency} · {Number(item.gross).toLocaleString()}</p><div className="mt-2 grid grid-cols-2 gap-3 text-xs"><p>Coach 70%: <strong>{Number(item.coach).toLocaleString()}</strong></p><p>Plataforma 30%: <strong>{Number(item.platform).toLocaleString()}</strong></p></div></div>)}</div>}
+    </section>
+    {data?.wellbeing && <p className="text-xs text-slate-500">Burnout: {data.wellbeing.burnoutPercent == null ? 'sin agregado publicado' : data.wellbeing.burnoutPercent + '%'}.</p>}
+    {data?.summary && <section className="rounded-2xl border border-teal-100 bg-teal-50/50 p-5"><h3 className="font-bold text-teal-950">KIRA Business Insights</h3><p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{data.summary}</p></section>}
+    {data?.coverage && <p className="text-[10px] text-slate-400">{data.coverage}</p>}
+  </div>;
+}
+
 export function AdminMonitor() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
@@ -251,6 +307,7 @@ export function AdminMonitor() {
   const canOpen = (item: BackofficeItem) => item.ready && (isSuperAdmin || (item.permission !== 'superadmin' && (perms.includes('system') || perms.includes(item.permission))));
   const tree: Array<{ label: string; items: BackofficeItem[] }> = [
     { label: 'Control Global', items: [
+      { id: 'analytics', label: 'Analítica Ejecutiva', icon: <BarChart3 size={18}/>, permission: 'superadmin', ready: true },
       { id: 'activity', label: 'Actividad Global y Auditoría', icon: <Activity size={18}/>, permission: 'superadmin', ready: true },
       { id: 'dashboard', label: 'Visión General de Ventas y Matrículas', icon: <LayoutDashboard size={18}/>, permission: 'system', ready: true }
     ] },
@@ -284,6 +341,7 @@ export function AdminMonitor() {
   const renderContent = () => {
     switch (activeTab) {
       case 'activity': return isSuperAdmin ? <OwnerActivityView /> : null;
+      case 'analytics': return isSuperAdmin ? <BusinessInsightsView /> : null;
       case 'dashboard': return <BackofficeDashboard />;
       case 'crm_leads': return <BackofficeCRM view="leads" />;
       case 'crm_interactions': return <BackofficeCRM view="interactions" />;
