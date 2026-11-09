@@ -967,9 +967,13 @@ app.get("/api/cron/hr/aggregate", async (req, res) => {
       const existing = await fsGet(collectionName, aggregateId);
       const now = new Date();
       let aggregate: any;
+      const periodStart = new Date(Date.UTC(Number(period.slice(0, 4)), Number(period.slice(5, 7)) - 1, 1));
       if (rows.length < 5) {
         aggregate = {
           period,
+          periodStart,
+          periodEnd: now,
+          createdAt: existing?.createdAt || now,
           sampleSize: 0,
           minimumCohortSize: 5,
           suppressed: true,
@@ -984,6 +988,9 @@ app.get("/api/cron/hr/aggregate", async (req, res) => {
         const highRiskCount = rows.filter(row => Number(row.energyLevel) <= 2 || Number(row.clarityLevel) <= 2).length;
         aggregate = {
           period,
+          periodStart,
+          periodEnd: now,
+          createdAt: existing?.createdAt || now,
           sampleSize: rows.length,
           minimumCohortSize: 5,
           suppressed: false,
