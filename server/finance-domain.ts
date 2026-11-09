@@ -20,3 +20,7 @@ export function canSettleInvoice(invoice: any, paidMinor: number, currency: stri
     && Number(invoice.amountCents) === paidMinor
     && String(invoice.currency).toLowerCase() === String(currency).toLowerCase();
 }
+
+export function isValidPeriodLabel(value: string): boolean {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(value));
+}
