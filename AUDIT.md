@@ -42,7 +42,7 @@ Implementación: `release/admin-expanded-v1`
 - [ ] Resultado del workflow no disponible/verificado.
 - [ ] npm run lint / npm run build no ejecutados en entorno local.
 - [ ] Reglas e índices no desplegados a Firebase.
-- [ ] Preview no creado: Vercel devolvió HTTP 402 api-deployments-free-per-day, retryAfter 86400.
+- [ ] Preview no validado: el único deployment consultado está CANCELED por Ignored Build Step (commit documental); el nuevo intento fue rechazado HTTP 402 `api-deployments-free-per-day`, retryAfter 86400.
 - [ ] Smoke tests por rol no ejecutados.
 - [ ] PR a main no abierto porque Preview no superó pruebas.
 - [ ] Producción no desplegada.
