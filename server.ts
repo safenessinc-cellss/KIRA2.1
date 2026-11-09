@@ -867,18 +867,31 @@ app.get("/api/coach/analytics", async (req, res) => {
     const uniqueClients = clientsById.size;
     const stageCounts = { new: 0, contacted: 0, qualified: 0, enrolled: 0, lost: 0 };
     for (const item of ownLeads) if (item.stage in stageCounts) stageCounts[item.stage as keyof typeof stageCounts]++;
-    const weekly = new Map<string, number>();
+    const weekly = new Map<string, { sessions: number; minutes: number }>();
+    const monthlyMinutes = new Map<string, number>();
     const now = Date.now();
     for (const item of ownSessions) {
       const raw = item.createdAt;
       const date = raw && typeof raw === "object" && typeof raw.toDate === "function" ? raw.toDate() : new Date(raw || 0);
-      if (!Number.isFinite(date.getTime()) || now - date.getTime() > 42 * 86400000) continue;
+      if (!Number.isFinite(date.getTime())) continue;
+      const duration = Number(item.durationMinutes ?? item.sessionDurationMinutes ?? item.duration ?? 0);
+      const validMinutes = Number.isFinite(duration) && duration > 0 && duration <= 1440 ? duration : 0;
+      if (now - date.getTime() <= 366 * 86400000 && validMinutes) {
+        const month = date.toISOString().slice(0, 7);
+        monthlyMinutes.set(month, (monthlyMinutes.get(month) || 0) + validMinutes);
+      }
+      if (now - date.getTime() > 42 * 86400000) continue;
       const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
       monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
       const key = monday.toISOString().slice(0, 10);
-      weekly.set(key, (weekly.get(key) || 0) + 1);
+      const current = weekly.get(key) || { sessions: 0, minutes: 0 };
+      weekly.set(key, { sessions: current.sessions + 1, minutes: current.minutes + validMinutes });
     }
-    const weeklySessions = [...weekly.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([week, count]) => ({ week, sessions: count }));
+    const weeklySessions = [...weekly.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([week, value]) => ({
+      week, sessions: value.sessions, hours: Math.round(value.minutes / 60 * 10) / 10
+    }));
+    const monthlyHours = [...monthlyMinutes.entries()].sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, minutes]) => ({ month, hours: Math.round(minutes / 60 * 10) / 10 }));
     const durationMinutes = ownSessions.reduce((total: number, item: any) => {
       const duration = Number(item.durationMinutes ?? item.sessionDurationMinutes ?? item.duration ?? 0);
       return total + (Number.isFinite(duration) && duration > 0 && duration <= 1440 ? duration : 0);
@@ -892,6 +905,7 @@ app.get("/api/coach/analytics", async (req, res) => {
       scope: isAdmin ? "all" : "own",
       retention: { uniqueClients, returningClients, rate: uniqueClients ? Math.round(returningClients / uniqueClients * 1000) / 10 : 0 },
       sessions: { total: ownSessions.length, weekly: weeklySessions },
+      monthlyHours,
       hours: durationMinutes ? Math.round(durationMinutes / 60 * 10) / 10 : null,
       satisfaction: { average: averageSatisfaction, responses: ownReviews.length },
       funnel: stageCounts,
