@@ -259,15 +259,19 @@ async function fulfillOrder(orderId: string, provider: string, paymentId: string
     fsCreate("transactions", idSafe(provider + "_" + paymentId), { userId: order.userId, orderId, courseId: (order.items || []).find((item: any) => item.type === "course")?.id || "", courseIds: (order.items || []).filter((item: any) => item.type === "course").map((item: any) => item.id), provider, providerPaymentId: paymentId, amount: order.amount, currency: order.currency, status: "paid", createdAt: now }),
     fsUpdate("orders", orderId, { ...order, status: "paid", providerPaymentId: paymentId, paidAt: now, updatedAt: now }),
     fsCreate("auditLogs", idSafe("payment_" + provider + "_" + paymentId), { actorId: "payment_webhook", action: "payment.confirmed", targetId: orderId, provider, paymentId, amount: order.amount, currency: order.currency, createdAt: now }),
-    fsCreate("notifications", idSafe("payment_" + orderId), { userId: order.userId, title: "Pago confirmado", message: "Tu pago fue verificado. El acceso comprado ya está siendo habilitado.", type: "system", read: false, createdAt: now })
+    fsCreate("notifications", idSafe("payment_" + orderId), { userId: order.userId, title: "Pago confirmado", message: "Tu pago fue verificado. El acceso comprado ya está siendo habilitado.", type: "system", read: false, createdAt: now }),
+    fsCreate("activity_logs", idSafe("activity_payment_"+provider+"_"+paymentId), { userId: order.userId, actorId: "payment_webhook", action: "payment_succeeded", entityType: "transaction", entityId: paymentId, metadata: { provider, currency }, createdAt: now })
   ];
   for (const item of order.items || []) {
     if (item.type === "course" || item.collectionName === "courses") {
       const enrollmentId = idSafe(order.userId + "_" + item.id);
-      if (!(await fsGet("enrollments", enrollmentId))) writes.push(fsCreate("enrollments", enrollmentId, {
-        userId: order.userId, courseId: item.id, progress: 0, completed: false, courseCompleted: false,
-        paymentOrderId: orderId, paymentStatus: "paid", createdAt: now
-      }));
+      if (!(await fsGet("enrollments", enrollmentId))) {
+        writes.push(fsCreate("enrollments", enrollmentId, {
+          userId: order.userId, courseId: item.id, progress: 0, completed: false, courseCompleted: false,
+          paymentOrderId: orderId, paymentStatus: "paid", createdAt: now
+        }));
+        writes.push(fsCreate("activity_logs", idSafe("activity_enrolled_"+enrollmentId), { userId: order.userId, actorId: "payment_webhook", action: "course_enrolled", entityType: "enrollment", entityId: enrollmentId, metadata: { courseId: item.id }, createdAt: now }));
+      }
     } else if (item.collectionName === "books" || item.type === "book") {
       const purchaseId = idSafe(order.userId + "_" + orderId + "_" + item.id);
       writes.push(fsCreate("purchases", purchaseId, { userId: order.userId, productId: item.id, productType: "book", orderId, paymentStatus: "paid", createdAt: now }));
@@ -543,6 +547,7 @@ app.post("/api/certificates/issue", async (req, res) => {
     const certificateWrites: any[] = [fsCreate("certificates", number, { ...payload, signature, signatureAlgorithm: "HMAC-SHA256", adminStatus: requiresManualApproval ? "pending_admin" : "active", requiresManualApproval }), fsCreate("certificatePublic", token, { ...publicRecord, signatureAlgorithm: "HMAC-SHA256" })];
     if (requestId && certificateRequest) certificateWrites.push(fsUpdate("certificateRequests", requestId, { ...certificateRequest, status: requiresManualApproval ? "pending_admin" : "issued", certificateNumber: number, certificateId: token, issuedBy: user.uid, issuedAt: payload.issuedAt }));
     certificateWrites.push(fsCreate("auditLogs", idSafe("certificate_" + number), { actorId: user.uid, action: "certificate.issued", targetId: number, studentId: enrollment.userId, courseId: enrollment.courseId, createdAt: payload.issuedAt }));
+    certificateWrites.push(fsCreate("activity_logs", idSafe("activity_certificate_"+number), { userId: enrollment.userId, actorId: user.uid, action: "certificate_issued", entityType: "certificate", entityId: number, metadata: { courseId: enrollment.courseId }, createdAt: payload.issuedAt }));
     certificateWrites.push(fsCreate("notifications", idSafe("certificate_" + token), { userId: enrollment.userId, title: requiresManualApproval ? "Certificado en revisión" : "Certificado emitido", message: requiresManualApproval ? "Tu certificado está pendiente de revisión administrativa." : "Tu certificado KIRA " + number + " ya está disponible para validar.", type: "course", read: false, createdAt: payload.issuedAt }));
     await fsCommit(certificateWrites);
     return res.status(201).json({ certificateNumber: number, validationUrl: (process.env.KIRA_APP_URL || "https://kira.coach") + "/validar-certificado/" + token });
@@ -728,7 +733,7 @@ app.post("/api/admin/coach-applications/:id/:action", async (req: AdminRequest, 
         fsCreate("notifications", idSafe("coach_application_"+id+"_"+action), { userId: application.userId, title: action === "reject" ? "Solicitud de coach rechazada" : "Información adicional solicitada", message: action === "reject" ? "Motivo: "+reason : "El equipo de KIRA solicita información adicional para revisar tu solicitud.", type: "system", read: false, createdAt: now })
       ]);
     }
-    await adminAudit(req, "coach_application." + action, "coach_application", id, { userId: application.userId });
+    await adminAudit(req, action === "approve" ? "coach_approved" : "coach_application." + action, "coach_application", id, { userId: application.userId });
     res.json({ success: true });
   } catch (error) { console.error(error); res.status(500).json({ error: "No fue posible revisar la solicitud." }); }
 });
@@ -762,7 +767,7 @@ app.post("/api/admin/certificates/manual", async (req: AdminRequest, res) => {
     const now = new Date().toISOString(), token = randomBytes(24).toString("hex"), number = "KIRA-MANUAL-"+new Date().getUTCFullYear()+"-"+randomBytes(4).toString("hex").toUpperCase();
     const payload = { certificateNumber:number, validationToken:token, studentId:userId, studentName:String(student.displayName||student.name||"Alumno"), courseId:courseId||"manual", courseTitle:title, coachId:"", coachName:"KIRA COACH", hours:0, issuerName:"KIRA COACH · SAFENESS.INC", issuedBy:req.adminUser!.uid, issuedAt:now, status:"issued", description, template:"manual" };
     const signature=certSignature(payload);
-    await fsCommit([fsCreate("certificates",number,{...payload,signature,signatureAlgorithm:"HMAC-SHA256",adminStatus:"active",requiresManualApproval:false}),fsCreate("certificatePublic",token,{certificateNumber:number,validationToken:token,studentName:payload.studentName,courseTitle:title,coachName:payload.coachName,hours:0,issuerName:payload.issuerName,issuedBy:payload.issuedBy,issuedAt:now,status:"issued",signature,signatureAlgorithm:"HMAC-SHA256"})]);
+    await fsCommit([fsCreate("certificates",number,{...payload,signature,signatureAlgorithm:"HMAC-SHA256",adminStatus:"active",requiresManualApproval:false}),fsCreate("certificatePublic",token,{certificateNumber:number,validationToken:token,studentName:payload.studentName,courseTitle:title,coachName:payload.coachName,hours:0,issuerName:payload.issuerName,issuedBy:payload.issuedBy,issuedAt:now,status:"issued",signature,signatureAlgorithm:"HMAC-SHA256"}),fsCreate("activity_logs",idSafe("activity_certificate_"+number),{userId,actorId:req.adminUser!.uid,action:"certificate_issued",entityType:"certificate",entityId:number,metadata:{courseId:courseId||"manual"},createdAt:now})]);
     await adminAudit(req,"certificate.manual_issued","certificate",number,{userId});
     res.status(201).json({success:true,certificateNumber:number,validationUrl:"/validar-certificado/"+token});
   } catch (error) { console.error(error); res.status(500).json({error:"No fue posible emitir el certificado manual."}); }
