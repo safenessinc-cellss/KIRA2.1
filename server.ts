@@ -1575,6 +1575,159 @@ app.post("/api/admin/enrollments/:id/complete", async (req, res) => {
   } catch (error: any) { console.error("[Enrollment] complete failed:", error); return res.status(409).json({ error: "No se pudo completar la matrícula; revisa los requisitos y vuelve a intentar." }); }
 });
 
+
+// -----------------------------------------------------------------------------
+// Finance vertical: installment invoices, dunning queue and reconciliation
+// -----------------------------------------------------------------------------
+function cronAuthorized(req: express.Request, res: express.Response): boolean {
+  const expected = process.env.CRON_SECRET || "";
+  const supplied = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (expected.length < 24) { res.status(503).json({ error: "CRON_SECRET no está configurado en el backend." }); return false; }
+  const a = Buffer.from(expected), b = Buffer.from(supplied);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) { res.status(401).json({ error: "Credencial de cron inválida." }); return false; }
+  return true;
+}
+function validPeriodLabel(value: string): boolean { return /^\d{4}-(0[1-9]|1[0-2])$/.test(value); }
+async function createMonthlyInvoice(enrollment: any, enrollmentId: string, periodLabel: string): Promise<boolean> {
+  const invoiceId = academicId(enrollmentId + "_" + periodLabel);
+  if (await fsGet("invoices", invoiceId)) return false;
+  const course = await fsGet("courses", String(enrollment.courseId || ""));
+  if (!course) return false;
+  const plan = String(enrollment.paymentPlan || "upfront");
+  if (!["monthly", "custom"].includes(plan)) return false;
+  const amountCents = Math.round(Number(enrollment.installmentAmountCents || course.monthlyAmountCents || course.priceCents || (Number(course.monthlyPrice ?? course.price ?? 0) * 100)));
+  if (!Number.isSafeInteger(amountCents) || amountCents <= 0) return false;
+  const currency = String(enrollment.currency || course.currency || "BRL").toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) return false;
+  const transaction = await beginFirestoreTransaction();
+  const [existing, counter] = await Promise.all([
+    fsGetInTransaction("invoices", invoiceId, transaction),
+    fsGetInTransaction("counters", "invoiceNumber", transaction)
+  ]);
+  if (existing) return false;
+  const nextNumber = Number(counter?.value || 0) + 1;
+  const [year, month] = periodLabel.split("-").map(Number);
+  const dueDate = new Date(Date.UTC(year, month - 1, Math.min(28, Math.max(1, Number(enrollment.dueDay || course.dueDay || 5))), 12, 0, 0));
+  const now = new Date().toISOString();
+  const invoice = {
+    number: "INV-" + year + "-" + String(nextNumber).padStart(6, "0"),
+    enrollmentId, studentId: enrollment.userId, courseId: enrollment.courseId,
+    dueDate: dueDate.toISOString(), amountCents, currency, status: "open",
+    periodLabel, couponSnapshot: enrollment.couponSnapshot || null,
+    paymentPlan: plan, createdAt: now, updatedAt: now
+  };
+  await fsCommitTransaction([
+    fsCreate("invoices", invoiceId, invoice),
+    counter ? fsUpdate("counters", "invoiceNumber", { ...counter, value: nextNumber, updatedAt: now }) : fsCreate("counters", "invoiceNumber", { value: nextNumber, updatedAt: now }),
+    auditWrite("cron:invoice-generator", "invoice.created", "finanzas.cuotas", invoiceId, null, { number: invoice.number, enrollmentId, periodLabel, amountCents, currency }),
+    fsCreate("outbox", "invoice_created_" + invoiceId, { eventId: "invoice.created." + invoiceId, type: "invoice.created.v1", aggregate: "invoice", aggregateId: invoiceId, schemaVersion: 1, payload: { invoiceId, enrollmentId, studentId: enrollment.userId, periodLabel }, status: "pending", attempts: 0, createdAt: now })
+  ], transaction);
+  return true;
+}
+async function runInvoiceGeneration(periodLabel: string) {
+  if (!validPeriodLabel(periodLabel)) throw new Error("periodLabel debe tener formato YYYY-MM.");
+  const enrollments = await fsListAllDocuments("enrollments");
+  let created = 0, skipped = 0;
+  for (const enrollment of enrollments) {
+    if (!["active", "pending_payment"].includes(String(enrollment.status || ""))) { skipped++; continue; }
+    try { if (await createMonthlyInvoice(enrollment, enrollment.id, periodLabel)) created++; else skipped++; }
+    catch (error: any) { if (error.status === 409) skipped++; else throw error; }
+  }
+  return { periodLabel, created, skipped, scanned: enrollments.length };
+}
+async function runOverdueInvoices() {
+  const invoices = await fsListAllDocuments("invoices"), now = Date.now();
+  let updated = 0;
+  for (const invoice of invoices) {
+    if (invoice.status !== "open" || !academicDate(invoice.dueDate) || academicDate(invoice.dueDate)!.getTime() >= now) continue;
+    const next = { ...invoice, status: "overdue", overdueAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    await fsCommit([
+      fsUpdate("invoices", invoice.id, next),
+      auditWrite("cron:overdue", "invoice.overdue", "finanzas.cuotas", invoice.id, { status: "open" }, { status: "overdue" }),
+      fsCreate("outbox", "invoice_overdue_" + invoice.id, { eventId: "invoice.overdue." + invoice.id, type: "invoice.overdue.v1", aggregate: "invoice", aggregateId: invoice.id, schemaVersion: 1, payload: { invoiceId: invoice.id, enrollmentId: invoice.enrollmentId, studentId: invoice.studentId }, status: "pending", attempts: 0, createdAt: next.overdueAt })
+    ]);
+    updated++;
+  }
+  return { scanned: invoices.length, updated };
+}
+async function runInvoiceDunning() {
+  const [invoices, settings] = await Promise.all([fsListAllDocuments("invoices"), fsGet("settings", "dunning")]);
+  const maxRetries = Math.max(0, Math.min(10, Number(settings?.max_retries ?? settings?.maxRetries ?? 3)));
+  const intervals = Array.isArray(settings?.retry_intervals) ? settings.retry_intervals.map(Number) : Array.isArray(settings?.retryIntervals) ? settings.retryIntervals.map(Number) : [1, 3, 7];
+  const channel = ["email", "whatsapp", "sms"].includes(String(settings?.channel || "")) ? String(settings.channel) : "email";
+  let queued = 0;
+  for (const invoice of invoices) {
+    if (invoice.status !== "overdue") continue;
+    const attempt = Number(invoice.dunningAttempts || 0);
+    if (attempt >= maxRetries) continue;
+    const last = academicDate(invoice.lastReminderAt);
+    const waitDays = Math.max(0, Number(intervals[Math.min(attempt, intervals.length - 1)] || 1));
+    if (last && Date.now() - last.getTime() < waitDays * 86400000) continue;
+    const reminderId = academicId(invoice.id + "_" + String(attempt + 1));
+    if (await fsGet("payment_reminders", reminderId)) continue;
+    const now = new Date().toISOString();
+    const reminder = { invoiceId: invoice.id, channel, status: "queued", attempt: attempt + 1, createdAt: now, sentAt: null, response: "queued_for_notification_provider" };
+    await fsCommit([
+      fsCreate("payment_reminders", reminderId, reminder),
+      fsUpdate("invoices", invoice.id, { ...invoice, dunningAttempts: attempt + 1, lastReminderAt: now, updatedAt: now }),
+      fsCreate("notifications", "invoice_reminder_" + reminderId, { userId: invoice.studentId, title: "Cuota vencida", message: "Tienes una cuota pendiente. Accede a KIRA para consultar las opciones de pago.", type: "payment_reminder", read: false, createdAt: now }),
+      auditWrite("cron:dunning", "invoice.dunning.queued", "finanzas.cuotas", invoice.id, { dunningAttempts: attempt }, { dunningAttempts: attempt + 1, reminderId, channel }),
+      fsCreate("outbox", "invoice_dunning_" + reminderId, { eventId: "invoice.dunning.queued." + reminderId, type: "invoice.dunning.queued.v1", aggregate: "invoice", aggregateId: invoice.id, schemaVersion: 1, payload: { invoiceId: invoice.id, reminderId, studentId: invoice.studentId, channel }, status: "pending", attempts: 0, createdAt: now })
+    ]);
+    queued++;
+  }
+  return { scanned: invoices.length, queued, maxRetries };
+}
+async function runPaymentReconciliation() {
+  const [invoices, transactions] = await Promise.all([fsListAllDocuments("invoices"), fsListAllDocuments("transactions")]);
+  const transactionByPayment = new Map(transactions.map(tx => [String(tx.providerPaymentId || tx.id), tx]));
+  const discrepancies: any[] = [];
+  for (const invoice of invoices) {
+    if (invoice.status === "paid" && (!invoice.paymentId || !transactionByPayment.has(String(invoice.paymentId)))) discrepancies.push({ invoiceId: invoice.id, kind: "paid_invoice_without_matching_transaction" });
+    if (invoice.status !== "paid" && invoice.paymentId) discrepancies.push({ invoiceId: invoice.id, kind: "unpaid_invoice_with_payment_reference" });
+  }
+  const now = new Date(), reportId = now.toISOString().slice(0, 10);
+  const report = { reportDate: reportId, invoiceCount: invoices.length, transactionCount: transactions.length, discrepancyCount: discrepancies.length, discrepancies: discrepancies.slice(0, 500), createdAt: now.toISOString() };
+  await fsCommit([fsUpdate("paymentReconciliationReports", reportId, report), auditWrite("cron:reconciliation", "payments.reconciled", "finanzas.pasarela", reportId, null, { discrepancyCount: report.discrepancyCount })]);
+  return report;
+}
+
+app.get("/api/admin/invoices", async (req, res) => {
+  try {
+    const user = await backofficeAdmin(req, res, "finance"); if (!user) return;
+    const status = String(req.query.status || ""), enrollmentId = String(req.query.enrollmentId || "");
+    const invoices = await fsListAllDocuments("invoices");
+    const items = invoices.filter(x => (!status || x.status === status) && (!enrollmentId || x.enrollmentId === enrollmentId)).sort((a,b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+    return res.json({ items, total: items.length });
+  } catch (error: any) { console.error("[Invoices] list failed:", error); return res.status(500).json({ error: "No se pudieron consultar las cuotas." }); }
+});
+app.post("/api/admin/invoices/jobs/:job", async (req, res) => {
+  try {
+    const user = await requireSuperAdmin(req, res); if (!user) return;
+    const job = String(req.params.job);
+    let result: any;
+    if (job === "generate") result = await runInvoiceGeneration(String(req.body?.periodLabel || new Date().toISOString().slice(0, 7)));
+    else if (job === "overdue") result = await runOverdueInvoices();
+    else if (job === "dunning") result = await runInvoiceDunning();
+    else if (job === "reconcile") result = await runPaymentReconciliation();
+    else return res.status(404).json({ error: "Job desconocido." });
+    return res.json({ job, result });
+  } catch (error: any) { console.error("[Invoices] admin job failed:", error); return res.status(500).json({ error: "No se pudo ejecutar el proceso financiero." }); }
+});
+app.post("/api/cron/invoices/:job", async (req, res) => {
+  try {
+    if (!cronAuthorized(req, res)) return;
+    const job = String(req.params.job);
+    let result: any;
+    if (job === "generate") result = await runInvoiceGeneration(String(req.body?.periodLabel || new Date().toISOString().slice(0, 7)));
+    else if (job === "overdue") result = await runOverdueInvoices();
+    else if (job === "dunning") result = await runInvoiceDunning();
+    else if (job === "reconcile") result = await runPaymentReconciliation();
+    else return res.status(404).json({ error: "Job desconocido." });
+    return res.json({ job, result });
+  } catch (error: any) { console.error("[Invoices] cron job failed:", error); return res.status(500).json({ error: "No se pudo ejecutar el proceso financiero." }); }
+});
+
 async function startLocalServer() {
   const PORT = 3000;
   
