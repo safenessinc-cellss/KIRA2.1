@@ -766,7 +766,7 @@ app.post("/api/admin/certificates/:id/:action", async (req: AdminRequest, res) =
     const writes: any[] = [fsUpdate("certificates", id, updated)];
     if (publicRecord) writes.push(fsUpdate("certificatePublic", publicToken, { ...publicRecord, status: action === "approve" ? "issued" : "revoked" }));
     if (certificate.studentId) writes.push(fsCreate("notifications", idSafe("cert_admin_"+id+"_"+action), { userId: certificate.studentId, title: action === "approve" ? "Certificado aprobado" : "Certificado revocado", message: action === "approve" ? "Tu certificado está activo." : "Tu certificado fue revocado. Contacta con soporte si necesitas más información.", type: "system", read: false, createdAt: now }));
-    await fsCommit(writes); await adminAudit(req, "certificate."+action, "certificate", id, { reason: action === "revoke" ? reason : undefined });
+    await fsCommit(writes); await adminAudit(req, "certificate."+action, "certificate", id, { userId: certificate.studentId, reason: action === "revoke" ? reason : undefined });
     res.json({ success: true });
   } catch (error) { console.error(error); res.status(500).json({ error: "No fue posible revisar el certificado." }); }
 });
@@ -846,7 +846,7 @@ app.post("/api/admin/payments/refund", async (req: AdminRequest,res) => {
       }
     }
     await fsCommit(writes);
-    await adminAudit(req,"payment.refunded","transaction",transactionId,{provider,currency,amount,reason});
+    await adminAudit(req,"payment.refunded","transaction",transactionId,{userId:transaction.userId,provider,currency,amount,reason});
     res.json({success:true,refundId,provider,currency,amount});
   }catch(e:any){console.error("[Admin refund]",e);res.status(500).json({error:e.message||"No fue posible procesar el reembolso."});}
 });
@@ -868,7 +868,7 @@ app.post("/api/admin/payments/payouts/mark", async (req: AdminRequest,res) => {
     if(validTransactions.some(t=>String(t.currency||"")!==currency))return res.status(409).json({error:"No se pueden mezclar monedas en una liquidación."});
     const id=randomBytes(12).toString("hex"),now=new Date().toISOString();
     await fsCommit([fsCreate("payouts",id,{transactionIds,amount,currency,coachId,status:"paid_manual",processedBy:req.adminUser!.uid,createdAt:now})]);
-    await adminAudit(req,"payout.marked","payout",id,{amount,currency,count:transactionIds.length});
+    await adminAudit(req,"payout.marked","payout",id,{coachId,amount,currency,count:transactionIds.length});
     res.json({success:true,payoutId:id,amount,currency});
   }catch(e){console.error(e);res.status(500).json({error:"No fue posible registrar la liquidación."});}
 });
@@ -888,7 +888,7 @@ app.get("/api/admin/webhooks", async (_req,res) => {
   }catch(e){console.error(e);res.status(500).json({error:"No fue posible cargar webhooks."});}
 });
 app.post("/api/admin/webhooks/:id/reprocess", async (req: AdminRequest,res) => {
-  try{const id=String(req.params.id),event=await fsGet("webhook_events",id);if(!event)return res.status(404).json({error:"Evento no encontrado."});if(event.status==="processed")return res.status(409).json({error:"El evento ya está procesado."});await fsCommit([fsUpdate("webhook_events",id,{...event,reprocessRequestedAt:new Date().toISOString(),reprocessRequestedBy:req.adminUser!.uid})]);await adminAudit(req,"webhook.reprocess_requested","webhook_event",id);res.json({success:true,queued:true});}
+  try{const id=String(req.params.id),event=await fsGet("webhook_events",id);if(!event)return res.status(404).json({error:"Evento no encontrado."});if(event.status==="processed")return res.status(409).json({error:"El evento ya está procesado."});await fsCommit([fsUpdate("webhook_events",id,{...event,reprocessRequestedAt:new Date().toISOString(),reprocessRequestedBy:req.adminUser!.uid})]);await adminAudit(req,"webhook.reprocess_requested","webhook_event",id,{userId:event.userId||""});res.json({success:true,queued:true});}
   catch(e){console.error(e);res.status(500).json({error:"No fue posible solicitar el reprocesamiento."});}
 });
 
