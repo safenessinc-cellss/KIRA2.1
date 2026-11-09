@@ -905,6 +905,7 @@ app.post("/api/invoices/:id/checkout", async (req, res) => {
     const orderId = academicId("invoice_" + invoiceId);
     const previous = await fsGet("orders", orderId);
     if (previous?.status === "paid") return res.status(409).json({ error: "La cuota ya fue pagada." });
+    if (previous && previous.provider !== provider) return res.status(409).json({ error: "Ya existe un intento de pago de esta cuota con otra pasarela." });
     if (previous?.checkoutUrl && previous.status === "pending") return res.json({ url: previous.checkoutUrl, orderId, provider });
     const amount = Number(invoice.amountCents) / 100, currency = String(invoice.currency || "BRL").toLowerCase();
     const item = { id: String(course.id || invoice.courseId), type: "course", collectionName: "courses", title: "Cuota " + String(invoice.periodLabel || ""), quantity: 1, unitPrice: amount, currency };
