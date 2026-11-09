@@ -10,167 +10,126 @@ import { ImageUpload } from '../components/ImageUpload';
 import { AdminBooksView } from './AdminBooksView';
 import { AdminMembershipPlansView } from './AdminMembershipPlansView';
 import { AdminPaymentsConfig } from './AdminPaymentsConfig';
+import { BackofficeDashboard, BackofficeCRM } from './admin/BackofficeDataViews';
+import { Funnel, PhoneCall, BadgeCheck, GraduationCap, CalendarDays, Layers3, UsersRound, FileSignature, ClipboardCheck, Wallet, BadgePercent, PlugZap, ShieldCheck, ChevronRight, LockKeyhole } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates' | 'companies' | 'membership_plans' | 'payments_config';
+type AdminTab = 'dashboard' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions';
+
+type BackofficeItem = { id: AdminTab; label: string; icon: React.ReactNode; permission: string; ready: boolean; countKey?: 'leads' | 'overdue' };
 
 export function AdminMonitor() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [profile, setProfile] = useState<any>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-
+  const [counts, setCounts] = useState({ leads: 0, overdue: 0 });
 
   useEffect(() => {
-    if (user) {
-      const unsub = onSnapshot(doc(db, 'users', user.uid), (d) => {
-        setProfile(d.data());
-      });
-      return () => unsub();
-    }
+    if (!user) return;
+    return onSnapshot(doc(db, 'users', user.uid), snapshot => setProfile(snapshot.data() || null));
+  }, [user]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCounters = async () => {
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
+        const response = await fetch('/api/admin/dashboard', { headers: { Authorization: 'Bearer ' + token } });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled) setCounts({ leads: Number(data.leads?.total || 0), overdue: Number(data.overdueInvoices || 0) });
+      } catch (error) { console.warn('[Backoffice] Counters unavailable:', error); }
+    };
+    void loadCounters();
+    return () => { cancelled = true; };
   }, [user]);
 
   const isSuperAdmin = user?.email?.toLowerCase() === 'safeness.c.a@gmail.com' && user?.emailVerified === true;
-
-  useEffect(() => {
-    if (!isSuperAdmin) return;
-    const q = query(collection(db, 'users'), where('role', '==', 'coach'), where('approvalStatus', '==', 'approved'));
-    const unsub = onSnapshot(q, snap => {
-      for (const coachDoc of snap.docs) {
-        const coach = coachDoc.data();
-        const publicRef = doc(db, 'coachPublicProfiles', coachDoc.id);
-        void getDoc(publicRef).then(existing => {
-          if (existing.exists()) return;
-          const publicMediaItems = Array.isArray(coach.mediaItems)
-            ? coach.mediaItems.filter((item: any) => item && item.isPublic === true && Number(item.pointCost || 0) === 0 && typeof item.url === 'string')
-                .map((item: any) => ({ id: String(item.id || item.title || ''), title: String(item.title || ''), type: String(item.type || 'link'), url: item.url }))
-            : [];
-          return setDoc(publicRef, {
-            uid: coachDoc.id, displayName: coach.displayName || coach.name || 'Coach',
-            photoURL: coach.photoURL || '', specialty: coach.specialty || '', bio: coach.bio || '',
-            specialties: coach.specialties || [], languages: coach.languages || '',
-            socialLinks: coach.socialLinks || {}, rating: Number(coach.rating || 0),
-            studentCount: Number(coach.studentCount || 0), mediaItems: publicMediaItems,
-            approvalStatus: 'approved', status: 'published', updatedAt: new Date()
-          }, { merge: true });
-        }).catch(error => console.warn('Coach public profile backfill failed:', error));
-      }
-    }, error => console.error('Coach directory backfill listener failed:', error));
-    return () => unsub();
-  }, [isSuperAdmin]);
-
-  const perms = profile?.staffPermissions || [];
-
-  const hasPerm = (item: any) => {
-    if (isSuperAdmin || perms.includes('system')) return true;
-    if (item.perm && perms.includes(item.perm)) return true;
-    if (perms.includes(item.id)) return true;
-    return false;
+  const perms: string[] = Array.isArray(profile?.staffPermissions) ? profile.staffPermissions : [];
+  const canOpen = (item: BackofficeItem) => item.ready && (isSuperAdmin || (item.permission !== 'superadmin' && (perms.includes('system') || perms.includes(item.permission))));
+  const tree: Array<{ label: string; items: BackofficeItem[] }> = [
+    { label: 'Dashboard', items: [{ id: 'dashboard', label: 'Visión General de Ventas y Matrículas', icon: <LayoutDashboard size={18}/>, permission: 'system', ready: true }] },
+    { label: 'Embudo de Ventas (CRM)', items: [
+      { id: 'crm_leads', label: 'Leads Captados', icon: <Funnel size={18}/>, permission: 'crm', ready: true, countKey: 'leads' },
+      { id: 'crm_interactions', label: 'Intentos de Contacto', icon: <PhoneCall size={18}/>, permission: 'crm', ready: true },
+      { id: 'crm_converted', label: 'Inscripciones Confirmadas', icon: <BadgeCheck size={18}/>, permission: 'crm', ready: true }
+    ] },
+    { label: 'Gestión de Cursos', items: [
+      { id: 'courses', label: 'Todos los Cursos (Online/Presenciales)', icon: <GraduationCap size={18}/>, permission: 'courses', ready: true },
+      { id: 'groups', label: 'Grupos y Horarios', icon: <CalendarDays size={18}/>, permission: 'courses', ready: false },
+      { id: 'lessons', label: 'Módulos y Clases', icon: <Layers3 size={18}/>, permission: 'courses', ready: true }
+    ] },
+    { label: 'Alumnos y Matrículas', items: [
+      { id: 'students', label: 'Base de Alumnos', icon: <UsersRound size={18}/>, permission: 'users', ready: true },
+      { id: 'contracts', label: 'Contratos y Matrículas', icon: <FileSignature size={18}/>, permission: 'users', ready: false },
+      { id: 'attendance', label: 'Rendimiento / Asistencia', icon: <ClipboardCheck size={18}/>, permission: 'courses', ready: false }
+    ] },
+    { label: 'Finanzas', items: [
+      { id: 'invoices', label: 'Mensualidades / Cuotas', icon: <Wallet size={18}/>, permission: 'finance', ready: false, countKey: 'overdue' },
+      { id: 'gateways', label: 'Pasarela de Pago', icon: <CreditCard size={18}/>, permission: 'superadmin', ready: true },
+      { id: 'coupons', label: 'Cupones de Descuento', icon: <BadgePercent size={18}/>, permission: 'billing', ready: true }
+    ] },
+    { label: 'Configuración', items: [
+      { id: 'integrations', label: 'Integraciones (Landing Pages / WhatsApp)', icon: <PlugZap size={18}/>, permission: 'superadmin', ready: false },
+      { id: 'permissions', label: 'Usuarios y Permisos', icon: <ShieldCheck size={18}/>, permission: 'superadmin', ready: true }
+    ] }
+  ];
+  const activeItem = tree.flatMap(group => group.items).find(item => item.id === activeTab);
+  const activeGroup = tree.find(group => group.items.some(item => item.id === activeTab));
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'dashboard': return <BackofficeDashboard />;
+      case 'crm_leads': return <BackofficeCRM view="leads" />;
+      case 'crm_interactions': return <BackofficeCRM view="interactions" />;
+      case 'crm_converted': return <BackofficeCRM view="converted" />;
+      case 'courses': return <CMSView />;
+      case 'lessons': return <CMSView />;
+      case 'students': return <StudentManagementView />;
+      case 'gateways': return <AdminPaymentsConfig />;
+      case 'coupons': return <PromotionsManagerView />;
+      case 'permissions': return <SecurityView />;
+      default: return null;
+    }
   };
 
-  const navItems = [
-    { id: 'dashboard', label: 'Resumen ejecutivo', icon: <LayoutDashboard size={18}/>, category: 'Inicio y métricas' },
-    { id: 'analytics', label: 'Analítica e indicadores', icon: <TrendingUp size={18}/>, category: 'Inicio y métricas', perm: 'system' },
-    { id: 'approvals', label: 'Aprobaciones y onboarding', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
-    { id: 'students', label: 'Gestión de alumnos', icon: <Users size={18}/>, category: 'Personas y acceso', perm: 'users' },
-    { id: 'coaches', label: 'Gestión de coaches', icon: <UserCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
-    { id: 'security', label: 'Roles y seguridad', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', superOnly: true },
-    { id: 'companies', label: 'Empresas y licencias B2B', icon: <Building2 size={18}/>, category: 'Personas y acceso', superOnly: true },
-    { id: 'campaign_history', label: 'Auditoría y logs', icon: <ShieldAlert size={18}/>, category: 'Personas y acceso', perm: 'system' },
-    { id: 'content', label: 'Cursos y contenidos', icon: <ShoppingBag size={18}/>, category: 'Academia y certificados', perm: 'billing' },
-    { id: 'books', label: 'Biblioteca y ebooks', icon: <BookOpen size={18}/>, category: 'Academia y certificados', perm: 'users' },
-    { id: 'certificates', label: 'Solicitudes de certificados', icon: <FileText size={18}/>, category: 'Academia y certificados', perm: 'users' },
-    { id: 'ai_coaches', label: 'Herramientas IA para coaches', icon: <Sparkles size={18}/>, category: 'Academia y certificados', perm: 'system' },
-    { id: 'transactions', label: 'Pagos y transacciones', icon: <CreditCard size={18}/>, category: 'Finanzas', perm: 'billing' },
-    { id: 'settlement', label: 'Liquidaciones de coaches', icon: <PieChartIcon size={18}/>, category: 'Finanzas', perm: 'billing' },
-    { id: 'membership_plans', label: 'Planes de membresía', icon: <CreditCard size={18}/>, category: 'Finanzas', superOnly: true },
-    { id: 'payments_config', label: 'Configuración de pagos', icon: <Settings size={18}/>, category: 'Finanzas', superOnly: true },
-    { id: 'promotions', label: 'Promociones y descuentos', icon: <Star size={18}/>, category: 'Finanzas', perm: 'billing' },
-  ];
-
-  const filteredNav = navItems.filter(item => {
-    if (searchQuery && !item.label.toLowerCase().includes(searchQuery.toLowerCase()) && !item.category.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
-
-  const canOpen = (item: any) => item.superOnly ? isSuperAdmin : hasPerm(item);
-
-  const categories = ['Inicio y métricas', 'Personas y acceso', 'Academia y certificados', 'Finanzas'].filter(cat => filteredNav.some(n => n.category === cat));
-
-  return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
-      <aside aria-label="Navegación de administración" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-24">
-        <div className="px-3 pb-3 pt-2">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-kirateal">Centro de control</p>
-          <h2 className="mt-1 text-base font-black text-slate-900">Módulos KIRA</h2>
-          <p className="mt-1 text-xs text-slate-500">Elige un módulo; el contenido aparece a la derecha.</p>
-        </div>
-        <div className="relative mb-3">
-          <Zap className="absolute left-3 top-3 text-slate-400" size={15} />
-          <input type="search" aria-label="Buscar módulo" placeholder="Buscar módulo..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none transition focus:border-kirateal focus:ring-4 focus:ring-kirateal/10" />
-        </div>
-        <nav className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-1" aria-label="Módulos">
-          {categories.map(cat => (
-            <div key={cat} className="contents">
-              <h3 className="col-span-full px-3 pb-1 pt-3 text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">{cat}</h3>
-              {filteredNav.filter(n => n.category === cat).map(item => (
-                <NavButton key={item.id} active={activeTab === item.id} disabled={!canOpen(item)} onClick={() => { if (canOpen(item)) setActiveTab(item.id as AdminTab); }} icon={item.icon} label={item.label} />
-              ))}
-            </div>
-          ))}
-        </nav>
-      </aside>
-
-      {/* Área principal: dashboard inicial y contenido del módulo seleccionado */}
-      <div className="min-w-0 w-full">
-        {activeTab === 'dashboard' && hasPerm(navItems.find(i=>i.id==='dashboard')) && <GlobalDashboardView />}
-        {activeTab === 'analytics' && hasPerm(navItems.find(i=>i.id==='analytics')) && <BIView />}
-
-        {activeTab === 'security' && isSuperAdmin && <SecurityView />}
-        {activeTab === 'companies' && isSuperAdmin && <CompanyManagementView />}
-        {activeTab === 'campaign_history' && hasPerm(navItems.find(i=>i.id==='campaign_history')) && <CampaignHistoryView />}
-        {activeTab === 'ai_coaches' && hasPerm(navItems.find(i=>i.id==='ai_coaches')) && <AICoachesView />}
-
-        {activeTab === 'coaches' && hasPerm(navItems.find(i=>i.id==='coaches')) && <CoachCuratorView />}
-        {activeTab === 'approvals' && hasPerm(navItems.find(i=>i.id==='approvals')) && <UserApprovalsView />}
-        {activeTab === 'students' && hasPerm(navItems.find(i=>i.id==='students')) && <StudentManagementView />}
-        {activeTab === 'books' && hasPerm(navItems.find(i=>i.id==='books')) && <AdminBooksView />}
-        {activeTab === 'certificates' && hasPerm(navItems.find(i=>i.id==='certificates')) && <CertificateRequestsAdminView />}
-        {activeTab === 'content' && hasPerm(navItems.find(i=>i.id==='content')) && <CMSView />}
-        {activeTab === 'promotions' && hasPerm(navItems.find(i=>i.id==='promotions')) && <PromotionsManagerView />}
-
-        {activeTab === 'settlement' && hasPerm(navItems.find(i=>i.id==='settlement')) && <SettlementCenterView />}
-        {activeTab === 'transactions' && hasPerm(navItems.find(i=>i.id==='transactions')) && <TransactionsMonitorView />}
-        {activeTab === 'membership_plans' && isSuperAdmin && <AdminMembershipPlansView />}
-        {activeTab === 'payments_config' && isSuperAdmin && <AdminPaymentsConfig />}
-      </div>
+  return <div className="grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[280px_minmax(0,1fr)] xl:items-start">
+    <Sidebar tree={tree} activeTab={activeTab} onSelect={setActiveTab} canOpen={canOpen} counts={counts}/>
+    <div className="min-w-0 space-y-4">
+      <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+        <span>Backoffice</span><ChevronRight size={13}/><span>{activeGroup?.label || 'Dashboard'}</span>
+        {activeItem && <><ChevronRight size={13}/><span className="font-semibold text-slate-800">{activeItem.label}</span></>}
+      </nav>
+      {activeItem && !activeItem.ready ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6"><div className="flex items-center gap-2 font-bold text-amber-900"><AlertTriangle size={18}/> Módulo aún no habilitado</div><p className="mt-2 text-sm text-amber-800">Este nodo forma parte del árbol oficial, pero su API, persistencia y pruebas de autorización todavía no cumplen el criterio de aceptación. Permanece bloqueado para evitar una pantalla sin backend funcional.</p></div> : renderContent()}
     </div>
-  );
+  </div>;
 }
 
-function NavButton({ active, onClick, icon, label, disabled = false }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, disabled?: boolean }) {
-  return (
-    <button 
-      onClick={onClick}
-      disabled={disabled}
-      title={disabled ? 'Tu rol no tiene permiso para abrir este módulo' : label}
-      className={`flex min-h-20 w-full items-center gap-3 rounded-xl border p-4 text-left text-[13px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kirateal ${
-        active
-          ? 'border-kirateal/40 bg-kirateal text-white shadow-md shadow-kirateal/10'
-          : disabled
-            ? 'border-slate-100 bg-slate-50 text-slate-400 opacity-70 cursor-not-allowed'
-            : 'border-slate-200 bg-white text-slate-700 hover:border-kirateal/40 hover:bg-teal-50/50 hover:text-kirateal hover:shadow-sm'
-      }`}
-    >
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${active ? 'bg-white/15' : 'bg-slate-100'}`}>{icon}</span>
-      <span className="min-w-0 flex-1">{label}</span>
-      {disabled && <ShieldAlert size={13} aria-label="Sin permisos" />}
-    </button>
-  );
+export function Sidebar({ tree, activeTab, onSelect, canOpen, counts }: {
+  tree: Array<{ label: string; items: BackofficeItem[] }>;
+  activeTab: AdminTab;
+  onSelect: (tab: AdminTab) => void;
+  canOpen: (item: BackofficeItem) => boolean;
+  counts: { leads: number; overdue: number };
+}) {
+  return <aside aria-label="Navegación oficial KIRA" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm xl:sticky xl:top-24">
+    <div className="px-3 pb-3 pt-2"><p className="text-[10px] font-black uppercase tracking-[.18em] text-teal-700">KIRA · Backoffice</p><h2 className="mt-1 text-base font-black text-slate-900">Navegación principal</h2><p className="mt-1 text-xs text-slate-500">Estructura oficial de gestión.</p></div>
+    <nav className="space-y-4">
+      {tree.map(group => <section key={group.label}><h3 className="px-3 pb-1 text-[10px] font-black uppercase tracking-[.13em] text-slate-400">{group.label}</h3><div className="space-y-1">{group.items.map(item => {
+        const allowed = canOpen(item), active = activeTab === item.id;
+        const count = item.countKey ? counts[item.countKey] : 0;
+        return <button key={item.id} type="button" onClick={() => allowed && onSelect(item.id)} disabled={!allowed} aria-current={active ? 'page' : undefined} title={!item.ready ? 'Pendiente: backend y pruebas de aceptación' : !allowed ? 'Tu rol no tiene permiso para este módulo' : item.label} className={'flex min-h-11 w-full items-center gap-3 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition ' + (active ? 'border-teal-700 bg-teal-700 text-white' : allowed ? 'border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50' : 'cursor-not-allowed border-transparent bg-slate-50 text-slate-400')}>
+          <span className="shrink-0">{item.icon}</span><span className="min-w-0 flex-1">{item.label}</span>
+          {item.countKey && count > 0 && <span className={'rounded-full px-2 py-0.5 text-[10px] ' + (active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600')}>{count}</span>}
+          {!item.ready && <LockKeyhole size={13} className="shrink-0"/>}
+          {item.ready && !allowed && <ShieldAlert size={13} className="shrink-0"/>}
+        </button>;
+      })}</div></section>)}
+    </nav>
+  </aside>;
 }
 
-// --- MODULO: CONFIGURACIÓN SITIO WEB (BRANDING ENGINE) ---
 function WebsiteConfigView() {
   const [config, setConfig] = useState<any>({ heroImage: '', secondaryImage: '', primaryColor: '#1ec6b6', secondaryColor: '#8b5cf6' });
   const [history, setHistory] = useState<any[]>([{ primaryColor: '#1ec6b6', secondaryColor: '#8b5cf6', date: new Date().toISOString(), label: 'Default Kira' }]);
