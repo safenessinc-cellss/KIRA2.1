@@ -154,7 +154,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
@@ -197,7 +197,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt
@@ -372,7 +372,7 @@ export default function SessionIntelligence() {
     try {
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
@@ -389,6 +389,8 @@ export default function SessionIntelligence() {
       await addDoc(collection(db, 'sessions'), {
         userId: user.uid,
         coachId: user.uid,
+        clientName: clientName.trim(),
+        sessionTopic: sessionTopic.trim(),
         transcript: listToUse,
         analysis: sanitizedData,
         consentConfirmed: true,
@@ -469,7 +471,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
@@ -485,8 +487,8 @@ export default function SessionIntelligence() {
       
       await addDoc(collection(db, 'sessions'), {
         userId: user.uid,
-        clientName,
-        sessionTopic,
+        clientName: clientName.trim(),
+        sessionTopic: sessionTopic.trim(),
         coachId: user.uid,
         transcript: manualTranscript,
         analysis: sanitizedData,
