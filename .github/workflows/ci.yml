@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - release/admin-expanded-v1
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Typecheck, build, rules and security scans
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: TypeScript and server typecheck
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Install Firestore emulator test tooling
+        run: npm install --no-save --package-lock=false @firebase/rules-unit-testing firebase-tools
+
+      - name: Firestore security rules tests
+        run: npx firebase emulators:exec --only firestore --project demo-kira-rules "npm run test:rules"
+
+      - name: Client bundle secret scan
+        shell: bash
+        run: |
+          if grep -RniE 'AIza[0-9A-Za-z_-]{20,}|sk_live_[0-9A-Za-z]+|sk_test_[0-9A-Za-z]+|APP_USR-[0-9]+' dist/; then
+            echo "::error::Potential credential pattern found in dist/"
+            exit 1
+          fi
+
+      - name: Client and server environment access scan
+        shell: bash
+        run: |
+          if grep -Rni 'process\.env' src/; then
+            echo "::error::process.env reference found in src/"
+            exit 1
+          fi
+          if grep -n 'import\.meta\.env' api/ server.ts 2>/dev/null; then
+            echo "::error::import.meta.env reference found in server code"
+            exit 1
+          fi
