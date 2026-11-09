@@ -1435,13 +1435,13 @@ async function refreshStudentPerformance(studentId: string, groupId: string, sou
   const sessionIds = new Set(groupSessions.map(x => x.id));
   const marks = attendance.filter(x => x.studentId === studentId && x.groupId === groupId && sessionIds.has(x.sessionId) && !x.deletedAt);
   const grades = assessments.filter(x => x.studentId === studentId && x.groupId === groupId && Number(x.maxScore) > 0);
-  const { attendancePct, avgScorePct } = calculateAcademicPerformance(groupSessions, marks, grades);
+  const { attendancePct, avgScorePct, lessonsCompleted } = calculateAcademicPerformance(groupSessions, marks, grades);
   const id = academicId(studentId + "_" + groupId);
   const previous = await fsGet("student_performance", id);
   const sourceEventIds = Array.from(new Set([...(Array.isArray(previous?.sourceEventIds) ? previous.sourceEventIds : []), sourceEventId])).slice(-100);
   await fsCommit([fsUpdate("student_performance", id, {
     studentId, groupId, courseId: group?.courseId || "", attendancePct, avgScorePct,
-    lessonsCompleted: Number(previous?.lessonsCompleted || 0), lastCalculatedAt: new Date(), sourceEventIds
+    lessonsCompleted, lastCalculatedAt: new Date(), sourceEventIds
   })]);
   return { attendancePct, avgScorePct };
 }
