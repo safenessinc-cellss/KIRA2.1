@@ -489,7 +489,7 @@ service cloud.firestore {
     match /activity_logs/{logId} {
       allow read: if isAdmin();
       allow create: if isAuthenticated()
-        && request.resource.data.userId is string
+        && request.resource.data.userId == request.auth.uid
         && request.resource.data.action is string
         && request.resource.data.entityType is string
         && request.resource.data.createdAt is timestamp
