@@ -789,7 +789,7 @@ app.get("/api/admin/payments/payouts", async (_req,res) => {
   try {
     const [transactions,payouts,courses]=await Promise.all([fsList("transactions"),fsList("payouts"),fsList("courses")]);
     const paidIds=new Set(payouts.flatMap(p=>p.transactionIds||[]));
-    const courseMap=new Map(courses.map(c=>[c.id,c]));
+    const courseMap=new Map<string, any>(courses.map(c=>[String(c.id),c] as [string, any]));
     const pending=transactions.filter(t=>t.status==="paid"&&!paidIds.has(t.id)).map(t=>({...t,coachId:t.coachId||(courseMap.get(t.courseId)?.coachId)||"",coachAmount:Number(t.amount||0)*0.3}));
     res.json({items:pending,payouts});
   } catch(e){console.error(e);res.status(500).json({error:"No fue posible calcular liquidaciones."});}
