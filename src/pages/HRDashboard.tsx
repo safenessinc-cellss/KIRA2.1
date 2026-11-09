@@ -43,7 +43,7 @@ export function HRDashboard() {
   }, [companyId]);
 
   const activeEmployees = employees.filter(employee => employee.status === "active" || employee.status === "approved");
-  const latestAggregate = aggregates.slice().sort((a, b) => String(b.periodEnd || b.createdAt || "").localeCompare(String(a.periodEnd || a.createdAt || "")))[0];
+  const latestAggregate = aggregates.slice().sort((a, b) => String(b.periodEnd || b.createdAt || b.period || b.updatedAt || "").localeCompare(String(a.periodEnd || a.createdAt || a.period || a.updatedAt || "")))[0];
   const sampleSize = Number(latestAggregate?.sampleSize ?? latestAggregate?.cohortSize ?? latestAggregate?.participantCount ?? 0);
   const minimumCohortSize = Math.max(5, Number(latestAggregate?.minimumCohortSize ?? latestAggregate?.minCohortSize ?? 5));
   const privacyThresholdMet = Boolean(latestAggregate && sampleSize >= minimumCohortSize && latestAggregate.suppressed !== true);
@@ -80,12 +80,12 @@ export function HRDashboard() {
           <p className="mt-2 text-xs text-slate-500">{activeEmployees.length} con estado activo registrado</p>
         </article>
         <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Riesgo elevado agregado</span><ShieldCheck className="text-teal-700" size={20} /></div>
+          <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Check-ins con energía o claridad baja (agregado)</span><ShieldCheck className="text-teal-700" size={20} /></div>
           <p className="mt-4 text-4xl font-black tabular-nums text-slate-900">{loading || !hasWellbeingAggregate ? "—" : highRiskCount}</p>
-          <p className="mt-2 text-xs text-slate-500">{hasWellbeingAggregate ? "Conteo agregado; sin diarios individuales" : "Disponible cuando existan evaluaciones agregadas"}</p>
+          <p className="mt-2 text-xs text-slate-500">{hasWellbeingAggregate ? "Solo check-ins consentidos y agregados" : "Disponible cuando existan evaluaciones agregadas"}</p>
         </article>
         <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:col-span-2 xl:col-span-1">
-          <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Engagement promedio</span><BarChart3 className="text-teal-700" size={20} /></div>
+          <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Energía y claridad promedio</span><BarChart3 className="text-teal-700" size={20} /></div>
           <p className="mt-4 text-4xl font-black tabular-nums text-slate-900">{loading || !hasWellbeingAggregate ? "—" : averageEngagement.toFixed(1)}</p>
           <p className="mt-2 text-xs text-slate-500">{hasWellbeingAggregate ? `Muestra agregada de ${sampleSize} personas; mínimo ${minimumCohortSize}.` : `Oculto hasta alcanzar una muestra mínima de ${minimumCohortSize} personas.`}</p>
         </article>
