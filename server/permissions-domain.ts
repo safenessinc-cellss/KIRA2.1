@@ -7,6 +7,12 @@ export function hasPermission(permissions: PermissionMap | null | undefined, key
   while (parts.length > 1) { parts.pop(); if (permissions[parts.join(".") + ".*"] === true) return true; }
   return false;
 }
+export function hasDelegatedPermission(permissions: PermissionMap | null | undefined, key: string, scope: "assigned" | "own" | "all" = "all"): boolean {
+  if (!permissions || typeof permissions !== "object") return false;
+  // A global wildcard is reserved for the platform owner and is never delegated.
+  const delegated = Object.fromEntries(Object.entries(permissions).filter(([grant, enabled]) => grant !== "*" && enabled === true));
+  return hasScopedPermission(delegated, key, scope);
+}
 export function hasScopedPermission(permissions: PermissionMap | null | undefined, key: string, scope: "assigned" | "own" | "all" = "all"): boolean {
   const parts = key.split(".");
   const action = parts.pop() || "";
