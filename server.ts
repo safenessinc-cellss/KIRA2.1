@@ -854,10 +854,14 @@ app.post("/api/admin/payments/payouts/mark", async (req: AdminRequest,res) => {
     if(!adminLimit(req,res,"payout",10))return;
     const transactionIds=Array.isArray(req.body?.transactionIds)?req.body.transactionIds.map(String):[];
     if(!transactionIds.length||transactionIds.length>200)return res.status(400).json({error:"Selecciona transacciones para liquidar."});
-    const transactions=await Promise.all(transactionIds.map((id:string)=>fsGet("transactions",id)));
+    const [transactions,courses,payouts]=await Promise.all([Promise.all(transactionIds.map((id:string)=>fsGet("transactions",id))),fsList("courses"),fsList("payouts")]);
     if(transactions.some(t=>!t||t.status!=="paid"))return res.status(409).json({error:"Una o más transacciones no están pagadas."});
-    const payouts=await fsList("payouts");const paid=new Set(payouts.flatMap(p=>p.transactionIds||[]));
+    const paid=new Set(payouts.flatMap(p=>p.transactionIds||[]));
     if(transactionIds.some(id=>paid.has(id)))return res.status(409).json({error:"Una o más transacciones ya fueron liquidadas."});
+    const courseMap=new Map<string, any>(courses.map(c=>[String(c.id),c] as [string, any]));
+    const coachIds=transactions.map(t=>String(t.coachId||courseMap.get(t.courseId)?.coachId||""));
+    const coachId=String(req.body?.coachId||"");
+    if(!coachId||coachIds.some(id=>id!==coachId))return res.status(409).json({error:"Las transacciones deben pertenecer al coach seleccionado."});
     const amount=transactions.reduce((n,t)=>n+Number(t.amount||0)*.3,0),currency=String(transactions[0].currency||"");
     if(transactions.some(t=>String(t.currency||"")!==currency))return res.status(409).json({error:"No se pueden mezclar monedas en una liquidación."});
     const id=randomBytes(12).toString("hex"),now=new Date().toISOString();
