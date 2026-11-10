@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from '../components/Brand';
-import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart, Mic, ClipboardCheck, ShieldCheck, Headset, HeartPulse } from 'lucide-react';
+import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart, Mic, ClipboardCheck, ShieldCheck, Headset, HeartPulse, Menu } from 'lucide-react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { NotificationCenter } from '../components/Notifications';
@@ -16,6 +16,8 @@ export function DashboardLayout({ title }: { title: string }) {
   const { cartCount, setIsCartOpen } = useCart();
   const location = useLocation();
   const [toast, setToast] = useState<{ title: string; message: string } | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const emailLower = user?.email?.toLowerCase();
   const rawDisplayName = user?.displayName || '';
@@ -53,8 +55,14 @@ export function DashboardLayout({ title }: { title: string }) {
 
   const links = {
     admin: [{ to: '/admin', icon: LayoutDashboard, label: 'Administración KIRA', detail: 'Control, seguridad y gestión global' }],
-    hr_admin: [{ to: '/hr', icon: Users, label: 'Bienestar corporativo', detail: 'Personas y organización' }],
-    company_admin: [{ to: '/hr', icon: Users, label: 'Portal empresarial', detail: 'Organización, licencias e indicadores' }],
+    hr_admin: [
+      { to: '/hr', icon: Users, label: 'Bienestar corporativo', detail: 'Personas y organización' },
+      { to: '/dashboard/profile', icon: Palette, label: 'Mi perfil', detail: 'Preferencias y datos personales' },
+    ],
+    company_admin: [
+      { to: '/hr', icon: Users, label: 'Portal empresarial', detail: 'Organización, licencias e indicadores' },
+      { to: '/dashboard/profile', icon: Palette, label: 'Mi perfil', detail: 'Preferencias y datos personales' },
+    ],
     coach: [
       { to: '/coach', icon: Activity, label: 'Gestión académica', detail: 'Resumen, alumnos y actividad' },
       { to: '/coach/courses', icon: BookOpen, label: 'Studio de cursos', detail: 'Cursos, contenidos y programas' },
@@ -96,6 +104,7 @@ export function DashboardLayout({ title }: { title: string }) {
 
       <header className="sticky top-0 z-30 flex min-h-[4.25rem] shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
         <div className="flex min-w-0 items-center gap-3">
+          {role !== 'admin' && <button type="button" onClick={() => { setMobileNavOpen(value => !value); if (window.matchMedia('(min-width: 1024px)').matches) setSidebarCollapsed(value => !value); }} aria-label="Abrir o contraer navegación" aria-expanded={mobileNavOpen} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:border-primary/40 hover:bg-primary/5 hover:text-primary"><Menu size={18} /></button>}
           <Link to={role === 'admin' ? '/admin' : role === 'coach' ? '/coach' : (role === 'hr_admin' || role === 'company_admin') ? '/hr' : '/dashboard'} aria-label="Ir al inicio" className="shrink-0"><Logo size={36} /></Link>
           <div className="min-w-0 border-l border-slate-200 pl-3">
             <p className="truncate text-sm font-bold text-slate-800">{title}</p>
@@ -115,10 +124,10 @@ export function DashboardLayout({ title }: { title: string }) {
       </header>
 
       <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-stretch lg:gap-6 lg:px-8">
-        {role !== 'admin' && <section aria-label="Módulos principales" className="w-full shrink-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:sticky lg:top-[5.25rem] lg:w-64 lg:self-start">
+        {role !== 'admin' && <section aria-label="Módulos principales" className={cn('w-full shrink-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-[width,padding] duration-200 sm:p-5 lg:sticky lg:top-[5.25rem] lg:self-start', sidebarCollapsed ? 'lg:w-[76px] lg:px-3' : 'lg:w-64', mobileNavOpen ? 'block' : 'hidden lg:block')}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Espacio de trabajo</p><h2 className="mt-1 text-base font-bold text-slate-800">Tus módulos</h2></div>
-            <div className="flex items-center gap-2">
+            <div className={cn('min-w-0', sidebarCollapsed && 'lg:hidden')}><p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary">Espacio de trabajo</p><h2 className="mt-1 text-base font-bold text-slate-800">Tus módulos</h2></div>
+            <div className={cn('flex items-center gap-2', sidebarCollapsed && 'lg:hidden')}>
               <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Apariencia</span>
               {[
                 { id: 'teal', color: 'bg-[#1B4D5D]' }, { id: 'gold', color: 'bg-[#C5A059]' },
@@ -126,12 +135,12 @@ export function DashboardLayout({ title }: { title: string }) {
               ].map((theme) => <button key={theme.id} type="button" onClick={() => changeTheme(theme.id)} aria-label={`Tema ${theme.id}`} aria-pressed={theme.id === (user?.theme || 'teal')} className={cn('h-5 w-5 rounded-full border border-white shadow-sm ring-offset-2', theme.color, theme.id === (user?.theme || 'teal') && 'ring-2 ring-slate-300')} />)}
             </div>
           </div>
-          <nav aria-label="Navegación de módulos" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-col xl:grid-cols-1">
+          <nav aria-label="Navegación de módulos" className={cn('grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:flex-col', sidebarCollapsed ? 'lg:items-center' : 'xl:grid-cols-1')}>
             {currentLinks.map((item) => {
               const active = isActive(item.to);
-              return <Link key={item.to} to={item.to} aria-current={active ? 'page' : undefined} className={cn('group flex min-h-24 min-w-0 flex-col items-start gap-2 rounded-xl border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-4 lg:min-h-16 lg:flex-row lg:items-center lg:gap-3 lg:hover:translate-y-0', active ? 'border-primary/40 bg-primary/[0.06] shadow-sm' : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-white')}>
+              return <Link key={item.to} to={item.to} title={sidebarCollapsed ? item.label : undefined} onClick={() => setMobileNavOpen(false)} aria-current={active ? 'page' : undefined} className={cn('group flex min-h-24 min-w-0 flex-col items-start gap-2 rounded-xl border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:p-4 lg:min-h-16 lg:flex-row lg:items-center lg:gap-3 lg:hover:translate-y-0', sidebarCollapsed && 'lg:w-12 lg:justify-center lg:p-2', active ? 'border-primary/40 bg-primary/[0.06] shadow-sm' : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-white')}>
                 <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', active ? 'bg-primary text-white' : 'bg-white text-slate-500 shadow-sm')}><item.icon size={19} /></span>
-                <span className="min-w-0"><span className={cn('block truncate text-xs font-bold sm:text-sm', active ? 'text-primary' : 'text-slate-800')}>{item.label}</span><span className="mt-1 hidden text-xs leading-4 text-slate-500 sm:block">{item.detail}</span></span>
+                <span className={cn('min-w-0', sidebarCollapsed && 'lg:hidden')}><span className={cn('block truncate text-xs font-bold sm:text-sm', active ? 'text-primary' : 'text-slate-800')}>{item.label}</span><span className="mt-1 hidden text-xs leading-4 text-slate-500 sm:block">{item.detail}</span></span>
               </Link>;
             })}
           </nav>

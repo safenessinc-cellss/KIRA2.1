@@ -57,3 +57,36 @@
 .rich-text-content em {
   font-style: italic;
 }
+
+
+/* KIRA 2.1 — coherent product-wide UI foundation */
+:root {
+  color-scheme: light;
+  --kira-ink: #172b3a;
+  --kira-muted: #647789;
+  --kira-line: #e3ebf1;
+  --kira-surface: #ffffff;
+  --kira-canvas: #f4f7fa;
+  --kira-accent: #147d83;
+  --kira-accent-soft: #e8f5f4;
+}
+html { min-width: 320px; scroll-behavior: smooth; background: var(--kira-canvas); }
+body { min-width: 320px; margin: 0; background: var(--kira-canvas); color: var(--kira-ink); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+button, input, select, textarea { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid rgb(20 125 131 / 28%);
+  outline-offset: 2px;
+}
+::selection { background: rgb(20 125 131 / 18%); color: var(--kira-ink); }
+* { scrollbar-width: thin; scrollbar-color: #cbd7df transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { border-radius: 99px; background: #cbd7df; }
+*::-webkit-scrollbar-track { background: transparent; }
+@media (max-width: 640px) {
+  body { font-size: 14px; }
+  input, select, textarea { max-width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
