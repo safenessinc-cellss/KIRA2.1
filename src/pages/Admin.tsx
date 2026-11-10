@@ -3586,8 +3586,12 @@ function TransactionsMonitorView() {
            <CreditCard size={18} className="text-primary" /> Auditoría de Ingresos
          </h3>
          <div className="flex gap-2">
-            <div className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-bold">
-               Total: ${txs.reduce((acc, curr) => acc + (curr.amount || 0), 0).toFixed(2)}
+            <div className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-bold flex flex-wrap gap-x-2">
+               Total por moneda: {Object.entries(txs.reduce((totals: Record<string, number>, tx) => {
+                 const currency = String(tx.currency || 'USD').toUpperCase();
+                 totals[currency] = (totals[currency] || 0) + Number(tx.amount || 0);
+                 return totals;
+               }, {})).map(([currency, total]) => `${currency} ${total.toFixed(2)}`).join(' · ') || 'Sin transacciones'}
             </div>
          </div>
       </div>
@@ -3607,7 +3611,7 @@ function TransactionsMonitorView() {
                 <td className="px-6 py-4 text-slate-500 font-mono italic">{t.createdAt?.toDate?.().toLocaleString()}</td>
                 <td className="px-6 py-4 font-bold text-slate-700">{t.userEmail || (t.userId ? t.userId.substring(0, 8) + '...' : 'Unknown')}</td>
                 <td className="px-6 py-4 capitalize text-indigo-600">{(t.type || '').replace('_', ' ')}</td>
-                <td className="px-6 py-4 font-black text-slate-800">${t.amount?.toFixed(2)}</td>
+                <td className="px-6 py-4 font-black text-slate-800">{Number(t.amount || 0).toFixed(2)} {String(t.currency || 'USD').toUpperCase()}</td>
               </tr>
             ))}
             {txs.length === 0 && !loading && (
@@ -3665,7 +3669,7 @@ function SettlementCenterView() {
                const currency = String(t.currency || 'USD').toUpperCase();
                const platformAmount = Number(t.platformAmount);
                const coachAmount = Number(t.coachAmount);
-               const splitRecorded = Number.isFinite(platformAmount) && Number.isFinite(coachAmount);
+               const splitRecorded = typeof t.platformAmount === 'number' && typeof t.coachAmount === 'number';
                const payoutConfirmed = t.payoutStatus === 'paid';
                return (
                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
