@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Logo } from '../components/Brand';
-import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart, Mic, ClipboardCheck, ShieldCheck, Headset, HeartPulse, PanelLeftClose, PanelLeftOpen, Menu } from 'lucide-react';
+import { LogOut, BookOpen, Activity, LayoutDashboard, Users, Palette, BellRing, X, Sparkles, ShoppingCart, Mic, ClipboardCheck, ShieldCheck, Headset, HeartPulse, Menu } from 'lucide-react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { cn } from '../lib/utils';
 import { NotificationCenter } from '../components/Notifications';
