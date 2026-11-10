@@ -8,6 +8,14 @@ import { MediaUpload } from '../components/MediaUpload';
 import { CoachAnalytics } from '../components/CoachAnalytics';
 import { useToast } from '../hooks/useToast';
 
+const getAuthenticatedAIHeaders = async () => {
+  if (!auth.currentUser) throw new Error('Inicia sesión para utilizar KIRA AI.');
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${await auth.currentUser.getIdToken()}`,
+  };
+};
+
 export type UserRole = 'admin' | 'coach' | 'alumno' | 'hr_admin' | 'company_admin' | 'company_member' | null;
 
 export function useAuth() {
@@ -325,7 +333,7 @@ export function CoachDashboard() {
     try {
       const resp = await fetch('/api/create-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedAIHeaders(),
         body: JSON.stringify({
           userId: user.uid,
           amount: 49.99,
@@ -585,7 +593,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedAIHeaders(),
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -655,7 +663,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedAIHeaders(),
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -706,7 +714,7 @@ function CoachDashboardView({ profile, isApproved, onNavigate }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedAIHeaders(),
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
           contents: prompt
@@ -1713,7 +1721,7 @@ function CoachStudentsActivity() {
               
               const res = await fetch('/api/gemini/generate', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: await getAuthenticatedAIHeaders(),
                 body: JSON.stringify({
                   model: 'gemini-3.5-flash',
                   contents: prompt,
@@ -2934,7 +2942,7 @@ function CoachProfileSettings({ profile }: any) {
 
       const res = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedAIHeaders(),
         body: JSON.stringify({
           model: "gemini-3.5-flash",
           contents: prompt,
