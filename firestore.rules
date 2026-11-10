@@ -413,7 +413,9 @@ service cloud.firestore {
       }
 
       match /wellbeingAggregates/{aggregateId} {
-        allow read: if isAdmin() || isCompanyMember(companyId);
+        // Organization-level wellbeing indicators are visible only to authorized HR/company admins.
+        // Individual members and coaches never receive the organization's aggregate dashboard by default.
+        allow read: if isAdmin() || isCompanyAdmin(companyId);
         allow create, update, delete: if false;
       }
 
