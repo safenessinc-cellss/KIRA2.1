@@ -3644,7 +3644,7 @@ function SettlementCenterView() {
          </h3>
          <div className="flex gap-2">
             <div className="px-3 py-1 bg-purple-50 text-purple-700 rounded-full text-[10px] font-bold">
-               Split Regla: 70% Plataforma / 30% Coach
+               Regla objetivo 70/30 · pendiente de conciliación
             </div>
          </div>
       </div>
@@ -3654,24 +3654,29 @@ function SettlementCenterView() {
             <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-tighter">
               <th className="px-6 py-3">Referencia Tx</th>
               <th className="px-6 py-3">Monto Base</th>
-              <th className="px-6 py-3">Kira Revenue (70%)</th>
-              <th className="px-6 py-3">Coach Balance (30%)</th>
+              <th className="px-6 py-3">Importe plataforma registrado</th>
+              <th className="px-6 py-3">Importe coach registrado</th>
               <th className="px-6 py-3 text-right">Estado</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {txs.filter(t => t.type === 'curso' || t.amount > 0).map(t => {
                const monto = t.amount || 0;
-               const kiraRev = monto * 0.7;
-               const coachRev = monto * 0.3;
+               const currency = String(t.currency || 'USD').toUpperCase();
+               const platformAmount = Number(t.platformAmount);
+               const coachAmount = Number(t.coachAmount);
+               const splitRecorded = Number.isFinite(platformAmount) && Number.isFinite(coachAmount);
+               const payoutConfirmed = t.payoutStatus === 'paid';
                return (
                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                    <td className="px-6 py-4 text-slate-500 font-mono italic">#{t.id ? t.id.substring(0,6).toUpperCase() : 'N/A'}</td>
-                   <td className="px-6 py-4 font-black text-slate-700">${monto.toFixed(2)}</td>
-                   <td className="px-6 py-4 font-black text-emerald-600">+${kiraRev.toFixed(2)}</td>
-                   <td className="px-6 py-4 font-black text-purple-600">+${coachRev.toFixed(2)}</td>
+                   <td className="px-6 py-4 font-black text-slate-700">{monto.toFixed(2)} {currency}</td>
+                   <td className="px-6 py-4 font-black text-emerald-600">{splitRecorded ? platformAmount.toFixed(2) + ' ' + currency : 'Pendiente de conciliación'}</td>
+                   <td className="px-6 py-4 font-black text-purple-600">{splitRecorded ? coachAmount.toFixed(2) + ' ' + currency : 'Pendiente de conciliación'}</td>
                    <td className="px-6 py-4 text-right">
-                     <span className="px-2 py-1 bg-slate-100 text-slate-500 rounded text-[9px] font-bold uppercase">Liquidado</span>
+                     <span className={`px-2 py-1 rounded text-[9px] font-bold uppercase ${payoutConfirmed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                       {payoutConfirmed ? 'Liquidación confirmada' : 'Pendiente de liquidación'}
+                     </span>
                    </td>
                  </tr>
                );
