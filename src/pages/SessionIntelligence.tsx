@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { useAuth } from '../hooks/useAuth';
 import { 
   Mic, MicOff, Brain, Sparkles, AlertCircle, FileText, 
@@ -74,6 +74,17 @@ const sanitizeAnalysis = (analysis: any): LongitudinalAnalysis | null => {
 const safeJoin = (arr: any[] | undefined, separator: string = ', '): string => {
   if (!arr || !Array.isArray(arr)) return '';
   return arr.join(separator);
+};
+
+// Every AI request must carry a Firebase ID token; the server validates it
+// and applies per-user rate limits before forwarding prompts to the model.
+const getAuthenticatedAIHeaders = async () => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('Inicia sesión para utilizar KIRA AI.');
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${await currentUser.getIdToken()}`,
+  };
 };
 
 // ============================================
@@ -152,7 +163,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedAIHeaders(),
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
@@ -195,7 +206,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedAIHeaders(),
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt
@@ -362,7 +373,7 @@ export default function SessionIntelligence() {
     try {
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedAIHeaders(),
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
@@ -448,7 +459,7 @@ export default function SessionIntelligence() {
 
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedAIHeaders(),
         body: JSON.stringify({
           model: "gemini-2.0-flash-exp",
           contents: prompt,
