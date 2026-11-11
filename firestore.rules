@@ -533,8 +533,10 @@ service cloud.firestore {
       match /wellbeingAggregates/{aggregateId} {
         // HR may read only pre-aggregated cohorts with a minimum sample of five.
         // Individual-level records and suppressed small cohorts remain inaccessible.
+        // Only designated HR/company administrators can view cohort aggregates.
+        // Ordinary employees and coaches must never receive organization wellness dashboards.
         allow read: if isAdmin() || (
-          (isCompanyAdmin(companyId) || isCompanyMember(companyId))
+          isCompanyAdmin(companyId)
           && resource.data.sampleSize is number
           && resource.data.sampleSize >= 5
           && (!('suppressed' in resource.data) || resource.data.suppressed != true)
