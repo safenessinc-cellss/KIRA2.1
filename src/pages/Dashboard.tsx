@@ -31,7 +31,7 @@ export function Dashboard() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
   const [checkoutProvider, setCheckoutProvider] = useState<'stripe' | 'mercadopago'>('stripe');
-  const [availableGateways, setAvailableGateways] = useState<Array<'stripe' | 'mercadopago'>>([]);
+  const [availableGateways, setAvailableGateways] = useState<Array<{ provider: 'stripe' | 'mercadopago'; mode: 'test' | 'live' }>>([]);
   const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
 
   const [cartItems, setCartItems] = useState<any[]>([]);
@@ -82,12 +82,13 @@ export function Dashboard() {
         const response = await fetch('/api/payments/available', { headers: { Authorization: 'Bearer ' + token } });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || 'No se pudieron consultar los medios de pago.');
-        const providers: Array<'stripe' | 'mercadopago'> = Array.isArray(payload.gateways)
-          ? payload.gateways.map((gateway: any) => gateway.provider).filter((provider: any): provider is 'stripe' | 'mercadopago' => provider === 'stripe' || provider === 'mercadopago')
+        const providers: Array<{ provider: 'stripe' | 'mercadopago'; mode: 'test' | 'live' }> = Array.isArray(payload.gateways)
+          ? payload.gateways.filter((gateway: any) => gateway?.provider === 'stripe' || gateway?.provider === 'mercadopago')
+              .map((gateway: any) => ({ provider: gateway.provider, mode: gateway.mode === 'live' ? 'live' : 'test' }))
           : [];
         if (active) {
           setAvailableGateways(providers);
-          if (providers.length && !providers.includes(checkoutProvider)) setCheckoutProvider(providers[0]);
+          if (providers.length && !providers.some(gateway => gateway.provider === checkoutProvider)) setCheckoutProvider(providers[0].provider);
         }
       } catch (error) {
         console.error('Payment methods unavailable:', error);
@@ -1300,9 +1301,9 @@ export function Dashboard() {
               <form onSubmit={handleProcessPayment} className="space-y-4">
                 <p className="text-sm text-slate-600">El pago se procesa en la plataforma oficial del proveedor. KIRA no solicita ni almacena los datos de tu tarjeta.</p>
                 {loadingPaymentMethods ? <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">Consultando medios de pago habilitados…</p> : availableGateways.length ? <div className="grid grid-cols-2 gap-3">
-                  {availableGateways.map(provider => <button key={provider} type="button" onClick={() => setCheckoutProvider(provider)} aria-pressed={checkoutProvider === provider} className={`rounded-xl border px-3 py-3 text-sm font-bold ${checkoutProvider === provider ? 'border-kirateal bg-kirateal/10 text-kirateal' : 'border-slate-200 text-slate-500'}`}>{provider === 'mercadopago' ? 'Mercado Pago' : 'Stripe'}</button>)}
+                  {availableGateways.map(gateway => <button key={gateway.provider} type="button" onClick={() => setCheckoutProvider(gateway.provider)} aria-pressed={checkoutProvider === gateway.provider} className={`rounded-xl border px-3 py-3 text-sm font-bold ${checkoutProvider === gateway.provider ? 'border-kirateal bg-kirateal/10 text-kirateal' : 'border-slate-200 text-slate-500'}`}><span className="block">{gateway.provider === 'mercadopago' ? 'Mercado Pago' : 'Stripe'}</span>{gateway.mode === 'test' && <span className="mt-1 block text-[10px] font-semibold text-amber-700">Modo de prueba · sin cobro real</span>}</button>)}
                 </div> : <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">No hay pasarelas habilitadas y verificadas. Contacta al administrador de KIRA.</p>}
-                <button type="submit" disabled={isProcessingPayment || loadingPaymentMethods || !availableGateways.includes(checkoutProvider)} className="w-full mt-4 py-4 bg-kirateal text-white rounded-2xl font-black uppercase text-xs tracking-wider disabled:opacity-50">
+                <button type="submit" disabled={isProcessingPayment || loadingPaymentMethods || !availableGateways.some(gateway => gateway.provider === checkoutProvider)} className="w-full mt-4 py-4 bg-kirateal text-white rounded-2xl font-black uppercase text-xs tracking-wider disabled:opacity-50">
                   {isProcessingPayment ? 'Conectando con el proveedor…' : 'Continuar al pago seguro'}
                 </button>
               </form>
