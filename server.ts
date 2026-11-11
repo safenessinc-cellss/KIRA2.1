@@ -1465,7 +1465,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
     if (gatewaySettings && !isGatewayCredentialModeCompatible(provider,gatewaySettings.mode==="live"?"live":"test",String(effectiveGatewayCredential||""))) return res.status(503).json({error:"La credencial de la pasarela no coincide con el modo configurado. Revisa el Centro de pagos."});
     const idempotencyKey = String(req.get("Idempotency-Key") || "").trim();
     if (!/^[A-Za-z0-9_-]{16,128}$/.test(idempotencyKey)) return res.status(400).json({ error: "Falta una clave de idempotencia válida. Actualiza la página e inténtalo nuevamente." });
-    const checkoutIdentity = buildCheckoutIdentity(user.uid, idempotencyKey, provider, ids.map((item: any) => ({ id: item.id, quantity: Number(item.quantity || 1) })));
+    const checkoutIdentity = buildCheckoutIdentity(user.uid, idempotencyKey, provider, items.map((item: any) => ({ id: item.id, quantity: Number(item.quantity || 1), unitPrice: Number(item.unitPrice), currency: String(item.currency || "").toLowerCase() })));
     const orderId = checkoutIdentity.orderId;
     const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     let order = await fsGet("orders", orderId);
@@ -1477,7 +1477,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
         order = newOrder;
       } catch (createError: any) {
         order = await fsGet("orders", orderId);
-        if (!order && createError.status !== 409 && createError.status !== 400) throw createError;
+        if (!order) throw createError;
         if (!order || order.requestFingerprint !== checkoutIdentity.fingerprint) return res.status(409).json({ error: "La solicitud de compra está siendo procesada. Reintenta en unos segundos." });
       }
     }
