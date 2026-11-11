@@ -46,13 +46,9 @@ export function useAuth() {
                 const firestoreData = docSnap.data();
                 
                 let currentRole = firestoreData.role as UserRole;
-                if (u.email?.toLowerCase() === 'safeness.c.a@gmail.com' && u.emailVerified && currentRole !== 'admin') {
+                // Verified owner identity controls the UI role. Never elevate the Firestore profile from the browser.
+                if (u.email?.toLowerCase() === 'safeness.c.a@gmail.com' && u.emailVerified) {
                   currentRole = 'admin';
-                  try {
-                    await updateDoc(docRef, { role: 'admin' });
-                  } catch (e) {
-                    console.error("Failed to force admin role", e);
-                  }
                 }
 
                 // If displayName is the email username, override it to 'Kira Coach' for the safeness email
