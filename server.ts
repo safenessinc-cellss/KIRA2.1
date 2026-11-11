@@ -2950,15 +2950,46 @@ async function startLocalServer() {
 
   const wss = new WebSocketServer({ noServer: true });
 
+  const liveConnections = new Map<string, number>();
   wss.on("connection", async (clientWs) => {
     let session: any = null;
-    
+    let authenticatedUser: VerifiedFirebaseUser | null = null;
+    let setupStarted = false;
+    const authTimeout = setTimeout(() => {
+      if (!authenticatedUser && clientWs.readyState === 1) clientWs.close(4401, "Authentication required");
+    }, 5000);
+
     clientWs.on("message", async (data) => {
       try {
         const msg = JSON.parse(data.toString());
-        
-        // Setup initial Live connection
+        if (!authenticatedUser) {
+          if (msg.type !== "auth" || typeof msg.idToken !== "string") {
+            clientWs.close(4401, "Send Firebase authentication first");
+            return;
+          }
+          const verified = await verifyFirebaseIdToken(msg.idToken);
+          if (!verified) {
+            clientWs.close(4401, "Invalid Firebase token");
+            return;
+          }
+          const active = liveConnections.get(verified.uid) || 0;
+          if (active >= 2) {
+            clientWs.close(4429, "Live connection limit reached");
+            return;
+          }
+          authenticatedUser = verified;
+          liveConnections.set(verified.uid, active + 1);
+          clearTimeout(authTimeout);
+          clientWs.send(JSON.stringify({ type: "authenticated" }));
+          return;
+        }
+
         if (msg.type === "setup") {
+          if (setupStarted) {
+            clientWs.close(4409, "Session setup already completed");
+            return;
+          }
+          setupStarted = true;
           try {
             const ai = getGeminiAI();
             session = await ai.live.connect({
@@ -2970,49 +3001,49 @@ async function startLocalServer() {
               },
               callbacks: {
                 onmessage: (geminiMsg: any) => {
-                  if (clientWs.readyState === 1) { // OPEN
-                    clientWs.send(JSON.stringify(geminiMsg));
-                  }
+                  if (clientWs.readyState === 1) clientWs.send(JSON.stringify(geminiMsg));
                 },
               },
             });
           } catch (err: any) {
             console.error("Failed to connect to Gemini Live session:", err);
-            if (clientWs.readyState === 1) {
-              clientWs.send(JSON.stringify({ error: err.message || "Failed to connect to Gemini Live session." }));
-            }
+            if (clientWs.readyState === 1) clientWs.send(JSON.stringify({ error: "No fue posible iniciar la sesión de IA." }));
             clientWs.close();
           }
-        } else if (msg.audio) {
-          if (session) {
-            session.sendRealtimeInput({
-              audio: { data: msg.audio, mimeType: "audio/pcm;rate=16000" },
-            });
-          }
+        } else if (msg.audio && session) {
+          session.sendRealtimeInput({ audio: { data: msg.audio, mimeType: "audio/pcm;rate=16000" } });
         }
       } catch (e: any) {
-        console.error("Error handling ws message on server:", e);
+        console.error("Error handling authenticated WebSocket message:", e);
+        if (!authenticatedUser && clientWs.readyState === 1) clientWs.close(4401, "Authentication failed");
       }
     });
 
     clientWs.on("close", () => {
+      clearTimeout(authTimeout);
+      if (authenticatedUser) {
+        const remaining = Math.max(0, (liveConnections.get(authenticatedUser.uid) || 1) - 1);
+        if (remaining === 0) liveConnections.delete(authenticatedUser.uid);
+        else liveConnections.set(authenticatedUser.uid, remaining);
+      }
       if (session) {
-        try {
-          session.close();
-        } catch (e) {
-          console.error("Error closing Gemini session:", e);
-        }
+        try { session.close(); }
+        catch (e) { console.error("Error closing Gemini session:", e); }
       }
     });
   });
 
+  // The first WebSocket message authenticates the Firebase user. Tokens are never
+  // placed in the URL, where reverse proxies and access logs could retain them.
   server.on("upgrade", (request, socket, head) => {
-    const pathname = request.url ? new URL(request.url, `http://${request.headers.host}`).pathname : "";
-    if (pathname === "/api/live") {
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit("connection", ws, request);
-      });
+    const requestUrl = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+    if (requestUrl.pathname !== "/api/live") {
+      socket.destroy();
+      return;
     }
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit("connection", ws, request);
+    });
   });
 
   server.on('error', (e: any) => {
