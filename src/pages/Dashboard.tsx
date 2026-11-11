@@ -31,6 +31,8 @@ export function Dashboard() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [checkingOutId, setCheckingOutId] = useState<string | null>(null);
   const [checkoutProvider, setCheckoutProvider] = useState<'stripe' | 'mercadopago'>('stripe');
+  const [availableGateways, setAvailableGateways] = useState<Array<'stripe' | 'mercadopago'>>([]);
+  const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
 
   const [cartItems, setCartItems] = useState<any[]>([]);
   const [showCart, setShowCart] = useState(false);
@@ -68,6 +70,35 @@ export function Dashboard() {
       return () => unsub();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!showPaymentModal || !user) return;
+    let active = true;
+    const loadPaymentMethods = async () => {
+      setLoadingPaymentMethods(true);
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) throw new Error('Tu sesión expiró.');
+        const response = await fetch('/api/payments/available', { headers: { Authorization: 'Bearer ' + token } });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'No se pudieron consultar los medios de pago.');
+        const providers = Array.isArray(payload.gateways)
+          ? payload.gateways.map((gateway: any) => gateway.provider).filter((provider: string) => provider === 'stripe' || provider === 'mercadopago')
+          : [];
+        if (active) {
+          setAvailableGateways(providers);
+          if (providers.length && !providers.includes(checkoutProvider)) setCheckoutProvider(providers[0]);
+        }
+      } catch (error) {
+        console.error('Payment methods unavailable:', error);
+        if (active) setAvailableGateways([]);
+      } finally {
+        if (active) setLoadingPaymentMethods(false);
+      }
+    };
+    void loadPaymentMethods();
+    return () => { active = false; };
+  }, [showPaymentModal, user]);
 
   // GUARDAR NUEVO ENLACE DE WHATSAPP
   const saveWhatsappUrl = async () => {
@@ -1268,11 +1299,10 @@ export function Dashboard() {
 
               <form onSubmit={handleProcessPayment} className="space-y-4">
                 <p className="text-sm text-slate-600">El pago se procesa en la plataforma oficial del proveedor. KIRA no solicita ni almacena los datos de tu tarjeta.</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <button type="button" onClick={() => setCheckoutProvider('stripe')} aria-pressed={checkoutProvider === 'stripe'} className={`rounded-xl border px-3 py-3 text-sm font-bold ${checkoutProvider === 'stripe' ? 'border-kirateal bg-kirateal/10 text-kirateal' : 'border-slate-200 text-slate-500'}`}>Stripe</button>
-                  <button type="button" onClick={() => setCheckoutProvider('mercadopago')} aria-pressed={checkoutProvider === 'mercadopago'} className={`rounded-xl border px-3 py-3 text-sm font-bold ${checkoutProvider === 'mercadopago' ? 'border-kirateal bg-kirateal/10 text-kirateal' : 'border-slate-200 text-slate-500'}`}>Mercado Pago</button>
-                </div>
-                <button type="submit" disabled={isProcessingPayment} className="w-full mt-4 py-4 bg-kirateal text-white rounded-2xl font-black uppercase text-xs tracking-wider disabled:opacity-50">
+                {loadingPaymentMethods ? <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">Consultando medios de pago habilitados…</p> : availableGateways.length ? <div className="grid grid-cols-2 gap-3">
+                  {availableGateways.map(provider => <button key={provider} type="button" onClick={() => setCheckoutProvider(provider)} aria-pressed={checkoutProvider === provider} className={`rounded-xl border px-3 py-3 text-sm font-bold ${checkoutProvider === provider ? 'border-kirateal bg-kirateal/10 text-kirateal' : 'border-slate-200 text-slate-500'}`}>{provider === 'mercadopago' ? 'Mercado Pago' : 'Stripe'}</button>)}
+                </div> : <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">No hay pasarelas habilitadas y verificadas. Contacta al administrador de KIRA.</p>}
+                <button type="submit" disabled={isProcessingPayment || loadingPaymentMethods || !availableGateways.includes(checkoutProvider)} className="w-full mt-4 py-4 bg-kirateal text-white rounded-2xl font-black uppercase text-xs tracking-wider disabled:opacity-50">
                   {isProcessingPayment ? 'Conectando con el proveedor…' : 'Continuar al pago seguro'}
                 </button>
               </form>
