@@ -624,7 +624,7 @@ app.get("/api/admin/payments/config",async(req,res)=>{
       fsGet("paymentSettings","global"),fsListDocuments("paymentGateways"),fsListDocuments("paymentPlans"),fsListDocuments("paymentCoupons")
     ]);
     return res.json({
-      settings:{version:Number(global?.version||0),paymentsEnabled:global?.paymentsEnabled!==false,baseCurrency:global?.baseCurrency||"BRL",allowedCurrencies:global?.allowedCurrencies||["BRL","USD","EUR"],roundingRule:global?.roundingRule||"half_up",requirePayment:global?.requirePayment!==false},
+      settings:{version:Number(global?.version||0),paymentsEnabled:global?.paymentsEnabled!==false,baseCurrency:global?.baseCurrency||"BRL",allowedCurrencies:global?.allowedCurrencies||["BRL","USD","EUR"],roundingRule:global?.roundingRule||"half_up",requirePayment:true},
       gateways:gateways.map(g=>({id:g.id,provider:g.provider,enabled:g.enabled===true,mode:g.mode==="live"?"live":"test",priority:Number(g.priority||0),publicKey:g.publicKey||"",hasApiKey:!!g.apiKeyEncrypted,hasWebhookSecret:!!g.webhookSecretEncrypted,maskedApiKey:g.apiKeyEncrypted?"•••••••• configurada":"No configurada",updatedAt:g.updatedAt||null})),
       plans:plans.map(({id,...p})=>({id,...p})),coupons:coupons.map(({id,...p})=>({id,...p}))
     });
@@ -645,7 +645,7 @@ app.patch("/api/admin/payments/settings",async(req,res)=>{
     const currentVersion=Number(before?.version||0);
     if(currentVersion!==expectedVersion){await rollbackFirestoreTransaction(transaction);transaction="";return res.status(409).json({error:"La configuración fue modificada en otra sesión. Actualiza el panel antes de guardar.",currentVersion});}
     const now=new Date().toISOString();
-    const next={version:currentVersion+1,paymentsEnabled:body.paymentsEnabled!==false,baseCurrency,allowedCurrencies,roundingRule,requirePayment:body.requirePayment!==false,updatedAt:now,updatedBy:user.uid};
+    const next={version:currentVersion+1,paymentsEnabled:body.paymentsEnabled!==false,baseCurrency,allowedCurrencies,roundingRule,requirePayment:true,updatedAt:now,updatedBy:user.uid};
     await fsCommitTransaction([
       before?fsUpdate("paymentSettings","global",next):fsCreate("paymentSettings","global",next),
       fsCreate("config_audit",randomBytes(16).toString("hex"),{scope:"payments",key:"global",actorId:user.uid,before:before||{},after:next,ip:req.ip,userAgent:String(req.headers["user-agent"]||"").slice(0,300),createdAt:now})
