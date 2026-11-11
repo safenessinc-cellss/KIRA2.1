@@ -14,6 +14,8 @@ test("checkout identity isolates users, keys, providers, and changed quantities"
   assert.notEqual(buildCheckoutIdentity("user-a", "request-223456789012", "stripe", [{ id: "course-a", quantity: 1 }]).orderId, base.orderId);
   assert.notEqual(buildCheckoutIdentity("user-a", "request-123456789012", "mercadopago", [{ id: "course-a", quantity: 1 }]).fingerprint, base.fingerprint);
   assert.notEqual(buildCheckoutIdentity("user-a", "request-123456789012", "stripe", [{ id: "course-a", quantity: 2 }]).fingerprint, base.fingerprint);
+  assert.notEqual(buildCheckoutIdentity("user-a", "request-123456789012", "stripe", [{ id: "course-a", quantity: 1, unitPrice: 20, currency: "brl" }]).fingerprint,
+    buildCheckoutIdentity("user-a", "request-123456789012", "stripe", [{ id: "course-a", quantity: 1, unitPrice: 21, currency: "brl" }]).fingerprint);
 });
 
 test("gateway credentials must match the configured environment", () => {
