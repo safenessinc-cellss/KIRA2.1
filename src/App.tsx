@@ -11,6 +11,7 @@ import { ToastProvider } from './hooks/useToast';
 import { CartProvider } from './components/CartProvider';
 import { Loader2 } from 'lucide-react';
 import { PerformanceMonitor } from './components/PerformanceMonitor';
+import { LegalCenter } from './pages/LegalCenter';
 
 // Performance Optimization: Lazy Loading for Code-Splitting heavy chunks
 const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
