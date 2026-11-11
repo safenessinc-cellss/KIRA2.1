@@ -768,13 +768,13 @@ async function startLocalServer() {
       const token = requestUrl.searchParams.get("token") || "";
       const liveUser = token ? await verifyFirebaseIdToken(token) : null;
       if (!liveUser) {
-        socket.write("HTTP/1.1 401 Unauthorized\\r\\nConnection: close\\r\\n\\r\\n");
+        socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
         socket.destroy();
         return;
       }
       const active = liveConnections.get(liveUser.uid) || 0;
       if (active >= 2) {
-        socket.write("HTTP/1.1 429 Too Many Requests\\r\\nConnection: close\\r\\n\\r\\n");
+        socket.write("HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n");
         socket.destroy();
         return;
       }
