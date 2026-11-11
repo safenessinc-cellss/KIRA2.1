@@ -1801,11 +1801,14 @@ app.post("/api/invoices/:id/checkout", async (req, res) => {
     if (!["open", "overdue"].includes(String(invoice.status)) || invoice.paymentId) return res.status(409).json({ error: "La cuota no está disponible para pago." });
     const [enrollment, course] = await Promise.all([fsGet("enrollments", invoice.enrollmentId), fsGet("courses", invoice.courseId || "")]);
     if (!enrollment || enrollment.userId !== user.uid || !course) return res.status(409).json({ error: "Matrícula o curso no disponible." });
+    const paymentSettings = await fsGet("paymentSettings", "global");
+    if (paymentSettings?.paymentsEnabled === false) return res.status(503).json({ error: "Los pagos están deshabilitados temporalmente por Administración." });
     const provider = req.body?.provider === "mercadopago" ? "mercadopago" : "stripe";
     const gateway = await fsGet("paymentGateways", provider);
-    if (gateway && gateway.enabled !== true) return res.status(503).json({ error: "La pasarela está deshabilitada." });
-    const stripeSecret = gateway?.apiKeyEncrypted ? decryptPaymentSecret(gateway.apiKeyEncrypted) : process.env.STRIPE_SECRET_KEY;
-    const mpToken = gateway?.apiKeyEncrypted ? decryptPaymentSecret(gateway.apiKeyEncrypted) : process.env.MERCADOPAGO_ACCESS_TOKEN;
+    if (!gateway || gateway.enabled !== true) return res.status(503).json({ error: "La pasarela no está habilitada desde el Dashboard de Administración." });
+    if (!gateway.apiKeyEncrypted || !gateway.webhookSecretEncrypted) return res.status(503).json({ error: "La pasarela no tiene credenciales completas configuradas desde el Dashboard." });
+    const stripeSecret = provider === "stripe" ? decryptPaymentSecret(gateway.apiKeyEncrypted) : "";
+    const mpToken = provider === "mercadopago" ? decryptPaymentSecret(gateway.apiKeyEncrypted) : "";
     if (provider === "stripe" && !stripeSecret) return res.status(503).json({ error: "Stripe no está configurado." });
     if (provider === "mercadopago" && !mpToken) return res.status(503).json({ error: "Mercado Pago no está configurado." });
     const orderId = academicId("invoice_" + invoiceId);
@@ -1850,7 +1853,8 @@ app.post("/api/create-checkout-session", async (req, res) => {
     const globalPaymentSettings=await fsGet("paymentSettings","global");
     if(globalPaymentSettings?.paymentsEnabled===false)return res.status(503).json({error:"El checkout está temporalmente deshabilitado por administración."});
     const gatewaySettings=await fsGet("paymentGateways",provider);
-    if(gatewaySettings && gatewaySettings.enabled!==true)return res.status(503).json({error:"Esta pasarela está deshabilitada por administración."});
+    if(!gatewaySettings || gatewaySettings.enabled!==true)return res.status(503).json({error:"Esta pasarela no está habilitada desde el Dashboard de Administración."});
+    if(!gatewaySettings.apiKeyEncrypted || !gatewaySettings.webhookSecretEncrypted)return res.status(503).json({error:"La pasarela requiere credenciales API y webhook configuradas desde el Dashboard."});
     if (!ids.length || ids.length > 20 || ids.some((item: any) => !item || typeof item.id !== "string" || item.id.length > 160 || !Number.isInteger(Number(item.quantity || 1)) || Number(item.quantity || 1) < 1 || Number(item.quantity || 1) > 20)) return res.status(400).json({ error: "Selecciona productos válidos." });
     const items: any[] = [];
     for (const requested of ids) {
@@ -1868,9 +1872,9 @@ app.post("/api/create-checkout-session", async (req, res) => {
     const hasRecurring=items.some(item=>item.interval==="monthly"||item.interval==="yearly");
     if(hasRecurring&&items.some(item=>item.interval==="one_time"))return res.status(400).json({error:"No se pueden mezclar planes recurrentes y pagos únicos en una misma orden."});
     if(hasRecurring&&provider==="mercadopago")return res.status(400).json({error:"Los planes recurrentes por Mercado Pago aún no están habilitados; usa Stripe o un plan de pago único."});
-    const stripeSecret=gatewaySettings?.apiKeyEncrypted?decryptPaymentSecret(gatewaySettings.apiKeyEncrypted):process.env.STRIPE_SECRET_KEY;
-    const stripe = provider === "stripe" && stripeSecret ? new Stripe(stripeSecret,{apiVersion:"2025-01-27" as any}) : null;
-    const mercadoPagoToken = gatewaySettings?.apiKeyEncrypted?decryptPaymentSecret(gatewaySettings.apiKeyEncrypted):process.env.MERCADOPAGO_ACCESS_TOKEN;
+    const stripeSecret=provider === "stripe" ? decryptPaymentSecret(gatewaySettings.apiKeyEncrypted) : "";
+    const stripe = provider === "stripe" ? new Stripe(stripeSecret,{apiVersion:"2025-01-27" as any}) : null;
+    const mercadoPagoToken = provider === "mercadopago" ? decryptPaymentSecret(gatewaySettings.apiKeyEncrypted) : "";
     if (provider === "stripe" && !stripe) return res.status(503).json({ error: "Stripe no está configurado en el servidor. Configura su clave en el Centro de pagos." });
     if (provider === "mercadopago" && !mercadoPagoToken) return res.status(503).json({ error: "Mercado Pago no está configurado en el servidor." });
     const orderId = randomBytes(18).toString("hex");
@@ -1913,8 +1917,8 @@ app.post("/api/webhooks/stripe", async (req: any, res) => {
   try {
   const signature = req.headers["stripe-signature"];
   const gateway=await fsGet("paymentGateways","stripe");
-  const stripeSecret=gateway?.apiKeyEncrypted?decryptPaymentSecret(gateway.apiKeyEncrypted):process.env.STRIPE_SECRET_KEY;
-  const webhookSecret=gateway?.webhookSecretEncrypted?decryptPaymentSecret(gateway.webhookSecretEncrypted):process.env.STRIPE_WEBHOOK_SECRET;
+  const stripeSecret=gateway?.apiKeyEncrypted?decryptPaymentSecret(gateway.apiKeyEncrypted):"";
+  const webhookSecret=gateway?.webhookSecretEncrypted?decryptPaymentSecret(gateway.webhookSecretEncrypted):"";
   const stripe=stripeSecret?new Stripe(stripeSecret,{apiVersion:"2025-01-27" as any}):null;
   if (!stripe || typeof signature !== "string" || !req.rawBody || !webhookSecret) return res.status(400).send("Webhook no configurado o firma ausente.");
   let event: Stripe.Event;
@@ -1941,7 +1945,7 @@ app.post("/api/webhooks/stripe", async (req: any, res) => {
 app.post("/api/webhooks/mercadopago", async (req: any, res) => {
   try {
     const gateway=await fsGet("paymentGateways","mercadopago");
-    const secret = gateway?.webhookSecretEncrypted?decryptPaymentSecret(gateway.webhookSecretEncrypted):(process.env.MERCADOPAGO_WEBHOOK_SECRET||"");
+    const secret = gateway?.webhookSecretEncrypted?decryptPaymentSecret(gateway.webhookSecretEncrypted):"";
     const signature = String(req.headers["x-signature"] || "");
     const requestId = String(req.headers["x-request-id"] || "");
     const paymentId = String(req.query["data.id"] || req.body?.data?.id || "");
@@ -1953,7 +1957,7 @@ app.post("/api/webhooks/mercadopago", async (req: any, res) => {
     const manifest = "id:" + paymentId.toLowerCase() + ";request-id:" + requestId + ";ts:" + parts.ts + ";";
     const expected = createHmac("sha256", secret).update(manifest).digest("hex");
     if (!parts.v1 || parts.v1.length !== expected.length || !timingSafeEqual(Buffer.from(parts.v1), Buffer.from(expected))) return res.status(401).send("Firma inválida.");
-    const token = gateway?.apiKeyEncrypted?decryptPaymentSecret(gateway.apiKeyEncrypted):process.env.MERCADOPAGO_ACCESS_TOKEN;
+    const token = gateway?.apiKeyEncrypted?decryptPaymentSecret(gateway.apiKeyEncrypted):"";
     if (!token) return res.status(503).send("Mercado Pago no configurado.");
     const response = await fetch("https://api.mercadopago.com/v1/payments/" + encodeURIComponent(paymentId), { headers: { Authorization: "Bearer " + token } });
     if (!response.ok) throw new Error("No fue posible consultar el pago.");
