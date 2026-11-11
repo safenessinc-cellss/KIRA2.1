@@ -12,7 +12,7 @@
     "lint": "tsc --noEmit --project tsconfig.app.json && tsc --noEmit --target ES2022 --module ESNext --moduleResolution bundler --skipLibCheck --types node server.ts",
     "test:rules": "node scripts/firestore-rules.test.mjs",
     "typecheck": "tsc --noEmit --project tsconfig.app.json && tsc --noEmit --target ES2022 --module ESNext --moduleResolution bundler --skipLibCheck --types node server.ts",
-    "test": "tsx --test scripts/academic-domain.test.ts scripts/finance-domain.test.ts scripts/outbox-domain.test.ts scripts/security-domain.test.ts scripts/integrations-domain.test.ts scripts/permissions-domain.test.ts",
+    "test": "tsx --test scripts/academic-domain.test.ts scripts/finance-domain.test.ts scripts/outbox-domain.test.ts scripts/security-domain.test.ts scripts/integrations-domain.test.ts scripts/permissions-domain.test.ts scripts/checkout-domain.test.ts",
     "test:all": "npm test && npm run test:rules"
   },
   "dependencies": {
