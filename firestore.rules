@@ -434,9 +434,21 @@ service cloud.firestore {
 
     match /chat_moderation_cases/{caseId} { allow read, create, update, delete: if false; }
 
+    // Chat IDs must contain the complete UID as a delimited token; substring
+    // matches can accidentally disclose messages to a different account whose UID
+    // happens to be embedded inside another participant's identifier.
+    function isChatParticipant(chatId) {
+      return isAuthenticated()
+        && chatId is string
+        && chatId.matches('(^|.*[^A-Za-z0-9])' + request.auth.uid + '([^A-Za-z0-9].*|$)');
+    }
+
     match /messages/{messageId} {
-      allow read: if isAuthenticated() && (isAdmin() || resource.data.chatId.matches('.*' + request.auth.uid + '.*'));
-      allow create: if isAuthenticated() && isValidMessage() && request.auth.uid == request.resource.data.senderId;
+      allow read: if isAuthenticated() && (isAdmin() || isChatParticipant(resource.data.chatId));
+      allow create: if isAuthenticated()
+        && isValidMessage()
+        && request.auth.uid == request.resource.data.senderId
+        && isChatParticipant(request.resource.data.chatId);
       allow update, delete: if isAdmin();
     }
 
