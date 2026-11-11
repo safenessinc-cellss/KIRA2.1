@@ -309,6 +309,8 @@ export function ChatWidget() {
               </div>
             </div>
             
+            <p className="mt-2 rounded-lg bg-white/10 px-3 py-2 text-[10px] leading-relaxed text-white/90">Aviso de transparencia: los mensajes de este chat de plataforma pueden ser revisados por moderadores autorizados para seguridad y cumplimiento. Los diarios personales y las sesiones privadas no forman parte de esta revisión.</p>
+
             {/* Propose button for coach */}
             {selectedContact && role === 'coach' && (
               <button 
