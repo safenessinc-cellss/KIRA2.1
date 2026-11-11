@@ -2,11 +2,11 @@ name: KIRA full quality and security gate
 
 on:
   pull_request:
-    branches: [main, "audit/**"]
+    branches: [main, "release/v2.1.0", "audit/**"]
     types: [opened, synchronize, reopened]
   workflow_dispatch: {}
   push:
-    branches: [main, "fix/**", "audit/**", "feature/**"]
+    branches: [main, "release/v2.1.0", "fix/**", "audit/**", "feature/**", "feat/**"]
 
 permissions:
   contents: read
