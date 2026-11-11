@@ -6,25 +6,34 @@ Fecha: 2026-11-11
 
 Se creó la rama aislada `integration/kira-port-v1` desde `main`. No se modificó `main`, no se fusionó ningún PR y no se tocó Vercel ni producción.
 
+El ZIP `remix_-kira2.1.zip` ya fue recibido y extraído. Se revisó su estructura y se documentó el criterio de integración aditiva en `KIRA_INTEGRATION_PLAN.md`. No se eliminará funcionalidad de ninguna de las dos fuentes.
+
 ## Bloqueos comprobados
 
-1. **Script local del operador no disponible:** no se detectó checkout del repositorio ni script de Fase B en el entorno de ejecución. El entorno actual permite consultar y modificar GitHub mediante API, pero no ejecutar el flujo Git local solicitado (`git fetch`, `git merge --no-ff --no-commit`, resolución de conflictos, `npm ci` y comandos locales).
-2. **No se puede verificar la integración de PR #25 de forma segura solo con el contenido disponible:** `release/admin-expanded-v1` contiene cambios de código y el archivo `AUDIT.md` difiere del de `main`. El procedimiento requiere conservar el `AUDIT.md` de la rama base y copiar el de la release como `AUDIT_ADMIN_EXPANDED.md`, además de validar que no queden conflictos. No se ha fabricado un merge ni se ha simulado la ejecución.
-3. **ZIP del prototipo AI Studio ausente del entorno:** no se encontró ningún archivo ZIP ni carpeta extraída de KIRA en el almacenamiento local disponible (`/mnt/data`). Por tanto, no se puede comparar ni portar componentes del prototipo todavía.
-4. **Especificación B→N incompleta en la instrucción recibida:** el texto termina durante la Fase B. No se incluyeron las definiciones de las fases C–N ni el contenido de las decisiones cerradas D1–D13 y R1–R4. No se deben inventar esas decisiones.
+1. **No hay checkout Git con conectividad de red:** el ZIP sí está disponible, pero el entorno no pudo clonar el repositorio porque no resuelve `github.com`. Por ello no se puede ejecutar de forma segura el merge local, instalar dependencias ni validar el proyecto completo. GitHub API sí permite inspeccionar y crear archivos/commits puntuales.
+2. **No se ha ejecutado el merge real de `release/admin-expanded-v1`:** la rama fuente contiene cambios de código y su `AUDIT.md` difiere del de `main`. La integración debe preservar el `AUDIT.md` base y conservar el audit de la release como `AUDIT_ADMIN_EXPANDED.md`; se requiere checkout Git para resolver y validar conflictos correctamente.
+3. **Especificación B→N incompleta:** la instrucción original termina durante la Fase B. No se incluyeron los pasos de C–N ni el contenido exacto de D1–D13 y R1–R4. No se inventarán pasos ni decisiones.
+4. **Validación no ejecutada:** no se han ejecutado `npm ci`, lint, build, pruebas de reglas ni pruebas funcionales integradas.
+
+## Hallazgos del ZIP y del repositorio
+
+- El prototipo AI Studio contiene portales separados para alumno y coach, chat de alumno/coach y páginas de administración, incluida moderación.
+- El repositorio actual ya dispone de gestión administrativa de coaches y alumnos, rutas de moderación y páginas administrativas especializadas. La integración debe consolidar estas capacidades, no reemplazarlas.
+- El requerimiento operativo nuevo queda documentado: el Dashboard Admin debe permitir gestionar **Coaches**, **Alumnos** y **Chat/Moderación**, revisar actividad y conversaciones bajo permisos y auditoría, y enlazar los registros relacionados.
+- El criterio detallado está en `KIRA_INTEGRATION_PLAN.md`.
 
 ## Evidencia de repositorio
 
 - Repositorio: `safenessinc-cellss/KIRA2.1`
-- Rama creada: `integration/kira-port-v1`
+- Rama de trabajo: `integration/kira-port-v1`
 - Base: `main`
 - Rama fuente indicada: `release/admin-expanded-v1`
-- `package.json` de `main`: scripts disponibles `lint`, `build`, `test:rules`; no declara script `test`.
+- `package.json` de `main`: scripts `lint`, `build`, `test:rules`; no declara script `test`.
 - `AUDIT.md` de `main` y `release/admin-expanded-v1` tienen contenidos distintos.
-- No se ha ejecutado `npm ci`, lint, build ni pruebas de reglas en un checkout local.
+- No se ha ejecutado instalación, lint, build ni pruebas en un checkout local.
 
 ## Próximo paso técnico
 
-Reanudar Fase B en un entorno con checkout Git real: ejecutar el script exacto del operador o su equivalente, preservar el `AUDIT.md` de `main`, extraer el audit de `release/admin-expanded-v1` como `AUDIT_ADMIN_EXPANDED.md`, verificar cero conflictos, ejecutar `npm ci`, `npm run lint`, `npm run build`, `npm run test:rules` y hacer push únicamente a `integration/kira-port-v1`.
+En un entorno con checkout Git y conectividad, completar el merge de la release, conservar ambos audits, resolver conflictos sin descartar funcionalidad, portar e integrar el prototipo y ejecutar todas las validaciones. Continuar C–N en orden cuando esté disponible la especificación completa.
 
-Después continuar C–N en orden, usando las instrucciones completas y las decisiones D1–D13/R1–R4. No fusionar a `main`; no ejecutar `vercel --prod`; no tocar producción.
+**Límites obligatorios:** no fusionar a `main`; no ejecutar `vercel --prod`; no tocar producción. El propietario exclusivo `safeness.c.a@gmail.com` mantiene sus privilegios; los moderadores y administradores delegados no pueden elevarlos.
