@@ -40,7 +40,7 @@ export function Dashboard() {
   const [purchases, setPurchases] = useState<any[]>([]);
   const [paymentForm, setPaymentForm] = useState({ cardName: '', cardNumber: '', expiry: '', cvv: '' });
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const checkoutAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
+  const checkoutAttemptRef = useRef<{ fingerprint: string; key: string; storageKey: string } | null>(null);
 
   const [showCommunityModal, setShowCommunityModal] = useState(false);
   const [whatsappUrl, setWhatsappUrl] = useState('');
@@ -362,7 +362,14 @@ export function Dashboard() {
       const checkoutItems = cartItems.map(item => ({ id: item.id, quantity: 1 })).sort((a, b) => a.id.localeCompare(b.id));
       const fingerprint = JSON.stringify({ provider: checkoutProvider, items: checkoutItems });
       if (!checkoutAttemptRef.current || checkoutAttemptRef.current.fingerprint !== fingerprint) {
-        checkoutAttemptRef.current = { fingerprint, key: window.crypto.randomUUID() };
+        const storageKey = 'kira.checkout.' + user.uid + '.' + fingerprint;
+        let storedKey: string | null = null;
+        try { storedKey = window.sessionStorage.getItem(storageKey); } catch { /* session storage may be unavailable */ }
+        const key = storedKey || window.crypto.randomUUID();
+        if (!storedKey) {
+          try { window.sessionStorage.setItem(storageKey, key); } catch { /* in-memory retry protection remains active */ }
+        }
+        checkoutAttemptRef.current = { fingerprint, key, storageKey };
       }
       const idempotencyKey = checkoutAttemptRef.current.key;
       const response = await fetch('/api/create-checkout-session', {
@@ -372,6 +379,7 @@ export function Dashboard() {
       });
       const data = await response.json();
       if (!response.ok || data.error || !data.url) throw new Error(data.error || 'No se pudo iniciar el pago.');
+      try { window.sessionStorage.removeItem(checkoutAttemptRef.current.storageKey); } catch { /* best-effort cleanup */ }
       checkoutAttemptRef.current = null;
       setShowPaymentModal(false);
       setShowCart(false);
