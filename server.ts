@@ -55,16 +55,7 @@ function setCache(key: string, data: any, ttlMs: number = 120 * 1000) { // 2 min
   });
 }
 
-// Lazy Stripe Initialization
-let stripeClient: Stripe | null = null;
-function getStripe() {
-  if (!stripeClient && process.env.STRIPE_SECRET_KEY) {
-    stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY, {
-       apiVersion: "2025-01-27" as any,
-    });
-  }
-  return stripeClient;
-}
+// Payment provider credentials are loaded only from encrypted Dashboard configuration.
 
 // Lazy Gemini Initialization
 let geminiClient: GoogleGenAI | null = null;
