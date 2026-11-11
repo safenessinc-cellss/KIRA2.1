@@ -17,3 +17,20 @@ export function webhookDedupeKey(provider: string, eventId: string): string {
   if (!provider.trim() || !eventId.trim()) throw new Error("provider and eventId are required");
   return createHash("sha256").update(provider.trim().toLowerCase() + ":" + eventId.trim()).digest("hex");
 }
+
+export function isPaymentGatewayCredentialModeValid(
+  provider: string,
+  mode: string,
+  apiKey: string,
+  webhookSecret: string
+): boolean {
+  if (!apiKey || !webhookSecret || !["test", "live"].includes(mode)) return false;
+  if (provider === "stripe") {
+    return (mode === "test" ? apiKey.startsWith("sk_test_") : apiKey.startsWith("sk_live_"))
+      && webhookSecret.startsWith("whsec_");
+  }
+  if (provider === "mercadopago") {
+    return mode === "test" ? apiKey.startsWith("TEST-") : apiKey.startsWith("APP_USR-");
+  }
+  return false;
+}
