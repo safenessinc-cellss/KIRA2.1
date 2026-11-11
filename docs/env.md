@@ -17,10 +17,9 @@ Todos los valores sensibles son server-only. Nunca añadir valores a Git, PR, lo
 | `LANDING_CAPTCHA_SECRET` | Validación server-side CAPTCHA de formularios | Landing pages |
 | `CRON_SECRET` | Bearer secreto para Vercel Cron/Cloud Scheduler; mínimo 24 caracteres aleatorios | Agregados HR y jobs financieros programados |
 | `KIRA_OUTBOX_CRON_SECRET` | Bearer secreto independiente para reintentos del outbox académico | Proyección de asistencia y evaluaciones |
-| `STRIPE_SECRET_KEY` | Acceso API Stripe (si no se usa secreto cifrado en Firestore) | Stripe |
-| `STRIPE_WEBHOOK_SECRET` | Verificación de webhook Stripe | Stripe |
-| `MERCADOPAGO_ACCESS_TOKEN` | Acceso API Mercado Pago | Mercado Pago |
-| `MERCADOPAGO_WEBHOOK_SECRET` | Verificación de webhook Mercado Pago | Mercado Pago |
+| Credenciales Stripe/Mercado Pago | Se introducen en Admin > Centro de pagos y se cifran AES-256-GCM en Firestore | Pasarela seleccionada |
+| `KIRA_PAYMENTS_ENCRYPTION_KEY` | Clave maestra server-only para cifrar credenciales administradas desde Dashboard | Guardar/leer secretos de pagos |
+| `KIRA_CONFIG_ENCRYPTION_KEY` | Nombre legacy aceptado temporalmente si no existe la clave anterior | Migración de configuración |
 
 ## Generación de claves
 - CRM: `openssl rand -base64 32` para `KIRA_CRM_PII_ENCRYPTION_KEY`.
@@ -36,6 +35,8 @@ Todos los valores sensibles son server-only. Nunca añadir valores a Git, PR, lo
 
 ## Configuración
 Configurar en Vercel Project Settings → Environment Variables para las funciones desplegadas en Vercel y en Secret Manager/Cloud Run para backend dedicado. No enviar secretos al bundle Vite.
+
+Las claves API y secretos de webhook de Stripe/Mercado Pago se administran desde **Admin → Centro de pagos**. Se cifran en el backend y el cliente solo recibe indicadores de configuración. La clave maestra `KIRA_PAYMENTS_ENCRYPTION_KEY` permanece en infraestructura server-only. Las variables legacy `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `MERCADOPAGO_ACCESS_TOKEN` y `MERCADOPAGO_WEBHOOK_SECRET` no son fuente de configuración para el checkout de esta rama.
 
 
 ## Modo DEMO sin credenciales
