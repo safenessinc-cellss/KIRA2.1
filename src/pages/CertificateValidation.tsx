@@ -28,7 +28,7 @@ export default function CertificateValidation() {
         <div className="text-2xl font-black tracking-[.2em] text-teal-800">KIRA COACH</div>
         <div className="text-xs tracking-[.25em] text-slate-400 mt-2">CENTRO DE VALIDACIÓN DE CERTIFICADOS</div>
       </div>
-      {loading ? <div className="py-16 text-center text-slate-500">Verificando firma criptográfica…</div> : certificate ? <>
+      {loading ? <div className="py-16 text-center text-slate-500">Verificando firma criptográfica…</div> : certificate && (result?.valid === true || revoked) ? <>
         <div className={'flex items-center justify-center gap-2 font-bold mt-7 '+(revoked?'text-rose-700':'text-emerald-700')}>{revoked?<><AlertTriangle size={22}/> CERTIFICADO REVOCADO</>:<><CheckCircle2 size={22}/> CERTIFICADO AUTÉNTICO Y VIGENTE</>}</div>
         <div className="text-center py-8">
           <Award size={42} className="mx-auto text-teal-600 mb-4"/>
@@ -43,7 +43,7 @@ export default function CertificateValidation() {
           <div><div className="text-xs text-slate-400 uppercase">Fecha de emisión</div><div className="font-semibold text-slate-800 mt-1">{date ? date.toLocaleDateString('es-ES') : 'No disponible'}</div></div>
         </div>
         <div className="mt-6 text-center text-sm text-slate-500"><div className="font-bold text-slate-800">{certificate.kiraNumber || certificate.certificateNumber}</div><div>Firma de verificación HMAC-SHA256: {result.valid ? 'válida' : 'no válida'}</div></div>
-      </> : <div className="py-16 text-center"><XCircle size={42} className="mx-auto text-rose-500 mb-4"/><h1 className="text-xl font-bold text-slate-900">{result?.status==='invalid_signature'?'Firma de verificación inválida':'Certificado no encontrado'}</h1><p className="text-slate-500 mt-2">No fue posible confirmar la autenticidad de esta credencial.</p></div>}
+      </> : <div className="py-16 text-center"><XCircle size={42} className="mx-auto text-rose-500 mb-4"/><h1 className="text-xl font-bold text-slate-900">{result?.status==='invalid_signature' || result?.valid === false ? 'Firma de verificación inválida' : 'Certificado no encontrado'}</h1><p className="text-slate-500 mt-2">No fue posible confirmar la autenticidad de esta credencial.</p></div>}
       <div className="mt-8 pt-5 border-t border-slate-100 text-center text-xs text-slate-400 flex items-center justify-center gap-2"><ShieldCheck size={14}/> Verificación pública KIRA · Creado por SAFENESS.INC</div>
     </section>
   </main>;
