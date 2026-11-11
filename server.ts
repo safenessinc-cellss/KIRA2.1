@@ -15,6 +15,7 @@ import { isOutboxEventEligible, outboxFailureTransition } from "./server/outbox-
 import { registerBackofficeExtensions } from "./server/backoffice-extensions.js";
 import { hasRecentMfaAuthentication } from "./server/security-domain.js";
 import { hasScopedPermission } from "./server/permissions-domain.js";
+import { buildCheckoutIdentity } from "./server/checkout-domain.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1410,7 +1411,7 @@ app.post("/api/invoices/:id/checkout", async (req, res) => {
       return res.json({ url: session.url, orderId, provider });
     }
     const preferenceResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
-      method: "POST", headers: { Authorization: "Bearer " + mpToken, "Content-Type": "application/json", "X-Idempotency-Key": orderId },
+      method: "POST", headers: { Authorization: "Bearer " + mpToken, "Content-Type": "application/json", "X-Idempotency-Key": checkoutIdentity.providerIdempotencyKey },
       body: JSON.stringify({ external_reference: orderId, notification_url: appUrl + "/api/webhooks/mercadopago", items: [{ id: item.id, title: item.title, quantity: 1, currency_id: currency.toUpperCase(), unit_price: amount }], back_urls: { success: appUrl + "/dashboard?payment=processing", pending: appUrl + "/dashboard?payment=pending", failure: appUrl + "/dashboard?payment=cancelled" }, auto_return: "approved", payer: user.email ? { email: user.email } : undefined })
     });
     if (!preferenceResponse.ok) throw new Error("Mercado Pago no pudo crear el pago de la cuota.");
@@ -1453,9 +1454,25 @@ app.post("/api/create-checkout-session", async (req, res) => {
     const mercadoPagoToken = gatewaySettings?.apiKeyEncrypted?decryptPaymentSecret(gatewaySettings.apiKeyEncrypted):process.env.MERCADOPAGO_ACCESS_TOKEN;
     if (provider === "stripe" && !stripe) return res.status(503).json({ error: "Stripe no está configurado en el servidor. Configura su clave en el Centro de pagos." });
     if (provider === "mercadopago" && !mercadoPagoToken) return res.status(503).json({ error: "Mercado Pago no está configurado en el servidor." });
-    const orderId = randomBytes(18).toString("hex");
+    const idempotencyKey = String(req.get("Idempotency-Key") || "").trim();
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(idempotencyKey)) return res.status(400).json({ error: "Falta una clave de idempotencia válida. Actualiza la página e inténtalo nuevamente." });
+    const checkoutIdentity = buildCheckoutIdentity(user.uid, idempotencyKey, provider, ids.map((item: any) => ({ id: item.id, quantity: Number(item.quantity || 1) })));
+    const orderId = checkoutIdentity.orderId;
     const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-    await fsCommit([fsCreate("orders", orderId, { userId: user.uid, provider, status: "pending", currency: items[0].currency, amount: total, items, createdAt: new Date().toISOString() })]);
+    let order = await fsGet("orders", orderId);
+    if (order && order.requestFingerprint !== checkoutIdentity.fingerprint) return res.status(409).json({ error: "La clave de compra ya fue utilizada con un carrito diferente. Vuelve a iniciar el checkout." });
+    if (!order) {
+      const newOrder = { userId: user.uid, provider, status: "pending", currency: items[0].currency, amount: total, items, requestFingerprint: checkoutIdentity.fingerprint, createdAt: new Date().toISOString() };
+      try {
+        await fsCommit([fsCreate("orders", orderId, newOrder)]);
+        order = newOrder;
+      } catch (createError: any) {
+        if (createError.status !== 409) throw createError;
+        order = await fsGet("orders", orderId);
+        if (!order || order.requestFingerprint !== checkoutIdentity.fingerprint) return res.status(409).json({ error: "La solicitud de compra está siendo procesada. Reintenta en unos segundos." });
+      }
+    }
+    if (order.checkoutUrl) return res.json({ url: order.checkoutUrl, orderId, provider, reused: true });
     const appUrl = (process.env.APP_URL || process.env.KIRA_APP_URL || "https://kira.coach").replace(/\/$/, "");
     if (provider === "stripe") {
       const session = await stripe!.checkout.sessions.create({
@@ -1464,8 +1481,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
         client_reference_id: user.uid, metadata: { userId: user.uid, orderId },
         success_url: appUrl + "/dashboard?payment=processing&session_id={CHECKOUT_SESSION_ID}",
         cancel_url: appUrl + "/dashboard?payment=cancelled"
-      });
-      const order = await fsGet("orders", orderId);
+      }, { idempotencyKey: checkoutIdentity.providerIdempotencyKey });
       await fsCommit([fsUpdate("orders", orderId, { ...order, providerSessionId: session.id, checkoutUrl: session.url })]);
       return res.json({ url: session.url, orderId, provider });
     }
@@ -1480,7 +1496,6 @@ app.post("/api/create-checkout-session", async (req, res) => {
     });
     if (!preferenceResponse.ok) throw new Error("Mercado Pago no pudo crear la preferencia.");
     const preference = await preferenceResponse.json() as any;
-    const order = await fsGet("orders", orderId);
     await fsCommit([fsUpdate("orders", orderId, { ...order, providerPreferenceId: preference.id, checkoutUrl: preference.init_point })]);
     return res.json({ url: preference.init_point, orderId, provider });
   } catch (error: any) {
