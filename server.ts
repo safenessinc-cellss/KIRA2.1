@@ -1717,7 +1717,7 @@ app.get("/api/verify/:kiraNumber",async(req,res)=>{
   try {
     const kiraNumber=String(req.params.kiraNumber||"");
     const signature=String(req.query.sig||"");
-    if(!/^KIRA-\d{4}-[A-F0-9]{12}$/.test(kiraNumber||!/^([a-f0-9]{64})$/.test(signature)) return res.status(404).json({valid:false,status:"not_found"});
+    if(!/^KIRA-\d{4}-[A-F0-9]{12}$/.test(kiraNumber)||!/^([a-f0-9]{64})$/.test(signature)) return res.status(404).json({valid:false,status:"not_found"});
     const record=await fsGet("certificates",kiraNumber);
     if(!record) return res.status(404).json({valid:false,status:"not_found"});
     const payload={kiraNumber:record.kiraNumber,studentId:record.studentId,studentName:record.studentName,courseId:record.courseId,courseName:record.courseName,coachId:record.coachId,coachName:record.coachName,academicHours:record.academicHours,adminId:record.adminId,adminName:record.adminName,watermarkHash:record.watermarkHash,issueDate:record.issueDate,status:"issued"};
