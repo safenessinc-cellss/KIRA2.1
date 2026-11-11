@@ -740,6 +740,21 @@ app.post("/api/admin/payments/coupons",async(req,res)=>{
     return res.status(201).json({id:idSafe(code),...coupon});
   }catch(e:any){console.error("[Payments] Coupon create failed:",e);return res.status(500).json({error:"No se pudo crear el cupón."});}
 });
+app.get("/api/payments/available",async(req,res)=>{
+  try{
+    const user=await verifiedUser(req,res);if(!user)return;
+    const [settings,gateways]=await Promise.all([fsGet("paymentSettings","global"),fsListDocuments("paymentGateways",20)]);
+    const available=settings?.paymentsEnabled===false?[]:gateways
+      .filter(g=>g.enabled===true&&!!g.apiKeyEncrypted&&!!g.webhookSecretEncrypted&&["stripe","mercadopago"].includes(String(g.provider)))
+      .sort((a,b)=>Number(a.priority||0)-Number(b.priority||0))
+      .map(g=>({provider:g.provider,mode:g.mode==="live"?"live":"test",publicKey:g.publicKey||"",priority:Number(g.priority||0)}));
+    return res.json({paymentsEnabled:settings?.paymentsEnabled!==false,gateways:available});
+  }catch(e:any){
+    console.error("[Payments] Available gateway lookup failed:",e);
+    return res.status(503).json({error:"No fue posible consultar los medios de pago disponibles."});
+  }
+});
+
 app.get("/api/admin/payments/audit",async(req,res)=>{
   try{const user=await requireSuperAdmin(req,res);if(!user)return;const [payments,configs]=await Promise.all([fsListDocuments("paymentAudit",100),fsListDocuments("config_audit",100)]);return res.json({items:[...payments,...configs].sort((a,b)=>String(b.createdAt||"").localeCompare(String(a.createdAt||""))).slice(0,150)});}
   catch(e:any){console.error("[Payments] Audit read failed:",e);return res.status(500).json({error:"No se pudo consultar la auditoría."});}
