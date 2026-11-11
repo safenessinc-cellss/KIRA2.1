@@ -21,17 +21,17 @@ export function CoreLayout() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-[#070b16] text-slate-100">
         <Loader2 className="w-8 h-8 animate-spin text-teal-500" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#070b16] text-slate-100 flex flex-col font-sans">
       <PushNotificationManager />
       <Outlet />
-      <footer className="mt-auto py-4 text-center text-[10px] text-slate-500 tracking-wide" aria-label="Créditos de desarrollo">
+      <footer className="mt-auto border-t border-white/10 bg-slate-950/50 px-4 py-5 text-center text-[11px] text-slate-400 backdrop-blur-xl" aria-label="Créditos de desarrollo">
         Creado por <span className="font-semibold text-slate-600">SAFENESS.INC</span>
       </footer>
       <AIChat />
