@@ -716,7 +716,7 @@ app.post("/api/admin/payments/gateways/:provider/test",async(req,res)=>{
     }
     const now=new Date().toISOString();
     await fsCommit([fsCreate("paymentAudit",randomBytes(16).toString("hex"),{actorId:user.uid,action:"gateway.connection_tested",entity:"paymentGateways",entityId:provider,status:"success",mode:gateway.mode,createdAt:now})]);
-    return res.json({ok:true,account,message:"Conexión verificada. No se realizó ningún cobro."});
+    return res.json({ok:true,account,message:"Conexión API verificada. El webhook se confirma con un evento firmado del proveedor. No se realizó ningún cobro."});
   }catch(e:any){
     console.error("[Payments] Gateway connection test failed:",e);
     return res.status(502).json({error:"No se pudo verificar la conexión. Revisa las credenciales y el modo configurado."});
