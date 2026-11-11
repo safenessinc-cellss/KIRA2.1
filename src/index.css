@@ -57,3 +57,98 @@
 .rich-text-content em {
   font-style: italic;
 }
+
+
+/* KIRA 2.1 — restored premium dark glass visual system */
+:root {
+  color-scheme: dark;
+  --kira-bg: #070b16;
+  --kira-surface: rgba(17, 25, 43, 0.78);
+  --kira-surface-strong: rgba(22, 32, 53, 0.94);
+  --kira-border: rgba(148, 163, 184, 0.18);
+  --kira-text: #eef3ff;
+  --kira-muted: #a8b4c8;
+  --kira-accent: #8b9cff;
+  --kira-accent-soft: rgba(139, 156, 255, 0.16);
+}
+
+html, body, #root {
+  min-height: 100%;
+  background: var(--kira-bg);
+}
+
+body {
+  margin: 0;
+  color: var(--kira-text);
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(83, 103, 180, 0.18), transparent 38%),
+    radial-gradient(ellipse at 92% 8%, rgba(39, 148, 160, 0.11), transparent 34%),
+    linear-gradient(145deg, #070b16 0%, #0b1221 54%, #080e1a 100%);
+  background-attachment: fixed;
+  font-family: var(--font-sans);
+}
+
+/* Translate the legacy light surfaces into restrained glass panels without
+   changing component behavior, routes, or data contracts. */
+[class~="bg-white"], [class~="bg-gray-50"], [class~="bg-gray-100"],
+[class~="bg-slate-50"], [class~="bg-slate-100"] {
+  background-color: var(--kira-surface) !important;
+  color: var(--kira-text);
+  border-color: var(--kira-border);
+}
+
+[class~="bg-gray-200"], [class~="bg-slate-200"] {
+  background-color: rgba(71, 85, 105, 0.28) !important;
+}
+
+[class~="text-gray-900"], [class~="text-slate-900"],
+[class~="text-gray-800"], [class~="text-slate-800"],
+[class~="text-gray-700"], [class~="text-slate-700"] {
+  color: #e8eefb !important;
+}
+
+[class~="text-gray-600"], [class~="text-slate-600"],
+[class~="text-gray-500"], [class~="text-slate-500"],
+[class~="text-gray-400"], [class~="text-slate-400"] {
+  color: var(--kira-muted) !important;
+}
+
+[class~="border-gray-100"], [class~="border-gray-200"],
+[class~="border-slate-100"], [class~="border-slate-200"],
+[class~="border-gray-300"], [class~="border-slate-300"] {
+  border-color: var(--kira-border) !important;
+}
+
+input, select, textarea {
+  color: var(--kira-text);
+  background-color: rgba(8, 14, 27, 0.72);
+  border-color: var(--kira-border);
+}
+
+input::placeholder, textarea::placeholder {
+  color: #8290a8;
+}
+
+button, a, input, select, textarea {
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(139, 156, 255, 0.9);
+  outline-offset: 2px;
+}
+
+.rich-text-content p { margin-bottom: 0.75rem; }
+.rich-text-content ul { list-style-type: disc; margin-left: 1.5rem; margin-bottom: 0.75rem; }
+.rich-text-content ol { list-style-type: decimal; margin-left: 1.5rem; margin-bottom: 0.75rem; }
+.rich-text-content strong { font-weight: 700; }
+.rich-text-content em { font-style: italic; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
