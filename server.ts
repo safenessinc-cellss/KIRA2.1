@@ -15,7 +15,7 @@ import { isOutboxEventEligible, outboxFailureTransition } from "./server/outbox-
 import { registerBackofficeExtensions } from "./server/backoffice-extensions.js";
 import { hasRecentMfaAuthentication } from "./server/security-domain.js";
 import { hasScopedPermission } from "./server/permissions-domain.js";
-import { buildCheckoutIdentity } from "./server/checkout-domain.js";
+import { buildCheckoutIdentity, isGatewayCredentialModeCompatible } from "./server/checkout-domain.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -891,6 +891,9 @@ app.put("/api/admin/payments/gateways/:provider",async(req,res)=>{
     const body=req.body||{},id=provider,previous=await fsGet("paymentGateways",id);
     const mode=body.mode==="live"?"live":"test",priority=Math.max(0,Math.min(100,Number(body.priority||0)));
     const apiKey=typeof body.apiKey==="string"?body.apiKey.trim():"",webhookSecret=typeof body.webhookSecret==="string"?body.webhookSecret.trim():"";
+    const effectiveApiKey=apiKey||(previous?.apiKeyEncrypted?decryptPaymentSecret(previous.apiKeyEncrypted):"")||(provider==="stripe"?process.env.STRIPE_SECRET_KEY:process.env.MERCADOPAGO_ACCESS_TOKEN)||"";
+    if(body.enabled===true&&!effectiveApiKey)return res.status(400).json({error:"No puedes habilitar la pasarela sin una clave API configurada."});
+    if(effectiveApiKey&&!isGatewayCredentialModeCompatible(provider,mode,effectiveApiKey))return res.status(400).json({error:"La clave API no corresponde al modo "+(mode==="live"?"producción":"prueba")+" seleccionado. Verifica la credencial antes de guardar."});
     if((apiKey||webhookSecret)&&provider!=="manual")paymentEncryptionKey();
     const next={provider,enabled:body.enabled===true,mode,priority,publicKey:String(body.publicKey||"").slice(0,500),apiKeyEncrypted:apiKey?encryptPaymentSecret(apiKey):(previous?.apiKeyEncrypted||""),webhookSecretEncrypted:webhookSecret?encryptPaymentSecret(webhookSecret):(previous?.webhookSecretEncrypted||""),updatedBy:user.uid,updatedAt:new Date().toISOString()};
     await fsCommit([previous?fsUpdate("paymentGateways",id,next):fsCreate("paymentGateways",id,next),fsCreate("paymentAudit",randomBytes(16).toString("hex"),{actorId:user.uid,action:"gateway.updated",entity:"paymentGateways",entityId:id,before:{...previous,apiKeyEncrypted:previous?.apiKeyEncrypted?"[secret]":undefined,webhookSecretEncrypted:previous?.webhookSecretEncrypted?"[secret]":undefined},after:{...next,apiKeyEncrypted:next.apiKeyEncrypted?"[secret]":undefined,webhookSecretEncrypted:next.webhookSecretEncrypted?"[secret]":undefined},ip:req.ip,userAgent:String(req.headers["user-agent"]||"").slice(0,300),createdAt:next.updatedAt})]);
@@ -1452,8 +1455,10 @@ app.post("/api/create-checkout-session", async (req, res) => {
     const stripeSecret=gatewaySettings?.apiKeyEncrypted?decryptPaymentSecret(gatewaySettings.apiKeyEncrypted):process.env.STRIPE_SECRET_KEY;
     const stripe = provider === "stripe" && stripeSecret ? new Stripe(stripeSecret,{apiVersion:"2025-01-27" as any}) : null;
     const mercadoPagoToken = gatewaySettings?.apiKeyEncrypted?decryptPaymentSecret(gatewaySettings.apiKeyEncrypted):process.env.MERCADOPAGO_ACCESS_TOKEN;
+    const effectiveGatewayCredential = provider === "stripe" ? stripeSecret : mercadoPagoToken;
     if (provider === "stripe" && !stripe) return res.status(503).json({ error: "Stripe no está configurado en el servidor. Configura su clave en el Centro de pagos." });
     if (provider === "mercadopago" && !mercadoPagoToken) return res.status(503).json({ error: "Mercado Pago no está configurado en el servidor." });
+    if (gatewaySettings && !isGatewayCredentialModeCompatible(provider,gatewaySettings.mode==="live"?"live":"test",String(effectiveGatewayCredential||""))) return res.status(503).json({error:"La credencial de la pasarela no coincide con el modo configurado. Revisa el Centro de pagos."});
     const idempotencyKey = String(req.get("Idempotency-Key") || "").trim();
     if (!/^[A-Za-z0-9_-]{16,128}$/.test(idempotencyKey)) return res.status(400).json({ error: "Falta una clave de idempotencia válida. Actualiza la página e inténtalo nuevamente." });
     const checkoutIdentity = buildCheckoutIdentity(user.uid, idempotencyKey, provider, ids.map((item: any) => ({ id: item.id, quantity: Number(item.quantity || 1) })));
@@ -1486,7 +1491,7 @@ app.post("/api/create-checkout-session", async (req, res) => {
       return res.json({ url: session.url, orderId, provider });
     }
     const preferenceResponse = await fetch("https://api.mercadopago.com/checkout/preferences", {
-      method: "POST", headers: { Authorization: "Bearer " + mercadoPagoToken, "Content-Type": "application/json", "X-Idempotency-Key": orderId },
+      method: "POST", headers: { Authorization: "Bearer " + mercadoPagoToken, "Content-Type": "application/json", "X-Idempotency-Key": checkoutIdentity.providerIdempotencyKey },
       body: JSON.stringify({
         external_reference: orderId, notification_url: appUrl + "/api/webhooks/mercadopago",
         items: items.map(item => ({ id: item.id, title: item.title, quantity: item.quantity, currency_id: item.currency.toUpperCase(), unit_price: item.unitPrice })),
