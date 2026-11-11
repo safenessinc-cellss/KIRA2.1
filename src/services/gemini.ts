@@ -1,40 +1,38 @@
-// src/services/gemini.ts
-import { GoogleGenerativeAI } from '@google/generative-ai';
+// Gemini calls must go through the authenticated server proxy.
+// Never place a Gemini API key in VITE_* variables or browser bundles.
+import { auth } from '../firebase';
 
-// Lee la API key desde las variables de entorno
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+type GeminiResult = { response: { text: () => string } };
 
-// Verifica que la clave exista
-if (!GEMINI_API_KEY) {
-  console.error('❌ VITE_GEMINI_API_KEY no está configurada en .env');
-  console.error('🔑 Por favor, obtén tu API key en: https://aistudio.google.com/');
-  throw new Error('Gemini API key is required. Please check your .env file.');
+async function generateContent(prompt: string): Promise<GeminiResult> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Debes iniciar sesión para utilizar el servicio de IA.');
+  const idToken = await user.getIdToken();
+  const response = await fetch('/api/gemini/generate', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: { temperature: 0.7, topK: 40, topP: 0.95, maxOutputTokens: 2048 },
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(typeof payload.error === 'string' ? payload.error : 'No fue posible completar la solicitud de IA.');
+  }
+  const text = typeof payload.text === 'string' ? payload.text : '';
+  return { response: { text: () => text } };
 }
 
-console.log('✅ Gemini API inicializada correctamente');
+// Compatibility facade for existing callers using model.generateContent().
+export const model = { generateContent };
+export const genAI = { getGenerativeModel: () => model };
 
-// Inicializa el cliente de Gemini
-export const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-
-// Configura el modelo (puedes cambiar a 'gemini-1.5-flash' para respuestas más rápidas)
-export const model = genAI.getGenerativeModel({ 
-  model: 'gemini-1.5-pro',
-  generationConfig: {
-    temperature: 0.7,
-    topK: 40,
-    topP: 0.95,
-    maxOutputTokens: 2048,
-  },
-});
-
-// Función helper para usar Gemini
-export async function generarConGemini(prompt: string) {
-  try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text();
-  } catch (error) {
-    console.error('❌ Error al llamar a Gemini:', error);
-    throw error;
-  }
+export async function generarConGemini(prompt: string): Promise<string> {
+  const result = await generateContent(prompt);
+  return result.response.text();
 }
