@@ -3597,7 +3597,7 @@ function TransactionsMonitorView() {
                  const currency = String(tx.currency || 'USD').toUpperCase();
                  totals[currency] = (totals[currency] || 0) + Number(tx.amount || 0);
                  return totals;
-               }, {} as Record<string, number>)).map(([currency, total]) => `${currency} ${total.toFixed(2)}`).join(' · ') || 'Sin transacciones'}
+               }, {} as Record<string, number>)).map(([currency, total]) => `${currency} ${Number(total).toFixed(2)}`).join(' · ') || 'Sin transacciones'}
             </div>
          </div>
       </div>
