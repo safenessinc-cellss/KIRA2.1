@@ -17,6 +17,7 @@ import { hasRecentMfaAuthentication } from "./server/security-domain.js";
 import { hasDelegatedPermission } from "./server/permissions-domain.js";
 import { calculateCoachClientRetention, homeworkPointsAward, normalizeCoachLeadStage, validateHomeworkReview } from "./server/coach-domain.js";
 import { aggregateCompanyWellbeing, isValidWellbeingCheckin } from "./server/wellbeing-domain.js";
+import { isPaymentGatewayCredentialModeValid } from "./server/integrations-domain.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -685,9 +686,8 @@ app.put("/api/admin/payments/gateways/:provider",async(req,res)=>{
     const effectiveApiKey=apiKey || (previous?.apiKeyEncrypted?decryptPaymentSecret(previous.apiKeyEncrypted):"");
     const effectiveWebhookSecret=webhookSecret || (previous?.webhookSecretEncrypted?decryptPaymentSecret(previous.webhookSecretEncrypted):"");
     if(body.enabled===true && (!effectiveApiKey || !effectiveWebhookSecret)) return res.status(400).json({error:"Para activar la pasarela debes configurar la clave API y el secreto del webhook desde este Dashboard."});
-    if(provider==="stripe" && effectiveApiKey && (!/^sk_(test|live)_/.test(effectiveApiKey) || (mode==="test" && !effectiveApiKey.startsWith("sk_test_")) || (mode==="live" && !effectiveApiKey.startsWith("sk_live_")))) return res.status(400).json({error:"La clave secreta de Stripe no corresponde al modo seleccionado."});
-    if(provider==="stripe" && body.enabled===true && !effectiveWebhookSecret.startsWith("whsec_")) return res.status(400).json({error:"El secreto de webhook Stripe debe comenzar por whsec_."});
-    if(provider==="mercadopago" && effectiveApiKey && ((mode==="test" && !effectiveApiKey.startsWith("TEST-")) || (mode==="live" && !effectiveApiKey.startsWith("APP_USR-")))) return res.status(400).json({error:"El Access Token de Mercado Pago no corresponde al modo seleccionado."});
+    if(body.enabled===true && !isPaymentGatewayCredentialModeValid(provider,mode,effectiveApiKey,effectiveWebhookSecret)) return res.status(400).json({error:"Las credenciales no corresponden al proveedor y modo seleccionados. Verifica también el secreto del webhook."});
+    if(effectiveApiKey && effectiveWebhookSecret && !isPaymentGatewayCredentialModeValid(provider,mode,effectiveApiKey,effectiveWebhookSecret)) return res.status(400).json({error:"Las credenciales no corresponden al proveedor y modo seleccionados."});
     const next={provider,enabled:body.enabled===true,mode,priority,publicKey:String(body.publicKey||"").slice(0,500),apiKeyEncrypted,webhookSecretEncrypted,updatedBy:user.uid,updatedAt:new Date().toISOString()};
     await fsCommit([previous?fsUpdate("paymentGateways",id,next):fsCreate("paymentGateways",id,next),fsCreate("paymentAudit",randomBytes(16).toString("hex"),{actorId:user.uid,action:"gateway.updated",entity:"paymentGateways",entityId:id,before:{...previous,apiKeyEncrypted:previous?.apiKeyEncrypted?"[secret]":undefined,webhookSecretEncrypted:previous?.webhookSecretEncrypted?"[secret]":undefined},after:{...next,apiKeyEncrypted:next.apiKeyEncrypted?"[secret]":undefined,webhookSecretEncrypted:next.webhookSecretEncrypted?"[secret]":undefined},ip:req.ip,userAgent:String(req.headers["user-agent"]||"").slice(0,300),createdAt:next.updatedAt})]);
     return res.json({ok:true,gateway:{provider,enabled:next.enabled,mode,priority,publicKey:next.publicKey,hasApiKey:!!next.apiKeyEncrypted,hasWebhookSecret:!!next.webhookSecretEncrypted}});
