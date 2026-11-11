@@ -82,8 +82,8 @@ export function Dashboard() {
         const response = await fetch('/api/payments/available', { headers: { Authorization: 'Bearer ' + token } });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || 'No se pudieron consultar los medios de pago.');
-        const providers = Array.isArray(payload.gateways)
-          ? payload.gateways.map((gateway: any) => gateway.provider).filter((provider: string) => provider === 'stripe' || provider === 'mercadopago')
+        const providers: Array<'stripe' | 'mercadopago'> = Array.isArray(payload.gateways)
+          ? payload.gateways.map((gateway: any) => gateway.provider).filter((provider: any): provider is 'stripe' | 'mercadopago' => provider === 'stripe' || provider === 'mercadopago')
           : [];
         if (active) {
           setAvailableGateways(providers);
@@ -98,7 +98,7 @@ export function Dashboard() {
     };
     void loadPaymentMethods();
     return () => { active = false; };
-  }, [showPaymentModal, user]);
+  }, [showPaymentModal, user, checkoutProvider]);
 
   // GUARDAR NUEVO ENLACE DE WHATSAPP
   const saveWhatsappUrl = async () => {
