@@ -10,6 +10,7 @@ import { ImageUpload } from '../components/ImageUpload';
 import { AdminBooksView } from './AdminBooksView';
 import { AdminMembershipPlansView } from './AdminMembershipPlansView';
 import { AdminPaymentsConfig } from './AdminPaymentsConfig';
+import { AdminLegalView } from './admin/AdminLegalView';
 import { BackofficeDashboard, BackofficeCRM } from './admin/BackofficeDataViews';
 import { AcademicGroupsView, AcademicPerformanceView } from './admin/AcademicViews';
 import { EnrollmentContractsView, InvoicesView } from './admin/FinanceViews';
@@ -17,7 +18,7 @@ import { Funnel, PhoneCall, BadgeCheck, GraduationCap, CalendarDays, Layers3, Us
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'activity' | 'certificates' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions';
+type AdminTab = 'dashboard' | 'activity' | 'certificates' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions' | 'legal';
 
 type BackofficeItem = { id: AdminTab; label: string; icon: React.ReactNode; permission: string; ready: boolean; countKey?: 'leads' | 'overdue' };
 
@@ -277,7 +278,8 @@ export function AdminMonitor() {
     ] },
     { label: 'Configuración', items: [
       { id: 'integrations', label: 'Integraciones (Landing Pages / WhatsApp)', icon: <PlugZap size={18}/>, permission: 'superadmin', ready: false },
-      { id: 'permissions', label: 'Usuarios y Permisos', icon: <ShieldCheck size={18}/>, permission: 'superadmin', ready: true }
+      { id: 'permissions', label: 'Usuarios y Permisos', icon: <ShieldCheck size={18}/>, permission: 'superadmin', ready: true },
+      { id: 'legal', label: 'Centro Legal y Privacidad', icon: <FileText size={18}/>, permission: 'superadmin', ready: true }
     ] }
   ];
   const activeItem = tree.flatMap(group => group.items).find(item => item.id === activeTab);
@@ -300,6 +302,7 @@ export function AdminMonitor() {
       case 'gateways': return <AdminPaymentsConfig />;
       case 'coupons': return <AdminPaymentsConfig />;
       case 'permissions': return <SecurityView />;
+      case 'legal': return <AdminLegalView />;
       default: return null;
     }
   };
