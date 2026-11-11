@@ -264,9 +264,10 @@ function decryptPaymentSecret(value:string):string {
 }
 async function requireSuperAdmin(req:express.Request,res:express.Response):Promise<VerifiedFirebaseUser|null>{
   const user=await verifiedUser(req,res);if(!user)return null;
-  const profile=await fsGet("users",user.uid);
-  if(user.email?.toLowerCase()!=="safeness.c.a@gmail.com"||user.emailVerified!==true||profile?.role!=="admin"){
-    res.status(403).json({error:"Solo el superadministrador KIRA verificado puede administrar pagos y configuración."});return null;
+  // The immutable verified owner identity is the authorization boundary.
+  // A mutable Firestore profile role must never grant or revoke platform ownership.
+  if(user.email?.toLowerCase()!=="safeness.c.a@gmail.com"||user.emailVerified!==true){
+    res.status(403).json({error:"Solo la cuenta propietaria verificada puede administrar pagos y configuración."});return null;
   }
   if (!hasRecentMfaAuthentication(user, Date.now(), 5 * 60 * 1000)) {
     res.status(403).json({ error: "Se requiere MFA reciente para esta acción. Cierra sesión e inicia sesión nuevamente con el segundo factor habilitado en Firebase." });
@@ -649,10 +650,47 @@ app.put("/api/admin/payments/gateways/:provider",async(req,res)=>{
     const mode=body.mode==="live"?"live":"test",priority=Math.max(0,Math.min(100,Number(body.priority||0)));
     const apiKey=typeof body.apiKey==="string"?body.apiKey.trim():"",webhookSecret=typeof body.webhookSecret==="string"?body.webhookSecret.trim():"";
     if((apiKey||webhookSecret)&&provider!=="manual")paymentEncryptionKey();
-    const next={provider,enabled:body.enabled===true,mode,priority,publicKey:String(body.publicKey||"").slice(0,500),apiKeyEncrypted:apiKey?encryptPaymentSecret(apiKey):(previous?.apiKeyEncrypted||""),webhookSecretEncrypted:webhookSecret?encryptPaymentSecret(webhookSecret):(previous?.webhookSecretEncrypted||""),updatedBy:user.uid,updatedAt:new Date().toISOString()};
+    const apiKeyEncrypted=apiKey?encryptPaymentSecret(apiKey):(previous?.apiKeyEncrypted||"");
+    const webhookSecretEncrypted=webhookSecret?encryptPaymentSecret(webhookSecret):(previous?.webhookSecretEncrypted||"");
+    const effectiveApiKey=apiKey || (previous?.apiKeyEncrypted?decryptPaymentSecret(previous.apiKeyEncrypted):"");
+    const effectiveWebhookSecret=webhookSecret || (previous?.webhookSecretEncrypted?decryptPaymentSecret(previous.webhookSecretEncrypted):"");
+    if(body.enabled===true && (!effectiveApiKey || !effectiveWebhookSecret)) return res.status(400).json({error:"Para activar la pasarela debes configurar la clave API y el secreto del webhook desde este Dashboard."});
+    if(provider==="stripe" && effectiveApiKey && (!/^sk_(test|live)_/.test(effectiveApiKey) || (mode==="test" && !effectiveApiKey.startsWith("sk_test_")) || (mode==="live" && !effectiveApiKey.startsWith("sk_live_")))) return res.status(400).json({error:"La clave secreta de Stripe no corresponde al modo seleccionado."});
+    if(provider==="stripe" && body.enabled===true && !effectiveWebhookSecret.startsWith("whsec_")) return res.status(400).json({error:"El secreto de webhook Stripe debe comenzar por whsec_."});
+    if(provider==="mercadopago" && effectiveApiKey && ((mode==="test" && !effectiveApiKey.startsWith("TEST-")) || (mode==="live" && !effectiveApiKey.startsWith("APP_USR-")))) return res.status(400).json({error:"El Access Token de Mercado Pago no corresponde al modo seleccionado."});
+    const next={provider,enabled:body.enabled===true,mode,priority,publicKey:String(body.publicKey||"").slice(0,500),apiKeyEncrypted,webhookSecretEncrypted,updatedBy:user.uid,updatedAt:new Date().toISOString()};
     await fsCommit([previous?fsUpdate("paymentGateways",id,next):fsCreate("paymentGateways",id,next),fsCreate("paymentAudit",randomBytes(16).toString("hex"),{actorId:user.uid,action:"gateway.updated",entity:"paymentGateways",entityId:id,before:{...previous,apiKeyEncrypted:previous?.apiKeyEncrypted?"[secret]":undefined,webhookSecretEncrypted:previous?.webhookSecretEncrypted?"[secret]":undefined},after:{...next,apiKeyEncrypted:next.apiKeyEncrypted?"[secret]":undefined,webhookSecretEncrypted:next.webhookSecretEncrypted?"[secret]":undefined},ip:req.ip,userAgent:String(req.headers["user-agent"]||"").slice(0,300),createdAt:next.updatedAt})]);
     return res.json({ok:true,gateway:{provider,enabled:next.enabled,mode,priority,publicKey:next.publicKey,hasApiKey:!!next.apiKeyEncrypted,hasWebhookSecret:!!next.webhookSecretEncrypted}});
   }catch(e:any){console.error("[Payments] Gateway update failed:",e);return res.status(500).json({error:e.message||"No se pudo guardar la pasarela."});}
+});
+app.post("/api/admin/payments/gateways/:provider/test",async(req,res)=>{
+  try{
+    const user=await requireSuperAdmin(req,res);if(!user)return;
+    const provider=String(req.params.provider||"");
+    if(!["stripe","mercadopago"].includes(provider))return res.status(400).json({error:"Pasarela no admitida."});
+    const gateway=await fsGet("paymentGateways",provider);
+    if(!gateway?.apiKeyEncrypted)return res.status(409).json({error:"Guarda primero las credenciales de esta pasarela."});
+    const apiKey=decryptPaymentSecret(gateway.apiKeyEncrypted);
+    let account:any={};
+    if(provider==="stripe"){
+      if((gateway.mode==="test"&&!apiKey.startsWith("sk_test_"))||(gateway.mode==="live"&&!apiKey.startsWith("sk_live_")))return res.status(409).json({error:"El modo configurado no coincide con la clave Stripe guardada."});
+      const stripe=new Stripe(apiKey,{apiVersion:"2025-01-27" as any});
+      const balance=await stripe.balance.retrieve();
+      account={provider:"stripe",mode:gateway.mode,availableBalanceCount:Array.isArray(balance.available)?balance.available.length:0};
+    }else{
+      if((gateway.mode==="test"&&!apiKey.startsWith("TEST-"))||(gateway.mode==="live"&&!apiKey.startsWith("APP_USR-")))return res.status(409).json({error:"El modo configurado no coincide con el Access Token de Mercado Pago."});
+      const response=await fetch("https://api.mercadopago.com/users/me",{headers:{Authorization:"Bearer "+apiKey}});
+      if(!response.ok)return res.status(502).json({error:"Mercado Pago rechazó las credenciales configuradas."});
+      const profile=await response.json() as any;
+      account={provider:"mercadopago",mode:gateway.mode,accountId:String(profile.id||""),siteId:String(profile.site_id||""),nickname:String(profile.nickname||"")};
+    }
+    const now=new Date().toISOString();
+    await fsCommit([fsCreate("paymentAudit",randomBytes(16).toString("hex"),{actorId:user.uid,action:"gateway.connection_tested",entity:"paymentGateways",entityId:provider,status:"success",mode:gateway.mode,createdAt:now})]);
+    return res.json({ok:true,account,message:"Conexión verificada. No se realizó ningún cobro."});
+  }catch(e:any){
+    console.error("[Payments] Gateway connection test failed:",e);
+    return res.status(502).json({error:"No se pudo verificar la conexión. Revisa las credenciales y el modo configurado."});
+  }
 });
 app.post("/api/admin/payments/plans",async(req,res)=>{
   try{
