@@ -76,7 +76,7 @@ function getGeminiAI() {
 }
 
 
-interface VerifiedFirebaseUser { uid: string; email?: string; }
+interface VerifiedFirebaseUser { uid: string; email?: string; emailVerified?: boolean; authTime?: number; mfaSecondFactor?: string; }
 let firebasePublicKeys: Record<string, string> = {};
 let firebaseKeysExpiresAt = 0;
 
@@ -106,7 +106,7 @@ async function verifyFirebaseIdToken(token: string): Promise<VerifiedFirebaseUse
     if (!certificate) return null;
     const signedData = Buffer.from(parts[0] + "." + parts[1]);
     if (!verifySignature("RSA-SHA256", signedData, certificate, Buffer.from(parts[2], "base64url"))) return null;
-    return { uid: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined };
+    return { uid: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined, emailVerified: claims.email_verified === true, authTime: Number(claims.auth_time || 0), mfaSecondFactor: typeof claims.firebase?.sign_in_second_factor === "string" ? claims.firebase.sign_in_second_factor : undefined };
   } catch {
     return null;
   }
@@ -233,6 +233,8 @@ async function fsListDocuments(collectionName: string, pageSize = 200): Promise<
 async function requireAdminOversight(req: express.Request, res: express.Response, permission: "dashboard" | "chat"): Promise<VerifiedFirebaseUser | null> {
   const actor = await verifiedUser(req, res);
   if (!actor) return null;
+  const recentMfa = actor.emailVerified === true && Boolean(actor.mfaSecondFactor) && actor.authTime !== undefined && actor.authTime >= Math.floor(Date.now() / 1000) - 600;
+  if (!recentMfa) { res.status(403).json({ error: "La supervisión requiere correo verificado y autenticación multifactor reciente (últimos 10 minutos)." }); return null; }
   if (actor.email?.toLowerCase() === "safeness.c.a@gmail.com") return actor;
   try {
     const profile = await fsGet("users", actor.uid);

@@ -360,6 +360,7 @@ export function CoachChat({ className }: { className?: string }) {
                 </div>
               </div>
               
+              <p className="basis-full rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-[10px] leading-relaxed text-indigo-800">Aviso: los mensajes de este chat de plataforma pueden ser revisados por moderadores autorizados para seguridad y cumplimiento. Los diarios personales y las sesiones privadas no se revisan aquí.</p>
               {/* Short student status stats */}
               <div className="flex items-center gap-2 shrink-0">
                 {selectedStudent.points !== undefined && (
