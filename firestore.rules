@@ -430,6 +430,8 @@ service cloud.firestore {
       allow update, delete: if false; // Logs should be immutable
     }
 
+    match /chat_moderation_cases/{caseId} { allow read, create, update, delete: if false; }
+
     match /messages/{messageId} {
       allow read: if isAuthenticated() && (isAdmin() || resource.data.chatId.matches('.*' + request.auth.uid + '.*'));
       allow create: if isAuthenticated() && isValidMessage() && request.auth.uid == request.resource.data.senderId;

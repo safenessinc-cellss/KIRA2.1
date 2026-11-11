@@ -207,6 +207,46 @@ async function fsGet(collectionName: string, id: string): Promise<any | null> {
   const document = await response.json() as any;
   return Object.fromEntries(Object.entries(document.fields || {}).map(([k, v]) => [k, fsDecode(v)]));
 }
+
+async function fsListDocuments(collectionName: string, pageSize = 200): Promise<Array<{ id: string; [key: string]: any }>> {
+  const safePageSize = Math.max(1, Math.min(1000, Math.floor(pageSize)));
+  const results: Array<{ id: string; [key: string]: any }> = [];
+  let pageToken = "";
+  for (let page = 0; page < 3; page++) {
+    const url = new URL("https://firestore.googleapis.com/v1/" + fsDocumentPath(collectionName, ""));
+    url.pathname = url.pathname.replace(/\/$/, "");
+    url.searchParams.set("pageSize", String(safePageSize));
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await fetch(url.toString(), { headers: { Authorization: "Bearer " + await firestoreToken() } });
+    if (response.status === 404) return results;
+    if (!response.ok) throw new Error("Firestore list failed (" + response.status + ").");
+    const payload = await response.json() as any;
+    for (const document of payload.documents || []) {
+      const id = String(document.name || "").split("/").pop() || "";
+      results.push({ id, ...Object.fromEntries(Object.entries(document.fields || {}).map(([key, value]) => [key, fsDecode(value)])) });
+    }
+    pageToken = String(payload.nextPageToken || "");
+    if (!pageToken) break;
+  }
+  return results;
+}
+async function requireAdminOversight(req: express.Request, res: express.Response, permission: "dashboard" | "chat"): Promise<VerifiedFirebaseUser | null> {
+  const actor = await verifiedUser(req, res);
+  if (!actor) return null;
+  if (actor.email?.toLowerCase() === "safeness.c.a@gmail.com") return actor;
+  try {
+    const profile = await fsGet("users", actor.uid);
+    const permissions = Array.isArray(profile?.staffPermissions) ? profile.staffPermissions : [];
+    if (profile?.role === "admin" && (permissions.includes("system") || permissions.includes(permission === "dashboard" ? "admin_oversight" : "chat_moderation"))) return actor;
+    res.status(403).json({ error: "No tienes autorización explícita para este módulo de supervisión." });
+    return null;
+  } catch (error) {
+    console.error("[Admin oversight] permission check failed:", error);
+    res.status(503).json({ error: "No se pudo verificar el permiso de administración." });
+    return null;
+  }
+}
+
 async function fsCommit(writes: any[]): Promise<void> {
   const response = await fetch("https://firestore.googleapis.com/v1/projects/" + serviceAccount().project_id + "/databases/(default)/documents:commit", {
     method: "POST", headers: { Authorization: "Bearer " + await firestoreToken(), "Content-Type": "application/json" },
@@ -287,6 +327,64 @@ app.use(compression({
 app.use(express.json({ limit: "5mb", verify: (req: any, _res, buffer) => { req.rawBody = Buffer.from(buffer); } })); // Preserve exact webhook bytes
 
 // API Routes
+
+const chatModerationRate = new Map<string, { count: number; resetAt: number }>();
+app.get("/api/admin/oversight/dashboard", async (req, res) => {
+  const actor = await requireAdminOversight(req, res, "dashboard"); if (!actor) return;
+  try {
+    const view = String(req.query.view || "coach");
+    if (!["coach", "student"].includes(view)) return res.status(400).json({ error: "Vista no válida." });
+    const [users, courses, enrollments, sessions] = await Promise.all([
+      fsListDocuments("users", 1000), fsListDocuments("courses", 1000), fsListDocuments("enrollments", 1000), fsListDocuments("sessions", 1000)
+    ]);
+    const coaches = users.filter(item => item.role === "coach");
+    const students = users.filter(item => item.role === "alumno" || item.role === "student");
+    const activeSince = Date.now() - 30 * 86400000;
+    const active = (value: any) => { const time = value ? new Date(value).getTime() : 0; return Number.isFinite(time) && time >= activeSince; };
+    if (view === "coach") {
+      const items = coaches.map(coach => {
+        const ownCourses = courses.filter(course => course.coachId === coach.id);
+        const ids = new Set(ownCourses.map(course => course.id));
+        const ownEnrollments = enrollments.filter(item => ids.has(String(item.courseId)));
+        return { id: coach.id, displayName: coach.displayName || coach.name || "Coach", approvalStatus: coach.approvalStatus || "unknown", lastActivityAt: coach.lastActivityAt || null, activeCourses: ownCourses.filter(course => ["published", "active"].includes(String(course.status))).length, students: new Set(ownEnrollments.map(item => item.userId).filter(Boolean)).size, enrollments: ownEnrollments.length };
+      });
+      return res.json({ view, summary: { coaches: coaches.length, approved: coaches.filter(item => item.approvalStatus === "approved").length, pending: coaches.filter(item => item.approvalStatus === "pending").length, activeLast30Days: coaches.filter(item => active(item.lastActivityAt)).length, courses: courses.length, sessions: sessions.length, enrollments: enrollments.length }, items });
+    }
+    const items = students.map(student => {
+      const own = enrollments.filter(item => item.userId === student.id);
+      const progress = own.map(item => Number(item.progress || 0)).filter(Number.isFinite);
+      return { id: student.id, displayName: student.displayName || student.name || "Alumno", approvalStatus: student.approvalStatus || "unknown", lastActivityAt: student.lastActivityAt || null, courses: own.length, completed: own.filter(item => item.completed === true || item.status === "completed").length, averageProgress: progress.length ? Math.round(progress.reduce((sum, value) => sum + value, 0) / progress.length) : 0 };
+    });
+    return res.json({ view, summary: { students: students.length, activeLast30Days: students.filter(item => active(item.lastActivityAt)).length, enrollments: enrollments.length, completedEnrollments: enrollments.filter(item => item.completed === true || item.status === "completed").length, activeSessions: sessions.filter(item => ["scheduled", "confirmed", "in_progress"].includes(String(item.status || ""))).length }, items });
+  } catch (error) { console.error("[Admin oversight] dashboard read failed:", error); return res.status(503).json({ error: "No se pudo cargar el dashboard administrativo." }); }
+});
+app.get("/api/admin/oversight/chats", async (req, res) => {
+  const actor = await requireAdminOversight(req, res, "chat"); if (!actor) return;
+  try {
+    const requested = Number(req.query.limit || 150), pageSize = Math.max(20, Math.min(300, Number.isFinite(requested) ? Math.floor(requested) : 150));
+    const [messages, users, cases] = await Promise.all([fsListDocuments("messages", 1000), fsListDocuments("users", 1000), fsListDocuments("chat_moderation_cases", 300)]);
+    const byId = new Map(users.map(item => [item.id, item]));
+    const recent = messages.filter(item => typeof item.chatId === "string" && typeof item.content === "string").sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, pageSize);
+    const items = recent.map(message => ({ id: message.id, chatId: message.chatId, content: String(message.content).slice(0, 4000), senderId: message.senderId || "", senderName: message.senderName || byId.get(message.senderId)?.displayName || "Participante", createdAt: message.createdAt || null, participants: String(message.chatId).split("_").map(id => ({ id, displayName: byId.get(id)?.displayName || byId.get(id)?.name || "Participante" })) }));
+    return res.json({ items, cases: cases.map(item => ({ id: item.id, messageId: item.messageId, reason: item.reason, status: item.status, createdAt: item.createdAt, createdBy: item.createdBy })), policy: "Solo mensajes del chat de plataforma. No se incluyen diarios privados ni transcripciones/notas confidenciales de sesiones." });
+  } catch (error) { console.error("[Admin oversight] chat read failed:", error); return res.status(503).json({ error: "No se pudieron cargar las conversaciones de plataforma." }); }
+});
+app.post("/api/admin/oversight/chats/:messageId/review", async (req, res) => {
+  const actor = await requireAdminOversight(req, res, "chat"); if (!actor) return;
+  const now = Date.now(), rate = chatModerationRate.get(actor.uid);
+  if (rate && now < rate.resetAt && rate.count >= 20) return res.status(429).json({ error: "Límite de acciones de moderación alcanzado." });
+  if (!rate || now >= rate.resetAt) chatModerationRate.set(actor.uid, { count: 1, resetAt: now + 60000 }); else rate.count += 1;
+  try {
+    const messageId = String(req.params.messageId || ""), chatId = String(req.body?.chatId || ""), reason = String(req.body?.reason || "").trim().slice(0, 300);
+    if (!messageId || !chatId || !reason) return res.status(400).json({ error: "Mensaje, conversación y motivo son obligatorios." });
+    const message = await fsGet("messages", messageId);
+    if (!message || message.chatId !== chatId) return res.status(404).json({ error: "El mensaje no existe en esa conversación." });
+    const caseId = "chat_review_" + randomBytes(12).toString("hex"), createdAt = new Date().toISOString();
+    await fsCommit([fsCreate("chat_moderation_cases", caseId, { messageId, chatId, reason, status: "open", createdBy: actor.uid, createdAt }), fsCreate("auditLogs", caseId, { actorId: actor.uid, action: "chat.message.flagged_for_review", targetId: messageId, createdAt })]);
+    return res.status(201).json({ id: caseId, status: "open", createdAt });
+  } catch (error) { console.error("[Admin oversight] case creation failed:", error); return res.status(503).json({ error: "No se pudo registrar la incidencia de moderación." }); }
+});
+
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });

@@ -7,10 +7,11 @@ import { Users, Building2, LayoutDashboard, UserCheck, BookOpen, BarChart3, Shie
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
 import { AdminBooksView } from './AdminBooksView';
+import { AdminOversightView } from './admin/AdminOversightView';
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates' | 'companies';
+type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates' | 'companies' | 'oversight';
 
 export function AdminMonitor() {
   const { user } = useAuth();
@@ -47,6 +48,7 @@ export function AdminMonitor() {
     { id: 'security', label: 'Roles y seguridad', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', superOnly: true },
     { id: 'companies', label: 'Empresas y licencias B2B', icon: <Building2 size={18}/>, category: 'Personas y acceso', superOnly: true },
     { id: 'campaign_history', label: 'Auditoría y logs', icon: <ShieldAlert size={18}/>, category: 'Personas y acceso', perm: 'system' },
+    { id: 'oversight', label: 'Coach, alumno y moderación', icon: <ShieldAlert size={18}/>, category: 'Personas y acceso', perm: 'admin_oversight' },
     { id: 'content', label: 'Cursos y contenidos', icon: <ShoppingBag size={18}/>, category: 'Academia y certificados', perm: 'billing' },
     { id: 'books', label: 'Biblioteca y ebooks', icon: <BookOpen size={18}/>, category: 'Academia y certificados', perm: 'users' },
     { id: 'certificates', label: 'Solicitudes de certificados', icon: <FileText size={18}/>, category: 'Academia y certificados', perm: 'users' },
@@ -97,6 +99,7 @@ export function AdminMonitor() {
         {activeTab === 'security' && isSuperAdmin && <SecurityView />}
         {activeTab === 'companies' && isSuperAdmin && <CompanyManagementView />}
         {activeTab === 'campaign_history' && hasPerm(navItems.find(i=>i.id==='campaign_history')) && <CampaignHistoryView />}
+        {activeTab === 'oversight' && hasPerm(navItems.find(i=>i.id==='oversight')) && <AdminOversightView />}
         {activeTab === 'ai_coaches' && hasPerm(navItems.find(i=>i.id==='ai_coaches')) && <AICoachesView />}
 
         {activeTab === 'coaches' && hasPerm(navItems.find(i=>i.id==='coaches')) && <CoachCuratorView />}
