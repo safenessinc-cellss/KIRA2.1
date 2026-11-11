@@ -14,3 +14,11 @@ export function buildCheckoutIdentity(userId: string, idempotencyKey: string, pr
     .digest("hex");
   return { orderId: "checkout_" + digest, providerIdempotencyKey: digest, fingerprint };
 }
+
+export function isGatewayCredentialModeCompatible(provider: string, mode: string, credential: string): boolean {
+  const value = String(credential || "").trim();
+  if (!value) return false;
+  if (provider === "stripe") return mode === "test" ? /^(sk|rk)_test_/.test(value) : mode === "live" ? /^(sk|rk)_live_/.test(value) : false;
+  if (provider === "mercadopago") return mode === "test" ? value.startsWith("TEST-") : mode === "live" ? value.startsWith("APP_USR-") : false;
+  return false;
+}
