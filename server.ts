@@ -270,8 +270,8 @@ function decryptPaymentSecret(value:string):string {
 }
 async function requireSuperAdmin(req:express.Request,res:express.Response):Promise<VerifiedFirebaseUser|null>{
   const user=await verifiedUser(req,res);if(!user)return null;
-  const profile=await fsGet("users",user.uid);
-  if(user.email?.toLowerCase()!=="safeness.c.a@gmail.com"||user.emailVerified!==true||profile?.role!=="admin"){
+  // The verified Firebase identity is authoritative for the sole owner.
+  if(user.email?.toLowerCase()!=="safeness.c.a@gmail.com"||user.emailVerified!==true){
     res.status(403).json({error:"Solo el superadministrador KIRA verificado puede administrar pagos y configuración."});return null;
   }
   if (!hasRecentMfaAuthentication(user, Date.now(), 5 * 60 * 1000)) {
@@ -1009,12 +1009,12 @@ function canAccessBackofficePermission(isSuperAdmin: boolean, permissions: strin
 async function backofficeAdmin(req: express.Request, res: express.Response, permission?: string): Promise<VerifiedFirebaseUser | null> {
   const user = await verifiedUser(req, res);
   if (!user) return null;
-  const profile = await fsGet("users", user.uid);
-  if (user.emailVerified !== true || profile?.role !== "admin") {
+  const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
+  const profile = isSuperAdmin ? null : await fsGet("users", user.uid);
+  if (user.emailVerified !== true || (!isSuperAdmin && profile?.role !== "admin")) {
     res.status(403).json({ error: "Este módulo está habilitado únicamente para administradores verificados." });
     return null;
   }
-  const isSuperAdmin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
   if (isSuperAdmin || !permission) return user;
   const activeMatrix = await fsGet("role_permissions", String(profile.role || "admin"));
   if (activeMatrix?.permissions && typeof activeMatrix.permissions === "object") {
@@ -1717,7 +1717,7 @@ app.get("/api/verify/:kiraNumber",async(req,res)=>{
   try {
     const kiraNumber=String(req.params.kiraNumber||"");
     const signature=String(req.query.sig||"");
-    if(!/^KIRA-\\d{4}-[A-F0-9]{12}$/.test(kiraNumber)||!/^([a-f0-9]{64})$/.test(signature)) return res.status(404).json({valid:false,status:"not_found"});
+    if(!/^KIRA-\d{4}-[A-F0-9]{12}$/.test(kiraNumber||!/^([a-f0-9]{64})$/.test(signature)) return res.status(404).json({valid:false,status:"not_found"});
     const record=await fsGet("certificates",kiraNumber);
     if(!record) return res.status(404).json({valid:false,status:"not_found"});
     const payload={kiraNumber:record.kiraNumber,studentId:record.studentId,studentName:record.studentName,courseId:record.courseId,courseName:record.courseName,coachId:record.coachId,coachName:record.coachName,academicHours:record.academicHours,adminId:record.adminId,adminName:record.adminName,watermarkHash:record.watermarkHash,issueDate:record.issueDate,status:"issued"};
