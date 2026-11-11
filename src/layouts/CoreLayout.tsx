@@ -12,19 +12,19 @@ export function CoreLayout() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-[#070b16] text-slate-100">
         <Loader2 className="w-8 h-8 animate-spin text-teal-500" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#070b16] text-slate-100 flex flex-col font-sans">
       <PushNotificationManager />
       <Outlet />
-      <footer className="mt-auto border-t border-slate-200 bg-white px-4 py-5 text-center text-[11px] text-slate-500" aria-label="Información legal y créditos">
+      <footer className="mt-auto border-t border-white/10 bg-slate-950/50 px-4 py-5 text-center text-[11px] text-slate-400 backdrop-blur-xl" aria-label="Información legal y créditos">
         <nav className="mb-3 flex flex-wrap justify-center gap-x-4 gap-y-2" aria-label="Enlaces legales">
-          <a href="/legal/privacy" className="hover:text-teal-700">Privacidad</a>
+          <a href="/legal/privacy" className="hover:text-indigo-300">Privacidad</a>
           <a href="/legal/cookies" className="hover:text-teal-700">Cookies</a>
           <a href="/legal/terms" className="hover:text-teal-700">Términos</a>
           <a href="/legal/copyright" className="hover:text-teal-700">Derechos de autor</a>
