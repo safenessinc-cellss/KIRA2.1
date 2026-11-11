@@ -76,7 +76,7 @@ function getGeminiAI() {
 }
 
 
-interface VerifiedFirebaseUser { uid: string; email?: string; emailVerified?: boolean; authTime?: number; mfaSecondFactor?: string; }
+interface VerifiedFirebaseUser { uid: string; email?: string; emailVerified?: boolean; authTime?: number; mfaSecondFactor?: string; kiraPermissions?: string[]; }
 let firebasePublicKeys: Record<string, string> = {};
 let firebaseKeysExpiresAt = 0;
 
@@ -106,7 +106,7 @@ async function verifyFirebaseIdToken(token: string): Promise<VerifiedFirebaseUse
     if (!certificate) return null;
     const signedData = Buffer.from(parts[0] + "." + parts[1]);
     if (!verifySignature("RSA-SHA256", signedData, certificate, Buffer.from(parts[2], "base64url"))) return null;
-    return { uid: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined, emailVerified: claims.email_verified === true, authTime: Number(claims.auth_time || 0), mfaSecondFactor: typeof claims.firebase?.sign_in_second_factor === "string" ? claims.firebase.sign_in_second_factor : undefined };
+    return { uid: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined, emailVerified: claims.email_verified === true, authTime: Number(claims.auth_time || 0), mfaSecondFactor: typeof claims.firebase?.sign_in_second_factor === "string" ? claims.firebase.sign_in_second_factor : undefined, kiraPermissions: Array.isArray(claims.kiraPermissions) ? claims.kiraPermissions.filter((p: unknown): p is string => typeof p === "string") : [] };
   } catch {
     return null;
   }
@@ -237,9 +237,10 @@ async function requireAdminOversight(req: express.Request, res: express.Response
   if (!recentMfa) { res.status(403).json({ error: "La supervisión requiere correo verificado y autenticación multifactor reciente (últimos 10 minutos)." }); return null; }
   if (actor.email?.toLowerCase() === "safeness.c.a@gmail.com") return actor;
   try {
-    const profile = await fsGet("users", actor.uid);
-    const permissions = Array.isArray(profile?.staffPermissions) ? profile.staffPermissions : [];
-    if (profile?.role === "admin" && (permissions.includes("system") || permissions.includes(permission === "dashboard" ? "admin_oversight" : "chat_moderation"))) return actor;
+    // Delegated oversight is granted only through Firebase custom claims set by a trusted server.
+    // A mutable Firestore profile role/permissions field is not an authorization boundary.
+    const requiredPermission = permission === "dashboard" ? "admin_oversight" : "chat_moderation";
+    if (actor.kiraPermissions?.includes("system") || actor.kiraPermissions?.includes(requiredPermission)) return actor;
     res.status(403).json({ error: "No tienes autorización explícita para este módulo de supervisión." });
     return null;
   } catch (error) {
@@ -608,7 +609,9 @@ app.post("/api/certificates/issue", async (req, res) => {
     const user = await verifiedUser(req, res);
     if (!user) return;
     const profile = await fsGet("users", user.uid);
-    const admin = user.email?.toLowerCase() === "safeness.c.a@gmail.com" || profile?.role === "admin";
+    // Only the platform owner can issue certificates until delegated certificate permissions
+    // are provisioned as signed Firebase custom claims and explicitly implemented here.
+    const admin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
     if (!profile || (!admin && (profile.role !== "coach" || profile.approvalStatus !== "approved"))) return res.status(403).json({ error: "No tienes permiso para emitir certificados." });
     const requestId = String(req.body?.requestId || "");
     const certificateRequest = requestId ? await fsGet("certificateRequests", requestId) : null;
