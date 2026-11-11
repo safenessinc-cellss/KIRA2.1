@@ -360,7 +360,8 @@ export function CoachChat({ className }: { className?: string }) {
                 </div>
               </div>
               
-              {/* Short student status stats */}
+              <p className="basis-full rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-[10px] leading-relaxed text-indigo-800">Aviso: los mensajes de este chat de plataforma pueden ser revisados por moderadores autorizados para seguridad y cumplimiento. Los diarios personales y las sesiones privadas no se revisan aquí.</p>
+                            {/* Short student status stats */}
               <div className="flex items-center gap-2 shrink-0">
                 {selectedStudent.points !== undefined && (
                   <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
