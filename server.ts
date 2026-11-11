@@ -866,7 +866,7 @@ app.get("/api/admin/payments/config",async(req,res)=>{
       fsGet("paymentSettings","global"),fsListDocuments("paymentGateways"),fsListDocuments("paymentPlans"),fsListDocuments("paymentCoupons")
     ]);
     return res.json({
-      settings:{paymentsEnabled:global?.paymentsEnabled!==false,baseCurrency:global?.baseCurrency||"BRL",allowedCurrencies:global?.allowedCurrencies||["BRL","USD","EUR"],roundingRule:global?.roundingRule||"half_up",requirePayment:global?.requirePayment!==false},
+      settings:{paymentsEnabled:global?.paymentsEnabled!==false,baseCurrency:global?.baseCurrency||"BRL",allowedCurrencies:global?.allowedCurrencies||["BRL","USD","EUR"],roundingRule:global?.roundingRule||"half_up",requirePayment:true},
       gateways:gateways.map(g=>({id:g.id,provider:g.provider,enabled:g.enabled===true,mode:g.mode==="live"?"live":"test",priority:Number(g.priority||0),publicKey:g.publicKey||"",hasApiKey:!!g.apiKeyEncrypted,hasWebhookSecret:!!g.webhookSecretEncrypted,maskedApiKey:g.apiKeyEncrypted?"•••••••• configurada":"No configurada",updatedAt:g.updatedAt||null})),
       plans:plans.map(({id,...p})=>({id,...p})),coupons:coupons.map(({id,...p})=>({id,...p}))
     });
@@ -876,7 +876,7 @@ app.patch("/api/admin/payments/settings",async(req,res)=>{
   try{
     const user=await requireSuperAdmin(req,res);if(!user)return;
     const body=req.body||{};
-    const next={paymentsEnabled:body.paymentsEnabled!==false,baseCurrency:String(body.baseCurrency||"BRL").toUpperCase(),allowedCurrencies:Array.isArray(body.allowedCurrencies)?body.allowedCurrencies.map((x:any)=>String(x).toUpperCase()).filter((x:string)=>/^[A-Z]{3}$/.test(x)).slice(0,10):["BRL"],roundingRule:["half_up","up","down"].includes(body.roundingRule)?body.roundingRule:"half_up",requirePayment:body.requirePayment!==false,updatedAt:new Date().toISOString(),updatedBy:user.uid};
+    const next={paymentsEnabled:body.paymentsEnabled!==false,baseCurrency:String(body.baseCurrency||"BRL").toUpperCase(),allowedCurrencies:Array.isArray(body.allowedCurrencies)?body.allowedCurrencies.map((x:any)=>String(x).toUpperCase()).filter((x:string)=>/^[A-Z]{3}$/.test(x)).slice(0,10):["BRL"],roundingRule:["half_up","up","down"].includes(body.roundingRule)?body.roundingRule:"half_up",requirePayment:true,updatedAt:new Date().toISOString(),updatedBy:user.uid};
     if(!/^[A-Z]{3}$/.test(next.baseCurrency)||!next.allowedCurrencies.includes(next.baseCurrency))return res.status(400).json({error:"Moneda base no válida o no incluida en las monedas permitidas."});
     const before=await fsGet("paymentSettings","global");
     await fsCommit([before?fsUpdate("paymentSettings","global",next):fsCreate("paymentSettings","global",next),fsCreate("config_audit",randomBytes(16).toString("hex"),{scope:"payments",key:"global",actorId:user.uid,before:before||{},after:next,ip:req.ip,userAgent:String(req.headers["user-agent"]||"").slice(0,300),createdAt:next.updatedAt})]);
