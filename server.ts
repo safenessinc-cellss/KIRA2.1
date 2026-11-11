@@ -492,7 +492,20 @@ app.get("/api/firebase/messaging-config", (_req, res) => {
   return res.json(config);
 });
 
-app.get("/api/health", (_req, res) => {
+app.get("/api/health", async (_req, res) => {
+  let paymentIntegrations = { stripe: false, mercadoPago: false };
+  try {
+    const [settings, gateways] = await Promise.all([fsGet("paymentSettings", "global"), fsListDocuments("paymentGateways", 20)]);
+    if (settings?.paymentsEnabled !== false) {
+      for (const gateway of gateways) {
+        const ready = gateway.enabled === true && !!gateway.apiKeyEncrypted && !!gateway.webhookSecretEncrypted;
+        if (gateway.provider === "stripe") paymentIntegrations.stripe = ready;
+        if (gateway.provider === "mercadopago") paymentIntegrations.mercadoPago = ready;
+      }
+    }
+  } catch {
+    // Health must remain available when Firestore Admin credentials are not provisioned.
+  }
   res.json({
     status: "ok",
     mode: KIRA_DEMO_MODE ? "demo" : "production",
@@ -501,8 +514,8 @@ app.get("/api/health", (_req, res) => {
       firebaseAdmin: !!process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
       certificates: !!(process.env.KIRA_CERT_SECRET || process.env.KIRA_CERTIFICATE_SIGNING_SECRET),
       captcha: !!process.env.LANDING_CAPTCHA_SECRET,
-      stripe: !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET),
-      mercadoPago: !!(process.env.MERCADOPAGO_ACCESS_TOKEN && process.env.MERCADOPAGO_WEBHOOK_SECRET),
+      stripe: paymentIntegrations.stripe,
+      mercadoPago: paymentIntegrations.mercadoPago,
       whatsapp: !!process.env.WHATSAPP_WEBHOOK_SECRET,
       gemini: isValidGeminiKey(process.env.GEMINI_API_KEY)
     }
