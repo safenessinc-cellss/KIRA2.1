@@ -95,35 +95,11 @@ export function Landing() {
   };
 
   useEffect(() => {
-    if (selectedCoach && selectedCoach.id && !selectedCoach.id.startsWith('demo')) {
-      // Increment view count
-      const incrementView = async () => {
-        try {
-          const coachRef = doc(db, 'users', selectedCoach.id);
-          await updateDoc(coachRef, {
-            viewCount: (selectedCoach.viewCount || 0) + 1
-          });
-        } catch (err) {
-          console.error("Error updating view count:", err);
-        }
-      };
-      incrementView();
-    }
-  }, [selectedCoach]);
-
-  useEffect(() => {
-    // Simplified query to avoid composite index requirements (role + approved)
-    const q = query(
-      collection(db, 'users'), 
-      where('role', '==', 'coach')
-    );
+    const q = query(collection(db, 'coachPublicProfiles'), where('status', '==', 'published'));
     const unsubscribe = onSnapshot(q, (snap) => {
-      const approvedCoaches = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter((c: any) => c.approvalStatus === 'approved');
-      setCoaches(approvedCoaches);
+      setCoaches(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'users (coaches query)');
+      handleFirestoreError(error, OperationType.GET, 'coachPublicProfiles');
     });
     return () => unsubscribe();
   }, []);

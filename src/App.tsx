@@ -87,6 +87,7 @@ export default function App() {
                     <Route path="/login" element={<Login />} />
                     <Route path="/microlearning" element={<Microlearning />} />
                     <Route path="/validar-certificado/:code" element={<CertificateValidation />} />
+                    <Route path="/verify/:code" element={<CertificateValidation />} />
                     
                     {/* Alumnos */}
                     <Route element={<ProtectedRoute allowedRoles={['alumno']} />}>
@@ -103,7 +104,7 @@ export default function App() {
                     <Route element={<ProtectedRoute allowedRoles={['coach', 'admin']} />}>
                       <Route element={<DashboardLayout title="Panel de Coach" />}>
                         <Route path="/coach" element={<CoachDashboard />} />
-                        <Route path="/coach/courses" element={<CoachDashboard />} />
+                        <Route path="/coach/courses" element={<CoachCourses />} />
                         <Route path="/coach/session" element={<SessionIntelligence />} />
                         <Route path="/coach/homework" element={<CoachHomeworkReview />} />
                         <Route path="/coach/crm-audit" element={<CoachCrmAudit />} />

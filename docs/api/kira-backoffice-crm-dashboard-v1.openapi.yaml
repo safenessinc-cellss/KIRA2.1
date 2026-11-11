@@ -1,0 +1,691 @@
+openapi: 3.1.0
+info:
+  title: KIRA Backoffice CRM and Dashboard API
+  version: 1.0.0
+  description: >
+    API implemented on the isolated audit branch. Requires Firebase ID token.
+    CRM PII is encrypted at rest and decrypted only for authorized API responses.
+servers:
+  - url: https://kira.coach
+    description: Production origin; do not use for unapproved tests.
+security:
+  - FirebaseBearer: []
+tags:
+  - name: Dashboard
+  - name: CRM Leads
+  - name: CRM Interactions
+  - name: Academic Groups
+  - name: Academic Performance
+  - name: Enrollment Contracts
+  - name: Invoices
+paths:
+  /api/admin/dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Read dashboard aggregates for a date range
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Persisted monthly aggregates from dashboard_aggregates; widgets are omitted when the caller lacks the corresponding role permission.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Dashboard' }
+        '400': { description: Invalid date range }
+        '401': { description: Missing or invalid Firebase token }
+        '403': { description: Missing system permission }
+  /api/admin/crm/leads:
+    get:
+      tags: [CRM Leads]
+      summary: List CRM leads visible to the caller
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: query
+          name: stage
+          schema: { type: string, enum: [new, contacted, qualified, enrolled, lost] }
+        - in: query
+          name: source
+          schema: { type: string }
+        - in: query
+          name: assigned_to
+          schema: { type: string }
+      responses:
+        '200':
+          description: Leads are restricted to assignedTo UID except for the KIRA superadmin.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Lead' } }
+                  total: { type: integer }
+                  limit: { type: integer }
+        '401': { description: Unauthorized }
+        '403': { description: Missing crm permission }
+    post:
+      tags: [CRM Leads]
+      summary: Create a lead
+      x-kira-status: implemented-branch-unverified
+      description: >
+        Requires KIRA_CRM_PII_ENCRYPTION_KEY. At least email or phone is required.
+        PII is encrypted with AES-256-GCM. Deterministic HMAC key enforces composite deduplication by email, phone and source.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fullName, source]
+              properties:
+                fullName: { type: string, maxLength: 180 }
+                email: { type: string, format: email, maxLength: 180 }
+                phone: { type: string, maxLength: 40 }
+                source: { type: string, enum: [landing, whatsapp, instagram, referido, manual] }
+                campaign: { type: string, maxLength: 120 }
+                courseInterest: { type: string, maxLength: 180 }
+                assignedTo: { type: string, maxLength: 180 }
+                consentGdpr: { type: boolean, default: false }
+      responses:
+        '201': { description: Lead created and audit/outbox records persisted }
+        '400': { description: Invalid lead data }
+        '409': { description: Duplicate lead }
+        '503': { description: CRM encryption key unavailable }
+  /api/admin/crm/leads/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [CRM Leads]
+      summary: Update stage, assignment, score or notes
+      x-kira-status: implemented-branch-unverified
+      description: The enrolled stage cannot be set manually; use conversion endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stage: { type: string, enum: [new, contacted, qualified, lost] }
+                assignedTo: { type: string }
+                score: { type: integer, minimum: 0, maximum: 100 }
+                notes: { type: string, maxLength: 4000 }
+      responses:
+        '200': { description: Lead updated and audited }
+        '404': { description: Lead not found or not assigned to caller }
+        '403': { description: Missing crm permission }
+  /api/admin/crm/interactions:
+    get:
+      tags: [CRM Interactions]
+      summary: List contact attempts visible to the caller
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: query
+          name: leadId
+          schema: { type: string }
+      responses:
+        '200':
+          description: Contact history; notes are decrypted only for assigned leads or superadmin.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Interaction' } }
+                  total: { type: integer }
+                  limit: { type: integer }
+  /api/admin/crm/leads/{id}/interactions:
+    post:
+      tags: [CRM Interactions]
+      summary: Record a contact attempt
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, outcome]
+              properties:
+                channel: { type: string, enum: [call, whatsapp, email, meeting, sms] }
+                outcome: { type: string, enum: [no_answer, left_message, interested, not_interested, scheduled] }
+                notes: { type: string, maxLength: 2000 }
+                nextActionAt: { type: string, format: date-time }
+      responses:
+        '201': { description: Interaction created and audited }
+        '404': { description: Lead not found or not assigned to caller }
+  /api/admin/crm/leads/{id}/convert-to-enrollment:
+    post:
+      tags: [CRM Leads]
+      summary: Convert a qualified/contacted lead into a canonical enrollment
+      x-kira-status: implemented-branch-unverified
+      description: >
+        Firestore transaction checks consent, stage, student UID, published course and absence of existing enrollment.
+        Paid courses create pending_payment enrollment; free courses create active enrollment.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentUid, courseId]
+              properties:
+                studentUid: { type: string }
+                courseId: { type: string }
+      responses:
+        '201': { description: Enrollment created and lead converted }
+        '400': { description: Missing student or course }
+        '404': { description: Lead/student/course not found }
+        '409': { description: Consent, stage, course, or duplicate enrollment conflict }
+
+  /api/admin/groups:
+    post:
+      tags: [Academic Groups]
+      summary: Create a course group
+      x-kira-status: implemented-branch-unverified
+      description: Requires courses permission. Creates group, audit record and outbox event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [courseId, name, coachId, capacity]
+              properties:
+                courseId: { type: string }
+                name: { type: string, maxLength: 120 }
+                coachId: { type: string }
+                capacity: { type: integer, minimum: 1 }
+                timezone: { type: string, default: America/Sao_Paulo }
+      responses:
+        '201': { description: Group created }
+        '400': { description: Invalid group or coach }
+        '403': { description: Missing courses permission }
+  /api/admin/groups/{id}:
+    patch:
+      tags: [Academic Groups]
+      summary: Update group name, capacity or status
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                capacity: { type: integer, minimum: 1 }
+                status: { type: string, enum: [planned, active, finished, cancelled] }
+      responses:
+        '200': { description: Group updated and audited }
+        '409': { description: Capacity cannot be lower than current enrollment count }
+  /api/admin/groups/{id}/sessions:
+    post:
+      tags: [Academic Groups]
+      summary: Schedule a group session
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startsAt, endsAt]
+              properties:
+                startsAt: { type: string, format: date-time }
+                endsAt: { type: string, format: date-time }
+                meetingUrl: { type: string }
+                room: { type: string, maxLength: 80 }
+      responses:
+        '201': { description: Session created }
+        '409': { description: Coach or room schedule conflict }
+  /api/admin/groups/{id}/enroll:
+    post:
+      tags: [Academic Groups]
+      summary: Enroll a student with transactional capacity reservation
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentId]
+              properties:
+                studentId: { type: string }
+                paymentPlan: { type: string, enum: [upfront, monthly, custom] }
+      responses:
+        '201': { description: Enrollment created and group capacity incremented atomically }
+        '409': { description: Group full or enrollment already exists }
+  /api/admin/sessions/{sessionId}:
+    patch:
+      tags: [Academic Groups]
+      summary: Mark a session held or cancelled
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [scheduled, held, cancelled] }
+      responses:
+        '200': { description: Session updated and audited }
+  /api/admin/sessions/{sessionId}/attendance:
+    post:
+      tags: [Academic Performance]
+      summary: Record immutable attendance for an enrolled student
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentId, status]
+              properties:
+                studentId: { type: string }
+                status: { type: string, enum: [present, absent, late, excused] }
+      responses:
+        '201': { description: Attendance and outbox event persisted; performance projection refreshed }
+        '409': { description: Student not enrolled or attendance already exists }
+  /api/admin/assessments:
+    post:
+      tags: [Academic Performance]
+      summary: Grade a student assessment
+      x-kira-status: implemented-branch-unverified
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentId, groupId, type, score]
+              properties:
+                studentId: { type: string }
+                groupId: { type: string }
+                type: { type: string, enum: [quiz, exam, project, participation] }
+                score: { type: number, minimum: 0 }
+                maxScore: { type: number, exclusiveMinimum: 0, default: 100 }
+                weight: { type: number, exclusiveMinimum: 0, default: 1 }
+      responses:
+        '201': { description: Assessment, audit/outbox and performance projection persisted }
+        '409': { description: Student is not enrolled in the group }
+  /api/admin/enrollments/{id}/complete:
+    post:
+      tags: [Academic Performance]
+      summary: Complete an enrollment after payment and academic thresholds pass
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Enrollment completed transactionally }
+        '409': { description: Payment or academic thresholds not satisfied }
+
+
+  /api/admin/enrollments:
+    get:
+      tags: [Enrollment Contracts]
+      summary: List enrollment records
+      x-kira-status: implemented-branch-unverified
+      responses:
+        '200': { description: Enrollment records and their contract metadata }
+        '403': { description: Missing users permission }
+  /api/admin/enrollments/{id}:
+    get:
+      tags: [Enrollment Contracts]
+      summary: Read an enrollment with course and group metadata
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Enrollment details }
+        '404': { description: Enrollment not found }
+  /api/admin/enrollments/{id}/contract:
+    post:
+      tags: [Enrollment Contracts]
+      summary: Generate a private PDF contract and store its SHA-256 hash
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '201': { description: Private Storage path and contract hash }
+        '409': { description: Enrollment is cancelled }
+        '503': { description: Firebase Storage is not configured }
+  /api/admin/enrollments/{id}/contract/download:
+    get:
+      tags: [Enrollment Contracts]
+      summary: Download and integrity-check a private contract as admin
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: PDF bytes }
+        '409': { description: Contract hash mismatch }
+  /api/enrollments/{id}/contract/sign:
+    post:
+      tags: [Enrollment Contracts]
+      summary: Student acceptance and HMAC-SHA256 electronic signature
+      x-kira-status: implemented-branch-unverified
+      description: Only the authenticated student owning the enrollment may accept and sign. An administrator cannot sign on behalf of a student.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accepted]
+              properties:
+                accepted: { type: boolean, const: true }
+      responses:
+        '200': { description: Signature metadata stored and audited }
+        '403': { description: Caller does not own the enrollment }
+        '409': { description: Contract missing or already signed }
+  /api/enrollments/{id}/contract/download:
+    get:
+      tags: [Enrollment Contracts]
+      summary: Download own private contract
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: PDF bytes after SHA-256 verification }
+        '404': { description: Contract not found or enrollment not owned by caller }
+  /api/admin/invoices:
+    get:
+      tags: [Invoices]
+      summary: List invoices by status or enrollment
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, paid, overdue, void] }
+        - in: query
+          name: enrollmentId
+          schema: { type: string }
+      responses:
+        '200': { description: Invoice ledger }
+        '403': { description: Missing finance permission }
+  /api/admin/invoices/jobs/{job}:
+    post:
+      tags: [Invoices]
+      summary: Run a finance job manually as superadmin
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: job
+          required: true
+          schema: { type: string, enum: [generate, overdue, dunning, reconcile] }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                periodLabel: { type: string, pattern: '^\\d{4}-(0[1-9]|1[0-2])  securitySchemes:
+    AcademicCronBearer:
+      type: http
+      scheme: bearer
+      description: KIRA_OUTBOX_CRON_SECRET (server-only)
+    FirebaseBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID token
+    CronBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: CRON_SECRET
+  schemas:
+    Lead:
+      type: object
+      properties:
+        id: { type: string }
+        fullName: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        source: { type: string }
+        stage: { type: string, enum: [new, contacted, qualified, enrolled, lost] }
+        courseInterest: { type: string }
+        assignedTo: { type: string }
+        score: { type: integer }
+        consentGdpr: { type: boolean }
+        createdAt: { type: string }
+    Interaction:
+      type: object
+      properties:
+        id: { type: string }
+        leadId: { type: string }
+        leadName: { type: string }
+        channel: { type: string }
+        outcome: { type: string }
+        notes: { type: string }
+        nextActionAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+    Dashboard:
+      type: object
+      properties:
+        sales:
+          type: object
+          properties:
+            grossByCurrency: { type: object, additionalProperties: { type: integer } }
+            netByCurrency: { type: object, additionalProperties: { type: integer } }
+        enrollments:
+          type: object
+          properties: { newCount: { type: integer } }
+        leads:
+          type: object
+          properties:
+            total: { type: integer }
+            byStage: { type: object, additionalProperties: { type: integer } }
+        conversion:
+          type: object
+          properties:
+            rate: { type: number }
+            converted: { type: integer }
+            qualified: { type: integer }
+        topCourses: { type: array, items: { type: object } }
+        overdueInvoices: { type: integer }
+        students:
+          type: object
+          properties:
+            active: { type: integer }
+            atRisk: { type: integer }
+        certificates:
+          type: object
+          properties: { issued: { type: integer } }
+        generatedAt: { type: string, format: date-time }
+        source: { type: string }
+ }
+      responses:
+        '200': { description: Job result }
+        '403': { description: Superadmin required }
+  /api/cron/invoices/{job}:
+    post:
+      tags: [Invoices]
+      summary: Cloud Scheduler entrypoint protected by CRON_SECRET
+      x-kira-status: implemented-branch-unverified
+      security:
+        - CronBearer: []
+      parameters:
+        - in: path
+          name: job
+          required: true
+          schema: { type: string, enum: [generate, overdue, dunning, reconcile] }
+      responses:
+        '200': { description: Job result }
+        '401': { description: Invalid cron secret }
+        '503': { description: CRON_SECRET missing }
+  /api/invoices/{id}/checkout:
+    post:
+      tags: [Invoices]
+      summary: Create hosted payment checkout for the authenticated student's invoice
+      x-kira-status: implemented-branch-unverified
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider: { type: string, enum: [stripe, mercadopago] }
+      responses:
+        '200': { description: Hosted payment URL }
+        '404': { description: Invoice not owned by caller }
+        '409': { description: Invoice already paid or unavailable }
+
+  /api/internal/academic-outbox/dispatch:
+    post:
+      tags: [Academic Performance]
+      summary: Dispatch pending attendance and assessment projection events
+      description: Internal Cloud Scheduler endpoint. Processes only academic event types with leases, idempotent projection updates and exponential retry.
+      x-kira-status: implemented-branch-unverified
+      security:
+        - AcademicCronBearer: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit: { type: integer, minimum: 1, maximum: 50, default: 25 }
+      responses:
+        '200': { description: Number of events processed and retried }
+        '401': { description: Invalid or missing KIRA_OUTBOX_CRON_SECRET }
+        '500': { description: Dispatch failed }
+
+components:
+  securitySchemes:
+    FirebaseBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID token
+  schemas:
+    Lead:
+      type: object
+      properties:
+        id: { type: string }
+        fullName: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        source: { type: string }
+        stage: { type: string, enum: [new, contacted, qualified, enrolled, lost] }
+        courseInterest: { type: string }
+        assignedTo: { type: string }
+        score: { type: integer }
+        consentGdpr: { type: boolean }
+        createdAt: { type: string }
+    Interaction:
+      type: object
+      properties:
+        id: { type: string }
+        leadId: { type: string }
+        leadName: { type: string }
+        channel: { type: string }
+        outcome: { type: string }
+        notes: { type: string }
+        nextActionAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+    Dashboard:
+      type: object
+      properties:
+        sales:
+          type: object
+          properties:
+            grossByCurrency: { type: object, additionalProperties: { type: integer } }
+            netByCurrency: { type: object, additionalProperties: { type: integer } }
+        enrollments:
+          type: object
+          properties: { newCount: { type: integer } }
+        leads:
+          type: object
+          properties:
+            total: { type: integer }
+            byStage: { type: object, additionalProperties: { type: integer } }
+        conversion:
+          type: object
+          properties:
+            rate: { type: number }
+            converted: { type: integer }
+            qualified: { type: integer }
+        topCourses: { type: array, items: { type: object } }
+        overdueInvoices: { type: integer }
+        students:
+          type: object
+          properties:
+            active: { type: integer }
+            atRisk: { type: integer }
+        certificates:
+          type: object
+          properties: { issued: { type: integer } }
+        generatedAt: { type: string, format: date-time }
+        source: { type: string }

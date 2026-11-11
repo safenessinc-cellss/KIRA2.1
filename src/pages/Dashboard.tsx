@@ -23,6 +23,7 @@ export function Dashboard() {
   const [myEnrollmentRecords, setMyEnrollmentRecords] = useState<any[]>([]);
   const [myCertificateRequests, setMyCertificateRequests] = useState<any[]>([]);
   const [certificateRequestBusy, setCertificateRequestBusy] = useState<string | null>(null);
+  const [contractActionBusy, setContractActionBusy] = useState<string | null>(null);
   const [favoriteCoaches, setFavoriteCoaches] = useState<any[]>([]);
   const [unlockedHistory, setUnlockedHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,10 +117,8 @@ export function Dashboard() {
     }
   };
 
-  const userDocPoints = user?.points || 0;
-
-  // Simulate popular courses by sorting (price as proxy if no rating)
-  const popularCourses = [...availableCourses].sort((a,b) => (b.price || 0) - (a.price || 0)).slice(0, 3);
+  // Mostrar cursos publicados disponibles en el catálogo
+  const popularCourses = [...availableCourses].slice(0, 3);
   const totalSlides = popularCourses.length;
 
   const nextSlide = () => setCurrentSlide(p => Math.min(p + 1, Math.max(0, totalSlides - 1)));
@@ -134,25 +133,14 @@ export function Dashboard() {
   const completeOnboarding = async () => {
     if (!user) return;
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        hasCompletedOnboarding: true,
-        points: (user.points || 0) + 50
-      });
+      await updateDoc(doc(db, 'users', user.uid), { hasCompletedOnboarding: true });
       setShowOnboarding(false);
     } catch(e) {
       console.error(e);
     }
   };
 
-  const getTier = (pts: number) => {
-    if (pts <= 500) return { name: 'Bronce', next: 501, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-100', icon: <Zap size={14} /> };
-    if (pts <= 1500) return { name: 'Plata', next: 1501, color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-200', icon: <ShieldCheck size={14} /> };
-    if (pts <= 5000) return { name: 'Oro', next: 5001, color: 'text-kiragold', bg: 'bg-kiragold/10', border: 'border-kiragold/20', icon: <Star size={14} /> };
-    return { name: 'Platino', next: Infinity, color: 'text-kirateal', bg: 'bg-kirateal/10', border: 'border-kirateal/20', icon: <Award size={14} /> };
-  };
 
-  const currentTier = getTier(userDocPoints);
-  const progressToNext = currentTier.next === Infinity ? 100 : Math.round((userDocPoints / currentTier.next) * 100);
 
   useEffect(() => {
     fetchData();
@@ -175,17 +163,45 @@ export function Dashboard() {
     }
   };
 
+  const downloadEnrollmentContract = async (enrollment: any) => {
+    if (!user || !enrollment.contractUrl) return;
+    setContractActionBusy(enrollment.id);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/enrollments/' + encodeURIComponent(enrollment.id) + '/contract/download', { headers: { Authorization: 'Bearer ' + token } });
+      if (!response.ok) { const payload = await response.json().catch(() => ({})); throw new Error(payload.error || 'No se pudo descargar el contrato.'); }
+      const blob = await response.blob(), url = URL.createObjectURL(blob), anchor = document.createElement('a');
+      anchor.href = url; anchor.download = 'KIRA-contrato-' + enrollment.id + '.pdf'; anchor.click(); URL.revokeObjectURL(url);
+    } catch (error: any) { alert(error.message || 'No se pudo descargar el contrato.'); }
+    finally { setContractActionBusy(null); }
+  };
+
+  const signEnrollmentContract = async (enrollment: any) => {
+    if (!user || !enrollment.contractUrl || contractActionBusy) return;
+    if (!window.confirm('Confirmo que leí el contrato de matrícula y acepto firmarlo electrónicamente.')) return;
+    setContractActionBusy(enrollment.id);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const response = await fetch('/api/enrollments/' + encodeURIComponent(enrollment.id) + '/contract/sign', { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify({ accepted: true }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'No se pudo firmar el contrato.');
+      await fetchData();
+      alert('Contrato firmado electrónicamente y registrado.');
+    } catch (error: any) { alert(error.message || 'No se pudo firmar el contrato.'); }
+    finally { setContractActionBusy(null); }
+  };
+
   const requestCourseCertificate = async (enrollment: any) => {
     if (!user || certificateRequestBusy) return;
     const course = availableCourses.find(c => c.id === enrollment.courseId);
     if (!course) return alert('No se encontró la información del curso.');
-    const completed = enrollment.completed === true || enrollment.courseCompleted === true || Number(enrollment.progress) >= 100;
+    const completed = enrollment.status === "completed";
     if (!completed) return alert('El certificado estará disponible cuando el curso figure como concluido.');
     const alreadyRequested = myCertificateRequests.some(r => r.courseId === enrollment.courseId && ['pending','approved','issued'].includes(r.status || 'pending'));
     if (alreadyRequested) return alert('Ya existe una solicitud o certificado para este curso.');
     setCertificateRequestBusy(enrollment.id);
     try {
-      const coachSnap = course.coachId ? await getDoc(doc(db, 'users', course.coachId)) : null;
+      const coachSnap = course.coachId ? await getDoc(doc(db, 'coachPublicProfiles', course.coachId)) : null;
       const coach = coachSnap?.exists() ? coachSnap.data() : {};
       const coachName = course.coachName || coach?.displayName || coach?.name || '';
       const hours = Number(course.hours || course.courseHours || course.durationHours || course.totalHours || 0);
@@ -212,6 +228,14 @@ export function Dashboard() {
       alert('No se pudo guardar la solicitud. Inténtalo de nuevo.');
     } finally { setCertificateRequestBusy(null); }
   };
+
+  useEffect(() => {
+    if (!user) { setPurchases([]); return; }
+    const purchasesQuery = query(collection(db, 'purchases'), where('userId', '==', user.uid));
+    return onSnapshot(purchasesQuery, snap => setPurchases(snap.docs.map(d => ({ id: d.id, ...d.data() }))), err => {
+      console.error('Purchase entitlement listener failed:', err);
+    });
+  }, [user]);
 
   const fetchData = async () => {
     if (!user) return;
@@ -243,7 +267,7 @@ export function Dashboard() {
       // Fetch favorites
       if (user.favorites && user.favorites.length > 0) {
         const coachesQ = query(
-          collection(db, 'users'), 
+          collection(db, 'coachPublicProfiles'), 
           where('__name__', 'in', user.favorites.slice(0, 10))
         );
         const coachesSnap = await getDocs(coachesQ);
@@ -294,6 +318,35 @@ export function Dashboard() {
 
   const removeFromCart = (id: string) => {
     setCartItems(cartItems.filter(it => it.id !== id));
+  };
+
+  const handleOpenBook = async (book: any) => {
+    const popup = window.open('about:blank', '_blank');
+    if (!popup) { alert('Permite las ventanas emergentes para abrir el libro.'); return; }
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+      const response = await fetch('/api/books/' + encodeURIComponent(book.id) + '/download', {
+        headers: { Authorization: 'Bearer ' + idToken }
+      });
+      const contentType = response.headers.get('content-type') || '';
+      if (!response.ok) {
+        const data = contentType.includes('application/json') ? await response.json() : null;
+        throw new Error(data?.error || 'No se pudo verificar tu acceso al libro.');
+      }
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
+        if (!data.url) throw new Error('El enlace del libro no está disponible.');
+        popup.location.href = data.url;
+      } else {
+        const blobUrl = URL.createObjectURL(await response.blob());
+        popup.location.href = blobUrl;
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+      }
+    } catch (error: any) {
+      popup.close();
+      alert(error?.message || 'No se pudo abrir el libro.');
+    }
   };
 
   const handleProcessPayment = async (e: React.FormEvent) => {
@@ -362,10 +415,10 @@ export function Dashboard() {
         </div>
                <div className="flex items-center gap-4 bg-slate-50 p-2 rounded-[24px] border border-slate-100 shadow-inner">
           <div className="px-6 py-3 bg-white rounded-2xl shadow-sm border border-slate-200/60">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">Energy Pts</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter mb-1">Mis matrículas</p>
             <div className="flex items-center gap-2">
-              <Zap size={16} className="text-kiragold fill-kiragold" />
-              <span className="text-2xl font-black text-slate-900 tracking-tight">{userDocPoints.toLocaleString()}</span>
+              <BookOpen size={16} className="text-kirateal" />
+              <span className="text-2xl font-black text-slate-900 tracking-tight">{myEnrollments.length}</span>
             </div>
           </div>
           {(user?.role === 'admin' || user?.role === 'coach') && (
@@ -450,11 +503,11 @@ export function Dashboard() {
             <div className="bg-white rounded-3xl w-full max-w-md p-8 relative z-10 shadow-2xl text-center flex flex-col items-center animate-in zoom-in-95 duration-500">
                <div className="w-20 h-20 bg-kirateal/10 rounded-full flex items-center justify-center text-kirateal mb-6 relative">
                   <Sparkles size={32} />
-                  <div className="absolute -top-2 -right-2 bg-kiragold text-white text-[10px] font-black px-2 py-1 rounded-full animate-bounce shadow-md">+50 pts</div>
+                  
                </div>
                <h2 className="text-2xl font-serif font-bold text-slate-800 mb-2">¡Bienvenido a Kira Coach!</h2>
                <p className="text-slate-500 text-sm leading-relaxed mb-8">
-                 Te hemos regalado tus primeros 50 puntos de consciencia. Comienza tu viaje escribiendo en el Diario, o explora nuestro directorio para elegir a tu mentor.
+                 Completa tu perfil y explora los cursos, sesiones y recursos disponibles. Tu progreso se actualizará con actividades verificadas.
                </p>
                <div className="flex flex-col w-full gap-3">
                   <button 
@@ -475,27 +528,10 @@ export function Dashboard() {
       )}      
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className={cn("p-6 rounded-3xl border shadow-sm flex flex-col justify-between transition-all hover:shadow-md h-44", currentTier.bg, currentTier.border)}>
-          <div className="flex justify-between items-center mb-1">
-             <div className="flex items-center gap-2">
-                <span className={cn("p-2 rounded-xl bg-white/60", currentTier.color)}>{currentTier.icon}</span>
-                <h3 className={cn("text-[10px] font-black uppercase tracking-widest", currentTier.color)}>Tier {currentTier.name}</h3>
-             </div>
-             <span className="text-[10px] font-bold opacity-50 uppercase tracking-tighter">Kira League™</span>
-          </div>
-          <div>
-            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-1 italic">Personal Growth</p>
-            <div className="flex items-baseline gap-2">
-               <p className="text-4xl font-black text-slate-900 tracking-tighter">{userDocPoints.toLocaleString()}</p>
-               <span className="text-[11px] font-bold text-slate-500 uppercase">Energy Pts</span>
-            </div>
-          </div>
-          <div className="mt-4">
-             <div className="w-full h-1.5 bg-slate-200/50 rounded-full overflow-hidden">
-                <div className={cn("h-full transition-all duration-1000", currentTier.color.split(' ')[0].replace('text', 'bg'))} style={{ width: `${progressToNext}%` }} />
-             </div>
-             <p className="text-[9px] text-slate-400 mt-2 font-bold uppercase tracking-tight">Siguiente nivel: {currentTier.next === Infinity ? 'MÁXIMO' : `${currentTier.next} pts`}</p>
-          </div>
+        <div className="bg-teal-50 p-6 rounded-3xl border border-teal-100 shadow-sm flex flex-col justify-center h-44">
+          <div className="text-[10px] font-black uppercase tracking-widest text-teal-800 mb-3">Aprendizaje validado</div>
+          <p className="text-4xl font-black text-slate-900">{myEnrollments.filter((enrollment:any) => enrollment.completed === true || enrollment.courseCompleted === true || Number(enrollment.progress) >= 100).length}</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">Cursos completados en tu matrícula</p>
         </div>
 
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-center h-44 hover:border-kirateal/30 transition-colors">
@@ -513,8 +549,8 @@ export function Dashboard() {
             <Award size={24}/>
           </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Insignias</p>
-            <p className="text-4xl font-black text-slate-900 tracking-tight">12</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Certificados emitidos</p>
+            <p className="text-4xl font-black text-slate-900 tracking-tight">{myCertificateRequests.filter(r => r.status === 'issued').length}</p>
           </div>
         </div>
 
@@ -523,25 +559,18 @@ export function Dashboard() {
             <HeartPulse size={24}/>
           </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Estado de Ánimo</p>
-            <p className="text-2xl font-black text-slate-900 tracking-tight">Evolutivo</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Diario personal</p>
+            <p className="text-sm font-bold text-slate-900 tracking-tight">Espacio privado</p>
           </div>
         </div>
 
-        <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-6 rounded-3xl border border-white/10 flex flex-col justify-between h-44 text-white shadow-lg relative overflow-hidden group">
-          <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-125 transition-transform duration-700">
-            <CalendarDays size={120} />
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-center h-44">
+          <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 mb-4">
+            <CalendarDays size={24}/>
           </div>
-          <div className="flex justify-between items-start relative z-10">
-             <h3 className="text-white/80 text-[10px] font-black tracking-widest uppercase flex items-center gap-2">
-                <CalendarDays size={14}/> Próxima Sesión
-             </h3>
-             <span className="bg-amber-400 text-slate-900 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase shadow-md">En 2 días</span>
-          </div>
-          <div className="relative z-10">
-            <p className="text-sm font-bold opacity-80 mb-1">Coach One-on-One</p>
-            <p className="text-xl font-black leading-tight tracking-tight">Biohacking & High Focus</p>
-          </div>
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Membresía</p>
+          <p className="text-lg font-black text-slate-900">{user?.membershipStatus === 'active' ? 'Activa' : 'Sin membresía activa'}</p>
+          <p className="mt-1 text-xs text-slate-500">{user?.membershipStatus === 'active' ? 'Acceso confirmado por KIRA' : 'Explora los planes disponibles'}</p>
         </div>
       </div>
             
@@ -567,6 +596,7 @@ export function Dashboard() {
                 return <div key={enrollment.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-slate-100 p-4">
                   <div className="min-w-0"><div className="font-bold text-slate-800">{course?.title || enrollment.courseTitle || 'Curso inscrito'}</div><div className="text-xs text-slate-500 mt-1">Progreso: {Math.round(Number(enrollment.progress || 0))}% · {completed ? 'Concluido' : 'En curso'}</div>
                     {request && <div className="text-xs text-teal-700 mt-1">Solicitud: {request.status === 'issued' ? 'Certificado emitido' : request.status === 'approved' ? 'Aprobada · pendiente de emisión' : 'En revisión'}</div>}
+                    {enrollment.contractUrl && <div className="mt-2 rounded-xl bg-slate-50 p-3"><div className="text-xs font-bold text-slate-700">Contrato de matrícula · {enrollment.contractSignedAt ? 'Firmado' : 'Pendiente de firma'}</div><div className="mt-2 flex flex-wrap gap-2"><button disabled={contractActionBusy === enrollment.id} onClick={() => void downloadEnrollmentContract(enrollment)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold disabled:opacity-50">Descargar y revisar PDF</button>{!enrollment.contractSignedAt && <button disabled={contractActionBusy === enrollment.id} onClick={() => void signEnrollmentContract(enrollment)} className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">He leído y acepto · Firmar</button>}</div></div>}
                   </div>
                   {request?.status === 'issued' && request.certificateId ? <a href={'/validar-certificado/' + request.certificateId} className="text-xs font-bold text-teal-700 underline">Validar certificado</a> : <button disabled={!completed || !!request || certificateRequestBusy === enrollment.id} onClick={() => requestCourseCertificate(enrollment)} className="px-4 py-2 rounded-xl bg-teal-700 text-white text-xs font-bold disabled:bg-slate-200 disabled:text-slate-400">{certificateRequestBusy === enrollment.id ? 'Enviando…' : request ? 'Solicitud registrada' : completed ? 'Solicitar certificado' : 'Completar curso primero'}</button>}
                 </div>;
@@ -643,47 +673,31 @@ export function Dashboard() {
                                     </button>
                                   );
                                 }
-                                const coursePurchase = purchases.find(p => p.itemId === course.id);
-                                if (coursePurchase) {
-                                  if (coursePurchase.status === 'pending_release') {
-                                    return (
-                                      <button 
-                                        disabled
-                                        className="w-full text-[13px] px-6 py-3.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-2xl font-black flex items-center justify-center gap-2 shadow-sm cursor-not-allowed"
-                                      >
-                                        ⏳ Pendiente
-                                      </button>
-                                    );
-                                  } else {
-                                    return (
-                                      <button 
-                                        onClick={async () => {
-                                          try {
-                                            await addDoc(collection(db, 'enrollments'), {
-                                              userId: user.uid,
-                                              courseId: course.id,
-                                              progress: 0,
-                                              createdAt: new Date()
-                                            });
-                                            fetchData();
-                                          } catch (err) {
-                                            console.error(err);
-                                          }
-                                        }}
-                                        className="w-full text-[13px] px-6 py-3.5 bg-violet-600 text-white rounded-2xl hover:bg-violet-700 font-black transition flex items-center justify-center gap-2 shadow-sm"
-                                      >
-                                        <CheckCircle2 size={16} /> Activar
-                                      </button>
-                                    );
-                                  }
+                                if (Number(course.price || 0) <= 0) {
+                                  return (
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          await addDoc(collection(db, 'enrollments'), { userId: user.uid, studentName: user.displayName || user.name || user.email || 'Alumno', studentEmail: user.email || '', studentAvatar: user.photoURL || user.photoUrl || '', courseId: course.id, progress: 0, completed: false, courseCompleted: false, createdAt: new Date() });
+                                          await fetchData();
+                                        } catch (err) {
+                                          console.error('Free enrollment failed:', err);
+                                          alert('No se pudo completar la inscripción gratuita. Inténtalo de nuevo.');
+                                        }
+                                      }}
+                                      className="w-full text-[13px] px-6 py-3.5 bg-violet-600 text-white rounded-2xl hover:bg-violet-700 font-black transition flex items-center justify-center gap-2 shadow-sm"
+                                    >
+                                      <CheckCircle2 size={16} /> Inscripción gratuita
+                                    </button>
+                                  );
                                 }
                                 const isInCart = cartItems.some(item => item.id === course.id);
                                 return (
-                                  <button 
+                                  <button
                                     onClick={() => addToCart(course, 'course')}
                                     className="w-full text-[13px] px-6 py-3.5 bg-kirateal text-white rounded-2xl hover:bg-kirateal-light font-black transition flex items-center justify-center gap-2 shadow-xl shadow-teal-100"
                                   >
-                                    <ShoppingCart size={16} /> {isInCart ? 'En Carrito' : 'Inscribirse'}
+                                    <ShoppingCart size={16} /> {isInCart ? 'En Carrito' : 'Comprar curso'}
                                   </button>
                                 );
                               })()}
@@ -742,7 +756,7 @@ export function Dashboard() {
                       )}
                       
                       <div className="absolute top-4 left-4 bg-emerald-500/95 text-slate-950 px-2.5 py-1 rounded-full text-[10px] font-black shadow-lg z-20 uppercase tracking-wider">
-                        ${book.price} USD
+                        {Number(book.price || 0) === 0 ? 'Gratis' : `${Number(book.price).toFixed(2)} ${book.currency || 'USD'}`}
                       </div>
                       
                       <div className="absolute top-4 right-4 flex gap-1.5 z-20">
@@ -765,44 +779,28 @@ export function Dashboard() {
                       
                       <div className="mt-auto pt-2">
                         {(() => {
-                          const bookPurchase = purchases.find(p => p.itemId === book.id);
-                          const isOwned = Number(book.price) === 0 || bookPurchase;
-                          if (isOwned) {
-                            if (bookPurchase && bookPurchase.status === 'pending_release') {
-                              return (
-                                <button 
-                                  disabled
-                                  className="w-full text-[10px] py-2.5 bg-slate-800 text-slate-500 rounded-xl font-black flex items-center justify-center gap-2 uppercase tracking-wider cursor-not-allowed border border-slate-700"
-                                >
-                                  ⏳ Pendiente de liberación
+                          const bookPurchase = purchases.find(p => p.productId === book.id && p.paymentStatus === 'paid');
+                          const isOwned = Number(book.price || 0) === 0 || !!bookPurchase;
+                          const canOpenBook = isOwned && book.assetReady === true;
+                          if (isOwned && canOpenBook) {
+                            return (
+                              <div className="flex flex-col gap-2 w-full">
+                                <button onClick={() => handleOpenBook(book)} className="w-full text-[10px] py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-violet-900/20">
+                                  <BookOpen size={12} /> Abrir libro
                                 </button>
-                              );
-                            } else {
-                              return (
-                                <div className="flex flex-col gap-2 w-full">
-                                  <button 
-                                    onClick={() => alert(`Lectura del Ebook: "${book.title}". ¡Excelente decisión! Hemos habilitado el material interactivo y PDF en tu correo corporativo o personal.`)}
-                                    className="w-full text-[10px] py-2.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-violet-900/20 active:scale-[0.98]"
-                                  >
-                                    <BookOpen size={12} /> {book.id === 'cio-robert-teran' ? 'Leer Enlace' : 'Leer PDF'}
-                                  </button>
-                                  <button 
-                                    onClick={() => setReviewingItem({ id: book.id, type: 'book', title: book.title })}
-                                    className="w-full text-[10px] py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider active:scale-[0.98]"
-                                  >
-                                    <Star size={12} className="text-kiragold" /> Calificar Libro
-                                  </button>
-                                </div>
-                              );
-                            }
+                                <button onClick={() => setReviewingItem({ id: book.id, type: 'book', title: book.title })} className="w-full text-[10px] py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider active:scale-[0.98]">
+                                  <Star size={12} className="text-kiragold" /> Calificar Libro
+                                </button>
+                              </div>
+                            );
+                          }
+                          if (isOwned && !canOpenBook) {
+                            return <button disabled className="w-full text-[10px] py-2.5 rounded-xl bg-slate-800 text-slate-500 cursor-not-allowed">Archivo no disponible</button>;
                           }
                           const isInCart = cartItems.some(item => item.id === book.id);
                           return (
-                            <button 
-                              onClick={() => addToCart(book, 'book')}
-                              className="w-full text-[10px] py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-emerald-500/10 active:scale-[0.98]"
-                            >
-                              <ShoppingCart size={12} /> {isInCart ? 'En Carrito' : 'Adquirir Libro'}
+                            <button onClick={() => addToCart(book, 'book')} className="w-full text-[10px] py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 hover:text-white rounded-xl font-black transition flex items-center justify-center gap-2 uppercase tracking-wider shadow-lg shadow-emerald-500/10 active:scale-[0.98]">
+                              <ShoppingCart size={12} /> {isInCart ? 'En Carrito' : 'Comprar libro'}
                             </button>
                           );
                         })()}

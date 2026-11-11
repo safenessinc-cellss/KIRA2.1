@@ -52,7 +52,7 @@ export function EliteLibrary() {
 
   useEffect(() => {
     // Fetch all coaches to get their mediaItems
-    const q = query(collection(db, 'users'), where('role', '==', 'coach'));
+    const q = query(collection(db, 'coachPublicProfiles'), where('status', '==', 'published'));
     const unsub = onSnapshot(q, (snap) => {
       const coachList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setCoaches(coachList);
@@ -65,7 +65,7 @@ export function EliteLibrary() {
     const items = coaches.flatMap(coach => 
       (coach.mediaItems || []).map((item: any) => ({
         ...item,
-        uniqueId: `${coach.id}-${item.title}-${Date.now()}`,
+        uniqueId: `${coach.id}-${item.id || item.title}`,
         coachId: coach.id,
         coachName: coach.displayName,
         coachPhoto: coach.photoURL
@@ -77,36 +77,8 @@ export function EliteLibrary() {
     setDisplayItems(items);
   }, [coaches, searchTerm, filterType]);
 
-  const handleUnlock = async (item: any) => {
-    if (!user || (user.points || 0) < (item.pointCost || 0)) {
-      alert("No tienes suficientes Energy Pts.");
-      return;
-    }
-    setUnlocking(`${item.coachId}-${item.title}`);
-    try {
-      // Deduct points and add to unlockedTools
-      await updateDoc(doc(db, 'users', user.uid), {
-        points: (user.points || 0) - (item.pointCost || 0),
-        unlockedTools: arrayUnion(`${item.coachId}:${item.title}`)
-      });
-      // Add to history
-      await addDoc(collection(db, 'unlockedHistory'), {
-        userId: user.uid,
-        coachId: item.coachId,
-        coachName: item.coachName,
-        title: item.title,
-        type: item.type,
-        url: item.url,
-        cost: item.pointCost || 0,
-        unlockedAt: new Date()
-      });
-      alert(`¡"${item.title}" desbloqueado con éxito!`);
-    } catch (e) {
-      console.error(e);
-      alert("Error al desbloquear.");
-    } finally {
-      setUnlocking(null);
-    }
+  const handleUnlock = async (_item: any) => {
+    alert("La compra de recursos premium todavía no está habilitada. No se descontarán puntos ni se simulará una compra.");
   };
 
   if (loading) {
@@ -129,18 +101,9 @@ export function EliteLibrary() {
           </div>
           <h1 className="text-4xl font-black mb-4 tracking-tight leading-tight">Bóveda de Herramientas Premium</h1>
           <p className="text-slate-300 text-lg leading-relaxed">
-            Utiliza tus Energy Pts acumulados para desbloquear recursos exclusivos de los mejores coaches: plantillas, guías maestras y contenido secreto.
+            Consulta los recursos publicados por coaches aprobados. Los contenidos premium solo se habilitarán cuando exista un flujo de compra verificado.
           </p>
           
-          <div className="mt-8 flex items-center gap-6">
-             <div className="bg-white/10 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/20 flex items-center gap-3">
-                <Zap className="text-kiragold" size={24} fill="currentColor" />
-                <div>
-                   <p className="text-[10px] uppercase font-bold text-slate-400">Total Energy Pts</p>
-                   <p className="text-2xl font-black text-white leading-none">{user?.points || 0}</p>
-                </div>
-             </div>
-          </div>
         </div>
       </div>
 
@@ -164,21 +127,14 @@ export function EliteLibrary() {
         </div>
       </div>
 
-      <Reorder.Group 
-        axis="y" 
-        values={displayItems} 
-        onReorder={setDisplayItems} 
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 list-none"
-      >
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {displayItems.map((item) => {
           const isUnlocked = user?.unlockedTools?.includes(`${item.coachId}:${item.title}`) || (item.pointCost || 0) === 0;
-          const canAfford = (user?.points || 0) >= (item.pointCost || 0);
-          const isCurrentlyUnlocking = unlocking === `${item.coachId}-${item.title}`;
+          const isCurrentlyUnlocking = false;
 
           return (
-            <Reorder.Item 
-              key={item.uniqueId} 
-              value={item}
+            <article
+              key={item.uniqueId}
               className={cn(
                 "group bg-white rounded-3xl border transition-all duration-300 flex flex-col overflow-hidden cursor-grab active:cursor-grabbing",
                 isUnlocked ? "border-slate-200 hover:shadow-xl hover:-translate-y-1" : "border-slate-100 shadow-sm"
@@ -243,33 +199,29 @@ export function EliteLibrary() {
                   ) : (
                     <button 
                       onClick={() => handleUnlock(item)}
-                      disabled={!canAfford || isCurrentlyUnlocking}
+                      disabled
                       className={cn(
                         "w-full py-2.5 rounded-xl text-[11px] font-bold flex items-center justify-center gap-2 transition-all",
-                        canAfford 
-                          ? "bg-kiragold text-slate-900 shadow-lg shadow-kiragold/20 hover:scale-[1.02] active:scale-95" 
-                          : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                        "bg-slate-100 text-slate-500 cursor-not-allowed"
                       )}
                     >
                       {isCurrentlyUnlocking ? (
                         <Loader2 size={14} className="animate-spin" />
                       ) : (
                         <>
-                          <Zap size={14} fill={canAfford ? "currentColor" : "none"} />
-                          Desbloquear por {item.pointCost} E-Pts
+                          <Lock size={14} />
+                          Compra premium no disponible
                         </>
                       )}
                     </button>
                   )}
-                  {!isUnlocked && !canAfford && (
-                    <p className="text-[9px] text-center text-rose-400 font-bold mt-2 uppercase tracking-tight">Energy Pts insuficientes</p>
-                  )}
+
                 </div>
               </div>
-            </Reorder.Item>
+            </article>
           );
         })}
-      </Reorder.Group>
+      </div>
 
       {displayItems.length === 0 && (
         <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-slate-200">

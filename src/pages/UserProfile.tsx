@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { updateProfile } from 'firebase/auth';
 import { useAuth } from '../hooks/useAuth';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { User, Image as ImageIcon, Instagram, Linkedin, Twitter, Save, Loader2, Upload, AlertCircle } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -52,13 +53,17 @@ export function UserProfile() {
 
     try {
       const userRef = doc(db, 'users', user.uid);
+      const normalizedName = displayName.trim();
+      if (!normalizedName || normalizedName.length > 90) throw new Error('El nombre debe tener entre 1 y 90 caracteres.');
+      if (photoURL && !/^https:\/\//i.test(photoURL)) throw new Error('La foto debe usar una URL HTTPS válida.');
       await updateDoc(userRef, {
-        displayName,
-        name: displayName,
+        displayName: normalizedName,
+        name: normalizedName,
         photoURL,
         photoUrl: photoURL,
         socialLinks
       });
+      if (auth.currentUser) await updateProfile(auth.currentUser, { displayName: normalizedName, photoURL: photoURL || null });
       setSuccess(true);
       toastSuccess("¡Tu perfil de usuario ha sido guardado con éxito!");
       setTimeout(() => setSuccess(false), 3000);

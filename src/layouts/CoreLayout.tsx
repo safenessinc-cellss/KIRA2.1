@@ -1,5 +1,6 @@
 // src/layouts/CoreLayout.tsx
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { AIChat } from '../components/AIChat';
 import { ChatWidget } from '../components/ChatWidget'; // ✅ IMPORTAR
@@ -7,7 +8,16 @@ import { Loader2 } from 'lucide-react';
 import { PushNotificationManager } from '../components/PushNotificationManager';
 
 export function CoreLayout() {
-  const { loading } = useAuth();
+  const { user, role, loading } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const isPlatformOwner = user?.email?.toLowerCase() === 'safeness.c.a@gmail.com' && user?.emailVerified === true && role === 'admin';
+    if (isPlatformOwner && (location.pathname === '/' || location.pathname === '/login')) {
+      navigate('/admin', { replace: true });
+    }
+  }, [user?.email, user?.emailVerified, role, location.pathname, navigate]);
 
   if (loading) {
     return (

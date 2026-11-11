@@ -62,7 +62,7 @@ export function ImageUpload({ onUploadComplete, folderPath, className, label = "
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { success: toastSuccess, warning: toastWarning, error: toastError } = useToast();
+  const { success: toastSuccess, error: toastError } = useToast();
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -98,12 +98,10 @@ export function ImageUpload({ onUploadComplete, folderPath, className, label = "
     console.log(`[ImageUpload] Attempting to upload to Firebase Storage: ${folderPath}/${uniqueFileName}`);
     const uploadTask = uploadBytesResumable(storageRef, finalFileOrBlob);
 
-    let wasTimeout = false;
     const timeoutId = setTimeout(() => {
-      wasTimeout = true;
-      console.warn("[ImageUpload] Upload timeout reached (4s). Canceling upload to fallback immediately.");
+      console.warn('[ImageUpload] Upload exceeded 120 seconds; canceling.');
       uploadTask.cancel();
-    }, 4000);
+    }, 120000);
 
     uploadTask.on(
       'state_changed',
@@ -111,21 +109,10 @@ export function ImageUpload({ onUploadComplete, folderPath, className, label = "
         const prog = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
         setProgress(Math.round(prog));
       },
-      async (error) => {
+      (error) => {
         clearTimeout(timeoutId);
-        console.warn("[ImageUpload] Storage Upload Failed (e.g. CORS/permissions). Error:", error);
-        
-        if (base64Fallback) {
-          console.log("[ImageUpload] Falling back to compressed base64 data URL...");
-          if (wasTimeout) {
-            toastWarning("Carga lenta o bloqueada. Usando copia optimizada local.");
-          } else {
-            toastWarning("Carga a la nube restringida por red o CORS. Guardando imagen en base local.");
-          }
-          onUploadComplete(base64Fallback);
-        } else {
-          toastError("Ocurrió un error al procesar la imagen. Verifica los permisos de Firebase.");
-        }
+        console.error('[ImageUpload] Firebase Storage upload failed:', error);
+        toastError('No se pudo subir la imagen a Firebase Storage. Verifica permisos y conexión; no se guardó una copia local simulada.');
         setIsUploading(false);
       },
       async () => {
@@ -136,10 +123,8 @@ export function ImageUpload({ onUploadComplete, folderPath, className, label = "
           toastSuccess("¡Imagen subida exitosamente a la nube!");
           onUploadComplete(downloadURL);
         } catch (err) {
-          console.error("[ImageUpload] Succeeded upload but failed to get URL:", err);
-          if (base64Fallback) {
-            onUploadComplete(base64Fallback);
-          }
+          console.error('[ImageUpload] Upload succeeded but download URL could not be created:', err);
+          toastError('La imagen se subió, pero no se pudo obtener su URL. Inténtalo de nuevo.');
         } finally {
           setIsUploading(false);
         }

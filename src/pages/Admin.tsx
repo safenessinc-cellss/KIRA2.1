@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CertificateManagementView } from './CertificateManagementView';
 import { jsPDF } from 'jspdf';
 import { useAuth } from '../hooks/useAuth';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
@@ -7,135 +8,336 @@ import { Users, Building2, LayoutDashboard, UserCheck, BookOpen, BarChart3, Shie
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
 import { AdminBooksView } from './AdminBooksView';
+import { AdminMembershipPlansView } from './AdminMembershipPlansView';
+import { AdminPaymentsConfig } from './AdminPaymentsConfig';
+import { BackofficeDashboard, BackofficeCRM } from './admin/BackofficeDataViews';
+import { AcademicGroupsView, AcademicPerformanceView } from './admin/AcademicViews';
+import { EnrollmentContractsView, InvoicesView } from './admin/FinanceViews';
+import { Funnel, PhoneCall, BadgeCheck, GraduationCap, CalendarDays, Layers3, UsersRound, FileSignature, ClipboardCheck, Wallet, BadgePercent, PlugZap, LockKeyhole } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates' | 'companies';
+type AdminTab = 'dashboard' | 'activity' | 'crm_leads' | 'crm_interactions' | 'crm_converted' | 'courses' | 'groups' | 'lessons' | 'students' | 'contracts' | 'attendance' | 'invoices' | 'gateways' | 'coupons' | 'integrations' | 'permissions';
+
+type BackofficeItem = { id: AdminTab; label: string; icon: React.ReactNode; permission: string; ready: boolean; countKey?: 'leads' | 'overdue' };
+
+function OwnerActivityView() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser || currentUser.email?.toLowerCase() !== "safeness.c.a@gmail.com" || !currentUser.emailVerified) {
+        throw new Error("El centro global solo está disponible para la cuenta propietaria verificada.");
+      }
+
+      // Firebase client reads are governed by the owner-only Firestore rules.
+      // This keeps the owner dashboard readable even while server-only service credentials
+      // are not configured in Vercel. Sensitive collections remain excluded by design.
+      const [auditSnap, logsSnap, usersSnap, companiesSnap, coursesSnap, enrollmentsSnap, sessionsSnap, transactionsSnap, ordersSnap, certificatesSnap] = await Promise.all([
+        getDocs(query(collection(db, "auditLogs"), orderBy("createdAt", "desc"), limit(200))),
+        getDocs(query(collection(db, "logs"), orderBy("createdAt", "desc"), limit(100))),
+        getDocs(query(collection(db, "users"), limit(2000))),
+        getDocs(query(collection(db, "companies"), limit(2000))),
+        getDocs(query(collection(db, "courses"), limit(2000))),
+        getDocs(query(collection(db, "enrollments"), limit(2000))),
+        getDocs(query(collection(db, "sessions"), limit(2000))),
+        getDocs(query(collection(db, "transactions"), limit(2000))),
+        getDocs(query(collection(db, "orders"), limit(2000))),
+        getDocs(query(collection(db, "certificates"), limit(2000)))
+      ]);
+
+      const users = usersSnap.docs.map(snapshot => ({ id: snapshot.id, ...snapshot.data() })) as any[];
+      const events: any[] = [
+        ...auditSnap.docs.map(snapshot => {
+          const item = snapshot.data();
+          return {
+            id: "audit:" + snapshot.id, source: "auditLogs",
+            action: String(item.action || "system.event"),
+            actorId: String(item.actorId || "system"),
+            target: String(item.targetId || item.nodePath || ""),
+            provider: String(item.provider || item.source || "KIRA"),
+            status: String(item.status || ""),
+            timestamp: item.createdAt || null,
+            error: ""
+          };
+        }),
+        ...logsSnap.docs.map(snapshot => {
+          const item = snapshot.data();
+          return {
+            id: "log:" + snapshot.id, source: "logs",
+            action: String(item.action || "security.event"),
+            actorId: String(item.actorId || "system"),
+            target: String(item.targetId || ""),
+            provider: "KIRA",
+            status: String(item.status || ""),
+            timestamp: item.createdAt || null,
+            error: ""
+          };
+        }),
+        ...users.filter(item => item.lastLoginAt).map(item => ({
+          id: "login:" + item.id, source: "Firebase Authentication",
+          action: "user.login", actorId: String(item.email || item.id),
+          target: String(item.role || "unknown"), provider: "Firebase",
+          status: String(item.status || item.approvalStatus || "active"),
+          timestamp: item.lastLoginAt, error: ""
+        }))
+      ];
+      const time = (value: any) => {
+        const date = value?.toDate ? value.toDate() : new Date(value || 0);
+        return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+      };
+      events.sort((a, b) => time(b.timestamp) - time(a.timestamp));
+
+      const recentUsers = users
+        .slice()
+        .sort((a, b) => time(b.lastActivityAt || b.lastLoginAt) - time(a.lastActivityAt || a.lastLoginAt))
+        .slice(0, 100)
+        .map(item => ({
+          uid: item.uid || item.id,
+          email: item.email || "",
+          displayName: item.displayName || item.name || "",
+          role: item.role || "unknown",
+          approvalStatus: item.approvalStatus || "",
+          status: item.status || "",
+          companyName: item.companyName || "",
+          lastLoginAt: item.lastLoginAt || null,
+          lastActivityAt: item.lastActivityAt || null
+        }));
+
+      setData({
+        owner: { email: currentUser.email, verified: currentUser.emailVerified },
+        generatedAt: new Date().toISOString(),
+        counts: {
+          users: usersSnap.size, companies: companiesSnap.size, courses: coursesSnap.size,
+          enrollments: enrollmentsSnap.size, sessions: sessionsSnap.size,
+          transactions: transactionsSnap.size, orders: ordersSnap.size,
+          certificates: certificatesSnap.size
+        },
+        eventCount: events.length,
+        events: events.slice(0, 250),
+        recentUsers,
+        limits: { perCollection: 2000, events: 250, recentUsers: 100 },
+        privacy: "Se muestran metadatos operativos y de auditoría. No se consultan contraseñas, secretos, tokens, diarios personales, transcripciones, facturas privadas ni payloads de webhooks."
+      });
+    } catch (cause: any) {
+      console.error("[Owner Activity] Firestore read failed:", cause);
+      setError(cause?.message || "No fue posible leer la actividad autorizada de KIRA. Verifica la cuenta propietaria y las reglas Firestore.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(); }, []);
+
+  const counts = data?.counts || {};
+  const metrics = [
+    ["Usuarios (muestra)", counts.users ?? 0],
+    ["Empresas", counts.companies ?? 0],
+    ["Cursos", counts.courses ?? 0],
+    ["Matrículas", counts.enrollments ?? 0],
+    ["Sesiones", counts.sessions ?? 0],
+    ["Transacciones", counts.transactions ?? 0],
+    ["Órdenes", counts.orders ?? 0],
+    ["Certificados", counts.certificates ?? 0]
+  ];
+
+  const formatTimestamp = (value: any) => {
+    if (!value) return "Sin fecha";
+    const date = value?.toDate ? value.toDate() : new Date(value);
+    return Number.isNaN(date.getTime()) ? "Sin fecha" : date.toLocaleString();
+  };
+
+  return <div className="space-y-6">
+    <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[.18em] text-teal-700">SAFENESS · Propietario único</p>
+          <h2 className="mt-1 text-2xl font-black text-slate-900">Centro de Control Global KIRA</h2>
+          <p className="mt-2 text-sm text-slate-600">Actividad operativa, accesos, auditoría y volumen de los módulos de toda la plataforma.</p>
+          <p className="mt-2 text-xs font-semibold text-slate-500">{data?.owner?.email || "safeness.c.a@gmail.com"} · {data?.owner?.verified ? "Cuenta verificada" : "Verificación pendiente"}</p>
+        </div>
+        <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          <Activity size={16} className={loading ? "animate-pulse" : ""}/> Actualizar actividad
+        </button>
+      </div>
+    </header>
+    {error && <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{error}</div>}
+    <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      {metrics.map(([label, value]) => <article key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
+        <p className="mt-2 text-2xl font-black tabular-nums text-slate-900">{loading ? "—" : Number(value).toLocaleString()}</p>
+      </article>)}
+    </section>
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 p-5">
+        <h3 className="font-bold text-slate-900">Registro global de actividad</h3>
+        <p className="mt-1 text-xs text-slate-500">{data?.eventCount ?? 0} eventos encontrados · mostrando hasta 250 recientes</p>
+      </div>
+      {loading ? <div className="p-8 text-center text-sm text-slate-500">Consultando eventos de la plataforma…</div> :
+        !data?.events?.length ? <div className="p-8 text-center text-sm text-slate-500">No hay eventos disponibles en las fuentes de auditoría consultadas.</div> :
+        <div className="max-h-[620px] overflow-auto">
+          {data.events.map((event: any) => <article key={event.id} className="grid gap-2 border-b border-slate-100 px-5 py-4 md:grid-cols-[170px_minmax(0,1fr)_170px]">
+            <time className="text-xs text-slate-500">{formatTimestamp(event.timestamp)}</time>
+            <div className="min-w-0">
+              <p className="break-words text-sm font-bold text-slate-800">{event.action}</p>
+              <p className="mt-1 break-all text-xs text-slate-500">{event.source} · Actor: {event.actorId} · Destino: {event.target || "—"}</p>
+              {event.error && <p className="mt-1 break-words text-xs text-rose-700">{event.error}</p>}
+            </div>
+            <div className="text-xs text-slate-500 md:text-right">{event.provider}{event.status ? " · " + event.status : ""}</div>
+          </article>)}
+        </div>}
+    </section>
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 p-5">
+        <h3 className="font-bold text-slate-900">Usuarios y últimos accesos</h3>
+        <p className="mt-1 text-xs text-slate-500">Identidad, rol, estado y actividad de acceso de toda KIRA.</p>
+      </div>
+      {loading ? <div className="p-8 text-center text-sm text-slate-500">Cargando usuarios…</div> :
+        <div className="max-h-[460px] overflow-auto">
+          <table className="w-full min-w-[700px] text-left text-xs">
+            <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-3">Usuario</th><th className="px-5 py-3">Rol</th><th className="px-5 py-3">Empresa</th><th className="px-5 py-3">Estado</th><th className="px-5 py-3">Último acceso</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {(data?.recentUsers || []).map((item: any) => <tr key={item.uid}>
+                <td className="px-5 py-3"><p className="font-semibold text-slate-800">{item.displayName || "Sin nombre"}</p><p className="mt-1 text-slate-500">{item.email}</p></td>
+                <td className="px-5 py-3 font-semibold text-slate-700">{item.role}</td>
+                <td className="px-5 py-3 text-slate-600">{item.companyName || "—"}</td>
+                <td className="px-5 py-3 text-slate-600">{item.status || item.approvalStatus || "—"}</td>
+                <td className="px-5 py-3 text-slate-500">{formatTimestamp(item.lastLoginAt)}</td>
+              </tr>)}
+            </tbody>
+          </table>
+        </div>}
+    </section>
+    <p className="text-xs leading-relaxed text-slate-500">{data?.privacy || "La auditoría muestra metadatos operativos. No se exponen credenciales ni contenido privado de usuarios."}</p>
+    {data?.limits && <p className="text-[10px] text-slate-400">Cobertura de consulta: máximo {data.limits.perCollection} registros por colección; {data.limits.events} eventos y {data.limits.recentUsers} usuarios en la vista. No representa un archivo histórico ilimitado.</p>}
+  </div>;
+}
 
 export function AdminMonitor() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [profile, setProfile] = useState<any>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-
+  const [counts, setCounts] = useState({ leads: 0, overdue: 0 });
 
   useEffect(() => {
-    if (user) {
-      const unsub = onSnapshot(doc(db, 'users', user.uid), (d) => {
-        setProfile(d.data());
-      });
-      return () => unsub();
-    }
+    if (!user) return;
+    return onSnapshot(doc(db, 'users', user.uid), snapshot => setProfile(snapshot.data() || null));
   }, [user]);
 
-  const isSuperAdmin = user?.email === 'safeness.c.a@gmail.com';
-  const perms = profile?.staffPermissions || [];
+  useEffect(() => {
+    let cancelled = false;
+    const loadCounters = async () => {
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
+        const response = await fetch('/api/admin/dashboard', { headers: { Authorization: 'Bearer ' + token } });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled) setCounts({ leads: Number(data.leads?.total || 0), overdue: Number(data.overdueInvoices || 0) });
+      } catch (error) { console.warn('[Backoffice] Counters unavailable:', error); }
+    };
+    void loadCounters();
+    return () => { cancelled = true; };
+  }, [user]);
 
-  const hasPerm = (item: any) => {
-    if (isSuperAdmin || perms.includes('system')) return true;
-    if (item.perm && perms.includes(item.perm)) return true;
-    if (perms.includes(item.id)) return true;
-    return false;
+  const isSuperAdmin = user?.email?.toLowerCase() === 'safeness.c.a@gmail.com' && user?.emailVerified === true;
+  useEffect(() => { if (isSuperAdmin) setActiveTab('activity'); }, [isSuperAdmin]);
+  const perms: string[] = Array.isArray(profile?.staffPermissions) ? profile.staffPermissions : [];
+  const canOpen = (item: BackofficeItem) => item.ready && (isSuperAdmin || (item.permission !== 'superadmin' && (perms.includes('system') || perms.includes(item.permission))));
+  const tree: Array<{ label: string; items: BackofficeItem[] }> = [
+    { label: 'Control Global', items: [
+      { id: 'activity', label: 'Actividad Global y Auditoría', icon: <Activity size={18}/>, permission: 'superadmin', ready: true },
+      { id: 'dashboard', label: 'Visión General de Ventas y Matrículas', icon: <LayoutDashboard size={18}/>, permission: 'system', ready: true }
+    ] },
+    { label: 'Embudo de Ventas (CRM)', items: [
+      { id: 'crm_leads', label: 'Leads Captados', icon: <Funnel size={18}/>, permission: 'crm', ready: true, countKey: 'leads' },
+      { id: 'crm_interactions', label: 'Intentos de Contacto', icon: <PhoneCall size={18}/>, permission: 'crm', ready: true },
+      { id: 'crm_converted', label: 'Inscripciones Confirmadas', icon: <BadgeCheck size={18}/>, permission: 'crm', ready: true }
+    ] },
+    { label: 'Gestión de Cursos', items: [
+      { id: 'courses', label: 'Todos los Cursos (Online/Presenciales)', icon: <GraduationCap size={18}/>, permission: 'courses', ready: true },
+      { id: 'groups', label: 'Grupos y Horarios', icon: <CalendarDays size={18}/>, permission: 'courses', ready: true },
+      { id: 'lessons', label: 'Módulos y Clases', icon: <Layers3 size={18}/>, permission: 'courses', ready: true }
+    ] },
+    { label: 'Alumnos y Matrículas', items: [
+      { id: 'students', label: 'Base de Alumnos', icon: <UsersRound size={18}/>, permission: 'users', ready: true },
+      { id: 'contracts', label: 'Contratos y Matrículas', icon: <FileSignature size={18}/>, permission: 'users', ready: true },
+      { id: 'attendance', label: 'Rendimiento / Asistencia', icon: <ClipboardCheck size={18}/>, permission: 'courses', ready: true }
+    ] },
+    { label: 'Finanzas', items: [
+      { id: 'invoices', label: 'Mensualidades / Cuotas', icon: <Wallet size={18}/>, permission: 'finance', ready: true, countKey: 'overdue' },
+      { id: 'gateways', label: 'Pasarela de Pago', icon: <CreditCard size={18}/>, permission: 'superadmin', ready: true },
+      { id: 'coupons', label: 'Cupones de Descuento', icon: <BadgePercent size={18}/>, permission: 'billing', ready: true }
+    ] },
+    { label: 'Configuración', items: [
+      { id: 'integrations', label: 'Integraciones (Landing Pages / WhatsApp)', icon: <PlugZap size={18}/>, permission: 'superadmin', ready: false },
+      { id: 'permissions', label: 'Usuarios y Permisos', icon: <ShieldCheck size={18}/>, permission: 'superadmin', ready: true }
+    ] }
+  ];
+  const activeItem = tree.flatMap(group => group.items).find(item => item.id === activeTab);
+  const activeGroup = tree.find(group => group.items.some(item => item.id === activeTab));
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'activity': return isSuperAdmin ? <OwnerActivityView /> : null;
+      case 'dashboard': return <BackofficeDashboard />;
+      case 'crm_leads': return <BackofficeCRM view="leads" />;
+      case 'crm_interactions': return <BackofficeCRM view="interactions" />;
+      case 'crm_converted': return <BackofficeCRM view="converted" />;
+      case 'courses': return <CMSView />;
+      case 'groups': return <AcademicGroupsView />;
+      case 'attendance': return <AcademicPerformanceView />;
+      case 'contracts': return <EnrollmentContractsView />;
+      case 'invoices': return <InvoicesView />;
+      case 'lessons': return <CMSView />;
+      case 'students': return <StudentManagementView />;
+      case 'gateways': return <AdminPaymentsConfig />;
+      case 'coupons': return <AdminPaymentsConfig />;
+      case 'permissions': return <SecurityView />;
+      default: return null;
+    }
   };
 
-  const navItems = [
-    { id: 'dashboard', label: 'Resumen ejecutivo', icon: <LayoutDashboard size={18}/>, category: 'Inicio y métricas' },
-    { id: 'analytics', label: 'Analítica e indicadores', icon: <TrendingUp size={18}/>, category: 'Inicio y métricas', perm: 'system' },
-    { id: 'approvals', label: 'Aprobaciones y onboarding', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
-    { id: 'students', label: 'Gestión de alumnos', icon: <Users size={18}/>, category: 'Personas y acceso', perm: 'users' },
-    { id: 'coaches', label: 'Gestión de coaches', icon: <UserCheck size={18}/>, category: 'Personas y acceso', perm: 'users' },
-    { id: 'security', label: 'Roles y seguridad', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', superOnly: true },
-    { id: 'companies', label: 'Empresas y licencias B2B', icon: <Building2 size={18}/>, category: 'Personas y acceso', superOnly: true },
-    { id: 'campaign_history', label: 'Auditoría y logs', icon: <ShieldAlert size={18}/>, category: 'Personas y acceso', perm: 'system' },
-    { id: 'content', label: 'Cursos y contenidos', icon: <ShoppingBag size={18}/>, category: 'Academia y certificados', perm: 'billing' },
-    { id: 'books', label: 'Biblioteca y ebooks', icon: <BookOpen size={18}/>, category: 'Academia y certificados', perm: 'users' },
-    { id: 'certificates', label: 'Solicitudes de certificados', icon: <FileText size={18}/>, category: 'Academia y certificados', perm: 'users' },
-    { id: 'ai_coaches', label: 'Herramientas IA para coaches', icon: <Sparkles size={18}/>, category: 'Academia y certificados', perm: 'system' },
-    { id: 'transactions', label: 'Pagos y transacciones', icon: <CreditCard size={18}/>, category: 'Finanzas', perm: 'billing' },
-    { id: 'settlement', label: 'Liquidaciones de coaches', icon: <PieChartIcon size={18}/>, category: 'Finanzas', perm: 'billing' },
-    { id: 'promotions', label: 'Promociones y descuentos', icon: <Star size={18}/>, category: 'Finanzas', perm: 'billing' },
-  ];
-
-  const filteredNav = navItems.filter(item => {
-    if (searchQuery && !item.label.toLowerCase().includes(searchQuery.toLowerCase()) && !item.category.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
-
-  const canOpen = (item: any) => item.superOnly ? isSuperAdmin : hasPerm(item);
-
-  const categories = ['Inicio y métricas', 'Personas y acceso', 'Academia y certificados', 'Finanzas'].filter(cat => filteredNav.some(n => n.category === cat));
-
-  return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
-      <aside aria-label="Navegación de administración" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-24">
-        <div className="px-3 pb-3 pt-2">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-kirateal">Centro de control</p>
-          <h2 className="mt-1 text-base font-black text-slate-900">Módulos KIRA</h2>
-          <p className="mt-1 text-xs text-slate-500">Elige un módulo; el contenido aparece a la derecha.</p>
-        </div>
-        <div className="relative mb-3">
-          <Zap className="absolute left-3 top-3 text-slate-400" size={15} />
-          <input type="search" aria-label="Buscar módulo" placeholder="Buscar módulo..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="min-h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none transition focus:border-kirateal focus:ring-4 focus:ring-kirateal/10" />
-        </div>
-        <nav className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-1" aria-label="Módulos">
-          {categories.map(cat => (
-            <div key={cat} className="contents">
-              <h3 className="col-span-full px-3 pb-1 pt-3 text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">{cat}</h3>
-              {filteredNav.filter(n => n.category === cat).map(item => (
-                <NavButton key={item.id} active={activeTab === item.id} disabled={!canOpen(item)} onClick={() => { if (canOpen(item)) setActiveTab(item.id as AdminTab); }} icon={item.icon} label={item.label} />
-              ))}
-            </div>
-          ))}
-        </nav>
-      </aside>
-
-      {/* Área principal: dashboard inicial y contenido del módulo seleccionado */}
-      <div className="min-w-0 w-full">
-        {activeTab === 'dashboard' && hasPerm(navItems.find(i=>i.id==='dashboard')) && <GlobalDashboardView />}
-        {activeTab === 'analytics' && hasPerm(navItems.find(i=>i.id==='analytics')) && <BIView />}
-
-        {activeTab === 'security' && isSuperAdmin && <SecurityView />}
-        {activeTab === 'companies' && isSuperAdmin && <CompanyManagementView />}
-        {activeTab === 'campaign_history' && hasPerm(navItems.find(i=>i.id==='campaign_history')) && <CampaignHistoryView />}
-        {activeTab === 'ai_coaches' && hasPerm(navItems.find(i=>i.id==='ai_coaches')) && <AICoachesView />}
-
-        {activeTab === 'coaches' && hasPerm(navItems.find(i=>i.id==='coaches')) && <CoachCuratorView />}
-        {activeTab === 'approvals' && hasPerm(navItems.find(i=>i.id==='approvals')) && <UserApprovalsView />}
-        {activeTab === 'students' && hasPerm(navItems.find(i=>i.id==='students')) && <StudentManagementView />}
-        {activeTab === 'books' && hasPerm(navItems.find(i=>i.id==='books')) && <AdminBooksView />}
-        {activeTab === 'certificates' && hasPerm(navItems.find(i=>i.id==='certificates')) && <CertificateRequestsAdminView />}
-        {activeTab === 'content' && hasPerm(navItems.find(i=>i.id==='content')) && <CMSView />}
-        {activeTab === 'promotions' && hasPerm(navItems.find(i=>i.id==='promotions')) && <PromotionsManagerView />}
-
-        {activeTab === 'settlement' && hasPerm(navItems.find(i=>i.id==='settlement')) && <SettlementCenterView />}
-        {activeTab === 'transactions' && hasPerm(navItems.find(i=>i.id==='transactions')) && <TransactionsMonitorView />}
-      </div>
+  return <div className="grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-[280px_minmax(0,1fr)] xl:items-start">
+    <Sidebar tree={tree} activeTab={activeTab} onSelect={setActiveTab} canOpen={canOpen} counts={counts}/>
+    <div className="min-w-0 space-y-4">
+      <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+        <span>Backoffice</span><ChevronRight size={13}/><span>{activeGroup?.label || 'Dashboard'}</span>
+        {activeItem && <><ChevronRight size={13}/><span className="font-semibold text-slate-800">{activeItem.label}</span></>}
+      </nav>
+      {activeItem && !activeItem.ready ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6"><div className="flex items-center gap-2 font-bold text-amber-900"><AlertTriangle size={18}/> Módulo aún no habilitado</div><p className="mt-2 text-sm text-amber-800">Este nodo forma parte del árbol oficial, pero su API, persistencia y pruebas de autorización todavía no cumplen el criterio de aceptación. Permanece bloqueado para evitar una pantalla sin backend funcional.</p></div> : activeItem && !canOpen(activeItem) ? <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-800">Tu rol no tiene permiso para consultar este módulo.</div> : renderContent()}
     </div>
-  );
+  </div>;
 }
 
-function NavButton({ active, onClick, icon, label, disabled = false }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, disabled?: boolean }) {
-  return (
-    <button 
-      onClick={onClick}
-      disabled={disabled}
-      title={disabled ? 'Tu rol no tiene permiso para abrir este módulo' : label}
-      className={`flex min-h-20 w-full items-center gap-3 rounded-xl border p-4 text-left text-[13px] font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kirateal ${
-        active
-          ? 'border-kirateal/40 bg-kirateal text-white shadow-md shadow-kirateal/10'
-          : disabled
-            ? 'border-slate-100 bg-slate-50 text-slate-400 opacity-70 cursor-not-allowed'
-            : 'border-slate-200 bg-white text-slate-700 hover:border-kirateal/40 hover:bg-teal-50/50 hover:text-kirateal hover:shadow-sm'
-      }`}
-    >
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${active ? 'bg-white/15' : 'bg-slate-100'}`}>{icon}</span>
-      <span className="min-w-0 flex-1">{label}</span>
-      {disabled && <ShieldAlert size={13} aria-label="Sin permisos" />}
-    </button>
-  );
+export function Sidebar({ tree, activeTab, onSelect, canOpen, counts }: {
+  tree: Array<{ label: string; items: BackofficeItem[] }>;
+  activeTab: AdminTab;
+  onSelect: (tab: AdminTab) => void;
+  canOpen: (item: BackofficeItem) => boolean;
+  counts: { leads: number; overdue: number };
+}) {
+  return <aside aria-label="Navegación oficial KIRA" className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm xl:sticky xl:top-24">
+    <div className="px-3 pb-3 pt-2"><p className="text-[10px] font-black uppercase tracking-[.18em] text-teal-700">KIRA · Backoffice</p><h2 className="mt-1 text-base font-black text-slate-900">Navegación principal</h2><p className="mt-1 text-xs text-slate-500">Estructura oficial de gestión.</p></div>
+    <nav className="space-y-4">
+      {tree.map(group => <section key={group.label}><h3 className="px-3 pb-1 text-[10px] font-black uppercase tracking-[.13em] text-slate-400">{group.label}</h3><div className="space-y-1">{group.items.map(item => {
+        const allowed = canOpen(item), active = activeTab === item.id;
+        const count = item.countKey ? counts[item.countKey] : 0;
+        return <button key={item.id} type="button" onClick={() => allowed && onSelect(item.id)} disabled={!allowed} aria-current={active ? 'page' : undefined} title={!item.ready ? 'Pendiente: backend y pruebas de aceptación' : !allowed ? 'Tu rol no tiene permiso para este módulo' : item.label} className={'flex min-h-11 w-full items-center gap-3 rounded-xl border px-3 py-2 text-left text-xs font-semibold transition ' + (active ? 'border-teal-700 bg-teal-700 text-white' : allowed ? 'border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50' : 'cursor-not-allowed border-transparent bg-slate-50 text-slate-400')}>
+          <span className="shrink-0">{item.icon}</span><span className="min-w-0 flex-1">{item.label}</span>
+          {item.countKey && count > 0 && <span className={'rounded-full px-2 py-0.5 text-[10px] ' + (active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600')}>{count}</span>}
+          {!item.ready && <LockKeyhole size={13} className="shrink-0"/>}
+          {item.ready && !allowed && <ShieldAlert size={13} className="shrink-0"/>}
+        </button>;
+      })}</div></section>)}
+    </nav>
+  </aside>;
 }
 
-// --- MODULO: CONFIGURACIÓN SITIO WEB (BRANDING ENGINE) ---
 function WebsiteConfigView() {
   const [config, setConfig] = useState<any>({ heroImage: '', secondaryImage: '', primaryColor: '#1ec6b6', secondaryColor: '#8b5cf6' });
   const [history, setHistory] = useState<any[]>([{ primaryColor: '#1ec6b6', secondaryColor: '#8b5cf6', date: new Date().toISOString(), label: 'Default Kira' }]);
@@ -3192,6 +3394,10 @@ function SecurityView() {
   }
 
   const changeRole = async (userId: string, newRole: string) => {
+    if (searchResult?.email?.toLowerCase() === 'safeness.c.a@gmail.com') {
+      alert('La cuenta propietaria de KIRA es inmutable y no puede cambiar de rol.');
+      return;
+    }
     if (!confirm(`¿Estás seguro de cambiar el rol a ${newRole}?`)) return;
     try {
       await updateDoc(doc(db, 'users', userId), { role: newRole });
@@ -3212,6 +3418,10 @@ function SecurityView() {
   }
 
   const togglePermission = async (userId: string, current: string[], perm: string) => {
+    if (staff.find(member => member.id === userId)?.email?.toLowerCase() === 'safeness.c.a@gmail.com') {
+      alert('No se pueden modificar los permisos de la cuenta propietaria.');
+      return;
+    }
     try {
       const next = current?.includes(perm) ? current.filter(p => p !== perm) : [...(current || []), perm];
       await updateDoc(doc(db, 'users', userId), { staffPermissions: next });
@@ -3234,6 +3444,10 @@ function SecurityView() {
   };
 
   const toggleStatus = async (userId: string, currentStatus: string) => {
+    if (staff.find(member => member.id === userId)?.email?.toLowerCase() === 'safeness.c.a@gmail.com') {
+      alert('La cuenta propietaria no puede ser suspendida desde el backoffice.');
+      return;
+    }
     try {
       const next = currentStatus === 'frozen' ? 'active' : 'frozen';
       await updateDoc(doc(db, 'users', userId), { status: next });
@@ -4440,95 +4654,7 @@ function PromotionsManagerView() {
 }
 
 
-function CertificateRequestsAdminView() {
-  const { user } = useAuth();
-  const [requests, setRequests] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [issuing, setIssuing] = useState<string | null>(null);
-  const [previewRequestId, setPreviewRequestId] = useState<string | null>(null);
-  const [certificateLogo, setCertificateLogo] = useState('/assets/kira-logo.png');
-  const isSuperAdmin = user?.email === 'safeness.c.a@gmail.com';
-  useEffect(() => {
-    return onSnapshot(collection(db, 'certificateRequests'), snap => { setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); }, err => { console.error(err); setError('No se pudieron cargar las solicitudes. Verifica las reglas de Firestore.'); setLoading(false); });
-  }, []);
-  useEffect(() => onSnapshot(doc(db, 'settings', 'website'), snap => { if (snap.exists() && snap.data().logoImage) setCertificateLogo(snap.data().logoImage); }), []);
-  const decide = async (r: any, status: 'approved' | 'rejected') => {
-    if (!isSuperAdmin || !user) return setError('Solo el superadministrador puede revisar solicitudes.');
-    if (status === 'approved' && (!(r.paymentStatus === 'paid' || r.paid === true) || !(r.courseCompleted === true || r.completed === true || Number(r.progress) >= 100))) return setError('Falta confirmar el pago o la finalización del curso.');
-    try { await updateDoc(doc(db, 'certificateRequests', r.id), { status, reviewedBy: user.uid, reviewedByName: user.displayName || user.email, reviewedAt: new Date() }); setError(''); } catch (e) { console.error(e); setError('No se pudo actualizar la solicitud.'); }
-  };
-  const confirmPayment = async (r: any) => {
-    if (!isSuperAdmin || !user) return setError('Solo el superadministrador puede confirmar pagos.');
-    try {
-      await updateDoc(doc(db, 'certificateRequests', r.id), {
-        paid: true, paymentStatus: 'paid', paymentVerifiedBy: user.uid,
-        paymentVerifiedByName: user.displayName || user.email, paymentVerifiedAt: new Date()
-      });
-      setError('');
-    } catch (error) { console.error(error); setError('No se pudo registrar la verificación del pago.'); }
-  };
-  const issue = async (r: any) => {
-    if (!isSuperAdmin || !user || r.status !== 'approved') return;
-    const hours = Number(r.hours || r.courseHours || r.durationHours || 0);
-    if (!(r.paymentStatus === 'paid' || r.paid === true) || !(r.courseCompleted === true || r.completed === true || Number(r.progress) >= 100) || !r.studentName || !r.courseTitle || !r.coachName || hours <= 0) return setError('No se emite: verifica pago, curso concluido, alumno, coach y horas.');
-    setIssuing(r.id);
-    try {
-      const idToken = await auth.currentUser?.getIdToken();
-      if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
-      const issueResponse = await fetch('/api/certificates/issue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
-        body: JSON.stringify({ requestId: r.id, enrollmentId: r.enrollmentId })
-      });
-      const issueData = await issueResponse.json();
-      if (!issueResponse.ok || !issueData.certificateNumber || !issueData.validationUrl) throw new Error(issueData.error || 'No se pudo emitir el certificado firmado.');
-      const number = issueData.certificateNumber;
-      const token = issueData.validationUrl.split('/').pop() || '';
-      const issuedAt = new Date();
-      const issuerName = user.displayName || user.email || 'KIRA COACH';
-      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-      pdf.setFillColor(250,252,253); pdf.rect(0,0,297,210,'F'); pdf.setDrawColor(25,166,160); pdf.setLineWidth(1.5); pdf.roundedRect(9,9,279,192,4,4,'S');
-      pdf.setTextColor(229,237,238); pdf.setFont('helvetica','bold'); pdf.setFontSize(58); pdf.text('KIRA',148.5,112,{align:'center'});
-      try { const settingsSnap = await getDoc(doc(db, 'settings', 'website')); const configuredLogo = settingsSnap.exists() ? settingsSnap.data().logoImage : ''; const logoUrl = configuredLogo || '/assets/kira-logo.png'; const logoResponse = await fetch(logoUrl.startsWith('http') || logoUrl.startsWith('data:') ? logoUrl : window.location.origin + (logoUrl.startsWith('/') ? logoUrl : '/' + logoUrl)); if (logoResponse.ok) { const logoBlob = await logoResponse.blob(); const logoData = await new Promise<string>((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(logoBlob); }); pdf.addImage(logoData,'PNG',136,12,25,15); } } catch (logoError) { console.warn('Logo KIRA no disponible para el PDF.', logoError); }
-      pdf.setTextColor(20,75,82); pdf.setFontSize(22); pdf.text('KIRA COACH',148.5,32,{align:'center'}); pdf.setFont('helvetica','normal'); pdf.setFontSize(10); pdf.text('CERTIFICADO DE CONCLUSIÓN',148.5,42,{align:'center'});
-      pdf.setTextColor(50,60,68); pdf.setFontSize(13); pdf.text('Se certifica que',148.5,65,{align:'center'}); pdf.setTextColor(20,100,102); pdf.setFont('helvetica','bold'); pdf.setFontSize(26); pdf.text(r.studentName,148.5,82,{align:'center',maxWidth:240});
-      pdf.setTextColor(50,60,68); pdf.setFont('helvetica','normal'); pdf.setFontSize(12); pdf.text('ha concluido satisfactoriamente el curso',148.5,96,{align:'center'}); pdf.setFont('helvetica','bold'); pdf.setFontSize(19); pdf.text(r.courseTitle,148.5,109,{align:'center',maxWidth:240});
-      pdf.setFont('helvetica','normal'); pdf.setFontSize(11); pdf.text(hours + ' horas académicas · Coach: ' + r.coachName,148.5,123,{align:'center',maxWidth:240});
-      pdf.setDrawColor(25,166,160); pdf.line(28,151,104,151); pdf.line(193,151,269,151); pdf.setTextColor(55,65,75); pdf.setFontSize(9); pdf.setFont('times','italic'); pdf.setFontSize(17); pdf.text(issuerName,66,151,{align:'center',maxWidth:72}); pdf.setFont('helvetica','normal'); pdf.setFontSize(9); pdf.text(issuerName,66,158,{align:'center',maxWidth:72}); pdf.text('Registro de emisor autenticado por KIRA',66,164,{align:'center'}); pdf.text('KIRA COACH · SAFENESS.INC',231,157,{align:'center'});
-      pdf.setTextColor(20,75,82); pdf.setFont('helvetica','bold'); pdf.text(number,148.5,179,{align:'center'});
-      const url = issueData.validationUrl; pdf.setFont('helvetica','normal'); pdf.setFontSize(8); pdf.text('Validación QR: ' + url,148.5,187,{align:'center',maxWidth:250});
-      try { const response = await fetch('https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url)); if (response.ok) { const blob = await response.blob(); const data = await new Promise<string>((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(blob); }); pdf.addImage(data,'PNG',263,15,20,20); } } catch (e) { console.warn('QR no incrustado; la URL queda impresa.',e); }
-      pdf.save(number + '.pdf'); setError('');
-    } catch (e) { console.error(e); setError('No se pudo emitir el certificado. Revisa permisos y conexión.'); } finally { setIssuing(null); }
-  };
-  const pending = requests.filter(r => !['approved','rejected','issued'].includes(String(r.status || 'pending')));
-  const previewRequest = requests.find(r => r.id === previewRequestId) || requests[0] || null;
-  const previewDate = previewRequest?.issuedAt?.toDate?.() || (previewRequest?.issuedAt ? new Date(previewRequest.issuedAt) : null);
-  const previewValidationUrl = previewRequest?.validationUrl || previewRequest?.qrUrl || '';
-  return <div className='space-y-5'><section className='bg-white border border-slate-200 rounded-2xl p-6 shadow-sm'><h2 className='text-xl font-bold text-slate-900 flex items-center gap-2'><FileText className='text-kirateal'/> Certificados verificables KIRA</h2><p className='text-sm text-slate-500 mt-2'>Aprobación, emisión con registro de emisor y validación pública por QR.</p><div className='flex gap-2 flex-wrap mt-4 text-xs'><span className='rounded-full bg-amber-50 text-amber-700 px-3 py-1'>Pendientes: {pending.length}</span><span className='rounded-full bg-emerald-50 text-emerald-700 px-3 py-1'>Aprobadas: {requests.filter(r=>r.status==='approved').length}</span><span className='rounded-full bg-slate-100 text-slate-600 px-3 py-1'>Emitidas: {requests.filter(r=>r.status==='issued').length}</span><span className='rounded-full bg-rose-50 text-rose-700 px-3 py-1'>Rechazadas: {requests.filter(r=>r.status==='rejected').length}</span></div></section>
-  {error && <div className='rounded-xl bg-rose-50 border border-rose-200 text-rose-700 p-3 text-sm'>{error}</div>}
-  <section className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6'>
-    <div className='mb-4'><p className='text-[10px] font-black uppercase tracking-[0.18em] text-kirateal'>Modelo oficial</p><h3 className='text-lg font-black text-slate-900'>Vista previa del certificado KIRA</h3><p className='text-xs text-slate-500'>A4 horizontal · logo · marca de agua · alumno · curso · coach · horas · firma electrónica · QR</p></div>
-    <div className='relative mx-auto aspect-[1.414/1] w-full max-w-4xl overflow-hidden rounded-xl border-[5px] border-double border-teal-700 bg-[#fffefa] p-[3.5%] text-center shadow-inner'>
-      <div className='pointer-events-none absolute inset-0 flex items-center justify-center'><span className='rotate-[-24deg] text-[clamp(3rem,11vw,8rem)] font-black tracking-widest text-teal-900/[0.055]'>KIRA</span></div>
-      <div className='relative flex h-full flex-col items-center justify-between'>
-        <div className='flex flex-col items-center'><img src={certificateLogo} alt='Logo KIRA' className='h-[clamp(22px,5vw,58px)] max-w-[25%] object-contain'/><div className='mt-1 text-[clamp(9px,1.5vw,18px)] font-black tracking-[0.24em] text-teal-900'>KIRA COACH</div><div className='text-[clamp(6px,0.8vw,10px)] tracking-[0.2em] text-slate-500'>CERTIFICADO DE CONCLUSIÓN</div></div>
-        <div className='relative max-w-[85%]'><p className='text-[clamp(7px,1vw,12px)] text-slate-500'>Se certifica que</p><h4 className='mt-1 break-words text-[clamp(13px,2.8vw,30px)] font-serif font-bold text-slate-900'>{previewRequest?.studentName || 'Nombre completo del alumno'}</h4><p className='mt-1 text-[clamp(7px,1vw,12px)] text-slate-600'>ha concluido satisfactoriamente el curso</p><h5 className='mt-1 break-words text-[clamp(10px,1.8vw,20px)] font-bold text-teal-800'>{previewRequest?.courseTitle || 'Nombre del curso'}</h5><p className='mt-1 text-[clamp(7px,1vw,12px)] text-slate-600'>{Number(previewRequest?.hours || previewRequest?.courseHours || previewRequest?.durationHours || 0) || '—'} horas académicas · Coach: {previewRequest?.coachName || 'Nombre del coach'}</p></div>
-        <div className='relative grid w-full grid-cols-[1fr_auto_1fr] items-end gap-2 text-[clamp(6px,0.8vw,10px)] text-slate-600'>
-          <div className='border-t border-slate-400 pt-1'><span className='block font-serif text-[clamp(8px,1.3vw,15px)] italic text-slate-800'>{previewRequest?.issuerName || 'Firma electrónica KIRA'}</span><span className='font-bold'>EMISOR AUTORIZADO</span><span className='block'>{previewRequest?.issuerName || 'Superadministrador KIRA'}</span></div>
-          <div className='flex flex-col items-center gap-1'>{previewValidationUrl ? <img src={'https://api.qrserver.com/v1/create-qr-code/?size=160x160&data='+encodeURIComponent(previewValidationUrl)} alt='QR de validación' className='h-[clamp(30px,7vw,72px)] w-[clamp(30px,7vw,72px)]'/> : <div className='flex h-[clamp(30px,7vw,72px)] w-[clamp(30px,7vw,72px)] items-center justify-center border border-dashed border-slate-400 text-center text-[7px] text-slate-400'>QR al emitir</div>}<span className='font-mono'>{previewRequest?.certificateNumber || 'N.º KIRA — pendiente'}</span></div>
-          <div className='border-t border-slate-400 pt-1'><span className='block font-serif text-[clamp(8px,1.3vw,15px)] italic text-slate-800'>{previewRequest?.coachName || 'Firma del coach'}</span><span className='font-bold'>COACH RESPONSABLE</span><span className='block'>KIRA COACH</span></div>
-        </div>
-        <div className='relative text-[clamp(6px,0.8vw,10px)] text-slate-500'>Fecha de emisión: {previewDate ? previewDate.toLocaleDateString() : 'se asigna al emitir'} · Verificación pública mediante QR</div>
-      </div>
-    </div>
-    <p className='mt-3 text-center text-[11px] text-slate-500'>Selecciona una solicitud para ver sus datos. La firma y el QR solo son válidos tras la emisión verificada por el servidor.</p>
-  </section>
-
-  {loading ? <div className='p-8 text-center text-slate-500'>Cargando solicitudes…</div> : requests.length === 0 ? <div className='rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center text-slate-500'>Todavía no hay solicitudes.</div> : <div className='space-y-3'>{requests.map(r => <article key={r.id} onClick={() => setPreviewRequestId(r.id)} className={'bg-white border rounded-2xl p-5 flex flex-col md:flex-row md:items-center gap-4 cursor-pointer transition-colors ' + (previewRequest?.id === r.id ? 'border-kirateal ring-2 ring-kirateal/10' : 'border-slate-200')}><div className='flex-1 min-w-0'><div className='font-semibold text-slate-900'>{r.courseTitle || r.courseName || r.title || 'Curso no identificado'}</div><div className='text-sm text-slate-500 mt-1'>Alumno: {r.studentName || r.userName || r.userEmail || r.userId || 'Sin identificar'}</div><div className='text-xs text-slate-400 mt-1'>Coach: {r.coachName || r.coachId || 'No especificado'} · {r.hours || r.courseHours || r.durationHours || 0} horas · Estado: {r.status || 'pending'}</div><div className='text-xs text-slate-400 mt-1'>Pago: {r.paymentRequired === false ? 'No requiere pago' : r.paymentStatus === 'paid' ? 'Confirmado por administración' : 'Pendiente de verificación'}</div><div className='text-xs text-slate-400 mt-1'>Solicitud: {r.id} {r.certificateNumber ? '· Certificado: ' + r.certificateNumber : ''}</div>{r.issuedByName && <div className='text-xs text-emerald-700 mt-1'>Emitido por: {r.issuedByName}</div>}</div>
-  {r.status !== 'issued' && <div className='flex gap-2 flex-wrap'>{r.paymentRequired !== false && !r.paid && <button disabled={!isSuperAdmin} onClick={()=>confirmPayment(r)} className='px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-bold disabled:opacity-40'>Confirmar pago</button>}{r.status !== 'approved' && <button disabled={!isSuperAdmin} onClick={()=>decide(r,'approved')} className='px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold disabled:opacity-40'>Aprobar</button>}{r.status !== 'rejected' && <button disabled={!isSuperAdmin} onClick={()=>decide(r,'rejected')} className='px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold disabled:opacity-40'>Rechazar</button>}{r.status === 'approved' && <button disabled={!isSuperAdmin || issuing===r.id} onClick={()=>issue(r)} className='px-3 py-2 rounded-lg bg-kirateal text-white text-xs font-bold disabled:opacity-50'>{issuing===r.id ? 'Emitiendo…' : 'Emitir certificado + PDF'}</button>}</div>}</article>)}</div>}</div>;
-}
+function CertificateRequestsAdminView() { return <CertificateManagementView />; }
 
 // Compatibilidad con rutas anteriores
 export function AdminCoaches() { return <AdminMonitor />; }
