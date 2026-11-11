@@ -15,18 +15,17 @@ export function hasKiraCookieConsent(category:"analytics"|"marketing"): boolean 
  try { const value=readPreferences(); return value?.[category]===true; } catch { return false; }
 }
 export function CookieConsent() {
- const [preferences,setPreferences]=useState<Preferences|null>(null);
  const [visible,setVisible]=useState(false);
  const [customize,setCustomize]=useState(false);
  const [analytics,setAnalytics]=useState(false);
  const [marketing,setMarketing]=useState(false);
  useEffect(()=>{
-  const current=readPreferences(); setPreferences(current); setVisible(!current);
+  const current=readPreferences(); setVisible(!current);
   const open=()=>{const saved=readPreferences();setAnalytics(saved?.analytics===true);setMarketing(saved?.marketing===true);setCustomize(true);setVisible(true);};
   window.addEventListener("kira:open-cookie-settings",open);
   return ()=>window.removeEventListener("kira:open-cookie-settings",open);
  },[]);
- const persist=(a:boolean,m:boolean)=>{const next=savePreferences(a,m);setPreferences(next);setVisible(false);setCustomize(false);};
+ const persist=(a:boolean,m:boolean)=>{savePreferences(a,m);setVisible(false);setCustomize(false);};
  if(!visible)return null;
  return <div className="fixed inset-x-3 bottom-3 z-[100] mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:inset-x-5 sm:p-5" role="dialog" aria-modal="true" aria-labelledby="kira-cookie-title">
   <div className="flex items-start gap-3"><div className="rounded-xl bg-teal-50 p-2 text-teal-800"><Cookie size={20}/></div><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><h2 id="kira-cookie-title" className="font-bold text-slate-900">Tu privacidad importa</h2><button onClick={()=>setVisible(false)} aria-label="Cerrar aviso" className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X size={17}/></button></div>
