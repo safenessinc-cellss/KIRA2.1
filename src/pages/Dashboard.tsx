@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { collection, query, where, getDocs, getDoc, addDoc, onSnapshot, doc, updateDoc, setDoc, orderBy, limit } from 'firebase/firestore';
@@ -40,6 +40,7 @@ export function Dashboard() {
   const [purchases, setPurchases] = useState<any[]>([]);
   const [paymentForm, setPaymentForm] = useState({ cardName: '', cardNumber: '', expiry: '', cvv: '' });
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const checkoutAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
   const [showCommunityModal, setShowCommunityModal] = useState(false);
   const [whatsappUrl, setWhatsappUrl] = useState('');
@@ -358,14 +359,22 @@ export function Dashboard() {
     try {
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+      const checkoutItems = cartItems.map(item => ({ id: item.id, quantity: 1 })).sort((a, b) => a.id.localeCompare(b.id));
+      const fingerprint = JSON.stringify({ provider: checkoutProvider, items: checkoutItems });
+      if (!checkoutAttemptRef.current || checkoutAttemptRef.current.fingerprint !== fingerprint) {
+        checkoutAttemptRef.current = { fingerprint, key: window.crypto.randomUUID() };
+      }
+      const idempotencyKey = checkoutAttemptRef.current.key;
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken },
-        body: JSON.stringify({ items: cartItems.map(item => ({ id: item.id, quantity: 1 })), provider: checkoutProvider })
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + idToken, 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify({ items: checkoutItems, provider: checkoutProvider })
       });
       const data = await response.json();
       if (!response.ok || data.error || !data.url) throw new Error(data.error || 'No se pudo iniciar el pago.');
+      checkoutAttemptRef.current = null;
       setShowPaymentModal(false);
+      setShowCart(false);
       window.location.href = data.url;
     } catch (error: any) {
       console.error('Checkout failed:', error);
