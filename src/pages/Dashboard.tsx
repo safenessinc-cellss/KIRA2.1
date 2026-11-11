@@ -1303,22 +1303,13 @@ export function Journal() {
     if (!user) return;
     setLoadingPrompt(true);
     try {
-      const q = query(
-        collection(db, 'journals'),
-        where('userId', '==', user.uid),
-        orderBy('createdAt', 'desc'),
-        limit(3)
-      );
-      const snap = await getDocs(q);
-      const previousEntries = snap.docs.map(d => d.data().content).join('\n---\n');
-
+      // Journals are private by default. Do not read previous entries into the
+      // browser prompt or send their content to a third-party AI provider.
       const prompt = `
-        Actúa como Kira, una asistente de bienestar consciente.
-        Basado en los últimos diarios de ${user.displayName || 'el usuario'}:
-        "${previousEntries || 'El usuario aún no tiene entradas previas.'}"
-        
-        Genera una pregunta corta, cálida y empática (máximo 15 palabras) para que el usuario reflexione hoy. 
-        Si no hay entradas previas, dale una bienvenida inspiradora.
+        Actúa como KIRA Coach, una asistente de reflexión y bienestar.
+        Genera una pregunta corta, cálida y empática (máximo 15 palabras)
+        para invitar al usuario a reflexionar hoy. No solicites información sensible
+        ni presupongas experiencias, diagnósticos o estados emocionales.
       `;
 
       const response = await fetch('/api/gemini/generate', {
