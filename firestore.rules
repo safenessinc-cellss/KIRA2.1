@@ -72,11 +72,13 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
+    // Platform-wide Firestore administration is owner-only. Never trust a mutable
+    // users/{uid}.role field as an authorization credential.
+    // Delegated staff access must be implemented with narrowly scoped signed claims.
     function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.email == "safeness.c.a@gmail.com" ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
-      );
+      return isAuthenticated()
+        && request.auth.token.email == "safeness.c.a@gmail.com"
+        && request.auth.token.email_verified == true;
     }
     
     function isApprovedCoach() {
