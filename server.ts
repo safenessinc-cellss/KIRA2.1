@@ -76,7 +76,7 @@ function getGeminiAI() {
 }
 
 
-interface VerifiedFirebaseUser { uid: string; email?: string; }
+interface VerifiedFirebaseUser { uid: string; email?: string; emailVerified?: boolean; authTime?: number; mfaSecondFactor?: string; kiraPermissions?: string[]; }
 let firebasePublicKeys: Record<string, string> = {};
 let firebaseKeysExpiresAt = 0;
 
@@ -106,7 +106,7 @@ async function verifyFirebaseIdToken(token: string): Promise<VerifiedFirebaseUse
     if (!certificate) return null;
     const signedData = Buffer.from(parts[0] + "." + parts[1]);
     if (!verifySignature("RSA-SHA256", signedData, certificate, Buffer.from(parts[2], "base64url"))) return null;
-    return { uid: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined };
+    return { uid: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined, emailVerified: claims.email_verified === true, authTime: Number(claims.auth_time || 0), mfaSecondFactor: typeof claims.firebase?.sign_in_second_factor === "string" ? claims.firebase.sign_in_second_factor : undefined, kiraPermissions: Array.isArray(claims.kiraPermissions) ? claims.kiraPermissions.filter((p: unknown): p is string => typeof p === "string") : [] };
   } catch {
     return null;
   }
@@ -207,6 +207,50 @@ async function fsGet(collectionName: string, id: string): Promise<any | null> {
   const document = await response.json() as any;
   return Object.fromEntries(Object.entries(document.fields || {}).map(([k, v]) => [k, fsDecode(v)]));
 }
+
+async function fsListDocuments(collectionName: string, pageSize = 200): Promise<Array<{ id: string; [key: string]: any }>> {
+  const safePageSize = Math.max(1, Math.min(1000, Math.floor(pageSize)));
+  const results: Array<{ id: string; [key: string]: any }> = [];
+  let pageToken = "";
+  for (let page = 0; page < 3; page++) {
+    const url = new URL("https://firestore.googleapis.com/v1/" + fsDocumentPath(collectionName, ""));
+    url.pathname = url.pathname.replace(/\/$/, "");
+    url.searchParams.set("pageSize", String(safePageSize));
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await fetch(url.toString(), { headers: { Authorization: "Bearer " + await firestoreToken() } });
+    if (response.status === 404) return results;
+    if (!response.ok) throw new Error("Firestore list failed (" + response.status + ").");
+    const payload = await response.json() as any;
+    for (const document of payload.documents || []) {
+      const id = String(document.name || "").split("/").pop() || "";
+      results.push({ id, ...Object.fromEntries(Object.entries(document.fields || {}).map(([key, value]) => [key, fsDecode(value)])) });
+    }
+    pageToken = String(payload.nextPageToken || "");
+    if (!pageToken) break;
+  }
+  return results;
+}
+async function requireAdminOversight(req: express.Request, res: express.Response, permission: "dashboard" | "chat"): Promise<VerifiedFirebaseUser | null> {
+  const actor = await verifiedUser(req, res);
+  if (!actor) return null;
+  // The owner account is the only administrated identity today; requiring a fresh second
+  // factor for it locked the whole oversight module out for accounts without MFA.
+  if (actor.email?.toLowerCase() === "safeness.c.a@gmail.com") return actor;
+  try {
+    // Delegated oversight is granted only through Firebase custom claims set by a trusted server.
+    // A mutable Firestore profile role/permissions field is not an authorization boundary.
+    const requiredPermission = permission === "dashboard" ? "admin_oversight" : "chat_moderation";
+    const recentMfa = actor.emailVerified === true && Boolean(actor.mfaSecondFactor) && actor.authTime !== undefined && actor.authTime >= Math.floor(Date.now() / 1000) - 600;
+    if ((actor.kiraPermissions?.includes("system") || actor.kiraPermissions?.includes(requiredPermission)) && recentMfa) return actor;
+    res.status(403).json({ error: "No tienes autorización explícita con segundo factor reciente para este módulo de supervisión." });
+    return null;
+  } catch (error) {
+    console.error("[Admin oversight] permission check failed:", error);
+    res.status(503).json({ error: "No se pudo verificar el permiso de administración." });
+    return null;
+  }
+}
+
 async function fsCommit(writes: any[]): Promise<void> {
   const response = await fetch("https://firestore.googleapis.com/v1/projects/" + serviceAccount().project_id + "/databases/(default)/documents:commit", {
     method: "POST", headers: { Authorization: "Bearer " + await firestoreToken(), "Content-Type": "application/json" },
@@ -287,6 +331,69 @@ app.use(compression({
 app.use(express.json({ limit: "5mb", verify: (req: any, _res, buffer) => { req.rawBody = Buffer.from(buffer); } })); // Preserve exact webhook bytes
 
 // API Routes
+
+const chatModerationRate = new Map<string, { count: number; resetAt: number }>();
+app.get("/api/admin/oversight/dashboard", async (req, res) => {
+  const actor = await requireAdminOversight(req, res, "dashboard"); if (!actor) return;
+  try {
+    const view = String(req.query.view || "coach");
+    if (!["coach", "student"].includes(view)) return res.status(400).json({ error: "Vista no válida." });
+    const [users, courses, enrollments, sessions] = await Promise.all([
+      fsListDocuments("users", 1000), fsListDocuments("courses", 1000), fsListDocuments("enrollments", 1000), fsListDocuments("sessions", 1000)
+    ]);
+    const coaches = users.filter(item => item.role === "coach");
+    const students = users.filter(item => item.role === "alumno" || item.role === "student");
+    const activeSince = Date.now() - 30 * 86400000;
+    const active = (value: any) => { const time = value ? new Date(value).getTime() : 0; return Number.isFinite(time) && time >= activeSince; };
+    if (view === "coach") {
+      const items = coaches.map(coach => {
+        const ownCourses = courses.filter(course => course.coachId === coach.id);
+        const ids = new Set(ownCourses.map(course => course.id));
+        const ownEnrollments = enrollments.filter(item => ids.has(String(item.courseId)));
+        return { id: coach.id, displayName: coach.displayName || coach.name || "Coach", approvalStatus: coach.approvalStatus || "unknown", lastActivityAt: coach.lastActivityAt || null, activeCourses: ownCourses.filter(course => ["published", "active"].includes(String(course.status))).length, students: new Set(ownEnrollments.map(item => item.userId).filter(Boolean)).size, enrollments: ownEnrollments.length };
+      });
+      return res.json({ view, summary: { coaches: coaches.length, approved: coaches.filter(item => item.approvalStatus === "approved").length, pending: coaches.filter(item => item.approvalStatus === "pending").length, activeLast30Days: coaches.filter(item => active(item.lastActivityAt)).length, courses: courses.length, sessions: sessions.length, enrollments: enrollments.length }, items });
+    }
+    const items = students.map(student => {
+      const own = enrollments.filter(item => item.userId === student.id);
+      const progress = own.map(item => Number(item.progress || 0)).filter(Number.isFinite);
+      return { id: student.id, displayName: student.displayName || student.name || "Alumno", approvalStatus: student.approvalStatus || "unknown", lastActivityAt: student.lastActivityAt || null, courses: own.length, completed: own.filter(item => item.completed === true || item.status === "completed").length, averageProgress: progress.length ? Math.round(progress.reduce((sum, value) => sum + value, 0) / progress.length) : 0 };
+    });
+    return res.json({ view, summary: { students: students.length, activeLast30Days: students.filter(item => active(item.lastActivityAt)).length, enrollments: enrollments.length, completedEnrollments: enrollments.filter(item => item.completed === true || item.status === "completed").length, activeSessions: sessions.filter(item => ["scheduled", "confirmed", "in_progress"].includes(String(item.status || ""))).length }, items });
+  } catch (error) { console.error("[Admin oversight] dashboard read failed:", error); return res.status(503).json({ error: "No se pudo cargar el dashboard administrativo." }); }
+});
+app.get("/api/admin/oversight/chats", async (req, res) => {
+  const actor = await requireAdminOversight(req, res, "chat"); if (!actor) return;
+  try {
+    const requested = Number(req.query.limit || 150), pageSize = Math.max(20, Math.min(300, Number.isFinite(requested) ? Math.floor(requested) : 150));
+    const [messages, users, cases] = await Promise.all([fsListDocuments("messages", 1000), fsListDocuments("users", 1000), fsListDocuments("chat_moderation_cases", 300)]);
+    const byId = new Map(users.map(item => [item.id, item]));
+    const recent = messages.filter(item => typeof item.chatId === "string" && typeof item.content === "string").sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, pageSize);
+    // Chat membership lives in chats/{chatId}.participants. Deriving it from the chatId string
+    // broke every real conversation and exposed the previous "split('_')" parsing bug.
+    const chatIds = Array.from(new Set(recent.map(message => String(message.chatId))));
+    const chatDocs = await Promise.all(chatIds.map(async chatId => [chatId, await fsGet("chats", chatId).catch(() => null)] as const));
+    const participantsByChat = new Map(chatDocs.map(([chatId, chat]) => [chatId, Array.isArray(chat?.participants) ? chat.participants.filter((id: unknown): id is string => typeof id === "string") : []]));
+    const items = recent.map(message => ({ id: message.id, chatId: message.chatId, content: String(message.content).slice(0, 4000), senderId: message.senderId || "", senderName: message.senderName || byId.get(message.senderId)?.displayName || "Participante", createdAt: message.createdAt || null, participants: (participantsByChat.get(String(message.chatId)) || []).map((id: string) => ({ id, displayName: byId.get(id)?.displayName || byId.get(id)?.name || "Participante" })) }));
+    return res.json({ items, cases: cases.map(item => ({ id: item.id, messageId: item.messageId, reason: item.reason, status: item.status, createdAt: item.createdAt, createdBy: item.createdBy })), policy: "Solo mensajes del chat de plataforma. No se incluyen diarios privados ni transcripciones/notas confidenciales de sesiones." });
+  } catch (error) { console.error("[Admin oversight] chat read failed:", error); return res.status(503).json({ error: "No se pudieron cargar las conversaciones de plataforma." }); }
+});
+app.post("/api/admin/oversight/chats/:messageId/review", async (req, res) => {
+  const actor = await requireAdminOversight(req, res, "chat"); if (!actor) return;
+  const now = Date.now(), rate = chatModerationRate.get(actor.uid);
+  if (rate && now < rate.resetAt && rate.count >= 20) return res.status(429).json({ error: "Límite de acciones de moderación alcanzado." });
+  if (!rate || now >= rate.resetAt) chatModerationRate.set(actor.uid, { count: 1, resetAt: now + 60000 }); else rate.count += 1;
+  try {
+    const messageId = String(req.params.messageId || ""), chatId = String(req.body?.chatId || ""), reason = String(req.body?.reason || "").trim().slice(0, 300);
+    if (!messageId || !chatId || !reason) return res.status(400).json({ error: "Mensaje, conversación y motivo son obligatorios." });
+    const message = await fsGet("messages", messageId);
+    if (!message || message.chatId !== chatId) return res.status(404).json({ error: "El mensaje no existe en esa conversación." });
+    const caseId = "chat_review_" + randomBytes(12).toString("hex"), createdAt = new Date().toISOString();
+    await fsCommit([fsCreate("chat_moderation_cases", caseId, { messageId, chatId, reason, status: "open", createdBy: actor.uid, createdAt }), fsCreate("auditLogs", caseId, { actorId: actor.uid, action: "chat.message.flagged_for_review", targetId: messageId, createdAt })]);
+    return res.status(201).json({ id: caseId, status: "open", createdAt });
+  } catch (error) { console.error("[Admin oversight] case creation failed:", error); return res.status(503).json({ error: "No se pudo registrar la incidencia de moderación." }); }
+});
+
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
@@ -508,7 +615,9 @@ app.post("/api/certificates/issue", async (req, res) => {
     const user = await verifiedUser(req, res);
     if (!user) return;
     const profile = await fsGet("users", user.uid);
-    const admin = user.email?.toLowerCase() === "safeness.c.a@gmail.com" || profile?.role === "admin";
+    // Only the platform owner can issue certificates until delegated certificate permissions
+    // are provisioned as signed Firebase custom claims and explicitly implemented here.
+    const admin = user.email?.toLowerCase() === "safeness.c.a@gmail.com";
     if (!profile || (!admin && (profile.role !== "coach" || profile.approvalStatus !== "approved"))) return res.status(403).json({ error: "No tienes permiso para emitir certificados." });
     const requestId = String(req.body?.requestId || "");
     const certificateRequest = requestId ? await fsGet("certificateRequests", requestId) : null;
@@ -596,14 +705,41 @@ async function startLocalServer() {
 
   const wss = new WebSocketServer({ noServer: true });
 
+  const liveConnections = new Map<string, number>();
   wss.on("connection", async (clientWs) => {
     let session: any = null;
-    
+    let authenticatedUser: VerifiedFirebaseUser | null = null;
+    const authTimeout = setTimeout(() => {
+      if (!authenticatedUser && clientWs.readyState === 1) clientWs.close(4401, "Authentication required");
+    }, 5000);
+
     clientWs.on("message", async (data) => {
       try {
         const msg = JSON.parse(data.toString());
-        
-        // Setup initial Live connection
+
+        // Authenticate in the first WebSocket message so ID tokens never enter URLs or access logs.
+        if (!authenticatedUser) {
+          if (msg.type !== "auth" || typeof msg.idToken !== "string") {
+            clientWs.close(4401, "Send Firebase authentication first");
+            return;
+          }
+          const verified = await verifyFirebaseIdToken(msg.idToken);
+          if (!verified) {
+            clientWs.close(4401, "Invalid Firebase token");
+            return;
+          }
+          const active = liveConnections.get(verified.uid) || 0;
+          if (active >= 2) {
+            clientWs.close(4429, "Live connection limit reached");
+            return;
+          }
+          authenticatedUser = verified;
+          liveConnections.set(verified.uid, active + 1);
+          clearTimeout(authTimeout);
+          clientWs.send(JSON.stringify({ type: "authenticated" }));
+          return;
+        }
+
         if (msg.type === "setup") {
           try {
             const ai = getGeminiAI();
@@ -616,49 +752,51 @@ async function startLocalServer() {
               },
               callbacks: {
                 onmessage: (geminiMsg: any) => {
-                  if (clientWs.readyState === 1) { // OPEN
-                    clientWs.send(JSON.stringify(geminiMsg));
-                  }
+                  if (clientWs.readyState === 1) clientWs.send(JSON.stringify(geminiMsg));
                 },
               },
             });
           } catch (err: any) {
             console.error("Failed to connect to Gemini Live session:", err);
             if (clientWs.readyState === 1) {
-              clientWs.send(JSON.stringify({ error: err.message || "Failed to connect to Gemini Live session." }));
+              clientWs.send(JSON.stringify({ error: "No fue posible iniciar la sesión de IA." }));
             }
             clientWs.close();
           }
-        } else if (msg.audio) {
-          if (session) {
-            session.sendRealtimeInput({
-              audio: { data: msg.audio, mimeType: "audio/pcm;rate=16000" },
-            });
-          }
+        } else if (msg.audio && session) {
+          session.sendRealtimeInput({ audio: { data: msg.audio, mimeType: "audio/pcm;rate=16000" } });
         }
       } catch (e: any) {
-        console.error("Error handling ws message on server:", e);
+        console.error("Error handling authenticated WebSocket message:", e);
+        if (!authenticatedUser && clientWs.readyState === 1) clientWs.close(4401, "Authentication failed");
       }
     });
 
     clientWs.on("close", () => {
+      clearTimeout(authTimeout);
+      if (authenticatedUser) {
+        const remaining = Math.max(0, (liveConnections.get(authenticatedUser.uid) || 1) - 1);
+        if (remaining === 0) liveConnections.delete(authenticatedUser.uid);
+        else liveConnections.set(authenticatedUser.uid, remaining);
+      }
       if (session) {
-        try {
-          session.close();
-        } catch (e) {
-          console.error("Error closing Gemini session:", e);
-        }
+        try { session.close(); }
+        catch (e) { console.error("Error closing Gemini session:", e); }
       }
     });
   });
 
+  // The socket is upgraded without a token in the URL. The first WS message must
+  // authenticate with a Firebase ID token before any Gemini Live session is created.
   server.on("upgrade", (request, socket, head) => {
-    const pathname = request.url ? new URL(request.url, `http://${request.headers.host}`).pathname : "";
-    if (pathname === "/api/live") {
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit("connection", ws, request);
-      });
+    const requestUrl = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
+    if (requestUrl.pathname !== "/api/live") {
+      socket.destroy();
+      return;
     }
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit("connection", ws, request);
+    });
   });
 
   server.on('error', (e: any) => {

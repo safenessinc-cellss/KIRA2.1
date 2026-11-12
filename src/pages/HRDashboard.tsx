@@ -46,7 +46,10 @@ export function HRDashboard() {
   const latestAggregate = aggregates.slice().sort((a, b) => String(b.periodEnd || b.createdAt || "").localeCompare(String(a.periodEnd || a.createdAt || "")))[0];
   const highRiskCount = Number(latestAggregate?.highRiskCount ?? latestAggregate?.riskHigh ?? 0);
   const averageEngagement = Number(latestAggregate?.averageEngagement ?? latestAggregate?.engagementScore ?? 0);
-  const hasWellbeingAggregate = Boolean(latestAggregate && (latestAggregate.highRiskCount !== undefined || latestAggregate.riskHigh !== undefined || latestAggregate.averageEngagement !== undefined || latestAggregate.engagementScore !== undefined));
+  // Suppress small cohorts to prevent re-identification from aggregate wellbeing metrics.
+  const cohortSize = Number(latestAggregate?.cohortSize ?? latestAggregate?.participantCount ?? latestAggregate?.sampleSize ?? 0);
+  const hasSafeCohort = cohortSize >= 5;
+  const hasWellbeingAggregate = Boolean(hasSafeCohort && latestAggregate && (latestAggregate.highRiskCount !== undefined || latestAggregate.riskHigh !== undefined || latestAggregate.averageEngagement !== undefined || latestAggregate.engagementScore !== undefined));
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-7">
@@ -79,7 +82,7 @@ export function HRDashboard() {
         <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Riesgo elevado agregado</span><ShieldCheck className="text-teal-700" size={20} /></div>
           <p className="mt-4 text-4xl font-black tabular-nums text-slate-900">{loading || !hasWellbeingAggregate ? "—" : highRiskCount}</p>
-          <p className="mt-2 text-xs text-slate-500">{hasWellbeingAggregate ? "Conteo agregado; sin diarios individuales" : "Disponible cuando existan evaluaciones agregadas"}</p>
+          <p className="mt-2 text-xs text-slate-500">{hasWellbeingAggregate ? "Conteo agregado; sin diarios individuales" : "Datos ocultos hasta alcanzar un grupo mínimo de 5 respuestas"}</p>
         </article>
         <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:col-span-2 xl:col-span-1">
           <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-slate-500">Engagement promedio</span><BarChart3 className="text-teal-700" size={20} /></div>

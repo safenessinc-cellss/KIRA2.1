@@ -5,6 +5,7 @@ import { MessageSquare, Send, X, User, Users, ArrowLeft, Shield, ShieldAlert, Sh
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
 import { cn } from '../lib/utils';
+import { buildChatId, ensureChatDocument } from '../lib/chat';
 
 export function ChatWidget() {
   const { user, role } = useAuth();
@@ -224,14 +225,15 @@ export function ChatWidget() {
     if (!input.trim() || !user || !selectedContact) return;
 
     const content = input.trim();
-    const chatId = [user.uid, selectedContact.uid].sort().join('_');
+    const chatId = buildChatId(user.uid, selectedContact.uid);
 
     // 1. Anti-fraud intercept
     if (containsContactInfo(content)) {
       toastWarning('Intento de contacto externo detectado. Canalizado por seguridad.');
       setInput('');
-      
+
       try {
+        await ensureChatDocument(chatId, [user.uid, selectedContact.uid]);
         await addDoc(collection(db, 'messages'), {
           chatId,
           senderId: 'kira-guard',
@@ -265,6 +267,7 @@ export function ChatWidget() {
     setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
 
     try {
+      await ensureChatDocument(chatId, [user.uid, selectedContact.uid]);
       await addDoc(collection(db, 'messages'), {
         chatId,
         senderId: user.uid,
@@ -285,7 +288,8 @@ export function ChatWidget() {
     if (!proposedDate || !user || !selectedContact) return;
     setSubmittingOffer(true);
     try {
-      const chatId = [user.uid, selectedContact.uid].sort().join('_');
+      const chatId = buildChatId(user.uid, selectedContact.uid);
+      await ensureChatDocument(chatId, [user.uid, selectedContact.uid]);
       await addDoc(collection(db, 'messages'), {
         chatId,
         senderId: user.uid,
@@ -493,6 +497,8 @@ export function ChatWidget() {
               </div>
             </div>
             
+            <p className="mt-2 rounded-lg bg-white/10 px-3 py-2 text-[10px] leading-relaxed text-white/90">Aviso de transparencia: los mensajes de este chat de plataforma pueden ser revisados por moderadores autorizados para seguridad y cumplimiento. Los diarios personales y las sesiones privadas no forman parte de esta revisión.</p>
+
             {/* Propose button for coach */}
             {selectedContact && role === 'coach' && (
               <button 

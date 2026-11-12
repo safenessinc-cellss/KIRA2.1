@@ -7,10 +7,12 @@ import { Users, Building2, LayoutDashboard, UserCheck, BookOpen, BarChart3, Shie
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line } from 'recharts';
 import { ImageUpload } from '../components/ImageUpload';
 import { AdminBooksView } from './AdminBooksView';
+import { AdminOversightView } from './admin/AdminOversightView';
+import { AdminLegalView } from './admin/AdminLegalView';
 import { cn } from '../lib/utils';
 import { useToast } from '../hooks/useToast';
 
-type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates' | 'companies';
+type AdminTab = 'dashboard' | 'approvals' | 'students' | 'coaches' | 'members' | 'contracts' | 'content' | 'automation' | 'analytics' | 'security' | 'transactions' | 'campaign_history' | 'website' | 'settlement' | 'ai_coaches' | 'promotions' | 'books' | 'certificates' | 'companies' | 'oversight' | 'legal';
 
 export function AdminMonitor() {
   const { user } = useAuth();
@@ -47,6 +49,8 @@ export function AdminMonitor() {
     { id: 'security', label: 'Roles y seguridad', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', superOnly: true },
     { id: 'companies', label: 'Empresas y licencias B2B', icon: <Building2 size={18}/>, category: 'Personas y acceso', superOnly: true },
     { id: 'campaign_history', label: 'Auditoría y logs', icon: <ShieldAlert size={18}/>, category: 'Personas y acceso', perm: 'system' },
+    { id: 'oversight', label: 'Coach, alumno y moderación', icon: <ShieldAlert size={18}/>, category: 'Personas y acceso', perm: 'admin_oversight' },
+    { id: 'legal', label: 'Centro Legal y Privacidad', icon: <ShieldCheck size={18}/>, category: 'Personas y acceso', superOnly: true },
     { id: 'content', label: 'Cursos y contenidos', icon: <ShoppingBag size={18}/>, category: 'Academia y certificados', perm: 'billing' },
     { id: 'books', label: 'Biblioteca y ebooks', icon: <BookOpen size={18}/>, category: 'Academia y certificados', perm: 'users' },
     { id: 'certificates', label: 'Solicitudes de certificados', icon: <FileText size={18}/>, category: 'Academia y certificados', perm: 'users' },
@@ -97,6 +101,8 @@ export function AdminMonitor() {
         {activeTab === 'security' && isSuperAdmin && <SecurityView />}
         {activeTab === 'companies' && isSuperAdmin && <CompanyManagementView />}
         {activeTab === 'campaign_history' && hasPerm(navItems.find(i=>i.id==='campaign_history')) && <CampaignHistoryView />}
+        {activeTab === 'oversight' && hasPerm(navItems.find(i=>i.id==='oversight')) && <AdminOversightView />}
+        {activeTab === 'legal' && isSuperAdmin && <AdminLegalView />}
         {activeTab === 'ai_coaches' && hasPerm(navItems.find(i=>i.id==='ai_coaches')) && <AICoachesView />}
 
         {activeTab === 'coaches' && hasPerm(navItems.find(i=>i.id==='coaches')) && <CoachCuratorView />}
@@ -3586,8 +3592,12 @@ function TransactionsMonitorView() {
            <CreditCard size={18} className="text-primary" /> Auditoría de Ingresos
          </h3>
          <div className="flex gap-2">
-            <div className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-bold">
-               Total: ${txs.reduce((acc, curr) => acc + (curr.amount || 0), 0).toFixed(2)}
+            <div className="px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-bold flex flex-wrap gap-x-2">
+               Total por moneda: {Object.entries(txs.reduce((totals: Record<string, number>, tx) => {
+                 const currency = String(tx.currency || 'USD').toUpperCase();
+                 totals[currency] = (totals[currency] || 0) + Number(tx.amount || 0);
+                 return totals;
+               }, {}) as Record<string, number>).map(([currency, total]) => `${currency} ${total.toFixed(2)}`).join(' · ') || 'Sin transacciones'}
             </div>
          </div>
       </div>
@@ -3607,7 +3617,7 @@ function TransactionsMonitorView() {
                 <td className="px-6 py-4 text-slate-500 font-mono italic">{t.createdAt?.toDate?.().toLocaleString()}</td>
                 <td className="px-6 py-4 font-bold text-slate-700">{t.userEmail || (t.userId ? t.userId.substring(0, 8) + '...' : 'Unknown')}</td>
                 <td className="px-6 py-4 capitalize text-indigo-600">{(t.type || '').replace('_', ' ')}</td>
-                <td className="px-6 py-4 font-black text-slate-800">${t.amount?.toFixed(2)}</td>
+                <td className="px-6 py-4 font-black text-slate-800">{Number(t.amount || 0).toFixed(2)} {String(t.currency || 'USD').toUpperCase()}</td>
               </tr>
             ))}
             {txs.length === 0 && !loading && (
@@ -3644,7 +3654,7 @@ function SettlementCenterView() {
          </h3>
          <div className="flex gap-2">
             <div className="px-3 py-1 bg-purple-50 text-purple-700 rounded-full text-[10px] font-bold">
-               Split Regla: 70% Plataforma / 30% Coach
+               Regla objetivo 70/30 · pendiente de conciliación
             </div>
          </div>
       </div>
@@ -3654,24 +3664,29 @@ function SettlementCenterView() {
             <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-tighter">
               <th className="px-6 py-3">Referencia Tx</th>
               <th className="px-6 py-3">Monto Base</th>
-              <th className="px-6 py-3">Kira Revenue (70%)</th>
-              <th className="px-6 py-3">Coach Balance (30%)</th>
+              <th className="px-6 py-3">Importe plataforma registrado</th>
+              <th className="px-6 py-3">Importe coach registrado</th>
               <th className="px-6 py-3 text-right">Estado</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {txs.filter(t => t.type === 'curso' || t.amount > 0).map(t => {
                const monto = t.amount || 0;
-               const kiraRev = monto * 0.7;
-               const coachRev = monto * 0.3;
+               const currency = String(t.currency || 'USD').toUpperCase();
+               const platformAmount = Number(t.platformAmount);
+               const coachAmount = Number(t.coachAmount);
+               const splitRecorded = typeof t.platformAmount === 'number' && typeof t.coachAmount === 'number';
+               const payoutConfirmed = t.payoutStatus === 'paid';
                return (
                  <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                    <td className="px-6 py-4 text-slate-500 font-mono italic">#{t.id ? t.id.substring(0,6).toUpperCase() : 'N/A'}</td>
-                   <td className="px-6 py-4 font-black text-slate-700">${monto.toFixed(2)}</td>
-                   <td className="px-6 py-4 font-black text-emerald-600">+${kiraRev.toFixed(2)}</td>
-                   <td className="px-6 py-4 font-black text-purple-600">+${coachRev.toFixed(2)}</td>
+                   <td className="px-6 py-4 font-black text-slate-700">{monto.toFixed(2)} {currency}</td>
+                   <td className="px-6 py-4 font-black text-emerald-600">{splitRecorded ? platformAmount.toFixed(2) + ' ' + currency : 'Pendiente de conciliación'}</td>
+                   <td className="px-6 py-4 font-black text-purple-600">{splitRecorded ? coachAmount.toFixed(2) + ' ' + currency : 'Pendiente de conciliación'}</td>
                    <td className="px-6 py-4 text-right">
-                     <span className="px-2 py-1 bg-slate-100 text-slate-500 rounded text-[9px] font-bold uppercase">Liquidado</span>
+                     <span className={`px-2 py-1 rounded text-[9px] font-bold uppercase ${payoutConfirmed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                       {payoutConfirmed ? 'Liquidación confirmada' : 'Pendiente de liquidación'}
+                     </span>
                    </td>
                  </tr>
                );

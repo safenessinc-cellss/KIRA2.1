@@ -72,11 +72,13 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
+    // Platform-wide Firestore administration is owner-only. Never trust a mutable
+    // users/{uid}.role field as an authorization credential.
+    // Delegated staff access must be implemented with narrowly scoped signed claims.
     function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.email == "safeness.c.a@gmail.com" ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
-      );
+      return isAuthenticated()
+        && request.auth.token.email == "safeness.c.a@gmail.com"
+        && request.auth.token.email_verified == true;
     }
     
     function isApprovedCoach() {
@@ -149,9 +151,13 @@ service cloud.firestore {
 
     function isValidMessage() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['chatId', 'senderId', 'senderName', 'content', 'createdAt']) &&
+      // `participants` and `type` are written by the chat UI and must be accepted here, or
+      // every client-side message is rejected before the participant check even runs.
+      return hasOnlyAllowedFields(['chatId', 'senderId', 'senderName', 'content', 'createdAt', 'participants', 'type']) &&
              data.chatId is string && data.senderId is string &&
              (!('senderName' in data) || data.senderName is string) &&
+             (!('participants' in data) || data.participants is list) &&
+             (!('type' in data) || data.type is string) &&
              data.content is string && data.content.size() > 0 && data.content.size() < 10000 &&
              data.createdAt is timestamp;
     }
@@ -413,7 +419,9 @@ service cloud.firestore {
       }
 
       match /wellbeingAggregates/{aggregateId} {
-        allow read: if isAdmin() || isCompanyMember(companyId);
+        // Organization-level wellbeing indicators are visible only to authorized HR/company admins.
+        // Individual members and coaches never receive the organization's aggregate dashboard by default.
+        allow read: if isAdmin() || isCompanyAdmin(companyId);
         allow create, update, delete: if false;
       }
 
@@ -428,9 +436,36 @@ service cloud.firestore {
       allow update, delete: if false; // Logs should be immutable
     }
 
+    match /chat_moderation_cases/{caseId} { allow read, create, update, delete: if false; }
+
+    // Participants are stored as a list on the chat document. Deriving membership from the
+    // chatId string alone let any user join a conversation by choosing a crafted chatId, so
+    // membership is read from chats/{chatId}.participants instead.
+    function isChatParticipant(chatId) {
+      return isAuthenticated()
+        && chatId is string
+        && chatId.size() > 0 && chatId.size() <= 200
+        && exists(/databases/$(database)/documents/chats/$(chatId))
+        && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+    }
+
+    // A chat document is created once by one of its two participants; membership cannot be
+    // extended afterwards from the client.
+    match /chats/{chatId} {
+      allow read: if isChatParticipant(chatId);
+      allow create: if isAuthenticated()
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 2
+        && request.auth.uid in request.resource.data.participants;
+      allow update, delete: if isAdmin();
+    }
+
     match /messages/{messageId} {
-      allow read: if isAuthenticated() && (isAdmin() || resource.data.chatId.matches('.*' + request.auth.uid + '.*'));
-      allow create: if isAuthenticated() && isValidMessage() && request.auth.uid == request.resource.data.senderId;
+      allow read: if isAuthenticated() && (isAdmin() || isChatParticipant(resource.data.chatId));
+      allow create: if isAuthenticated()
+        && isValidMessage()
+        && request.auth.uid == request.resource.data.senderId
+        && isChatParticipant(request.resource.data.chatId);
       allow update, delete: if isAdmin();
     }
 

@@ -1302,44 +1302,30 @@ export function Journal() {
   }, [user]);
 
   const generatePredictivePrompt = async () => {
-    if (!user) return;
     setLoadingPrompt(true);
     try {
-      const q = query(
-        collection(db, 'journals'),
-        where('userId', '==', user.uid),
-        orderBy('createdAt', 'desc'),
-        limit(3)
-      );
-      const snap = await getDocs(q);
-      const previousEntries = snap.docs.map(d => d.data().content).join('\n---\n');
-
-      const prompt = `
-        Actúa como Kira, una asistente de bienestar consciente.
-        Basado en los últimos diarios de ${user.displayName || 'el usuario'}:
-        "${previousEntries || 'El usuario aún no tiene entradas previas.'}"
-        
-        Genera una pregunta corta, cálida y empática (máximo 15 palabras) para que el usuario reflexione hoy. 
-        Si no hay entradas previas, dale una bienvenida inspiradora.
-      `;
-
+      // Journal content is intentionally never sent to the AI provider.
+      // The reflection prompt is generated from a generic, non-identifying instruction.
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error('Inicia sesión para generar una pregunta de reflexión.');
+      const idToken = await currentUser.getIdToken();
       const response = await fetch('/api/gemini/generate', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
           model: 'gemini-3.5-flash',
-          contents: prompt
-        })
+          contents: 'Actúa como Kira, una asistente de bienestar consciente. Genera una pregunta breve, cálida y empática (máximo 15 palabras) que invite a reflexionar sobre el presente, sin solicitar datos sensibles ni asumir diagnósticos. Devuelve solo la pregunta.',
+        }),
       });
       const data = await response.json();
-      if (data.error) throw new Error(data.error);
-      const text = data.text || '';
-      setAiPrompt(text.trim());
+      if (!response.ok || data.error) throw new Error(data.error || 'No se pudo generar la pregunta.');
+      setAiPrompt(String(data.text || '').trim() || '¿Qué necesitas hoy para sentirte en equilibrio?');
     } catch (e) {
       console.error('Error generating predictive prompt:', e);
-      setAiPrompt('¿Qué intención quieres sembrar en tu corazón hoy?');
+      setAiPrompt('¿Qué necesitas hoy para sentirte en equilibrio?');
     } finally {
       setLoadingPrompt(false);
     }
