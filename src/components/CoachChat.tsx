@@ -4,6 +4,7 @@ import { collection, query, where, addDoc, onSnapshot, getDocs, doc, getDoc, ord
 import { MessageSquare, Send, User, Users, Search, ChevronRight, GraduationCap, Sparkles, MessageCircle, Clock, BookOpen, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { cn } from '../lib/utils';
+import { buildChatId, ensureChatDocument } from '../lib/chat';
 
 export function CoachChat({ className }: { className?: string }) {
   const { user } = useAuth();
@@ -105,7 +106,7 @@ export function CoachChat({ className }: { className?: string }) {
       return;
     }
 
-    const chatId = [user.uid, selectedStudent.uid].sort().join('_');
+    const chatId = buildChatId(user.uid, selectedStudent.uid);
 
     const q = query(
       collection(db, 'messages'),
@@ -150,7 +151,7 @@ export function CoachChat({ className }: { className?: string }) {
     if (!textToSend.trim() || !user || !selectedStudent) return;
 
     const content = textToSend.trim();
-    const chatId = [user.uid, selectedStudent.uid].sort().join('_');
+    const chatId = buildChatId(user.uid, selectedStudent.uid);
     const tempId = `temp-${Date.now()}`;
 
     // Optimistic Update
@@ -169,11 +170,13 @@ export function CoachChat({ className }: { className?: string }) {
     setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
 
     try {
+      await ensureChatDocument(chatId, [user.uid, selectedStudent.uid]);
       await addDoc(collection(db, 'messages'), {
         chatId,
         senderId: user.uid,
         senderName: user.displayName || 'Coach',
         content,
+        participants: [user.uid, selectedStudent.uid],
         createdAt: new Date()
       });
     } catch (err) {

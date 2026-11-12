@@ -151,9 +151,13 @@ service cloud.firestore {
 
     function isValidMessage() {
       let data = request.resource.data;
-      return hasOnlyAllowedFields(['chatId', 'senderId', 'senderName', 'content', 'createdAt']) &&
+      // `participants` and `type` are written by the chat UI and must be accepted here, or
+      // every client-side message is rejected before the participant check even runs.
+      return hasOnlyAllowedFields(['chatId', 'senderId', 'senderName', 'content', 'createdAt', 'participants', 'type']) &&
              data.chatId is string && data.senderId is string &&
              (!('senderName' in data) || data.senderName is string) &&
+             (!('participants' in data) || data.participants is list) &&
+             (!('type' in data) || data.type is string) &&
              data.content is string && data.content.size() > 0 && data.content.size() < 10000 &&
              data.createdAt is timestamp;
     }
@@ -434,13 +438,26 @@ service cloud.firestore {
 
     match /chat_moderation_cases/{caseId} { allow read, create, update, delete: if false; }
 
-    // Chat IDs must contain the complete UID as a delimited token; substring
-    // matches can accidentally disclose messages to a different account whose UID
-    // happens to be embedded inside another participant's identifier.
+    // Participants are stored as a list on the chat document. Deriving membership from the
+    // chatId string alone let any user join a conversation by choosing a crafted chatId, so
+    // membership is read from chats/{chatId}.participants instead.
     function isChatParticipant(chatId) {
       return isAuthenticated()
         && chatId is string
-        && chatId.matches('(^|.*[^A-Za-z0-9])' + request.auth.uid + '([^A-Za-z0-9].*|$)');
+        && chatId.size() > 0 && chatId.size() <= 200
+        && exists(/databases/$(database)/documents/chats/$(chatId))
+        && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+    }
+
+    // A chat document is created once by one of its two participants; membership cannot be
+    // extended afterwards from the client.
+    match /chats/{chatId} {
+      allow read: if isChatParticipant(chatId);
+      allow create: if isAuthenticated()
+        && request.resource.data.participants is list
+        && request.resource.data.participants.size() == 2
+        && request.auth.uid in request.resource.data.participants;
+      allow update, delete: if isAdmin();
     }
 
     match /messages/{messageId} {

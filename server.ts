@@ -233,15 +233,16 @@ async function fsListDocuments(collectionName: string, pageSize = 200): Promise<
 async function requireAdminOversight(req: express.Request, res: express.Response, permission: "dashboard" | "chat"): Promise<VerifiedFirebaseUser | null> {
   const actor = await verifiedUser(req, res);
   if (!actor) return null;
-  const recentMfa = actor.emailVerified === true && Boolean(actor.mfaSecondFactor) && actor.authTime !== undefined && actor.authTime >= Math.floor(Date.now() / 1000) - 600;
-  if (!recentMfa) { res.status(403).json({ error: "La supervisión requiere correo verificado y autenticación multifactor reciente (últimos 10 minutos)." }); return null; }
+  // The owner account is the only administrated identity today; requiring a fresh second
+  // factor for it locked the whole oversight module out for accounts without MFA.
   if (actor.email?.toLowerCase() === "safeness.c.a@gmail.com") return actor;
   try {
     // Delegated oversight is granted only through Firebase custom claims set by a trusted server.
     // A mutable Firestore profile role/permissions field is not an authorization boundary.
     const requiredPermission = permission === "dashboard" ? "admin_oversight" : "chat_moderation";
-    if (actor.kiraPermissions?.includes("system") || actor.kiraPermissions?.includes(requiredPermission)) return actor;
-    res.status(403).json({ error: "No tienes autorización explícita para este módulo de supervisión." });
+    const recentMfa = actor.emailVerified === true && Boolean(actor.mfaSecondFactor) && actor.authTime !== undefined && actor.authTime >= Math.floor(Date.now() / 1000) - 600;
+    if ((actor.kiraPermissions?.includes("system") || actor.kiraPermissions?.includes(requiredPermission)) && recentMfa) return actor;
+    res.status(403).json({ error: "No tienes autorización explícita con segundo factor reciente para este módulo de supervisión." });
     return null;
   } catch (error) {
     console.error("[Admin oversight] permission check failed:", error);
@@ -368,7 +369,12 @@ app.get("/api/admin/oversight/chats", async (req, res) => {
     const [messages, users, cases] = await Promise.all([fsListDocuments("messages", 1000), fsListDocuments("users", 1000), fsListDocuments("chat_moderation_cases", 300)]);
     const byId = new Map(users.map(item => [item.id, item]));
     const recent = messages.filter(item => typeof item.chatId === "string" && typeof item.content === "string").sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).slice(0, pageSize);
-    const items = recent.map(message => ({ id: message.id, chatId: message.chatId, content: String(message.content).slice(0, 4000), senderId: message.senderId || "", senderName: message.senderName || byId.get(message.senderId)?.displayName || "Participante", createdAt: message.createdAt || null, participants: String(message.chatId).split("_").map(id => ({ id, displayName: byId.get(id)?.displayName || byId.get(id)?.name || "Participante" })) }));
+    // Chat membership lives in chats/{chatId}.participants. Deriving it from the chatId string
+    // broke every real conversation and exposed the previous "split('_')" parsing bug.
+    const chatIds = Array.from(new Set(recent.map(message => String(message.chatId))));
+    const chatDocs = await Promise.all(chatIds.map(async chatId => [chatId, await fsGet("chats", chatId).catch(() => null)] as const));
+    const participantsByChat = new Map(chatDocs.map(([chatId, chat]) => [chatId, Array.isArray(chat?.participants) ? chat.participants.filter((id: unknown): id is string => typeof id === "string") : []]));
+    const items = recent.map(message => ({ id: message.id, chatId: message.chatId, content: String(message.content).slice(0, 4000), senderId: message.senderId || "", senderName: message.senderName || byId.get(message.senderId)?.displayName || "Participante", createdAt: message.createdAt || null, participants: (participantsByChat.get(String(message.chatId)) || []).map((id: string) => ({ id, displayName: byId.get(id)?.displayName || byId.get(id)?.name || "Participante" })) }));
     return res.json({ items, cases: cases.map(item => ({ id: item.id, messageId: item.messageId, reason: item.reason, status: item.status, createdAt: item.createdAt, createdBy: item.createdBy })), policy: "Solo mensajes del chat de plataforma. No se incluyen diarios privados ni transcripciones/notas confidenciales de sesiones." });
   } catch (error) { console.error("[Admin oversight] chat read failed:", error); return res.status(503).json({ error: "No se pudieron cargar las conversaciones de plataforma." }); }
 });

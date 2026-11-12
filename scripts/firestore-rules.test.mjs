@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { initializeTestEnvironment, assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp } from "firebase/firestore";
 
 const projectId = "demo-kira-rules";
 const rules = fs.readFileSync("firestore.rules", "utf8");
@@ -20,6 +20,10 @@ try {
     await setDoc(doc(db, "companies", "company-a", "members", "company-admin"), { uid: "company-admin", role: "company_admin" });
     await setDoc(doc(db, "companies", "company-a", "wellbeingAggregates", "2026-11"), { period: "2026-11", highRiskCount: 2 });
     await setDoc(doc(db, "companies", "company-b", "members", "other-admin"), { uid: "other-admin", role: "company_admin" });
+    await setDoc(doc(db, "chats", "student-a_student-b"), { participants: ["student-a", "student-b"], createdAt: new Date() });
+    await setDoc(doc(db, "chats", "student-b_other-user"), { participants: ["student-b", "other-user"], createdAt: new Date() });
+    await setDoc(doc(db, "messages", "message-in-own-chat"), { chatId: "student-a_student-b", senderId: "student-b", content: "hello", participants: ["student-a", "student-b"], createdAt: new Date() });
+    await setDoc(doc(db, "messages", "message-in-other-chat"), { chatId: "student-b_other-user", senderId: "student-b", content: "private", participants: ["student-b", "other-user"], createdAt: new Date() });
   });
 
   const studentDb = env.authenticatedContext("student-a", { email: "a@example.test" }).firestore();
@@ -31,6 +35,15 @@ try {
   await assertSucceeds(setDoc(doc(studentDb, "enrollments", "free-valid"), { userId: "student-a", courseId: "free-course", progress: 0, createdAt: serverTimestamp() }));
   await assertFails(updateDoc(doc(studentDb, "users", "student-a"), { companyId: "company-b" }));
   await assertFails(updateDoc(doc(studentDb, "users", "student-a"), { staffPermissions: ["system"] }));
+
+  // Chat membership is proven by chats/{chatId}.participants, not by the chatId string.
+  await assertSucceeds(getDoc(doc(studentDb, "messages", "message-in-own-chat")));
+  await assertFails(getDoc(doc(studentDb, "messages", "message-in-other-chat")));
+  await assertSucceeds(addDoc(collection(studentDb, "messages"), { chatId: "student-a_student-b", senderId: "student-a", content: "hi", participants: ["student-a", "student-b"], createdAt: serverTimestamp() }));
+  await assertFails(addDoc(collection(studentDb, "messages"), { chatId: "student-a_other-user", senderId: "student-a", content: "intrusion", participants: ["student-a", "other-user"], createdAt: serverTimestamp() }));
+  await assertSucceeds(setDoc(doc(studentDb, "chats", "student-a_other-user"), { participants: ["student-a", "other-user"], createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(studentDb, "chats", "student-a_other-user"), { participants: ["student-a", "other-user", "student-b"], createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(studentDb, "chats", "intruder_chat"), { participants: ["student-a"], createdAt: serverTimestamp() }));
 
   const companyDb = env.authenticatedContext("company-admin", { email: "hr@example.test" }).firestore();
   await assertSucceeds(getDoc(doc(companyDb, "companies", "company-a", "wellbeingAggregates", "2026-11")));

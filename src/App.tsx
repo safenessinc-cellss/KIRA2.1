@@ -28,6 +28,7 @@ const HRDashboard = React.lazy(() => import('./pages/HRDashboard').then(m => ({ 
 const UserProfile = React.lazy(() => import('./pages/UserProfile').then(m => ({ default: m.UserProfile })));
 const Microlearning = React.lazy(() => import('./pages/Microlearning').then(m => ({ default: m.Microlearning })));
 const CertificateValidation = React.lazy(() => import('./pages/CertificateValidation'));
+const LegalCenter = React.lazy(() => import('./pages/LegalCenter').then(m => ({ default: m.LegalCenter })));
 
 // Elegant fallback loading spinner matching KIRA's style guidelines
 function PageLoader() {
